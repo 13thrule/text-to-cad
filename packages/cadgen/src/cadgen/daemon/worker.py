@@ -69,6 +69,11 @@ def _apply_request_env(request: dict) -> None:
         os.environ["CADGEN_ROOT_ID"] = root_id
     else:
         os.environ.pop("CADGEN_ROOT_ID", None)
+    job_id = request.get("job_id")
+    if isinstance(job_id, str) and job_id:
+        os.environ["CADGEN_JOB_ID"] = job_id
+    else:
+        os.environ.pop("CADGEN_JOB_ID", None)
 
 
 def _emit(frame: dict) -> None:

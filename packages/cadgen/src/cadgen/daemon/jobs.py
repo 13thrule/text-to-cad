@@ -20,10 +20,12 @@ imports the kernel — a job's outputs come from ``cadgen.metadata``'s AST parse
 from __future__ import annotations
 
 import itertools
+import copy
 import os
 import re
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -81,28 +83,30 @@ def declared_outputs(subject: str, tool: str) -> list[str]:
     """
     if not subject:
         return []
-    if not subject.endswith(".py"):
+    script_ref, _, function = subject.partition("::")
+    if not script_ref.endswith(".py"):
         return [_real(subject)]
     try:
-        from cadgen.metadata import parse_generator_metadata, resolve_model_output_path
+        from cadgen.metadata import parse_all_generator_metadata, parse_generator_metadata, resolve_model_output_path
 
-        script = Path(subject)
-        metadata = parse_generator_metadata(script)
-        if metadata is None:
-            return []
-        fmt = "dxf" if str(getattr(metadata, "format", "step") or "step") == "dxf" else "step"
-        primary = resolve_model_output_path(script, fmt=fmt, explicit_out=metadata.out_target)
+        script = Path(script_ref)
+        models = (parse_generator_metadata(script, function=function),) if function else parse_all_generator_metadata(script)
         outputs: list[str] = []
-        if fmt == "dxf" or getattr(metadata, "step_output", True):
-            outputs.append(_real(primary))
-        suffixes = {"stl": ".stl", "3mf": ".3mf", "glb": ".glb"}
-        for decl in getattr(metadata, "mesh_exports", ()) or ():
-            if decl.out is not None:
-                path = resolve_model_output_path(script, fmt=decl.fmt, explicit_out=decl.out)
-            else:
-                path = primary.with_suffix(suffixes.get(decl.fmt, f".{decl.fmt}"))
-            outputs.append(_real(path))
-        return outputs
+        for metadata in models:
+            if metadata is None:
+                continue
+            fmt = "dxf" if str(getattr(metadata, "format", "step") or "step") == "dxf" else "step"
+            primary = resolve_model_output_path(script, fmt=fmt, explicit_out=metadata.out_target, function=metadata.entry_function)
+            if fmt == "dxf" or getattr(metadata, "step_output", True):
+                outputs.append(_real(primary))
+            suffixes = {"stl": ".stl", "3mf": ".3mf", "glb": ".glb"}
+            for decl in getattr(metadata, "mesh_exports", ()) or ():
+                if decl.out is not None:
+                    path = resolve_model_output_path(script, fmt=decl.fmt, explicit_out=decl.out, function=metadata.entry_function)
+                else:
+                    path = primary.with_suffix(suffixes.get(decl.fmt, f".{decl.fmt}"))
+                outputs.append(_real(path))
+        return list(dict.fromkeys(outputs))
     except Exception:  # noqa: BLE001 - metadata is best-effort; a job still runs
         return []
 
@@ -116,15 +120,21 @@ class JobLedger:
         self._ids = itertools.count(1)
         self._retain = float(retain_seconds)
         self._clock = clock
+        self.epoch = uuid.uuid4().hex
 
     # --- lifecycle -------------------------------------------------------------
 
-    def start(self, *, tool: str, subject: str, argv: list[str] | None = None) -> dict[str, Any]:
+    def start(self, *, tool: str, subject: str, argv: list[str] | None = None, store_root: str = "", editing_producer: bool = True) -> dict[str, Any]:
         subject = _real(subject) if subject else ""
         now = self._clock()
+        sequence = next(self._ids)
         job: dict[str, Any] = {
-            "id": f"job-{next(self._ids)}",
+            "id": f"{self.epoch}:job-{sequence}",
+            "epoch": self.epoch,
+            "sequence": sequence,
+            "storeRoot": _real(store_root) if store_root else "",
             "tool": str(tool),
+            "editingProducer": bool(editing_producer),
             "subject": subject,
             "outputs": declared_outputs(subject, str(tool)),
             "argv": [str(a) for a in (argv or [])],
@@ -142,6 +152,11 @@ class JobLedger:
             self._jobs[job["id"]] = job
         return job
 
+    def accept_editing_producer(self, job: dict[str, Any]) -> None:
+        """Only a coalescing request that owns the work advances edit ordering."""
+        with self._guard:
+            job["editingProducer"] = True
+
     def observe(self, frame: dict[str, Any]) -> None:
         """Fold one relayed frame into the ledger (only ``event`` frames matter)."""
         event = frame.get("event") if isinstance(frame, dict) else None
@@ -152,15 +167,29 @@ class JobLedger:
         if not model or not state:
             return
         now = self._clock()
+        producer = str(event.get("job") or "")
         with self._guard:
-            job = self._running_for(model)
+            job = self._jobs.get(producer) if producer else self._running_for(model)
+            if producer:
+                if job is None or _real(model.split("::", 1)[0]) != _real(job["subject"].split("::", 1)[0]):
+                    # Parent-announced child transitions are not the parent's
+                    # own work. The child's accepted request has its own row.
+                    return
+                ordinal = int(event.get("sequence") or 0)
+                if job.get("finishedAt") is not None or (ordinal and ordinal <= job.get("eventSequence", 0)):
+                    return
+                if ordinal:
+                    job["eventSequence"] = ordinal
             if job is None:
                 if state in ("done", "failed", "current"):
                     return  # a transition for a job this ledger never saw start
                 # A child a parent has submitted: its own request has not
                 # arrived yet, so it is listed from the parent's announcement.
+                sequence = next(self._ids)
                 job = {
-                    "id": f"job-{next(self._ids)}", "tool": "run", "subject": model,
+                    "id": f"{self.epoch}:job-{sequence}", "epoch": self.epoch,
+                    "sequence": sequence, "storeRoot": "", "announced": True,
+                    "tool": "run", "subject": model,
                     "outputs": declared_outputs(model, "run"), "argv": [], "state": "submitted",
                     "phase": None, "done": None, "total": None, "startedAt": now,
                     "updatedAt": now, "finishedAt": None, "exit": None, "error": None,
@@ -175,14 +204,29 @@ class JobLedger:
                 job["done"] = event.get("done")
                 job["total"] = event.get("total")
             elif state in ("done", "current"):
-                job["state"] = "done"
-                job["finishedAt"] = now
+                # A real request may run several decorated models; only its
+                # process completion closes the request, not one model event.
+                if not producer:
+                    job["state"] = "done"
+                    job["finishedAt"] = now
             elif state == "failed":
                 job["state"] = "failed"
                 job["exit"] = event.get("exit", job["exit"])
                 if event.get("error"):
                     job["error"] = str(event["error"])
                 job["finishedAt"] = now
+            for field in ("preview", "saved"):
+                payload = event.get(field)
+                if not isinstance(payload, dict) or not payload.get("output") or not payload.get("tree"):
+                    continue
+                output = _real(str(payload["output"]))
+                updates = job.setdefault("previews" if field == "preview" else "savedResults", {})
+                ordinal = int(event.get("sequence") or 0)
+                previous = updates.get(output)
+                if previous is None or ordinal > int(previous.get("sequence") or 0):
+                    updates[output] = {**copy.deepcopy(payload), "output": output, "sequence": ordinal}
+                if output not in job["outputs"]:
+                    job["outputs"].append(output)
             job["updatedAt"] = now
 
     def adopt(self, job: dict[str, Any], *, subject: str, tool: str, argv: list[str]) -> dict[str, Any]:
@@ -190,9 +234,12 @@ class JobLedger:
         announcement: that entry IS this job (no duplicate row)."""
         with self._guard:
             existing = self._running_for(_real(subject), exclude=job) if subject else None
-            if existing is not None:
+            if existing is not None and existing.get("announced"):
                 self._jobs.pop(job["id"], None)
                 existing["tool"], existing["argv"] = str(tool), [str(a) for a in argv]
+                existing["storeRoot"] = job.get("storeRoot", "")
+                existing["editingProducer"] = job.get("editingProducer", True)
+                existing.pop("announced", None)
                 return existing
         return job
 
@@ -216,7 +263,7 @@ class JobLedger:
         """Every running job and every job finished within the retention window."""
         with self._guard:
             self._sweep(self._clock())
-            return [dict(job, outputs=list(job["outputs"]), argv=list(job["argv"])) for job in self._jobs.values()]
+            return copy.deepcopy(list(self._jobs.values()))
 
     def _running_for(self, subject: str, *, exclude: dict[str, Any] | None = None) -> dict[str, Any] | None:
         for job in reversed(list(self._jobs.values())):

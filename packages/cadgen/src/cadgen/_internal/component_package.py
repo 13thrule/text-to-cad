@@ -402,17 +402,20 @@ def parallel_worker_count(work_count: int, *, env_var: str) -> int:
     (~seconds each), and cap at eight so a large machine does not multiply a
     ~300 MB resident kernel by its core count. One sizing rule, every pool: the
     component build and ``inspect validate`` differ only in the variable that
-    overrides them."""
+    overrides them. The shared memory policy can lower either requested count
+    to fit extraction reservations inside the owning worker's allowance."""
+    from cadgen.daemon.memory import component_worker_limit
+
     env_value = os.environ.get(env_var, "").strip()
     if env_value:
         try:
             requested = int(env_value)
         except ValueError:
             requested = 0
-        return max(1, min(requested, work_count)) if requested > 1 else 1
+        return component_worker_limit(max(1, min(requested, work_count)) if requested > 1 else 1)
     if work_count < 6:
         return 1
-    return max(1, min((os.cpu_count() or 2) - 2, work_count, 8))
+    return component_worker_limit(max(1, min((os.cpu_count() or 2) - 2, work_count, 8)))
 
 
 def _component_build_worker_count(missing_count: int) -> int:

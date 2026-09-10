@@ -259,7 +259,11 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
     # file are still one job).
     subject = model or _document_path(argv, cwd)
     closure = str(request.get("closure") or "")
-    job = _JOBS.adopt(_JOBS.start(tool=tool, subject=subject, argv=argv), subject=subject, tool=tool, argv=argv)
+    job = _JOBS.adopt(
+        _JOBS.start(tool=tool, subject=subject, argv=argv, store_root=str(request.get("store_root") or ""),
+                    editing_producer=not bool(subject and closure and request.get("coalesce"))),
+        subject=subject, tool=tool, argv=argv,
+    )
     inflight = None
     if subject and closure and request.get("coalesce"):
         inflight = _BROKER.claim(subject, closure)
@@ -272,13 +276,14 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
             with contextlib.suppress(OSError), send_lock:
                 _send(conn, {"exit": code})
             return
+        _JOBS.accept_editing_producer(job)
     try:
-        worker = _POOL.acquire(model)
-    except pool_mod.WorkerGone as exc:
-        # A spawn that never announced itself. There is no worker to blame and nothing
-        # to retry warm; the client sees the failure and can run cold.
+        worker = _POOL.acquire(model, dependency=bool(request.get("dependency")))
+    except (pool_mod.WorkerGone, pool_mod.MemoryAdmissionError) as exc:
+        # Failed spawn or memory admission. Return an explicit failure; a cold
+        # retry here would bypass the daemon's aggregate admission policy.
         _log(f"{tool}: could not start a worker: {exc}")
-        _JOBS.finish(job, 1)
+        _JOBS.finish(job, 1, error=str(exc))
         if subject and closure and request.get("coalesce"):
             _BROKER.finish(subject, closure, 1)
         with contextlib.suppress(OSError), send_lock:
@@ -305,6 +310,7 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
             "env": request.get("env"),
             "store_root": request.get("store_root"),
             "root_id": request.get("root_id"),
+            "job_id": job["id"],
         })
         for frame in worker.frames(silence_timeout=WORKER_SILENCE_TIMEOUT_SECONDS):
             if "exit" in frame:

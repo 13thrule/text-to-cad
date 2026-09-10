@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import itertools
 import os
 import subprocess
 import sys
@@ -88,6 +89,7 @@ class Job:
 
 _EVENT_SINK: Callable[[dict], None] | None = None
 _EVENT_LOCK = threading.Lock()
+_EVENT_SEQUENCE = itertools.count(1)
 
 
 def set_event_sink(sink: Callable[[dict], None] | None) -> None:
@@ -111,6 +113,10 @@ def emit_event(event: dict) -> None:
         sink = _EVENT_SINK
     if sink is None:
         return
+    if "job" not in event:
+        producer = os.environ.get("CADGEN_JOB_ID")
+        if producer:
+            event = {**event, "job": producer, "sequence": next(_EVENT_SEQUENCE)}
     if "root" not in event:
         root = os.environ.get("CADGEN_ROOT_ID")
         if root:

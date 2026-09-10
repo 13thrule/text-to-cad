@@ -3,7 +3,8 @@
 1. **Job slots** — one running build per core. A counting semaphore of
    ``N = os.cpu_count()`` (``CADGEN_JOBS`` overrides), FIFO. A job takes a slot
    before its body runs and holds it through its emit; it YIELDS the slot while it
-   waits for children it forced (a waiting parent does no kernel work) and reacquires
+   waits for children it forced (a waiting parent does no kernel work, but
+   retains its geometry and memory reservation in the worker pool) and reacquires
    — queuing again if it must — when they are done. That yield is the deadlock
    avoidance: a 1-slot pool still builds a 3-level tree.
 2. **In-flight coalescing** — a submit for ``(model, closure hash)`` that matches a
@@ -14,8 +15,9 @@ One broker per executor. The daemon IS the broker for its workers (daemon-wide
 slots); a transient build's root process runs a private one for the workers it
 spawns (per-build slots). Both speak the same frames over the same transport, and
 a lease is a CONNECTION: holding a slot is holding the connection open, so a worker
-that dies releases its slot by dying. Nothing here reads memory or adapts; the
-only inputs are a core count and what is in flight.
+that dies releases its slot by dying. Memory admission belongs to the worker
+pool, separately from these CPU leases; yielding a CPU lease never releases
+the parent's memory allowance.
 
 Client side (any process that builds)::
 

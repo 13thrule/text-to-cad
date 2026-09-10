@@ -179,6 +179,7 @@ def _request_payload(
     root_id: str | None = None,
     closure: str | None = None,
     coalesce: bool = False,
+    dependency: bool = False,
 ) -> dict:
     from cadgen.store.paths import store_root as default_store_root
 
@@ -203,6 +204,9 @@ def _request_payload(
         # request never does -- the model the user asked for runs.
         "closure": str(closure) if closure else None,
         "coalesce": bool(coalesce and closure),
+        # A nested request may consume the reserved dependency-progress
+        # headroom. This is independent of whether it can coalesce.
+        "dependency": bool(dependency),
         "token": compute_version_token(),
     }
 
@@ -213,9 +217,9 @@ def run_via_daemon(
     """Run one CLI invocation on the warm daemon; ``None`` means run inline instead."""
     # Warm by DEFAULT. It was opt-in while the daemon could only hold one job, because
     # turning it on serialised parallel builds -- the moonwatch README told people to
-    # avoid it for exactly that. The pool removed the reason: a burst spawns workers up
-    # to the cap and overflows cold rather than queueing. An optimisation nobody enables
-    # is the same as not having one.
+    # avoid it for exactly that. The pool removed the reason: a burst borrows or spawns
+    # workers while their memory reservations fit. Admission refusal is an explicit
+    # failure, never a cold retry that bypasses the daemon's memory budget.
     if os.environ.get("CADGEN_DAEMON") == "0" or os.environ.get("CADGEN_DAEMON_CHILD"):
         return None
     if not daemon_supported():
@@ -253,7 +257,8 @@ def run_nested(
     if os.environ.get("CADGEN_DAEMON") == "0" or not daemon_supported():
         return None
     payload = _request_payload(
-        tool, argv, cwd, prog, store_root=store_root, root_id=root_id, closure=closure, coalesce=True
+        tool, argv, cwd, prog, store_root=store_root, root_id=root_id, closure=closure,
+        coalesce=True, dependency=True,
     )
     return _run_with_retry(payload, on_stream=on_stream, on_event=on_event)
 

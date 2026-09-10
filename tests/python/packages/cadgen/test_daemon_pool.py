@@ -1,7 +1,8 @@
 """The pool's dispatch rule: a worker per model, an extra when it is busy, spares in reserve.
 
-Nothing waits on another build and nothing is refused: the rule is bookkeeping, so it is
-asserted against stub workers on identity and state, never on timing.
+With memory admission explicitly disabled, routing never waits on another build.
+Identity and state are asserted against stub workers; test_daemon_memory covers
+admission, reservations and reclamation separately.
 """
 
 from __future__ import annotations
@@ -62,7 +63,7 @@ class _PoolFixture(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         _StubWorker.spawned = 0
-        self.pool = pool_mod.Pool()
+        self.pool = pool_mod.Pool(policy=pool_mod.MemoryPolicy(0))
         self.addCleanup(self.pool.shutdown)
 
     def _spares(self, count: int):
@@ -124,7 +125,7 @@ class Binding(_PoolFixture):
         bound = [w for w in self.pool.snapshot()["workers"] if w["model"]]
         self.assertEqual(bound, [], "a subject-less job bound a worker")
 
-    def test_nothing_is_capped(self):
+    def test_explicitly_disabled_memory_admission_does_not_cap_workers(self):
         with self._spares(0):
             held = [self.pool.acquire(f"/m/{i}.py") for i in range(40)]
         self.assertEqual(len({w.pid for w in held}), 40)
@@ -236,7 +237,7 @@ class IdleUnbind(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         self.now = [1000.0]
-        self.pool = pool_mod.Pool(clock=lambda: self.now[0])
+        self.pool = pool_mod.Pool(clock=lambda: self.now[0], policy=pool_mod.MemoryPolicy(0))
         self.addCleanup(self.pool.shutdown)
 
     def test_a_bound_worker_idle_past_the_timer_becomes_a_spare(self):
