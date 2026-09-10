@@ -41,6 +41,14 @@ def reachable_objects() -> set[str]:
         tree = str(record.get("tree") or "")
         if tree:
             tree_objects(tree, _seen=reachable)
+    for _name, path in iter_entries("component"):
+        entry = read_entry("component", path.name)
+        if not entry:
+            continue
+        for field in ("surf", "brep"):
+            digest = str(entry.get(field) or "")
+            if digest:
+                reachable.add(digest)
     for kind in ("op", "mesh"):
         for _name, path in iter_entries(kind):
             entry = read_entry(kind, path.name)

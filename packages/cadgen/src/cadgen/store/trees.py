@@ -186,16 +186,30 @@ def flatten_tree(
             child_hash = str(link.get("tree") or "")
             child = flatten(child_hash, memo=memo) if child_hash else None
             if child is None:
-                return None
+                raise FileNotFoundError(
+                    f"tree {tree_hash or '<unpublished>'}: linked tree object missing: "
+                    f"{child_hash or '<empty>'}"
+                )
             placement = _as16(link.get("transform"))
             for cid, entry in (child.get("components") or {}).items():
                 components.setdefault(cid, dict(entry))
             link_name = str(link.get("name") or node.get("name") or node_id)
+            link_color = link.get("color")
+            child_is_part = str(child.get("entryKind") or "") == "part"
             for occ in child.get("occurrences") or []:
                 placed = dict(occ)
                 occ_id = str(occ.get("id") or "o1")
                 placed["id"] = _rebase_id(node_id, occ_id)
                 placed["transform"] = compose_transforms(placement, occ.get("transform"))
+                component = (child.get("components") or {}).get(str(occ.get("component") or "")) or {}
+                # A root color on a materialized Compound is inherited only by
+                # descendants with no explicit color of their own. Component
+                # color is the occurrence fallback used by materialize/render,
+                # so it is an authored color for the same purpose here.
+                if link_color is not None and (
+                    child_is_part or (occ.get("color") is None and component.get("color") is None)
+                ):
+                    placed["color"] = link_color
                 if occ_id == "o1":
                     # A part child is ONE occurrence, its root: it takes the
                     # link's name (the label the parent gave the placement).

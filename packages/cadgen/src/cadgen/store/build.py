@@ -5,9 +5,9 @@ Walks the compound a model returned. Every leaf becomes a content-addressed
 subtree that is a child model's materialized geometry, found intact, becomes a
 **link** to that child's tree. The decision is mechanical (§Tree in STORE.md):
 
-- a compound carrying a materialize tag whose geometry is still the tagged
-  TShape (``IsPartner``: same shape, only the location differs) → link, placed
-  at its world location; relabelled or recolored is still intact;
+- a materialized child with its original native partner, geometry and
+  descendant occurrence metadata → link at its world location; root label
+  and color overrides are still intact;
 - anything else — geometry the model made, an extracted sub-shape, a modified
   child (``housing() - holes``: a new TShape), a mirrored child (a new TShape)
   → the model's own components. No error path.
@@ -44,7 +44,7 @@ from typing import Any, Callable
 from cadgen.coordination import PHASE_COMPONENTS, PHASE_FINALIZE, PHASE_PACKAGE
 from cadgen.coordination import resolve as resolve_progress
 from cadgen.store.index import read_entry, write_entry
-from cadgen.store.materialize import PARTNER_TAG, ROOT_LOC_TAG, TREE_TAG, _location_from_matrix
+from cadgen.store.materialize import PARTNER_TAG, ROOT_LOC_TAG, TREE_TAG, _location_from_matrix, materialized_children
 from cadgen.store.objects import has_object, put_object_from_file
 from cadgen.store.trees import put_tree
 
@@ -66,14 +66,11 @@ def _tagged_intact(node: Any) -> str | None:
     if not tag:
         return None
     holder = getattr(node, PARTNER_TAG, None)
-    partner = getattr(holder, "shape", None)
-    wrapped = getattr(node, "wrapped", None)
-    if partner is None or wrapped is None:
-        return str(tag)
+    intact = getattr(holder, "intact", None)
+    if intact is None:
+        return None
     try:
-        # The same shape, placed (moved(), Location * shape) -> a link. A new
-        # TShape (a boolean, a mirror, located()'s deep copy) -> the parent's own.
-        return str(tag) if wrapped.IsPartner(partner) else None
+        return str(tag) if intact(node) else None
     except Exception:  # noqa: BLE001 - an odd wrapper is not intact
         return None
 
@@ -185,7 +182,7 @@ def _walk_compound(compound: Any, *, root_name: str, progress: Any) -> _Walk:
 
     def _add_leaf(node: Any, world_loc: Any, occ_id: str, name: str | None = None) -> dict[str, Any]:
         try:
-            memo_key = node.wrapped.TShape()
+            memo_key = (node.wrapped.TShape(), int(node.wrapped.Orientation()))
             content_hash = hash_memo.get(memo_key)
             if content_hash is None:
                 content_hash, brep = _content_hash_and_bytes(node)
@@ -259,9 +256,11 @@ def _walk_compound(compound: Any, *, root_name: str, progress: Any) -> _Walk:
             "children": child_nodes,
         }
 
-    def _walk(node: Any, parent_world_loc: Any, path: str) -> dict[str, Any]:
+    def _walk(node: Any, parent_world_loc: Any, path: str, baseline: Any = None) -> dict[str, Any]:
         node_loc = getattr(node, "location", None)
         world_loc = (parent_world_loc * node_loc) if node_loc is not None else parent_world_loc
+        if baseline is None:
+            baseline = getattr(getattr(node, PARTNER_TAG, None), "baseline", None)
         if path != "o1":
             tagged = _tagged_intact(node)
             if tagged is not None:
@@ -271,10 +270,13 @@ def _walk_compound(compound: Any, *, root_name: str, progress: Any) -> _Walk:
             spliced = _consume_spliced(dict(nested_tree, leaf=False), world_loc, path)
             spliced["name"] = str(getattr(node, "label", "") or nested_tree.get("name") or path)
             return spliced
-        child_shapes = list(getattr(node, "children", []) or [])
+        child_shapes = materialized_children(node, baseline)
         if not child_shapes:
             return _add_leaf(node, world_loc, path)
-        child_nodes = [_walk(child, world_loc, f"{path}.{index}") for index, child in enumerate(child_shapes, start=1)]
+        child_nodes = [
+            _walk(child, world_loc, f"{path}.{index}", child_baseline)
+            for index, (child, child_baseline) in enumerate(child_shapes, start=1)
+        ]
         return {
             "id": path,
             "name": str(getattr(node, "label", "") or path),

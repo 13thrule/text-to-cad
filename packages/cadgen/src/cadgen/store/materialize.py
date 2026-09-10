@@ -21,7 +21,10 @@ wrapper calls this.
 from __future__ import annotations
 
 import threading
-from collections import OrderedDict
+import hashlib
+import weakref
+from collections import Counter, OrderedDict
+from dataclasses import dataclass, replace
 from typing import Any
 
 from cadgen.store.objects import has_object, read_object
@@ -41,27 +44,306 @@ ROOT_LOC_TAG = "__cadgen_tree_root_loc__"
 
 
 class _Partner:
-    """The materialized shape's ``TopoDS_Shape`` handle, IDENTITY-preserving
-    under copy: build123d's ``moved()`` (and ``Location * shape``) copies the
-    Python wrapper and re-places the same TShape, and a copied ``TopoDS_Shape``
-    attribute would be a NEW handle that no longer partners the result's
-    ``wrapped``. This holder copies to itself, so ``IsPartner`` still asks the
-    right question: same TShape (placed) or a different one (modified by a
-    boolean, a mirror — or ``located()``, which deep-copies the geometry with
-    ``BRepBuilderAPI_Copy`` and so yields new bytes, new cids and a component;
-    that is the same cost it always had, and the skill says to place with
-    ``moved()``)."""
+    """Immutable evidence of the geometry and hierarchy initially handed out.
 
-    __slots__ = ("shape",)
+    A shared TShape alone is not evidence: native OCCT edits can mutate it,
+    and Python descendant metadata can change independently of the native
+    compound. Each copy gets its own baseline; no check refreshes the source
+    holder in place. Only root placement, label and color are link overrides.
+    """
 
-    def __init__(self, shape: Any) -> None:
-        self.shape = shape
+    __slots__ = ("shape", "baseline", "_owner")
+
+    def __init__(self, node: Any) -> None:
+        self.shape = node.wrapped
+        self.baseline = _capture_materialized_state(node)
+        self._owner = weakref.ref(node)
+
+    def retarget(self, node: Any) -> "_Partner":
+        """Transfer already verified, freshly materialized data to a lazy shell."""
+        holder = object.__new__(type(self))
+        holder.shape, holder.baseline = self.shape, self.baseline
+        holder._owner = weakref.ref(node)
+        return holder
+
+    def intact(self, node: Any) -> bool:
+        try:
+            return node.wrapped.IsPartner(self.shape) and _same_materialized_state(
+                self.baseline, _capture_materialized_state(node)
+            )
+        except Exception:  # an unverifiable shape becomes an own component
+            return False
 
     def __copy__(self) -> "_Partner":
         return self
 
     def __deepcopy__(self, memo: dict) -> "_Partner":
-        return self
+        owner = self._owner()
+        copied = memo.get(id(owner)) if owner is not None else None
+        if copied is None:
+            return self
+        holder = self.retarget(copied)
+        if self.intact(owner):
+            # build123d.moved() deep-copies Python descendants, then restores
+            # ONLY the native root's original TShape. Those copied descendants
+            # can serialize differently. Bless their new representation only
+            # after checking the SOURCE; copying a dirty shape cannot erase
+            # the mutation. located() keeps a new root and fails IsPartner.
+            copied_state = _capture_materialized_state(copied)
+            holder.baseline = replace(
+                copied_state, shape=self.baseline.shape,
+                geometry=self.baseline.geometry,
+                native_children=self.baseline.native_children,
+                wrapper_keys=self.baseline.wrapper_keys,
+            )
+        return holder
+
+
+@dataclass(frozen=True)
+class _MaterializedState:
+    shape: Any
+    geometry: str | tuple | None
+    metadata: tuple
+    children: tuple["_MaterializedState", ...]
+    native_children: tuple
+    wrapper_keys: tuple
+
+
+def _native_key(shape: Any) -> tuple:
+    transform = shape.Location().Transformation()
+    return (
+        shape.TShape(), int(shape.Orientation()),
+        tuple(transform.Value(row, col) for row in (1, 2, 3) for col in (1, 2, 3, 4)),
+    )
+
+
+def _native_children(shape: Any) -> list[Any]:
+    from OCP.TopoDS import TopoDS_Iterator
+
+    # Root placement is deliberately absent; the walker composes it itself.
+    iterator = TopoDS_Iterator(shape, False, False)
+    children = []
+    while iterator.More():
+        children.append(iterator.Value())
+        iterator.Next()
+    return children
+
+
+def _geometry_fingerprint(shape: Any, memo: dict | None = None) -> str | tuple | None:
+    """Read geometry through a private topology copy, never change caller flags.
+
+    copyGeom=False shares only curves/surfaces, which this function only reads.
+    Every copied TShape is fresh. Meshing data is omitted and Checked is
+    normalized on these private TShapes, so measurement/meshing stays intact.
+
+    A native Compound contains only an ordered child graph. Fingerprint that
+    graph explicitly, including each child's exact native identity, orientation
+    and local placement. This catches structural and aliasing edits without
+    serializing all geometry again at every assembly depth. Its native leaves
+    are checked even when Python child wrappers no longer share their TShapes.
+    The optional memo belongs to this read-only capture only.
+    """
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+    from OCP.TopExp import TopExp
+    from OCP.TopAbs import TopAbs_COMPOUND
+    from OCP.TopLoc import TopLoc_Location
+    from OCP.TopTools import TopTools_IndexedMapOfShape
+    from cadgen._internal.component_package import _shape_brep_bytes
+
+    if memo is None:
+        memo = {}
+    key = (shape.TShape(), int(shape.Orientation()))
+    if key in memo:
+        return memo[key]
+    # Mark a native cycle unverifiable rather than recursing without a bound.
+    memo[key] = None
+    try:
+        if shape.ShapeType() == TopAbs_COMPOUND:
+            children = tuple(
+                (_native_key(child), _geometry_fingerprint(child, memo))
+                for child in _native_children(shape)
+            )
+            result = ("compound", int(shape.Orientation()), children) if all(
+                fingerprint is not None for _, fingerprint in children
+            ) else None
+            memo[key] = result
+            return result
+        private = BRepBuilderAPI_Copy(shape.Located(TopLoc_Location()), False, False).Shape()
+        shapes = TopTools_IndexedMapOfShape()
+        TopExp.MapShapes_s(private, shapes)
+        for index in range(1, shapes.Extent() + 1):
+            shapes.FindKey(index).Checked(False)
+        result = hashlib.sha256(_shape_brep_bytes(private)).hexdigest()
+        memo[key] = result
+        return result
+    except Exception:
+        return None
+
+
+def _materialized_metadata(node: Any, *, root: bool) -> tuple:
+    from build123d import Color
+    from cadgen._internal.component_package import _MATERIAL_KEYS
+
+    def number(value):
+        if type(value) not in (int, float, bool):
+            raise ValueError("materialized metadata is not a plain numeric value")
+        return float(value)
+
+    # Reading Shape.color would cache an inherited root override onto a child.
+    # Compare explicit color state instead, without mutating the source graph.
+    color = node.__dict__.get("_color")
+    if color is not None and type(color) is not Color:
+        raise ValueError("materialized color is not a build123d Color")
+    rgba = None if color is None else tuple(float(v) for v in color)
+    authored_material = node.__dict__.get("cad_material")
+    if authored_material is None:
+        authored_material = {}
+    if type(authored_material) is not dict:
+        raise ValueError("materialized material is not a plain dictionary")
+    material = tuple(sorted(
+        (key, min(1.0, max(0.0, number(authored_material[key]))))
+        for key in _MATERIAL_KEYS if authored_material.get(key) is not None
+    ))
+    authored_face_colors = node.__dict__.get("cad_face_ordinal_colors")
+    if authored_face_colors is None:
+        authored_face_colors = {}
+    if type(authored_face_colors) is not dict:
+        raise ValueError("materialized face colors are not a plain dictionary")
+    face_colors = []
+    for key, value in authored_face_colors.items():
+        if type(key) is not int or type(value) not in (tuple, list):
+            raise ValueError("materialized face color is not a plain ordinal/color pair")
+        face_colors.append((key, tuple(number(v) for v in value)))
+    face_colors = tuple(sorted(face_colors))
+    # Material and per-face overrides have no root-link override surface.
+    common = (material, face_colors, node.__dict__.get("_occurrence_tree") is not None)
+    if root:
+        return common
+    label = node.__dict__.get("label")
+    if label is None:
+        label = ""
+    if type(label) is not str:
+        raise ValueError("materialized label is not a plain string")
+    return (label, rgba, _native_key(node.wrapped)[2], *common)
+
+
+def _capture_materialized_state(
+    node: Any, *, root: bool = True, geometry_memo: dict | None = None,
+) -> _MaterializedState:
+    if geometry_memo is None:
+        geometry_memo = {}
+    children = tuple(getattr(node, "children", ()) or ())
+    shape = node.wrapped
+    return _MaterializedState(
+        shape=shape,
+        geometry=_geometry_fingerprint(shape, geometry_memo),
+        metadata=_materialized_metadata(node, root=root),
+        children=tuple(
+            _capture_materialized_state(child, root=False, geometry_memo=geometry_memo)
+            for child in children
+        ),
+        native_children=tuple(_native_key(child) for child in _native_children(shape)),
+        wrapper_keys=tuple(_native_key(child.wrapped) for child in children),
+    )
+
+
+def _same_materialized_state(before: _MaterializedState, after: _MaterializedState) -> bool:
+    return (
+        before.geometry is not None and before.geometry == after.geometry
+        and before.metadata == after.metadata
+        and len(before.children) == len(after.children)
+        and all(_same_materialized_state(a, b) for a, b in zip(before.children, after.children))
+    )
+
+
+def materialized_children(
+    node: Any, baseline: _MaterializedState | None,
+) -> list[tuple[Any, _MaterializedState | None]]:
+    """Reconcile native additions/removals with the handed-out wrapper hierarchy.
+
+    Ordinary wrapper edits remain authoritative. If OCCT changed the same
+    native container's child list, surviving original occurrences keep their
+    current wrappers/metadata, removed occurrences disappear, and native
+    additions get new wrappers. This is a read-only adapter for packaging;
+    the author's nodes and parent relationships are never rewritten.
+    """
+    from OCP.TopAbs import TopAbs, TopAbs_FORWARD, TopAbs_REVERSED, TopAbs_Orientation
+
+    children = list(getattr(node, "children", ()) or ())
+    if baseline is None or not baseline.children or not node.wrapped.IsPartner(baseline.shape):
+        return [(child, None) for child in children]
+    native = _native_children(node.wrapped)
+    keys = tuple(_native_key(child) for child in native)
+    orientation = node.wrapped.Orientation()
+    previous_orientation = TopAbs_Orientation(baseline.geometry[1]) if (
+        isinstance(baseline.geometry, tuple) and baseline.geometry[0] == "compound"
+    ) else orientation
+    delta = TopAbs_FORWARD
+    if orientation != previous_orientation:
+        if previous_orientation not in (TopAbs_FORWARD, TopAbs_REVERSED):
+            raise RuntimeError("cannot reconcile a native orientation edit of an internal/external materialized container")
+        delta = orientation if previous_orientation == TopAbs_FORWARD else TopAbs.Reverse_s(orientation)
+
+    def oriented(child: Any, target: Any) -> Any:
+        if child.wrapped.Orientation() == target:
+            return child
+        from cadgen._internal.component_package import _build123d_shape_from_topods
+
+        wrapped = child.wrapped.Oriented(target)
+        view = _build123d_shape_from_topods(wrapped)
+        view.__dict__.update(child.__dict__)
+        view.wrapped = wrapped
+        return view
+
+    def placed_orientation(child: Any) -> Any:
+        return oriented(child, TopAbs.Compose_s(delta, child.wrapped.Orientation()))
+
+    if keys == baseline.native_children:
+        paired = list(zip(children, baseline.children)) if len(children) == len(baseline.children) else [(child, None) for child in children]
+        return [(placed_orientation(child), state) for child, state in paired]
+    if len(children) != len(baseline.wrapper_keys):
+        raise RuntimeError("materialized child has conflicting native and wrapper hierarchy edits")
+    before_counts, after_counts = Counter(baseline.native_children), Counter(keys)
+    if any(count > 1 and after_counts[key] != count for key, count in before_counts.items()):
+        raise RuntimeError("materialized child has an ambiguous native edit of repeated identical occurrences")
+    from cadgen._internal.component_package import _build123d_shape_from_topods
+
+    original: dict[tuple, list[int]] = {}
+    for index, key in enumerate(baseline.wrapper_keys):
+        original.setdefault(key, []).append(index)
+    # Reserve every exact surviving slot first. Otherwise an added reversed
+    # alias earlier in the native order could steal a later unchanged slot's
+    # metadata by looking like an orientation edit.
+    exact_slots: list[int | None] = []
+    used: set[int] = set()
+    for key in keys:
+        slots = original.get(key)
+        index = slots.pop(0) if slots else None
+        exact_slots.append(index)
+        if index is not None:
+            used.add(index)
+    result = []
+    for shape, key, index in zip(native, keys, exact_slots):
+        if index is not None:
+            result.append((placed_orientation(children[index]), baseline.children[index]))
+        else:
+            # A native orientation edit keeps the same occurrence geometry and
+            # local placement. Preserve its wrapper metadata when the original
+            # slot is unique; never guess among coincident duplicate slots.
+            matches = [
+                index for index, previous in enumerate(baseline.wrapper_keys)
+                if index not in used and previous[0] == key[0] and previous[2] == key[2]
+            ]
+            if len(matches) > 1:
+                raise RuntimeError("materialized child has an ambiguous native orientation edit")
+            if matches:
+                index = matches[0]
+                used.add(index)
+                child = oriented(children[index], shape.Orientation())
+                result.append((placed_orientation(child), baseline.children[index]))
+            else:
+                result.append((placed_orientation(_build123d_shape_from_topods(shape)), None))
+    return result
 
 # A process-local cache of immutable canonical BREP bytes. Live OCCT prototypes
 # cannot cross materialize() calls: build123d's moved() deliberately shares a
@@ -164,6 +446,10 @@ def tree_tag(shape: Any) -> str | None:
 def materialize(tree_hash: str, *, label: str | None = None) -> Any:
     """A ``Compound`` for the tree. Raises FileNotFoundError when the tree or a
     component object is missing (the gate should have said stale)."""
+    from cadgen.store.trees import tree_complete
+
+    if not tree_complete(tree_hash):
+        raise FileNotFoundError(f"tree or pinned component missing: {tree_hash}")
     descriptor = flatten(tree_hash)
     if descriptor is None:
         raise FileNotFoundError(f"tree object missing: {tree_hash}")
@@ -237,12 +523,11 @@ def materialize_descriptor(
         compound.color = color
     if tree_hash is None:
         return compound
-    # The tag names the tree; the partner handle lets the build tell "placed"
-    # (same TShape, different location: IsPartner) from "modified" (a boolean,
-    # a mirror — a new TShape). Both survive moved()/located(), which copy the
-    # wrapper's attributes.
+    # Capture only after every descendant placement/label/color is final.
+    # The native partner rejects ordinary booleans/copies cheaply; the frozen
+    # evidence also catches in-place OCCT edits and Python metadata changes.
     setattr(compound, TREE_TAG, tree_hash)
-    setattr(compound, PARTNER_TAG, _Partner(compound.wrapped))
+    setattr(compound, PARTNER_TAG, _Partner(compound))
     setattr(compound, ROOT_LOC_TAG, _matrix_from_location(getattr(compound, "location", None)))
     return compound
 

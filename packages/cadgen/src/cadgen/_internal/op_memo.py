@@ -81,6 +81,7 @@ import os
 import struct
 import threading
 from collections import OrderedDict
+from functools import lru_cache
 
 from cadgen._internal.atomic_replace import replace_atomic
 
@@ -998,7 +999,27 @@ def _signature(wrapped) -> tuple:
     corners, the samples fix what runs between them (an arc and its chord,
     a plane and a bulge share vertices and nothing else). ``BRepAdaptor``
     evaluates in world coordinates, location applied, so two expressions of
-    the same geometry sign identically however their locations are split."""
+    the same geometry sign identically however their locations are split.
+
+    Only immutable OCCT callables are reused. A signature is always computed
+    from the shape's current geometry: a TShape can change between the
+    builder's pre/post selections, even within one ``_add_to_context`` call.
+    """
+    return _signature_evaluator()(wrapped)
+
+
+@lru_cache(maxsize=1)
+def _signature_evaluator():
+    """Bind the kernel lazily, without retaining any shape or signature.
+
+    OCCT's topology hierarchy fixes the trivial searches: a vertex contains
+    itself; an edge contains itself and vertices; a wire contains edges; a
+    face contains itself, wires, edges and vertices. Skipping the impossible
+    descendants and singleton maps preserves the full signature, including
+    unique vertices/edges on seams, closed curves and degenerate edges. The
+    larger containers still use OCCT's maps rather than assuming manifold
+    topology or a fixed number of descendants.
+    """
     from OCP.BRep import BRep_Tool
     from OCP.BRepAdaptor import BRepAdaptor_Curve, BRepAdaptor_Surface
     from OCP.TopAbs import TopAbs_ShapeEnum
@@ -1006,45 +1027,79 @@ def _signature(wrapped) -> tuple:
     from OCP.TopoDS import TopoDS
     from OCP.TopTools import TopTools_IndexedMapOfShape
 
+    vertex_kind = TopAbs_ShapeEnum.TopAbs_VERTEX
+    edge_kind = TopAbs_ShapeEnum.TopAbs_EDGE
+    wire_kind = TopAbs_ShapeEnum.TopAbs_WIRE
+    face_kind = TopAbs_ShapeEnum.TopAbs_FACE
+    map_shapes = TopExp.MapShapes_s
+    vertex_point = BRep_Tool.Pnt_s
+    is_degenerate = BRep_Tool.Degenerated_s
+    as_vertex = TopoDS.Vertex_s
+    as_edge = TopoDS.Edge_s
+    as_face = TopoDS.Face_s
+    decimals = _SIGNATURE_DECIMALS
+
     def rounded(point) -> tuple:
+        x, y, z = point.Coord()
         return (
-            round(point.X(), _SIGNATURE_DECIMALS),
-            round(point.Y(), _SIGNATURE_DECIMALS),
-            round(point.Z(), _SIGNATURE_DECIMALS),
+            round(x, decimals),
+            round(y, decimals),
+            round(z, decimals),
         )
 
-    def sub_shapes(kind):
+    def sub_shapes(wrapped, kind):
         found = TopTools_IndexedMapOfShape()
-        TopExp.MapShapes_s(wrapped, kind, found)
-        return [found.FindKey(i) for i in range(1, found.Extent() + 1)]
+        map_shapes(wrapped, kind, found)
+        return found
 
-    vertices = sub_shapes(TopAbs_ShapeEnum.TopAbs_VERTEX)
-    edges = sub_shapes(TopAbs_ShapeEnum.TopAbs_EDGE)
-    faces = sub_shapes(TopAbs_ShapeEnum.TopAbs_FACE)
-    points = sorted(rounded(BRep_Tool.Pnt_s(TopoDS.Vertex_s(v))) for v in vertices)
-    samples = []
-    if faces:
-        for face in faces:
-            surface = BRepAdaptor_Surface(TopoDS.Face_s(face))
-            samples.append(rounded(surface.Value(
-                (surface.FirstUParameter() + surface.LastUParameter()) / 2,
-                (surface.FirstVParameter() + surface.LastVParameter()) / 2,
-            )))
-    else:
-        for edge in edges:
-            edge = TopoDS.Edge_s(edge)
-            if BRep_Tool.Degenerated_s(edge):
-                continue
-            curve = BRepAdaptor_Curve(edge)
-            samples.append(rounded(curve.Value(
-                (curve.FirstParameter() + curve.LastParameter()) / 2
-            )))
-    return (
-        int(wrapped.ShapeType()),
-        (len(vertices), len(edges), len(faces)),
-        tuple(points),
-        tuple(sorted(samples)),
-    )
+    def signature(wrapped) -> tuple:
+        kind = wrapped.ShapeType()
+        if kind == vertex_kind:
+            return (int(kind), (1, 0, 0), (rounded(vertex_point(as_vertex(wrapped))),), ())
+
+        vertices = sub_shapes(wrapped, vertex_kind)
+        vertex_count = vertices.Extent()
+        points = sorted(
+            rounded(vertex_point(as_vertex(vertices.FindKey(i))))
+            for i in range(1, vertex_count + 1)
+        )
+
+        if kind == edge_kind:
+            edge_count, faces = 1, ()
+        else:
+            edges = sub_shapes(wrapped, edge_kind)
+            edge_count = edges.Extent()
+            if kind == wire_kind:
+                faces = ()
+            elif kind == face_kind:
+                faces = (wrapped,)
+            else:
+                face_map = sub_shapes(wrapped, face_kind)
+                faces = tuple(face_map.FindKey(i) for i in range(1, face_map.Extent() + 1))
+
+        samples = []
+        if faces:
+            for face in faces:
+                surface = BRepAdaptor_Surface(as_face(face))
+                samples.append(rounded(surface.Value(
+                    (surface.FirstUParameter() + surface.LastUParameter()) / 2,
+                    (surface.FirstVParameter() + surface.LastVParameter()) / 2,
+                )))
+        else:
+            sample_edges = (wrapped,) if kind == edge_kind else (
+                edges.FindKey(i) for i in range(1, edge_count + 1)
+            )
+            for edge in sample_edges:
+                edge = as_edge(edge)
+                if is_degenerate(edge):
+                    continue
+                curve = BRepAdaptor_Curve(edge)
+                samples.append(rounded(curve.Value(
+                    (curve.FirstParameter() + curve.LastParameter()) / 2
+                )))
+        return (int(kind), (vertex_count, edge_count, len(faces)), tuple(points), tuple(sorted(samples)))
+
+    return signature
 
 
 def _identity(attr: str, original):

@@ -214,7 +214,6 @@ class LazyCompound(Compound):
             if self.color is None and getattr(compound, "color", None) is not None:
                 self.color = compound.color
             setattr(self, TREE_TAG, tree)
-            setattr(self, PARTNER_TAG, _Partner(compound.wrapped))
             # The child's own root placement rides along too: this shape is
             # ``placement * root`` and the packager divides the root back out of
             # the link it records (materialize.ROOT_LOC_TAG).
@@ -229,6 +228,8 @@ class LazyCompound(Compound):
             self.__dict__["_NodeMixin__children"] = kids
             for child in kids:
                 child.__dict__["_NodeMixin__parent"] = self
+            holder = getattr(compound, PARTNER_TAG, None)
+            setattr(self, PARTNER_TAG, holder.retarget(self) if isinstance(holder, _Partner) else _Partner(self))
         finally:
             self._lazy_forcing = False
 
