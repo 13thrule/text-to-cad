@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 
-import { renderMemoryAccounting } from "./renderMemoryAccounting.js";
+import { componentMemoryAccounting, renderMemoryAccounting } from "./renderMemoryAccounting.js";
 
 test("render memory accounting counts shared component buffers once and splits edges from surfaces", () => {
   const surface = new THREE.BufferGeometry();
   surface.setAttribute("position", new THREE.BufferAttribute(new Float32Array(12), 3));
   surface.setIndex(new THREE.BufferAttribute(new Uint32Array(6), 1));
-  surface.boundsTree = { _roots: [new ArrayBuffer(64), new ArrayBuffer(32)] };
+  surface.boundsTree = { _roots: [new ArrayBuffer(64), new ArrayBuffer(32)], _indirectBuffer: new Uint16Array(2) };
   const edge = new THREE.BufferGeometry();
   edge.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
   edge.setAttribute("color", new THREE.BufferAttribute(new Uint16Array(8), 4, true));
@@ -25,7 +25,8 @@ test("render memory accounting counts shared component buffers once and splits e
   assert.equal(totals.materials, 4);
   assert.equal(totals.surfaceBytes, 12 * 4 + 6 * 4);
   assert.equal(totals.edgeBytes, 6 * 4 + 8 * 2 + 2 * 4);
-  assert.equal(totals.bvhBytes, 96);
+  assert.equal(totals.bvhBytes, 100);
+  assert.equal(totals.memoryPolicy.retainedByCategory.bvh, 100, "triangle permutation participates in admission");
   assert.equal(totals.bvhGeometries, 1);
   assert.equal(totals.displayCpuBytes, totals.surfaceBytes + totals.edgeBytes);
   assert.equal(totals.gpuEstimatedBytes, totals.surfaceBytes + totals.edgeBytes);
@@ -107,4 +108,81 @@ test("surface instances and packed deformation backing buffers are admitted", ()
   assert.equal(totals.materials, 3, "the instance draw's cloned material is owned too");
   assert.equal(totals.displayCpuBytes, totals.surfaceBytes + totals.edgeBytes);
   assert.ok(totals.memoryPolicy.retainedByCategory.displayCpu >= instanceBytes);
+});
+
+test("display CPU admission retains whole packed buffers without inflating GPU uploads", () => {
+  const packed = new ArrayBuffer(1024);
+  const positions = new Float32Array(packed, 64, 9);
+  const indices = new Uint32Array(packed, 128, 3);
+  const unusedEdges = new Float32Array(12);
+  const sourceMesh = { vertices: positions, indices, cadEdgePositions: unusedEdges };
+  const surface = new THREE.BufferGeometry();
+  surface.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  surface.setIndex(new THREE.BufferAttribute(indices, 1));
+  const mesh = new THREE.Mesh(surface, new THREE.MeshBasicMaterial());
+  // This selector view is already retained by the displayed packed buffer.
+  mesh.userData.faceIds = new Uint32Array(packed, 192, 1);
+  const record = { mesh, sourcePart: { sourceMesh } };
+  const totals = renderMemoryAccounting({ displayRecords: [record, record] });
+  assert.equal(totals.displayCpuBytes, packed.byteLength + unusedEdges.byteLength);
+  assert.equal(totals.gpuEstimatedBytes, positions.byteLength + indices.byteLength);
+  assert.equal(totals.selectorCpuBytes, 0, "shared backing has one CPU owner");
+  assert.equal(totals.memoryPolicy.retainedByCategory.displayCpu, totals.displayCpuBytes);
+
+  const pending = componentMemoryAccounting({ first: sourceMesh, second: sourceMesh });
+  assert.equal(pending.displayCpuBytes, totals.displayCpuBytes);
+  assert.equal(pending.gpuInputBytes, positions.byteLength + indices.byteLength + unusedEdges.byteLength);
+  assert.equal(pending.buffers.size, 2);
+});
+
+test("packed picking buffers are counted once independently of displayed geometry", () => {
+  const packed = new ArrayBuffer(2048);
+  const pick = new THREE.BufferGeometry();
+  pick.setAttribute("position", new THREE.BufferAttribute(new Float32Array(packed, 0, 9), 3));
+  pick.setIndex(new THREE.BufferAttribute(new Uint32Array(packed, 64, 3), 1));
+  const facePickMesh = new THREE.Mesh(pick, new THREE.MeshBasicMaterial());
+  facePickMesh.userData.faceIds = new Uint32Array(packed, 96, 1);
+  const totals = renderMemoryAccounting({ facePickMesh });
+  assert.equal(totals.displayCpuBytes, 0);
+  assert.equal(totals.selectorCpuBytes, packed.byteLength);
+  assert.equal(totals.memoryPolicy.retainedByCategory.selectors, packed.byteLength);
+  assert.equal(totals.gpuEstimatedBytes, 48);
+});
+
+test("component accounting follows composed source meshes and shares backing across parts", () => {
+  const packed = new ArrayBuffer(256);
+  const first = { vertices: new Float32Array(packed, 0, 9) };
+  const second = { indices: new Uint32Array(packed, 64, 3) };
+  const composed = { parts: [{ sourceMesh: first }, { sourceMesh: first }, { sourceMesh: second }] };
+  const totals = componentMemoryAccounting({ composed, first });
+  assert.equal(totals.displayCpuBytes, 256);
+  assert.equal(totals.gpuInputBytes, 48);
+  assert.equal(totals.buffers.size, 1);
+  assert.equal(componentMemoryAccounting(null).displayCpuBytes, 0);
+});
+
+test("edge texture views retain full CPU backing and share component texture ownership", () => {
+  const packedSegments = new ArrayBuffer(512);
+  const packedInstances = new ArrayBuffer(256);
+  const segmentData = new Float32Array(packedSegments, 64, 8);
+  const instanceData = new Float32Array(packedInstances, 32, 16);
+  const segments = { texture: { image: { data: segmentData } }, byteLength: segmentData.byteLength };
+  const makeSet = () => ({ segments, instanceData, instanceByteLength: instanceData.byteLength, materials: [] });
+  const totals = renderMemoryAccounting({ cadEdgeInstanceSets: new Set([makeSet(), makeSet()]) });
+  assert.equal(totals.edgeBytes, segmentData.byteLength + 2 * instanceData.byteLength);
+  assert.equal(totals.displayCpuBytes, packedSegments.byteLength + packedInstances.byteLength);
+  assert.equal(totals.gpuEstimatedBytes, totals.edgeBytes);
+});
+
+test("uncached whole-scene edge inputs and private color baselines remain CPU owners", () => {
+  const surface = geometry(1);
+  const edgeInputs = new Float32Array(12);
+  const rawColors = new Float32Array(9);
+  const record = { mesh: new THREE.Mesh(surface, new THREE.MeshBasicMaterial()), rawColors };
+  const source = { vertices: surface.attributes.position.array, indices: surface.index.array, cadEdgePositions: edgeInputs };
+  const totals = renderMemoryAccounting({ displayRecords: [record], cadScene: { meshData: source } });
+  assert.equal(totals.displayCpuBytes, totals.surfaceBytes + edgeInputs.byteLength + rawColors.byteLength);
+  assert.equal(totals.gpuEstimatedBytes, totals.surfaceBytes);
+  const next = renderMemoryAccounting({ displayRecords: [] });
+  assert.equal(next.displayCpuBytes, 0, "dropped owners release their CPU charge");
 });

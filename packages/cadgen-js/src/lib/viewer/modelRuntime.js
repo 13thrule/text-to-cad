@@ -136,4 +136,14 @@ export function syncRuntimeStepClipPlane(runtime, clipSettings) {
   syncObjectClipPlanes(runtime.vertexPickGroup, clipPlanes);
   syncObjectClipPlanes(runtime.surfaceLineGroup, clipPlanes);
   syncObjectClipPlanes(runtime.topologyDisplayEdgeLine, clipPlanes);
+  // Clipping changes draw materials, not occurrence membership, transforms or
+  // colours. A visual/effects pass still reconciles those independently.
+  const seenSurfaceSets = new Set();
+  for (const sets of [runtime.cadSurfaceInstanceSets, runtime.cadScene?.runtime?.cadSurfaceInstanceSets]) {
+    for (const set of sets || []) {
+      if (!set || set.disposed || seenSurfaceSets.has(set)) continue;
+      seenSurfaceSets.add(set);
+      syncMaterialClipPlanes(set.object?.material, clipPlanes);
+    }
+  }
 }

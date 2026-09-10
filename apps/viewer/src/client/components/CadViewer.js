@@ -125,6 +125,7 @@ import {
 import { scheduleRuntimeRaycastBvh } from "cadgen-js/lib/viewer/raycastBvh";
 import { renderMemoryAccounting } from "../render/renderMemoryAccounting";
 import { viewerMemoryPolicy } from "../render/viewerMemoryPolicy.js";
+import { inactiveExplodedViewNeedsReset } from "../render/explodedViewLifecycle.js";
 import {
   buildSurfaceLinePositions,
   projectPointToSurfaceUv,
@@ -3439,6 +3440,7 @@ const CadViewer = forwardRef(function CadViewer({
         displayMode: normalizedDisplayMode
       });
     }
+    runtime.cadScene?.syncSurfaceInstances();
 
     runtime.gridConfig = null;
     const themeFloorZCandidate = floorFollowsModel
@@ -3946,6 +3948,7 @@ const CadViewer = forwardRef(function CadViewer({
       });
     }
     const raycastBvhOptions = {
+      deferUntilRaycast: true,
       reserveBuild: ({ estimatedBytes }) => viewerMemoryPolicy.reserve({
         category: "bvhBuild",
         bytes: estimatedBytes,
@@ -3983,6 +3986,7 @@ const CadViewer = forwardRef(function CadViewer({
         focusedPartId: [],
         selectedPartIds: []
       });
+    runtime.cadScene?.syncSurfaceInstances();
     modelGroup.updateMatrixWorld(true);
     edgesGroup.updateMatrixWorld(true);
 
@@ -4183,6 +4187,7 @@ const CadViewer = forwardRef(function CadViewer({
     }
 
     applyPartVisualState(runtime.THREE, runtime.displayRecords, partVisualStateRef.current);
+    runtime.cadScene?.syncSurfaceInstances();
     runtime.requestRender();
   }, [viewerReadyTick, partVisualStateEnabled, recordEdgesVisible, focusedPartIds, hiddenPartIds, hoveredPartId, pickMode, pickableParts, selectedPartIds, viewerTheme, visualEdgeSettings, normalizedDisplayMode]);
 
@@ -4291,6 +4296,7 @@ const CadViewer = forwardRef(function CadViewer({
         applyDisplayRecordTransform(runtime.THREE, record, runtime.modelRadius || 1);
       }
       applyPartVisualState(runtime.THREE, runtime.displayRecords, partVisualStateRef.current);
+      runtime.cadScene?.syncSurfaceInstances();
       const baseTopologyDisplayEdgesVisible = shouldRenderTopologyDisplayEdges({
         edgesVisible,
         wireframeMode,
@@ -4393,6 +4399,7 @@ const CadViewer = forwardRef(function CadViewer({
       applyDisplayRecordTransform(runtime.THREE, record, runtime.modelRadius || 1);
     }
     applyPartVisualState(runtime.THREE, runtime.displayRecords, partVisualStateRef.current);
+    runtime.cadScene?.syncSurfaceInstances();
     runtime.topologyDisplayEdgeTransformByRecord = useRecordTopologyEdgeTransforms;
     syncTopologyDisplayEdgeLine(
       runtime,
@@ -4474,6 +4481,10 @@ const CadViewer = forwardRef(function CadViewer({
     // Steady disabled state: nothing to evaluate. (When disabling from an
     // exploded state we still evaluate below so the collapse animates.)
     if (!explodedViewActive && !wasEnabled) {
+      if (!inactiveExplodedViewNeedsReset(animation, runtime.displayRecords)) {
+        animation.layout = null;
+        return undefined;
+      }
       clearExplodedViewRecords(runtime.displayRecords);
       for (const record of runtime.displayRecords) {
         applyDisplayRecordTransform(THREE, record);

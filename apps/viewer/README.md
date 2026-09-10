@@ -115,8 +115,24 @@ the build — detection only; it keeps serving.
   before admission; a large component does not inflate every worker's charge.
   Refinement reserves both replacement arrays and worker scratch space, and
   includes the coarse tier's relaxed angular tolerance in its estimate.
-  Display arrays shared with asset caches have one CPU charge. Topology-only
+  Display arrays shared with asset caches have one CPU charge for the entire
+  backing allocation, including unused sections of packed buffers. GPU charges
+  use uploaded view sizes; CPU-only edge inputs and picking allocations remain
+  accounted for separately. Topology-only
   interactions also release idle workers after their sibling requests drain.
+  Display raycast accelerators are requested only when a picking ray reaches
+  component bounds, then queued during idle time for one worker at a time.
+  Admission covers private input copies, worker scratch and the returned tree;
+  displayed arrays stay attached and unchanged. Releasing the last geometry
+  owner cancels its build, and stale results cannot attach to replacement
+  geometry. The first pick remains exact and may cost more on a dense component;
+  merely loading or refining an assembly does not build an accelerator for every
+  component. Inputs with a separate merged face-selection proxy still build
+  that proxy's accelerator on the main thread during idle time. Canonical STEP
+  selectors use the display meshes and do not enter that separate path.
+  Progressive display and later detail swaps share unchanged occurrence rows
+  and tree metadata; changing tessellation alone does not rebuild every tree
+  leaf. Placement, appearance and changed bounds still update their records.
   A component that cannot fit even at the coarse level
   reports a limitation and preserves the current view. Estimates and sampled
   resource totals are a soft budget, not a hard browser RSS limit.

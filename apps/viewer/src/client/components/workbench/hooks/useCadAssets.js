@@ -78,6 +78,7 @@ import {
 import { selectRequestedAssemblyComponents } from "../../../workbench/referenceSelection";
 import { viewerMemoryPolicy } from "../../../render/viewerMemoryPolicy.js";
 import { syncSurfWorkerMemory } from "../../../render/surfWorkerMemoryPolicy.js";
+import { componentMemoryAccounting } from "../../../render/renderMemoryAccounting.js";
 
 // Robot link meshes are STLs, and `loadRenderStl` parses them in the STL worker — the
 // fetch and the parse both happen off the main thread. The cap used to be 3 with a
@@ -87,13 +88,6 @@ const ROBOT_MESH_LOAD_CONCURRENCY = 8;
 
 const GPU_BUFFER_ESTIMATE_MULTIPLIER = 1.15;
 const SURF_WORKER_TEMP_ESTIMATE_MULTIPLIER = 2;
-
-function componentMeshBytes(componentMeshDataByCid) {
-  return Object.values(componentMeshDataByCid || {}).reduce(
-    (sum, meshData) => sum + estimateMeshRenderCost(meshData).typedArrayBytes,
-    0
-  );
-}
 
 function syncAssetCacheMemory(excludeBuffers = []) {
   const caches = renderAssetCacheStats({ excludeBuffers });
@@ -105,15 +99,9 @@ function syncAssetCacheMemory(excludeBuffers = []) {
 }
 
 function syncDisplayedMemory(componentMeshDataByCid) {
-  const displayCpu = componentMeshBytes(componentMeshDataByCid);
-  viewerMemoryPolicy.setRetained("displayCpu", displayCpu);
-  viewerMemoryPolicy.setRetained("gpuEstimated", Math.ceil(displayCpu * GPU_BUFFER_ESTIMATE_MULTIPLIER));
-  const buffers = new Set();
-  for (const mesh of Object.values(componentMeshDataByCid || {})) {
-    for (const value of Object.values(mesh)) {
-      if (ArrayBuffer.isView(value)) buffers.add(value.buffer);
-    }
-  }
+  const { displayCpuBytes, gpuInputBytes, buffers } = componentMemoryAccounting(componentMeshDataByCid);
+  viewerMemoryPolicy.setRetained("displayCpu", displayCpuBytes);
+  viewerMemoryPolicy.setRetained("gpuEstimated", Math.ceil(gpuInputBytes * GPU_BUFFER_ESTIMATE_MULTIPLIER));
   syncAssetCacheMemory(buffers);
   if (typeof window !== "undefined") {
     window.__cadViewerMemory = viewerMemoryPolicy.snapshot();
@@ -442,7 +430,8 @@ export function useCadAssets({
     ctx.componentLodBundleByCid = bundleByCid;
     ctx.componentLodBundleKeyByCid = bundleKeyByCid;
     ctx.componentLodLevelByCid = { ...(ctx.componentLodLevelByCid || {}), [cid]: normalizedLevel };
-    const composed = buildComposedPackageMeshData(ctx.descriptor, ctx.componentMeshDataByCid);
+    const composed = buildComposedPackageMeshData(ctx.descriptor, ctx.componentMeshDataByCid, { previous: ctx.meshData });
+    ctx.meshData = composed;
     publishMeshCostAccounting({
       meshData: composed,
       componentMeshDataByCid: ctx.componentMeshDataByCid,
@@ -899,6 +888,7 @@ export function useCadAssets({
               );
               if (ctx && ctx.requestId === requestId) {
                 ctx.componentMeshDataByCid = componentMeshDataByCid;
+                ctx.meshData = meshData;
                 ctx.componentLodLevelByCid = componentLodLevelByCid;
                 ctx.complete = final;
               } else {
@@ -908,6 +898,7 @@ export function useCadAssets({
                   meshUrl,
                   descriptor: packageDescriptor,
                   componentMeshDataByCid,
+                  meshData,
                   componentLodLevelByCid,
                   requestId,
                   complete: final

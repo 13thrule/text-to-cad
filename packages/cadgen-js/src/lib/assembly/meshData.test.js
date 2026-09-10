@@ -440,6 +440,63 @@ test("multiple components keep their own buffers without an aggregate allocation
   assert.equal(single.indices, a.indices);
 });
 
+function reuseFixture() {
+  const descriptor = { occurrences: [
+    { id: "first", component: "a", transform: IDENTITY_4X4 },
+    { id: "second", component: "b", transform: IDENTITY_4X4 },
+    { id: "repeat", component: "a", transform: IDENTITY_4X4 },
+  ] };
+  descriptor.assembly = { root: { id: "root", nodeType: "assembly",
+    children: descriptor.occurrences.map(({ id }) => ({ id, nodeType: "part", children: [] })) } };
+  return { descriptor, a: { ...unitTriangleComponentMeshData(), lodLevel: 0 }, b: unitTriangleComponentMeshData() };
+}
+
+test("LOD composition keeps unchanged occurrences and tree identity while updating repeated triangle ranges", () => {
+  const { descriptor, a, b } = reuseFixture();
+  const before = buildComposedPackageMeshData(descriptor, { a, b });
+  const refined = { ...a, lodLevel: 1, indices: new Uint32Array([0, 1, 2, 0, 2, 1]),
+    parts: a.parts.map(part => ({ ...part, triangleCount: 2 })) };
+  const after = buildComposedPackageMeshData(descriptor, { a: refined, b }, { previous: before });
+  assert.equal(after.parts[1], before.parts[1], "unaffected occurrence metadata is shared");
+  for (const index of [0, 2]) {
+    assert.notEqual(after.parts[index], before.parts[index]);
+    assert.equal(after.parts[index].sourceMesh, refined);
+    assert.equal(after.parts[index].sourceMeshKey, "a:flat:l1");
+    assert.equal(after.parts[index].sourcePartRanges[0].triangleCount, 2);
+  }
+  assert.equal(after.assemblyRoot, before.assemblyRoot, "identical bounds/appearance preserve the tree");
+  assert.equal(after.bounds, before.bounds);
+  assert.equal(before.parts[0].sourceMesh, a, "old display ownership is not mutated");
+});
+
+test("changed component bounds rebuild only affected tree paths and preserve exact new bounds", () => {
+  const { descriptor, a, b } = reuseFixture();
+  const before = buildComposedPackageMeshData(descriptor, { a, b });
+  const changed = { ...a, bounds: { min: [-2, 0, 0], max: [3, 2, 1] } };
+  const after = buildComposedPackageMeshData(descriptor, { a: changed, b }, { previous: before });
+  assert.notEqual(after.assemblyRoot, before.assemblyRoot);
+  assert.equal(after.assemblyRoot.children[1], before.assemblyRoot.children[1]);
+  assert.deepEqual(after.parts[0].bounds, changed.bounds);
+  assert.deepEqual(after.bounds, changed.bounds);
+  assert.deepEqual(before.parts[0].bounds, a.bounds);
+});
+
+test("new descriptor appearance, mirror and placement cannot reuse previous occurrence metadata", () => {
+  const { descriptor, a, b } = reuseFixture();
+  const before = buildComposedPackageMeshData(descriptor, { a, b });
+  const edited = structuredClone(descriptor);
+  edited.occurrences[0] = { ...edited.occurrences[0], color: [1, 0, 0, 0.5],
+    material: { roughness: 0.25 }, transform: [-1, 0, 0, 12, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] };
+  const after = buildComposedPackageMeshData(edited, { a, b }, { previous: before });
+  assert.notEqual(after.parts[0], before.parts[0]);
+  assert.equal(after.parts[0].mirrored, true);
+  assert.equal(after.parts[0].color, "#ff0000");
+  assert.equal(after.parts[0].opacity, 0.5);
+  assert.deepEqual(after.parts[0].material, { roughness: 0.25 });
+  assert.deepEqual(after.parts[0].bounds, { min: [11, 0, 0], max: [12, 1, 0] });
+  assert.equal(before.parts[0].mirrored, false);
+});
+
 test("composed package drives a per-occurrence override colour through the material (hex, not vertex baking)", () => {
   // The baked composer wrote override floats straight into per-occurrence vertex colours; the
   // shared-geometry composer can't (geometry is shared), so it routes the override to part.color

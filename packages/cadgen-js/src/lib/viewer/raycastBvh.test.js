@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 
-import { ensureFacePickBvh, estimateGeometryBvhBytes, scheduleRuntimeRaycastBvh } from "./raycastBvh.js";
+import { builtGeometryBvhBytes, ensureFacePickBvh, estimateGeometryBvhBytes, scheduleRuntimeRaycastBvh } from "./raycastBvh.js";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -158,4 +158,90 @@ test("a BVH reservation spans the idle build and reports retained bytes", async 
   assert.equal(events[1][0], "finish");
   assert.equal(events[1][1], "b1");
   assert.ok(events[1][2] > 0);
+  const tree = geometry.boundsTree;
+  assert.equal(events[1][2], tree._roots.reduce((sum, root) => sum + root.byteLength, 0)
+    + tree._indirectBuffer.byteLength, "finished allocation includes the real indirect permutation");
+});
+
+test("BVH accounting owns packed buffers once across shared trees", () => {
+  const root = new ArrayBuffer(64);
+  const permutation = new ArrayBuffer(32);
+  const geometry = { boundsTree: { _roots: [root], _indirectBuffer: new Uint16Array(permutation, 4, 3) } };
+  const seen = new Set();
+  assert.equal(builtGeometryBvhBytes(geometry, seen), 96);
+  assert.equal(builtGeometryBvhBytes({ boundsTree: geometry.boundsTree }, seen), 0);
+  assert.equal(builtGeometryBvhBytes({}), 0);
+});
+
+test("deferred display BVHs reject far rays and share one build after an exact first pick", async () => {
+  const geometry = indexedGeometry();
+  geometry.computeBoundingBox();
+  const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+  const first = new THREE.Mesh(geometry, material);
+  const second = new THREE.Mesh(geometry, material);
+  second.position.set(10, 0, 0);
+  second.scale.set(-2, 3, 0.5);
+  first.updateMatrixWorld();
+  second.updateMatrixWorld();
+  const events = [];
+  scheduleRuntimeRaycastBvh({ displayRecords: [{ mesh: first }, { mesh: second }] }, {
+    deferUntilRaycast: true,
+    reserveBuild: () => { events.push("reserve"); return { ok: true, token: "demand" }; },
+    finishBuild: () => events.push("finish"),
+  });
+  await tick();
+  assert.equal(geometry.boundsTree, undefined, "display alone allocates no accelerator");
+  const miss = new THREE.Raycaster(new THREE.Vector3(100, 0, 5), new THREE.Vector3(0, 0, -1));
+  assert.deepEqual(miss.intersectObject(first, false), []);
+  assert.equal(geometry.userData.__bvhQueued, undefined, "bounds miss queues nothing");
+  const tooShort = new THREE.Raycaster(new THREE.Vector3(0.6, 0.3, 5), new THREE.Vector3(0, 0, -1), 0, 1);
+  assert.deepEqual(tooShort.intersectObject(first, false), []);
+  assert.equal(geometry.userData.__bvhQueued, undefined, "candidate beyond far queues nothing");
+  const ray = new THREE.Raycaster(new THREE.Vector3(0.6, 0.3, 5), new THREE.Vector3(0, 0, -1), 1, 6);
+  assert.equal(ray.intersectObject(first, false)[0]?.faceIndex, 0);
+  const mirrorRay = new THREE.Raycaster(new THREE.Vector3(4.2, 1.5, 5), new THREE.Vector3(0, 0, -1));
+  assert.equal(mirrorRay.intersectObject(second, false)[0]?.faceIndex, 2, "mirrored nonuniform occurrence keeps exact triangle identity");
+  assert.equal(geometry.boundsTree, undefined, "both first picks use stock raycasting without building synchronously");
+  assert.deepEqual(events, []);
+  await tick();
+  assert.deepEqual(events, ["reserve", "finish"], "one admitted build for shared geometry");
+  assert.equal(mirrorRay.intersectObject(second, false)[0]?.faceIndex, 2);
+});
+
+test("deferred BVHs honor deformation before bounds and release before the idle build", async () => {
+  const geometry = indexedGeometry();
+  geometry.computeBoundingBox();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  mesh.updateMatrixWorld();
+  mesh.userData.cadBeforeRaycast = () => {
+    geometry.translate(10, 0, 0);
+    geometry.computeBoundingBox();
+    delete mesh.userData.cadBeforeRaycast;
+  };
+  scheduleRuntimeRaycastBvh({ displayRecords: [{ mesh }] }, { deferUntilRaycast: true });
+  const ray = new THREE.Raycaster(new THREE.Vector3(10.6, 0.3, 5), new THREE.Vector3(0, 0, -1));
+  assert.equal(ray.intersectObject(mesh, false)[0]?.faceIndex, 0);
+  assert.equal(geometry.userData.__bvhQueued, true);
+  delete geometry.userData.__bvhQueued;
+  geometry.dispose();
+  await tick();
+  assert.equal(geometry.boundsTree, undefined, "released geometry is not built by pending demand");
+});
+
+test("deferred BVH denied admission leaves first and later picks exact", async () => {
+  const geometry = indexedGeometry();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  mesh.updateMatrixWorld();
+  scheduleRuntimeRaycastBvh({ displayRecords: [{ mesh }] }, {
+    deferUntilRaycast: true,
+    reserveBuild: () => ({ ok: false }),
+  });
+  const ray = new THREE.Raycaster(new THREE.Vector3(0.6, 0.3, 5), new THREE.Vector3(0, 0, -1));
+  assert.equal(ray.intersectObject(mesh, false)[0]?.faceIndex, 0);
+  await tick();
+  assert.equal(geometry.boundsTree, undefined);
+  assert.equal(ray.intersectObject(mesh, false)[0]?.faceIndex, 0);
+  await tick();
+  mesh.userData.cadBeforeRaycast = () => false;
+  assert.deepEqual(ray.intersectObject(mesh, false), [], "deformation rejection remains authoritative");
 });

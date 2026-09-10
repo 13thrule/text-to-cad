@@ -1,4 +1,5 @@
 import { applyRecordTubeDeformation } from "./tubeDeformation.js";
+import { syncRecordBaseEmissiveColor } from "./surfaceMaterialState.js";
 import {
   normalizeThemeSettings,
   resolveThemeFillColor
@@ -775,10 +776,10 @@ function shouldBuildSilhouette(edgeSettings, displayMode, settings = {}) {
   );
 }
 
-export function readBoundsCenter(THREE, bounds) {
+export function readBoundsCenter(THREE, bounds, target = new THREE.Vector3()) {
   const min = Array.isArray(bounds?.min) ? bounds.min : [0, 0, 0];
   const max = Array.isArray(bounds?.max) ? bounds.max : min;
-  return new THREE.Vector3(
+  return target.set(
     (toNumber(min[0]) + toNumber(max[0])) / 2,
     (toNumber(min[1]) + toNumber(max[1])) / 2,
     (toNumber(min[2]) + toNumber(max[2])) / 2
@@ -810,6 +811,8 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
   if (!record?.material || !materialSettings) {
     return;
   }
+  const previousVertexColors = record.material.vertexColors;
+  const previousTransparent = record.material.transparent;
   const wireframeMode = displayModeIsWireframe(displayMode);
   const forceFill = materialSettings.overrideSourceColors === true || wireframeMode;
   const hasVertexColors = !forceFill && !!record.hasVertexColors;
@@ -833,7 +836,9 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
     record.material.opacity = record.baseOpacity;
     record.material.transparent = true;
     record.material.depthWrite = false;
-    record.material.needsUpdate = true;
+    if (previousVertexColors !== record.material.vertexColors || previousTransparent !== record.material.transparent) {
+      record.material.needsUpdate = true;
+    }
     return;
   }
   syncRecordVertexColors(THREE, record, materialSettings);
@@ -865,7 +870,7 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
     record.material.color.copy(record.baseColor);
   }
   record.baseEmissiveIntensity = clamp(Number(materialSettings.emissiveIntensity) || 0, 0, 2);
-  record.baseEmissiveColor = record.baseColor ? record.baseColor.clone() : null;
+  syncRecordBaseEmissiveColor(record);
   if ("emissive" in record.material && record.material.emissive) {
     if (record.baseEmissiveColor && record.baseEmissiveIntensity > 0) {
       record.material.emissive.copy(record.baseEmissiveColor);
@@ -874,7 +879,12 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
     }
     record.material.emissiveIntensity = record.baseEmissiveIntensity;
   }
-  record.material.needsUpdate = true;
+  // Colours and PBR strengths are uniforms. Only these explicit mode changes
+  // need a program refresh; MeshPhysicalMaterial's clearcoat setter handles its
+  // own feature transition. Stable LOD publications keep the material version.
+  if (previousVertexColors !== record.material.vertexColors || previousTransparent !== record.material.transparent) {
+    record.material.needsUpdate = true;
+  }
 }
 
 function normalizePartIdList(value) {
@@ -1347,11 +1357,15 @@ export function syncMaterialClipPlanes(material, clipPlanes) {
     if ("clipping" in item) {
       item.clipping = clippingEnabled;
     }
-    item.userData = {
-      ...(item.userData || {}),
-      cadClipPlaneEnabled: clippingEnabled,
-      cadClipPlaneCount: clippingEnabled ? clipPlanes.length : 0
-    };
+    const clipPlaneCount = clippingEnabled ? clipPlanes.length : 0;
+    if (item.userData?.cadClipPlaneEnabled !== clippingEnabled
+      || item.userData?.cadClipPlaneCount !== clipPlaneCount) {
+      item.userData = {
+        ...(item.userData || {}),
+        cadClipPlaneEnabled: clippingEnabled,
+        cadClipPlaneCount: clipPlaneCount
+      };
+    }
     if (
       previousEnabled !== clippingEnabled ||
       previousCount !== (clippingEnabled ? clipPlanes.length : 0) ||
@@ -2118,7 +2132,7 @@ function adoptDisplayRecordPart(THREE, record, part, { fillIndex, baseTransform,
   record.sourcePart = part;
   record.fillIndex = fillIndex;
   record.baseTransform = baseTransform;
-  record.partCenter = readBoundsCenter(THREE, part?.bounds || bounds);
+  record.partCenter = readBoundsCenter(THREE, part?.bounds || bounds, record.partCenter);
   const partBounds = part?.bounds || part?.sourceBounds || bounds;
   const deformation = record.tubeDeformationState;
   if (deformation) {
@@ -2367,7 +2381,9 @@ export function buildModel(THREE, source, settings = {}) {
   // Same build settings, different parts (a progressive publish, a LOD swap,
   // a filter): keep every record that still applies, add and remove the rest.
   const reconcile = (nextSettings = currentSettings) => {
-    dissolveCadSurfaceInstanceSets(runtime.cadSurfaceInstanceSets, modelGroup);
+    // Keep compatible instance sets across progressive and LOD publications.
+    // The mutable-state reconciler below retires only sets whose records or
+    // render pass changed, preserving unaffected upload buffers and materials.
     setRuntimeTheme(runtime, nextSettings);
     const records = reconcileDisplayRecords(THREE, runtime, meshData, nextSettings);
     if (!records) {
@@ -2378,6 +2394,21 @@ export function buildModel(THREE, source, settings = {}) {
     runtime.records = records;
     syncRuntimeBounds();
     currentPartsKey = renderPartsKey(meshData, runtime.theme, nextSettings);
+  };
+
+  // External pose/selection passes mutate the same records without publishing
+  // new source. They finish through this boundary so draw membership, colours,
+  // transforms and clipping agree with the ordinary picking proxies.
+  const syncSurfaceInstances = () => {
+    if (disposed) return;
+    if (surfaceInstancingStateEligible(currentSettings)) {
+      runtime.cadSurfaceInstanceSets = reconcileCadSurfaceInstanceSets(
+        THREE, runtime.displayRecords, modelGroup, runtime.cadSurfaceInstanceSets
+      );
+    } else {
+      dissolveCadSurfaceInstanceSets(runtime.cadSurfaceInstanceSets, modelGroup);
+    }
+    for (const record of runtime.displayRecords) syncCadSurfaceInstanceRecord(record);
   };
 
   const applyMutableState = (nextSettings = currentSettings) => {
@@ -2410,19 +2441,7 @@ export function buildModel(THREE, source, settings = {}) {
       ...nextSettings.selection,
       showEdges: nextSettings.selection?.showEdges !== false
     });
-    if (surfaceInstancingStateEligible(nextSettings)) {
-      runtime.cadSurfaceInstanceSets = reconcileCadSurfaceInstanceSets(
-        THREE,
-        runtime.displayRecords,
-        modelGroup,
-        runtime.cadSurfaceInstanceSets
-      );
-    } else {
-      dissolveCadSurfaceInstanceSets(runtime.cadSurfaceInstanceSets, modelGroup);
-    }
-    for (const record of runtime.displayRecords) {
-      syncCadSurfaceInstanceRecord(record);
-    }
+    syncSurfaceInstances();
     syncClip(runtime, nextSettings.clip, runtime.bounds, nextSettings.modelOffset || modelGroup.position);
   };
 
@@ -2439,6 +2458,7 @@ export function buildModel(THREE, source, settings = {}) {
     root,
     modelGroup,
     edgesGroup,
+    syncSurfaceInstances,
     get displayRecords() {
       return runtime.displayRecords;
     },

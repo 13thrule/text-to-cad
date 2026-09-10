@@ -10,8 +10,8 @@ ambiguity the name carries.
 rendering files) and its clients: the CAD Viewer, the docs app, and any
 future client. One package, one copy of each shared primitive.
 
-**MAY DEPEND ON** — three (pinned; the repo pins 0.160.0 deliberately),
-meshoptimizer, and nothing else at runtime. **Never React, never app or
+**MAY DEPEND ON** — three, three-mesh-bvh and meshoptimizer, pinned by the
+package manifest and lockfile, and nothing else at runtime. **Never React, never app or
 workflow state, never Python coupling.** Framework-agnostic by law,
 enforced by the imports-direction policy test.
 
@@ -42,6 +42,39 @@ snapshot renderer and the node builders in `bin/`).
   occurrence identity; mirrors, transparency and deformation use explicit
   fallback paths. Disposable resource admission never changes exact geometry
   or persistent cache identity.
+  Raycast accelerators may be deferred until a ray reaches a component's local
+  bounds. The first ray uses exact stock intersection; surface builds enter a
+  single worker queue in idle time and are shared by occurrences. Admission
+  covers private position/index copies, worker scratch, and the result before
+  creating an isolate. Display arrays are never transferred. Each worker ends
+  with its reservation; only serialized BVH nodes and the indirect triangle
+  permutation return. Failed or pending builds keep stock picking. A result
+  must match the geometry's attributes, arrays, versions, groups, draw range,
+  and live ownership; the last geometry release cancels queued or active work.
+  Deformation runs before the bounds test. Byte accounting includes both packed
+  BVH nodes and their indirect triangle permutation.
+  Recomposition may take its previous result when the descriptor and component
+  inputs are immutable. It shares unchanged occurrence rows and unchanged tree
+  metadata across detail swaps; changed triangle ranges, bounds, placements and
+  appearance still produce the corresponding new records. Its private weak
+  ownership metadata never enters saved geometry or cache identity.
+  Detail publications retain compatible surface instance sets and their original
+  occurrence slots. Only changed membership or render passes replace those sets;
+  selected, hidden and deformed occurrences keep inactive slots until eligible
+  again. Transform passes reuse each mesh's matrix while observing mutable source
+  transforms and effect matrices on every update.
+  Material pass keys reuse serialized strings only after comparing their current
+  scalar values, emission state, render order and clipping planes. Direct material
+  and plane mutations remain observable; custom values use ordinary serialization.
+  Reapplying material settings preserves unchanged shader programs and owned
+  emissive colors. Colour and PBR uniforms still update on every pass; feature
+  changes, vertex-colour mode and transparency invalidate the appropriate program.
+  Clients that apply pose, selection or material changes directly to display
+  records finish with `scene.syncSurfaceInstances()`; this uses the same
+  reconciliation as a source update. Clip-only viewer updates also synchronize
+  the shared surface material. Reflection intensity belongs to the shared pass
+  key. A distinct nonblack emissive channel, or emission over vertex colours,
+  uses the ordinary material so the instance colour cannot tint that channel.
 - **Worker isolation**: each tessellation worker runs one request at a time;
   excess requests wait on the client. Aborting synchronous work replaces only
   its worker, preserving other callers. A failed worker request reports an

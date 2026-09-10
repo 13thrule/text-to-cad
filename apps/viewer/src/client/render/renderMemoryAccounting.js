@@ -5,7 +5,44 @@
 // asset caches' own accounting. It also refreshes the shared admission ledger.
 import { renderAssetCacheStats } from "cadgen-js/lib/renderAssetClient.js";
 import { cadEdgeInstanceSets } from "cadgen-js/common/cadEdgeInstances.js";
+import { builtGeometryBvhBytes } from "cadgen-js/lib/viewer/raycastBvh.js";
+import { MESH_DATA_ARRAY_FIELDS } from "cadgen-js/lib/render/meshTransfer.js";
 import { viewerMemoryPolicy } from "./viewerMemoryPolicy.js";
+
+function retainBackingBytes(value, seen) {
+  const buffer = ArrayBuffer.isView(value) ? value.buffer : value instanceof ArrayBuffer ? value : null;
+  if (!buffer || seen.has(buffer)) return 0;
+  seen.add(buffer);
+  return buffer.byteLength;
+}
+
+function retainMeshBackingBytes(mesh, seen) {
+  return MESH_DATA_ARRAY_FIELDS.reduce((sum, field) => sum + retainBackingBytes(mesh?.[field], seen), 0);
+}
+
+// Before scene adoption, the asset hook owns the component arrays. A short
+// typed view keeps its whole allocation alive, including packed sections that
+// are not uploaded. Keep that CPU cost separate from estimated GPU input.
+export function componentMemoryAccounting(componentMeshDataByCid) {
+  const buffers = new Set();
+  const meshes = new Set(Object.values(componentMeshDataByCid || {}));
+  for (const mesh of meshes) {
+    for (const part of Array.isArray(mesh?.parts) ? mesh.parts : []) {
+      if (part?.sourceMesh) meshes.add(part.sourceMesh);
+    }
+  }
+  const arrays = new Set();
+  for (const mesh of meshes) {
+    for (const field of MESH_DATA_ARRAY_FIELDS) {
+      if (ArrayBuffer.isView(mesh?.[field])) arrays.add(mesh[field]);
+    }
+  }
+  let gpuInputBytes = 0;
+  for (const array of arrays) gpuInputBytes += array.byteLength;
+  let displayCpuBytes = 0;
+  for (const mesh of meshes) displayCpuBytes += retainMeshBackingBytes(mesh, buffers);
+  return { displayCpuBytes, gpuInputBytes, buffers };
+}
 
 function geometryBuffers(geometry) {
   const buffers = new Set();
@@ -18,20 +55,15 @@ function geometryBuffers(geometry) {
   return buffers;
 }
 
-function bvhBytes(geometry) {
-  const roots = geometry?.boundsTree?._roots;
-  if (!Array.isArray(roots)) {
-    return 0;
-  }
-  return roots.reduce((sum, root) => sum + (root?.byteLength || 0), 0);
-}
-
 export function renderMemoryAccounting(runtime) {
   const records = Array.isArray(runtime?.displayRecords) ? runtime.displayRecords : [];
   const seenGeometries = new Set();
   const seenBuffers = new Set();
   const seenArrayBuffers = new Set();
   const seenMaterials = new Set();
+  let displayCpuBytes = retainMeshBackingBytes(runtime?.cadScene?.meshData, seenArrayBuffers);
+  let selectorCpuBytes = 0;
+  const seenSourceMeshes = new Set();
   const totals = {
     occurrences: 0,
     edgeObjects: 0,
@@ -78,10 +110,10 @@ export function renderMemoryAccounting(runtime) {
         continue;
       }
       seenBuffers.add(buffer);
-      if (buffer.array?.buffer) seenArrayBuffers.add(buffer.array.buffer);
+      displayCpuBytes += retainBackingBytes(buffer.array, seenArrayBuffers);
       totals[kind === "edge" ? "edgeBytes" : "surfaceBytes"] += buffer.array?.byteLength || 0;
     }
-    const bvh = bvhBytes(geometry);
+    const bvh = builtGeometryBvhBytes(geometry, seenArrayBuffers);
     if (bvh) {
       totals.bvhBytes += bvh;
       totals.bvhGeometries += 1;
@@ -95,9 +127,18 @@ export function renderMemoryAccounting(runtime) {
     }
     seenFaceIds.add(faceIds);
     totals.faceIdBytes += faceIds.byteLength;
+    selectorCpuBytes += retainBackingBytes(faceIds, seenArrayBuffers);
     totals.faceIdArrays += 1;
   };
   for (const record of records) {
+    // Source meshes also retain arrays that are not GPU attributes, such as
+    // the input CAD edge lines from which segment textures were built.
+    const sourceMesh = record?.sourcePart?.sourceMesh;
+    if (sourceMesh && !seenSourceMeshes.has(sourceMesh)) {
+      seenSourceMeshes.add(sourceMesh);
+      displayCpuBytes += retainMeshBackingBytes(sourceMesh, seenArrayBuffers);
+    }
+    displayCpuBytes += retainBackingBytes(record?.rawColors, seenArrayBuffers);
     if (record?.mesh) {
       totals.occurrences += 1;
       visit(record.mesh, "surface");
@@ -121,9 +162,11 @@ export function renderMemoryAccounting(runtime) {
       seenMaterials.add(material);
     }
     totals.edgeBytes += set.instanceByteLength;
+    displayCpuBytes += retainBackingBytes(set.instanceData, seenArrayBuffers);
     if (!seenSegmentTextures.has(set.segments)) {
       seenSegmentTextures.add(set.segments);
       totals.edgeBytes += set.segments.byteLength;
+      displayCpuBytes += retainBackingBytes(set.segments.texture?.image?.data, seenArrayBuffers);
     }
   }
   // Instanced CAD surfaces share their component geometry with the proxy
@@ -142,7 +185,7 @@ export function renderMemoryAccounting(runtime) {
     for (const buffer of [object.instanceMatrix, object.instanceColor]) {
       if (!buffer || seenBuffers.has(buffer)) continue;
       seenBuffers.add(buffer);
-      if (buffer.array?.buffer) seenArrayBuffers.add(buffer.array.buffer);
+      displayCpuBytes += retainBackingBytes(buffer.array, seenArrayBuffers);
       const byteLength = buffer.array?.byteLength || 0;
       totals.surfaceInstanceBytes += byteLength;
       totals.surfaceBytes += byteLength;
@@ -171,11 +214,11 @@ export function renderMemoryAccounting(runtime) {
       for (const buffer of geometryBuffers(geometry)) {
         if (!seenBuffers.has(buffer)) {
           seenBuffers.add(buffer);
-          if (buffer.array?.buffer) seenArrayBuffers.add(buffer.array.buffer);
+          selectorCpuBytes += retainBackingBytes(buffer.array, seenArrayBuffers);
           totals.pickBytes += buffer.array?.byteLength || 0;
         }
       }
-      const bvh = bvhBytes(geometry);
+      const bvh = builtGeometryBvhBytes(geometry, seenArrayBuffers);
       if (bvh) {
         totals.bvhBytes += bvh;
         totals.bvhGeometries += 1;
@@ -217,10 +260,10 @@ export function renderMemoryAccounting(runtime) {
   totals.buffers = seenBuffers.size;
   totals.materials = seenMaterials.size;
   const gpuEstimatedBytes = totals.surfaceBytes + totals.edgeBytes + totals.pickBytes;
-  const displayCpuBytes = totals.surfaceBytes + totals.edgeBytes;
   const assetCaches = renderAssetCacheStats();
-  // Geometry BufferAttributes wrap the component arrays held in these caches.
-  // Their GPU mirrors are separate allocations; their CPU references are not.
+  // The full backing of each excluded view has already been charged above.
+  // GPU mirrors contain the uploaded views; CPU references retain the entire
+  // allocation, even when some packed sections never reach a GPU attribute.
   const additionalAssetCaches = renderAssetCacheStats({ excludeBuffers: seenArrayBuffers });
   viewerMemoryPolicy.setRetained("displayCpu", displayCpuBytes);
   viewerMemoryPolicy.setRetained("gpuEstimated", gpuEstimatedBytes);
@@ -228,7 +271,7 @@ export function renderMemoryAccounting(runtime) {
   viewerMemoryPolicy.setRetained("deformation", totals.deformationBytes);
   viewerMemoryPolicy.setRetained(
     "selectors",
-    (Number(additionalAssetCaches.selector?.typedBytes) || 0) + totals.faceIdBytes + totals.pickBytes
+    (Number(additionalAssetCaches.selector?.typedBytes) || 0) + selectorCpuBytes
   );
   viewerMemoryPolicy.setRetained("assetCaches", Object.entries(additionalAssetCaches).reduce(
     (sum, [name, stats]) => name === "surfLeash" || name === "selector"
@@ -239,6 +282,7 @@ export function renderMemoryAccounting(runtime) {
   return {
     ...totals,
     displayCpuBytes,
+    selectorCpuBytes,
     gpuEstimatedBytes,
     assetCaches,
     additionalAssetCaches,

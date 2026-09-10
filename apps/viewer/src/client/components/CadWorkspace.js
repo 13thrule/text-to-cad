@@ -2300,6 +2300,9 @@ export default function CadWorkspace({
   const assemblyRoot = selectedAssemblyStructureReady
     ? selectedMeshData?.assemblyRoot || null
     : null;
+  // An assembly tree already contains its occurrence metadata. Display-only
+  // tessellation changes must not invalidate tree consumers through meshData.
+  const stepPartMeshData = assemblyRoot ? null : selectedMeshData;
   const stepTreeRoot = useMemo(() => {
     if (!supportsParts) {
       return null;
@@ -2307,9 +2310,9 @@ export default function CadWorkspace({
     return buildStepTreeRoot({
       selectedEntry,
       assemblyRoot,
-      meshData: selectedMeshData
+      meshData: stepPartMeshData
     });
-  }, [assemblyRoot, supportsParts, selectedEntry, selectedMeshData]);
+  }, [assemblyRoot, supportsParts, selectedEntry, stepPartMeshData]);
   const assemblyLeafParts = useMemo(() => {
     return Array.isArray(selectedMeshData?.parts) ? selectedMeshData.parts : flattenAssemblyLeafParts(assemblyRoot);
   }, [assemblyRoot, selectedMeshData?.parts]);

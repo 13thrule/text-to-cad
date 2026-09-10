@@ -1,4 +1,5 @@
 import { resolveThemeFillColor } from "../themeSettings.js";
+import { syncRecordBaseEmissiveColor } from "../../common/surfaceMaterialState.js";
 import {
   CAD_DISPLAY_MODE,
   displayModeIsWireframe,
@@ -167,6 +168,8 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
   if (!record?.material || !materialSettings) {
     return;
   }
+  const previousVertexColors = record.material.vertexColors;
+  const previousTransparent = record.material.transparent;
   const wireframeMode = displayModeIsWireframe(displayMode);
   const forceFill = materialSettings.overrideSourceColors === true || wireframeMode;
   const hasVertexColors = !forceFill && !!record.hasVertexColors;
@@ -214,7 +217,7 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
     record.material.color.copy(record.baseColor);
   }
   record.baseEmissiveIntensity = clamp(Number(materialSettings.emissiveIntensity) || 0, 0, 2);
-  record.baseEmissiveColor = record.baseColor ? record.baseColor.clone() : null;
+  syncRecordBaseEmissiveColor(record);
   if ("emissive" in record.material && record.material.emissive) {
     if (record.baseEmissiveColor && record.baseEmissiveIntensity > 0) {
       record.material.emissive.copy(record.baseEmissiveColor);
@@ -223,5 +226,9 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
     }
     record.material.emissiveIntensity = record.baseEmissiveIntensity;
   }
-  record.material.needsUpdate = true;
+  // Uniform updates do not invalidate the shader program. The physical
+  // material's setters handle feature switches such as clearcoat themselves.
+  if (previousVertexColors !== record.material.vertexColors || previousTransparent !== record.material.transparent) {
+    record.material.needsUpdate = true;
+  }
 }

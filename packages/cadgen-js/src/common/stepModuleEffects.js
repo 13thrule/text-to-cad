@@ -12,8 +12,7 @@ function uniqueStrings(values) {
     .filter(Boolean))];
 }
 
-export function buildPartTransformMatrix(THREE, transform) {
-  const matrix = new THREE.Matrix4();
+export function buildPartTransformMatrix(THREE, transform, matrix = new THREE.Matrix4()) {
   if (!Array.isArray(transform) || transform.length !== 16) {
     matrix.identity();
     return matrix;

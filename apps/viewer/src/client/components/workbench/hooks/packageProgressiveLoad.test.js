@@ -234,6 +234,32 @@ test("same-file complete revision replacement publishes atomically and accounts 
   assert.equal(shouldRetainCompleteSameFileMesh({ ...current, assemblyInteractionReady: false }, { file: "gear.step", kind: "assembly" }, "new"), false);
 });
 
+test("progressive growth keeps already displayed occurrence and leaf metadata", async () => {
+  const descriptor = makeDescriptor({ componentCount: 4, occurrenceCount: 8 });
+  let previous = null;
+  let comparisons = 0;
+  await createProgressivePackageLoader({
+    descriptor, concurrency: 1, firstComponents: 1, maxComponents: 1,
+    loadComponent: async cid => fakeComponent(cid),
+    onPublish: ({ meshData }) => {
+      if (previous) {
+        const nextParts = new Map(meshData.parts.map(part => [part.id, part]));
+        const nextLeaves = new Map(meshData.assemblyRoot.children.map(node => [node.id, node]));
+        for (const part of previous.parts) {
+          assert.equal(nextParts.get(part.id), part);
+          const oldLeaf = previous.assemblyRoot.children.find(node => node.id === part.id);
+          assert.equal(nextLeaves.get(part.id), oldLeaf);
+          comparisons += 1;
+        }
+      }
+      previous = meshData;
+    },
+  }).run();
+  assert.ok(comparisons > 0);
+  assert.equal(previous.parts.length, 8);
+  assert.deepEqual(previous.missingComponentIds, []);
+});
+
 test("an atomic revision cancel publishes nothing and releases pending replacement ownership", async () => {
   const descriptor = makeDescriptor({ componentCount: 9, occurrenceCount: 9 });
   const { loadComponent } = makeLoader(descriptor);

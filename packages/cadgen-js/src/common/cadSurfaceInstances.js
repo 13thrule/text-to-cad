@@ -1,23 +1,64 @@
+function hasEmission(material) {
+  const color = material?.emissive;
+  return Number(material?.emissiveIntensity) > 0 && !!color && (color.r !== 0 || color.g !== 0 || color.b !== 0);
+}
+
+const materialPassKeys = new WeakMap();
+const materialSyncKeys = new WeakMap();
+const recordPassKeys = new WeakMap();
+const arrayMap = Array.prototype.map;
+
+function scalarKeyValue(value) {
+  const type = typeof value;
+  return value === null || type === "undefined" || type === "number" || type === "string" || type === "boolean";
+}
+
 function materialPassKey(material) {
-  return JSON.stringify({
-    type: material?.type || "",
-    vertexColors: material?.vertexColors === true,
-    roughness: Number(material?.roughness),
-    metalness: Number(material?.metalness),
-    clearcoat: Number(material?.clearcoat),
-    clearcoatRoughness: Number(material?.clearcoatRoughness),
-    emissiveIntensity: Number(material?.emissiveIntensity) || 0,
-    side: material?.side,
-    depthTest: material?.depthTest !== false,
-    depthWrite: material?.depthWrite !== false,
-    polygonOffset: material?.polygonOffset === true,
-    polygonOffsetFactor: Number(material?.polygonOffsetFactor) || 0,
-    polygonOffsetUnits: Number(material?.polygonOffsetUnits) || 0,
-  });
+  // Observe the values every time: author effects can mutate a material or its
+  // emissive colour in place. Only the immutable serialized recipe is reused.
+  const type = material?.type || "";
+  const vertexColors = material?.vertexColors === true;
+  const roughness = Number(material?.roughness);
+  const metalness = Number(material?.metalness);
+  const clearcoat = Number(material?.clearcoat);
+  const clearcoatRoughness = Number(material?.clearcoatRoughness);
+  const emissiveIntensity = Number(material?.emissiveIntensity) || 0;
+  const emissionEnabled = hasEmission(material);
+  const envMapIntensity = Number(material?.envMapIntensity) || 0;
+  const side = material?.side;
+  const depthTest = material?.depthTest !== false;
+  const depthWrite = material?.depthWrite !== false;
+  const polygonOffset = material?.polygonOffset === true;
+  const polygonOffsetFactor = Number(material?.polygonOffsetFactor) || 0;
+  const polygonOffsetUnits = Number(material?.polygonOffsetUnits) || 0;
+  const cacheable = material && typeof material === "object" && scalarKeyValue(type) && scalarKeyValue(side);
+  const previous = cacheable ? materialPassKeys.get(material) : null;
+  if (previous && previous.type === type && previous.vertexColors === vertexColors
+    && Object.is(previous.roughness, roughness) && Object.is(previous.metalness, metalness)
+    && Object.is(previous.clearcoat, clearcoat) && Object.is(previous.clearcoatRoughness, clearcoatRoughness)
+    && Object.is(previous.emissiveIntensity, emissiveIntensity) && previous.emissionEnabled === emissionEnabled
+    && Object.is(previous.envMapIntensity, envMapIntensity) && Object.is(previous.side, side)
+    && previous.depthTest === depthTest && previous.depthWrite === depthWrite
+    && previous.polygonOffset === polygonOffset && Object.is(previous.polygonOffsetFactor, polygonOffsetFactor)
+    && Object.is(previous.polygonOffsetUnits, polygonOffsetUnits)) return previous.key;
+  const values = {
+    type, vertexColors, roughness, metalness, clearcoat, clearcoatRoughness,
+    emissiveIntensity, emissionEnabled, envMapIntensity, side, depthTest,
+    depthWrite, polygonOffset, polygonOffsetFactor, polygonOffsetUnits,
+  };
+  const key = JSON.stringify(values);
+  if (cacheable) materialPassKeys.set(material, { ...values, key });
+  return key;
 }
 
 function recordPassKey(record) {
-  return `${materialPassKey(record?.material)}#order=${Number(record?.mesh?.renderOrder) || 0}`;
+  const pass = materialPassKey(record?.material);
+  const order = Number(record?.mesh?.renderOrder) || 0;
+  const previous = recordPassKeys.get(record);
+  if (previous?.pass === pass && Object.is(previous.order, order)) return previous.key;
+  const key = `${pass}#order=${order}`;
+  recordPassKeys.set(record, { pass, order, key });
+  return key;
 }
 
 function instancingCandidate(record) {
@@ -25,9 +66,16 @@ function instancingCandidate(record) {
   return Boolean(
     record?.geometry &&
     record?.mesh &&
+    record.mesh.visible !== false &&
     record?.material &&
     record.material.transparent !== true &&
     Number(record.material.opacity) >= 0.999 &&
+    // The shared shader derives emission from instance diffuse colour. A
+    // distinct emissive channel, including a uniform glow over vertex colours,
+    // keeps its exact ordinary material instead of tinting it accidentally.
+    (!hasEmission(record.material) || (
+      !record.material.vertexColors && record.material.emissive.equals(record.material.color)
+    )) &&
     record.effectVisible !== false &&
     !record.tubeDeformationState &&
     matrix?.determinant?.() >= 0
@@ -44,7 +92,7 @@ function configureInstanceMaterial(material) {
   material.color?.set?.(0xffffff);
   // Instance colour carries the occurrence's authored/fill colour through
   // both diffuse and the viewer's subtle base emissive response.
-  if (material.emissive && Number(material.emissiveIntensity) > 0) {
+  if (hasEmission(material)) {
     material.emissive.set(0xffffff);
   }
   material.onBeforeCompile = (shader) => {
@@ -57,21 +105,82 @@ function configureInstanceMaterial(material) {
 }
 
 function materialSyncKey(material) {
-  return JSON.stringify({
-    pass: materialPassKey(material),
-    opacity: Number(material?.opacity),
-    alphaTest: Number(material?.alphaTest),
-    blending: material?.blending,
-    toneMapped: material?.toneMapped !== false,
-    clipIntersection: material?.clipIntersection === true,
-    clipShadows: material?.clipShadows === true,
-    clippingPlanes: (material?.clippingPlanes || []).map((plane) => [
+  const pass = materialPassKey(material);
+  const opacity = Number(material?.opacity);
+  const alphaTest = Number(material?.alphaTest);
+  const blending = material?.blending;
+  const toneMapped = material?.toneMapped !== false;
+  const clipIntersection = material?.clipIntersection === true;
+  const clipShadows = material?.clipShadows === true;
+  const planes = material?.clippingPlanes;
+  const map = planes ? planes.map : Array.prototype.map;
+  // A custom mapper may define behaviour beyond plane values. Preserve its
+  // construction instead of treating it as an ordinary recipe.
+  let cacheable = material && typeof material === "object" && scalarKeyValue(blending)
+    && map === arrayMap && (!planes || Array.isArray(planes));
+  const planeCount = cacheable && planes ? planes.length : 0;
+  if (!cacheable) return JSON.stringify({
+    pass, opacity, alphaTest, blending, toneMapped, clipIntersection, clipShadows,
+    clippingPlanes: map.call(planes || [], (plane) => [
       Number(plane?.normal?.x) || 0,
       Number(plane?.normal?.y) || 0,
       Number(plane?.normal?.z) || 0,
       Number(plane?.constant) || 0,
     ]),
   });
+  const previous = materialSyncKeys.get(material);
+  let matches = previous && previous.pass === pass && Object.is(previous.opacity, opacity)
+    && Object.is(previous.alphaTest, alphaTest) && Object.is(previous.blending, blending)
+    && previous.toneMapped === toneMapped && previous.clipIntersection === clipIntersection
+    && previous.clipShadows === clipShadows && previous.planeValues.length === planeCount * 4;
+  let planeValues = matches ? null : new Array(planeCount * 4);
+  for (let i = 0; i < planeCount; i += 1) {
+    const offset = i * 4;
+    // Match Array.map's per-index presence check. A getter for an earlier
+    // plane can remove a later entry during this same traversal; that row
+    // remains a hole, not a zero plane. Keep sparse recipes uncached.
+    if (!(i in planes)) {
+      if (matches) {
+        matches = false;
+        planeValues = previous.planeValues.slice(0, offset);
+        planeValues.length = planeCount * 4;
+      }
+      planeValues[offset] = undefined;
+      cacheable = false;
+      continue;
+    }
+    const plane = planes[i];
+    const x = Number(plane?.normal?.x) || 0;
+    const y = Number(plane?.normal?.y) || 0;
+    const z = Number(plane?.normal?.z) || 0;
+    const constant = Number(plane?.constant) || 0;
+    if (matches && (!Object.is(previous.planeValues[offset], x)
+      || !Object.is(previous.planeValues[offset + 1], y)
+      || !Object.is(previous.planeValues[offset + 2], z)
+      || !Object.is(previous.planeValues[offset + 3], constant))) {
+      matches = false;
+      planeValues = previous.planeValues.slice(0, offset);
+      planeValues.length = planeCount * 4;
+    }
+    if (!matches) {
+      planeValues[offset] = x;
+      planeValues[offset + 1] = y;
+      planeValues[offset + 2] = z;
+      planeValues[offset + 3] = constant;
+    }
+  }
+  if (matches) return previous.key;
+  const clippingPlanes = new Array(planeCount);
+  for (let i = 0; i < planeValues.length; i += 4) {
+    if (planeValues[i] !== undefined) clippingPlanes[i / 4] = planeValues.slice(i, i + 4);
+  }
+  const key = JSON.stringify({
+    pass, opacity, alphaTest, blending, toneMapped, clipIntersection, clipShadows, clippingPlanes,
+  });
+  if (cacheable) materialSyncKeys.set(material, {
+    pass, opacity, alphaTest, blending, toneMapped, clipIntersection, clipShadows, planeValues, key,
+  });
+  return key;
 }
 
 function float32Changed(values, offset, source, count) {
@@ -187,7 +296,9 @@ export function reconcileCadSurfaceInstanceSets(THREE, records, modelGroup, sets
     const membershipIntact = set.records.every((record) => (
       currentRecords.has(record) && record.surfaceInstance?.set === set
     ));
-    const active = membershipIntact ? set.records.filter(instancingCandidate) : [];
+    const active = membershipIntact ? set.records.filter((record) => (
+      record.geometry === set.object.geometry && instancingCandidate(record)
+    )) : [];
     const activePass = active[0] ? recordPassKey(active[0]) : "";
     const compatible = active.length >= 2 && active.every((record) => recordPassKey(record) === activePass);
     if (!membershipIntact || !compatible) {
@@ -196,6 +307,7 @@ export function reconcileCadSurfaceInstanceSets(THREE, records, modelGroup, sets
       continue;
     }
     set.groupPassKey = activePass;
+    set.object.renderOrder = Number(active[0].mesh.renderOrder) || 0;
     const activeSet = new Set(active);
     for (const record of set.records) {
       assigned.add(record);
@@ -215,6 +327,18 @@ export function reconcileCadSurfaceInstanceSets(THREE, records, modelGroup, sets
   return sets;
 }
 
+export function syncCadSurfaceInstanceTransform(record) {
+  const instance = record?.surfaceInstance;
+  if (!instance || instance.set.disposed) return;
+  const { set, slot } = instance;
+  if (!set.activeSlots[slot]) return;
+  const matrixOffset = slot * 16;
+  if (float32Changed(set.matrixValues, matrixOffset, record.mesh.matrix.elements, 16)) {
+    set.object.setMatrixAt(slot, record.mesh.matrix);
+    set.object.instanceMatrix.needsUpdate = true;
+  }
+}
+
 export function syncCadSurfaceInstanceRecord(record) {
   const instance = record?.surfaceInstance;
   if (!instance || instance.set.disposed) return;
@@ -228,15 +352,12 @@ export function syncCadSurfaceInstanceRecord(record) {
       set.materialKey = nextMaterialKey;
     }
   }
-  const matrixOffset = slot * 16;
-  if (float32Changed(set.matrixValues, matrixOffset, record.mesh.matrix.elements, 16)) {
-    set.object.setMatrixAt(slot, record.mesh.matrix);
-    set.object.instanceMatrix.needsUpdate = true;
-  }
+  syncCadSurfaceInstanceTransform(record);
   const color = record.material.color || record.baseColor;
-  const colorValues = [color.r, color.g, color.b];
   const colorOffset = slot * 3;
-  if (float32Changed(set.colorValues, colorOffset, colorValues, 3)) {
+  if (set.colorValues[colorOffset] !== Math.fround(color.r) ||
+      set.colorValues[colorOffset + 1] !== Math.fround(color.g) ||
+      set.colorValues[colorOffset + 2] !== Math.fround(color.b)) {
     set.object.setColorAt(slot, color);
     if (set.object.instanceColor) set.object.instanceColor.needsUpdate = true;
   }

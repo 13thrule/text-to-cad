@@ -330,12 +330,14 @@ export function createProgressivePackageLoader({
   let publishes = 0;
   let publishedFinal = false;
   let retainedBytes = 0;
+  let previousComposition = null;
 
   function notifyRetained() {
     onRetainedChange?.({ loaded, total, retainedBytes });
   }
 
   function release() {
+    previousComposition = null;
     for (const cid of Object.keys(loadedByCid)) {
       delete loadedByCid[cid];
     }
@@ -360,7 +362,8 @@ export function createProgressivePackageLoader({
       ? { ...loadedByCid, ...swapped }
       : { ...loadedByCid };
     const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
-    const meshData = buildComposedPackageMeshData(descriptor, componentMeshDataByCid);
+    const meshData = buildComposedPackageMeshData(descriptor, componentMeshDataByCid, { previous: previousComposition });
+    previousComposition = meshData;
     const composeMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
     pendingComponents = 0;
     pendingBytes = 0;

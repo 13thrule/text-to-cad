@@ -23,6 +23,10 @@ import {
   partHighlightSurfaceColor
 } from "../lib/viewer/partHighlight.js";
 import { applyRecordTubeDeformation, normalizeTubeDeformation } from "./tubeDeformation.js";
+import { applySceneState } from "./applySceneState.js";
+import { applyPartVisualState as applyViewerPartVisualState } from "../lib/viewer/partVisualState.js";
+import { syncRuntimeStepClipPlane } from "../lib/viewer/modelRuntime.js";
+import { applyMaterialSettingsToRecord as applyViewerMaterialSettings } from "../lib/viewer/surfaceMaterials.js";
 
 function sampleMeshData() {
   return {
@@ -1257,6 +1261,205 @@ test("update({ source }) keeps a deformed tube's private geometry and deformatio
   assert.equal(record.geometry, privateGeometry);
   assert.ok(state.active);
   scene.dispose();
+});
+
+test("LOD publication preserves unaffected surface sets and retires only replaced geometry", () => {
+  const componentA = surfComponentMeshData();
+  const componentB = surfComponentMeshData();
+  const order = [0, 1, 2, 3, 4, 5];
+  const scene = buildModel(THREE, twoComponentPackage(componentA, componentB, order), { renderPartsIndividually: true });
+  const a = scene.displayRecords[0];
+  const aSet = a.surfaceInstance.set;
+  const aCenter = a.partCenter;
+  const bSet = scene.displayRecords[1].surfaceInstance.set;
+  const aMatrix = aSet.object.instanceMatrix;
+  let aDisposes = 0;
+  let bDisposes = 0;
+  aSet.object.addEventListener("dispose", () => { aDisposes += 1; });
+  bSet.object.addEventListener("dispose", () => { bDisposes += 1; });
+  const matrixVersion = aMatrix.version;
+
+  for (let revision = 0; revision < 4; revision += 1) {
+    const replacement = surfComponentMeshData();
+    const next = twoComponentPackage(componentA, replacement, [...order].reverse());
+    scene.update({ source: next });
+    assert.deepEqual(scene.displayRecords.map((item) => item.partId), [...order].reverse().map((id) => `o${id}`));
+    assert.equal(scene.displayRecords.find((item) => item.partId === "o0"), a);
+    assert.equal(a.surfaceInstance.set, aSet);
+    assert.equal(a.surfaceInstance.slot, 0, "unchanged occurrences keep their original slots despite source order");
+    assert.equal(a.partCenter, aCenter, "adoption reuses the center vector");
+    assert.equal(aSet.object.instanceMatrix, aMatrix);
+    assert.equal(aMatrix.version, matrixVersion, "unchanged placements schedule no instance upload");
+    assert.equal(aDisposes, 0);
+    assert.equal(scene.runtime.cadSurfaceInstanceSets.size, 2);
+    assert.equal(scene.displayRecords.find((item) => item.partId === "o1").geometry.attributes.position.array, replacement.vertices);
+  }
+  assert.equal(bDisposes, 1, "the departed LOD set is released once");
+  assert.equal(bSet.disposed, true);
+  scene.dispose();
+  assert.equal(aDisposes, 1, "the retained set releases its buffers at final scene disposal");
+});
+
+test("selection slots remain inactive across source publications and reactivate without rebuilding", () => {
+  const component = surfComponentMeshData();
+  const scene = buildModel(THREE, composedPackage(component, 4), { renderPartsIndividually: true });
+  const selected = scene.displayRecords[0];
+  const { set, slot } = selected.surfaceInstance;
+  scene.update({ selection: { selectedPartIds: [selected.partId] } });
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  const actual = new THREE.Matrix4();
+  for (let revision = 0; revision < 3; revision += 1) {
+    const next = composedPackage(component, 4);
+    next.parts[0].transform[3] = 40 + revision;
+    scene.update({ source: next });
+    assert.equal(selected.surfaceInstance.set, set);
+    assert.equal(selected.material.visible, true);
+    set.object.getMatrixAt(slot, actual);
+    assert.deepEqual(actual.elements, zero.elements, "ordinary selection mesh has no duplicate instanced surface");
+    assert.equal(selected.mesh.matrix.elements[12], 40 + revision);
+  }
+  scene.update({ selection: { selectedPartIds: [] } });
+  assert.equal(selected.surfaceInstance.set, set);
+  assert.equal(selected.material.visible, false);
+  set.object.getMatrixAt(slot, actual);
+  assert.deepEqual(actual.elements, selected.mesh.matrix.elements);
+  scene.update({ selection: { hiddenPartIds: [selected.partId] } });
+  scene.update({ source: composedPackage(component, 4) });
+  assert.equal(selected.surfaceInstance.set, set);
+  assert.equal(selected.material.transparent, true);
+  assert.equal(selected.material.visible, true, "the existing hidden/dimmed state uses its ordinary pass");
+  set.object.getMatrixAt(slot, actual);
+  assert.deepEqual(actual.elements, zero.elements, "hidden part remains absent from the shared draw");
+  scene.update({ selection: { hiddenPartIds: [] } });
+  assert.equal(selected.surfaceInstance.set, set);
+  assert.equal(selected.mesh.visible, true);
+  scene.dispose();
+});
+
+test("a deformed occurrence leaves its surface slot inactive through progressive publications", () => {
+  const component = surfComponentMeshData();
+  const scene = buildModel(THREE, composedPackage(component, 4), { renderPartsIndividually: true });
+  const bent = scene.displayRecords[0];
+  const { set, slot } = bent.surfaceInstance;
+  bent.gpuTubeDeformationAllowed = false;
+  const spec = normalizeTubeDeformation({
+    rest: { normal: [0, 0, 1], segments: [{ kind: "line", start: [0, 0, 0], end: [3, 0, 0] }] },
+    path: { normal: [0, 0, 1], segments: [{ kind: "line", start: [0, 0, 2], end: [0, 3, 2] }] },
+    maxSegmentLength: 1000
+  });
+  applyRecordTubeDeformation(THREE, bent, spec);
+  const privateGeometry = bent.geometry;
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  const actual = new THREE.Matrix4();
+  for (let revision = 0; revision < 3; revision += 1) {
+    scene.update({ source: composedPackage(component, 4) });
+    assert.equal(bent.surfaceInstance.set, set, "the other occurrences retain their shared draw");
+    assert.equal(bent.geometry, privateGeometry);
+    assert.equal(bent.material.visible, true);
+    set.object.getMatrixAt(slot, actual);
+    assert.deepEqual(actual.elements, zero.elements, "the rest surface cannot duplicate the private deformation");
+    applyRecordTubeDeformation(THREE, bent, spec);
+    applyDisplayRecordTransform(THREE, bent);
+    set.object.getMatrixAt(slot, actual);
+    assert.deepEqual(actual.elements, zero.elements);
+  }
+  scene.dispose();
+});
+
+test("source appearance and mirror changes invalidate only their surface pass membership", () => {
+  const component = surfComponentMeshData();
+  const scene = buildModel(THREE, composedPackage(component, 4), { renderPartsIndividually: true });
+  const initialSet = scene.displayRecords[0].surfaceInstance.set;
+  const next = composedPackage(component, 4);
+  next.parts[0].material = { roughness: 0.123, metalness: 0.876 };
+  next.parts[1].transform[0] = -1;
+  scene.update({ source: next });
+  assert.equal(initialSet.disposed, true, "a changed pass breaks compatibility");
+  assert.equal(scene.displayRecords[0].material.roughness, 0.123);
+  assert.equal(scene.displayRecords[0].material.metalness, 0.876);
+  assert.equal(scene.displayRecords[0].surfaceInstance, null);
+  assert.equal(scene.displayRecords[1].surfaceInstance, null, "mirrored placement uses the ordinary mesh");
+  assert.equal(scene.displayRecords[1].mesh.matrix.determinant(), -1);
+  assert.equal(scene.displayRecords[2].surfaceInstance.set, scene.displayRecords[3].surfaceInstance.set);
+  assert.deepEqual(scene.displayRecords[2].surfaceInstance.set.object.userData.partIds, ["o2", "o3"]);
+  scene.dispose();
+});
+
+test("direct viewer effects and clip passes synchronize shared surfaces without a source update", () => {
+  const source = composedPackage(surfComponentMeshData(), 4);
+  const theme = cloneThemePresetSettings("workbench-light");
+  theme.materials.emissiveIntensity = 0;
+  const scene = buildModel(THREE, source, { renderPartsIndividually: true, theme });
+  const runtime = { ...scene.runtime, THREE, cadScene: scene };
+  const record = scene.displayRecords[0];
+  const { set, slot } = record.surfaceInstance;
+  const matrix = new THREE.Matrix4();
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  const pass = ({ visible = true, opacity = 1, color = "#123abc", mirror = false, selection = {}, deform = false } = {}) => {
+    applySceneState(THREE, {
+      runtime, meshData: source,
+      stepParameterRuntime: { definition: { manifest: {}, module: { update(ctx) {
+        ctx.effects.style("o0", { color });
+        if (mirror) ctx.effects.transform("o0", { scale: [-1, 2, 1] });
+      } } } },
+      animation: { elapsedSec: 0, clip: { duration: 1, update(t, model) {
+        const handle = model.get("o0").visible(visible).opacity(opacity).translate([4, 2, 1]);
+        if (deform) handle.deformTube({
+          rest: { normal: [0, 0, 1], segments: [{ kind: "line", start: [0, 0, 0], end: [3, 0, 0] }] },
+          path: { normal: [0, 0, 1], segments: [{ kind: "line", start: [0, 0, 2], end: [0, 3, 2] }] },
+          maxSegmentLength: 1000
+        });
+      } } }
+    });
+    for (const item of runtime.displayRecords) applyDisplayRecordTransform(THREE, item);
+    applyViewerPartVisualState(THREE, runtime.displayRecords, { showEdges: true, ...selection });
+    scene.syncSurfaceInstances();
+    assert.equal(record.surfaceInstance.set, set, "the unaffected majority and original slots survive direct passes");
+    set.object.getMatrixAt(slot, matrix);
+  };
+  pass();
+  assert.deepEqual(matrix.elements, record.mesh.matrix.elements);
+  assert.equal(record.material.visible, false);
+  const color = new THREE.Color();
+  set.object.getColorAt(slot, color);
+  assert.equal(color.getHexString(), "123abc", "pose color reaches the instance upload");
+  for (const settings of [{ visible: false }, { opacity: 0.4 }, { mirror: true }, { selection: { selectedPartIds: ["o0"] } }, { selection: { hiddenPartIds: ["o0"] } }]) {
+    pass(settings);
+    assert.deepEqual(matrix.elements, zero.elements);
+    assert.equal(record.material.visible, true);
+    pass();
+    assert.deepEqual(matrix.elements, record.mesh.matrix.elements, "reactivation uploads the current pose");
+  }
+  record.mesh.userData.dxfHiddenForCurved = true;
+  pass();
+  assert.equal(record.mesh.visible, false);
+  assert.deepEqual(matrix.elements, zero.elements);
+  delete record.mesh.userData.dxfHiddenForCurved;
+  pass();
+
+  for (const item of runtime.displayRecords) {
+    applyViewerMaterialSettings(THREE, item, { ...scene.runtime.materialSettings, envMapIntensity: 3.25 });
+  }
+  scene.syncSurfaceInstances();
+  assert.equal(record.surfaceInstance.set, set);
+  assert.equal(set.object.material.envMapIntensity, 3.25, "material-only reflection changes reach the shared pass");
+
+  syncRuntimeStepClipPlane(runtime, { enabled: true, axis: "x", offsets: { x: 0.25 } });
+  assert.equal(set.object.material.clippingPlanes.length, 1, "clip-only update reaches the shared draw");
+  assert.equal(set.object.material.clippingPlanes[0].constant, record.material.clippingPlanes[0].constant);
+  syncRuntimeStepClipPlane(runtime, { enabled: false });
+  assert.equal(set.object.material.clippingPlanes, null);
+
+  record.gpuTubeDeformationAllowed = false;
+  pass({ deform: true });
+  assert.ok(record.tubeDeformationState.active);
+  assert.deepEqual(matrix.elements, zero.elements);
+  assert.equal(record.material.visible, true);
+  pass();
+  assert.deepEqual(matrix.elements, zero.elements, "a previously bent record stays on its private geometry");
+  scene.dispose();
+  scene.syncSurfaceInstances();
+  assert.equal(scene.runtime.cadSurfaceInstanceSets.size, 0, "late external sync cannot revive a disposed scene");
 });
 
 test("update({ source }) rebuilds when the build settings change with it", () => {

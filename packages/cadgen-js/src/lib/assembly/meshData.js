@@ -352,7 +352,33 @@ function boundsForTransformedBox(box, matrix) {
   return Number.isFinite(min[0]) ? { min, max } : (box || null);
 }
 
-export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid) {
+// Process-local composition ownership. Reuse is explicitly scoped to the same
+// immutable descriptor; a new revision's placement/appearance gets fresh rows.
+// Weak keys cannot keep an obsolete composition or its component arrays alive.
+const composedPackageInputs = new WeakMap();
+
+function equalVector(left, right) {
+  return left === right || (Array.isArray(left) && Array.isArray(right)
+    && left.length === right.length && left.every((value, index) => value === right[index]));
+}
+
+function equalBounds(left, right) {
+  return left === right || Boolean(left && right
+    && equalVector(left.min, right.min) && equalVector(left.max, right.max));
+}
+
+function equalAssemblyLeaf(previous, part) {
+  return previous.componentId === part?.componentId
+    && previous.color === part?.color
+    && equalVector(previous.transform, part?.transform)
+    && equalBounds(previous.bounds, part?.bounds)
+    && equalBounds(previous.sourceBounds, part?.sourceBounds);
+}
+
+export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid, { previous = null } = {}) {
+  const priorInputs = previous && composedPackageInputs.get(previous);
+  const reuse = priorInputs?.descriptor === descriptor ? priorInputs : null;
+  const partsByOccurrence = new Map();
   const occurrences = Array.isArray(descriptor?.occurrences) ? descriptor.occurrences : [];
   if (!occurrences.length) {
     throw new Error("Assembly tree has no occurrences");
@@ -393,6 +419,13 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid)
 
   const parts = [];
   for (const { occurrence, componentMeshData, sourceParts } of placements) {
+    const prior = reuse?.partsByOccurrence.get(occurrence);
+    if (prior?.part.sourceMesh === componentMeshData && prior.sourceParts === sourceParts
+      && prior.lodLevel === componentMeshData.lodLevel) {
+      parts.push(prior.part);
+      partsByOccurrence.set(occurrence, prior);
+      continue;
+    }
     // Component geometry loads in CAD units (mm) and the occurrence transform is authored in
     // mm, so it places each (local-frame) component directly. Applied as the Mesh matrix.
     const matrix = toTransformArray(occurrence?.transform);
@@ -436,7 +469,7 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid)
 
     const bounds = boundsForTransformedBox(componentMeshData?.bounds, matrix);
     const displayName = String(occurrence?.name || occurrenceId || cid || meshPartId(sourceParts[0])).trim();
-    parts.push({
+    const part = {
       id: occurrenceId || cid,
       occurrenceId: occurrenceId || cid,
       componentId: cid,
@@ -466,18 +499,23 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid)
       sourcePartRanges,
       edgeIndexOffset: 0,
       edgeIndexCount: 0
-    });
+    };
+    parts.push(part);
+    partsByOccurrence.set(occurrence, { part, sourceParts, lodLevel: componentMeshData.lodLevel });
   }
 
-  return {
+  const assemblyRoot = buildPackageAssemblyRoot(descriptor, parts, reuse ? previous.assemblyRoot : null);
+  const composed = {
     vertices,
     indices,
     normals,
     colors: new Float32Array(0),
     edge_indices: new Uint32Array(0),
     parts,
-    assemblyRoot: buildPackageAssemblyRoot(descriptor, parts),
-    bounds: mergeBounds(parts.map((part) => part.bounds)),
+    assemblyRoot,
+    bounds: assemblyRoot && assemblyRoot === previous?.assemblyRoot
+      ? previous.bounds
+      : mergeBounds(parts.map((part) => part.bounds)),
     missingComponentIds,
     // Each occurrence is placed by its transform at render time over shared component
     // geometry (each part carries its own sourceMesh above); nothing here is baked into
@@ -485,16 +523,28 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid)
     partTransformsBaked: false,
     has_source_colors: false
   };
+  composedPackageInputs.set(composed, { descriptor, partsByOccurrence });
+  return composed;
 }
 
 // The package descriptor records a flat list of occurrences (the assembly hierarchy is collapsed
 // at emit time), so synthesize a one-level assembly tree — a root node whose children are the
 // placed parts — so the viewer's structure tree is expandable and every occurrence is selectable.
-function enrichPackageAssemblyNode(node, partById) {
+function enrichPackageAssemblyNode(node, partById, previous = null) {
   const rawChildren = Array.isArray(node?.children) ? node.children : [];
-  const children = rawChildren.map((child) => enrichPackageAssemblyNode(child, partById));
+  const children = rawChildren.length
+    ? rawChildren.map((child, index) => enrichPackageAssemblyNode(child, partById, previous?.children?.[index]))
+    : previous?.children || [];
   const nodeType = String(node?.nodeType || "").trim() || (children.length ? "subassembly" : "part");
   const id = String(node?.id || "").trim();
+  // Tessellation changes triangle ranges and buffers, but usually leaves tree
+  // metadata identical. Preserve those objects (and their leaf-ID arrays) so
+  // tree consumers do not allocate a new full assembly on every LOD swap.
+  if (previous && previous.children.length === children.length
+    && children.every((child, index) => child === previous.children[index])
+    && (nodeType !== "part" || equalAssemblyLeaf(previous, partById.get(id)))) {
+    return previous;
+  }
   const name = String(node?.name || node?.label || id).trim();
   const declaredLeafIds = Array.isArray(node?.leafPartIds)
     ? node.leafPartIds.map((leafId) => String(leafId || "").trim()).filter(Boolean)
@@ -522,7 +572,7 @@ function enrichPackageAssemblyNode(node, partById) {
   return out;
 }
 
-function buildPackageAssemblyRoot(descriptor, parts) {
+function buildPackageAssemblyRoot(descriptor, parts, previous = null) {
   // A single-component part has no internal assembly structure: it renders as a topology
   // tree (solids/faces/edges) exactly like a monolithic STEP part. Returning null lets
   // buildStepTreeRoot fall through to buildStepPartRoot instead of showing a spurious
@@ -540,5 +590,5 @@ function buildPackageAssemblyRoot(descriptor, parts) {
   if (!descriptorRoot || typeof descriptorRoot !== "object") {
     throw new Error("Assembly tree has no assembly.root hierarchy");
   }
-  return enrichPackageAssemblyNode(descriptorRoot, partById);
+  return enrichPackageAssemblyNode(descriptorRoot, partById, previous);
 }
