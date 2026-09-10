@@ -26,6 +26,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { isCompletePublication } from "./completion.mjs";
 
 const PLAYWRIGHT_FROM = process.env.PLAYWRIGHT_FROM
   || "/Users/jakefitzgerald/robots/text-to-cad/apps/viewer/node_modules/playwright";
@@ -63,6 +64,27 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 const mib = (bytes) => (Number(bytes) || 0) / (1024 * 1024);
 const fmt = (bytes) => `${mib(bytes).toFixed(1)} MiB`;
+
+// A blocked renderer cannot execute page.evaluate, including its own timers.
+// Bound probes from Node so an OOM/stalled main thread cannot turn a bounded
+// milestone into an unbounded wait. Promise.race also observes late rejection.
+async function boundedProbe(promise, timeoutMs) {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          const error = new Error("Renderer probe timed out");
+          error.code = "RENDERER_PROBE_TIMEOUT";
+          reject(error);
+        }, Math.max(1, timeoutMs));
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ---------------------------------------------------------------- in-page probe
 // Injected before any client code runs. Two jobs: instrument the WebGL buffer
@@ -214,14 +236,18 @@ function initProbe() {
   // Lever C ramp: the new client sets window.__cadMeshCost on every publish.
   // Record each distinct value with the time it appeared.
   window.__meshCostRamp = [];
-  let lastSeen = "";
+  const rampState = { lastKey: "", seenPublication: false };
   setInterval(() => {
     const cost = window.__cadMeshCost;
-    if (!cost) return;
-    const key = JSON.stringify(cost);
-    if (key === lastSeen) return;
-    lastSeen = key;
-    window.__meshCostRamp.push({ atMs: Math.round(performance.now()), cost });
+    if (!cost && !rampState.seenPublication) return;
+    const key = cost ? JSON.stringify(cost) : "null";
+    if (key === rampState.lastKey) return;
+    rampState.lastKey = key;
+    if (cost) rampState.seenPublication = true;
+    window.__meshCostRamp.push({
+      atMs: Math.round(performance.now()),
+      cost: cost ? JSON.parse(JSON.stringify(cost)) : null,
+    });
   }, 100);
 
   // Progress: the LOD scheduler's only public event; also the client's stage text.
@@ -344,10 +370,13 @@ async function runOnce(runIndex) {
     firstGeometryPublishMs: null,
     firstGeometryFrameMs: null,
     renderMemoryProbe: null,
+    sceneSync: null,
     meshCost: null,
+    lastPublishedMeshCost: null,
     meshCostRamp: [],
     draw: null,
     pageErrors: [],
+    responseFailures: [],
     inPageErrors: []
   };
   const peakRss = record.peakRss;
@@ -358,6 +387,11 @@ async function runOnce(runIndex) {
     if (!args.lod) await page.addInitScript(() => { window.__CAD_VIEWER_LOD__ = false; });
     page.on("crash", () => { record.crashed = true; record.crashMessage = "page crash (renderer gone)"; });
     page.on("pageerror", (error) => { record.pageErrors.push(String(error?.message || error)); });
+    page.on("response", (response) => {
+      if (response.status() >= 400) {
+        record.responseFailures.push({ url: response.url(), status: response.status() });
+      }
+    });
     page.on("console", (message) => {
       if (message.type() === "error") record.pageErrors.push(`console: ${message.text().slice(0, 300)}`);
     });
@@ -365,16 +399,17 @@ async function runOnce(runIndex) {
     sampler = setInterval(() => { mergePeak(peakRss, sampleProcesses(profileDir)); }, args.sampleMs);
 
     const started = Date.now();
-    await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 120000 });
+    await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: Math.min(120000, args.timeoutMs) });
 
-    // Poll the client's render seam (window.__cadModelPlacement.modelKey) rather
-    // than a fixed settle: the full hand can tessellate for minutes.
+    // Poll the current complete publication rather than just visible geometry:
+    // the hand can remain partially visible after admission fails or retries.
     const deadline = started + args.timeoutMs;
     let stage = "";
+    let lastProgress = "";
     while (Date.now() < deadline && !record.crashed) {
       let probe = null;
       try {
-        probe = await page.evaluate(() => ({
+        probe = await boundedProbe(page.evaluate(() => ({
           modelKey: (window.__cadModelPlacement && window.__cadModelPlacement.modelKey) || "",
           stage: (document.body?.innerText || "").split("\n").filter((line) =>
             /loading|building|componen|compil|render/i.test(line)).slice(0, 3).join(" | "),
@@ -383,12 +418,25 @@ async function runOnce(runIndex) {
           errors: [...(window.__cadMemErrors || [])],
           lodEvents: (window.__lodEvents || []).length,
           meshCost: window.__cadMeshCost ? JSON.parse(JSON.stringify(window.__cadMeshCost)) : null,
-          rampLength: (window.__meshCostRamp || []).length,
+          ramp: window.__meshCostRamp || [],
+          renderMemoryProbe: typeof window.__cadRenderMemoryProbe === "function"
+            ? window.__cadRenderMemoryProbe() : null,
+          sceneSync: (() => {
+            const entries = window.__cadSceneSync?.entries || [];
+            const last = entries[entries.length - 1];
+            return last ? { ...last } : null;
+          })(),
+          memoryPolicy: typeof window.__cadViewerMemoryPolicySnapshot === "function"
+            ? window.__cadViewerMemoryPolicySnapshot() : null,
           draw: window.__drawStats ? { ...window.__drawStats } : null,
           firstGeometry: window.__firstGeometry ? { ...window.__firstGeometry } : null,
           paint: performance.getEntriesByType("paint").map((entry) => [entry.name, entry.startTime])
-        }));
+        })), deadline - Date.now());
       } catch (error) {
+        if (error?.code === "RENDERER_PROBE_TIMEOUT") {
+          record.probeTimedOut = true;
+          break;
+        }
         const message = String(error?.message || error);
         if (/crash|Target closed|Execution context was destroyed|detached/i.test(message)) {
           record.crashed = true;
@@ -400,11 +448,21 @@ async function runOnce(runIndex) {
       if (probe.heap) record.heap = probe.heap;
       if (probe.gpu) record.gpu = probe.gpu;
       if (probe.errors?.length) record.inPageErrors = probe.errors;
+      record.meshCost = probe.meshCost || null;
       if (probe.meshCost) {
-        record.meshCost = probe.meshCost;
+        record.lastPublishedMeshCost = probe.meshCost;
         if (record.timeToFirstPublishMs === null) record.timeToFirstPublishMs = Date.now() - started;
+        const progress = `${probe.meshCost.loadedComponents}/${probe.meshCost.totalComponents}`;
+        if (progress !== lastProgress) {
+          lastProgress = progress;
+          process.stderr.write(`  progress ${progress} at ${Date.now() - started} ms\n`);
+        }
       }
       if (probe.draw) record.draw = probe.draw;
+      record.meshCostRamp = probe.ramp || [];
+      record.renderMemoryProbe = probe.renderMemoryProbe;
+      record.sceneSync = probe.sceneSync;
+      record.memoryPolicy = probe.memoryPolicy;
       if (probe.firstGeometry) {
         record.firstGeometryPublishMs = probe.firstGeometry.firstGeometryPublishMs;
         record.firstGeometryFrameMs = probe.firstGeometry.firstGeometryFrameMs;
@@ -416,29 +474,31 @@ async function runOnce(runIndex) {
           || (probe.paint || [])[0];
         if (first) record.timeToFirstPaintMs = Math.round(first[1]);
       }
-      // Lever C publishes partial geometry, and __cadModelPlacement appears on
-      // the FIRST publish. "loaded" must therefore mean the LAST publish:
-      // meshCost.final (new client) or simply modelKey (old client, one publish).
-      const fullyPublished = probe.meshCost
-        ? (probe.meshCost.final === true
-          || (Number(probe.meshCost.loadedComponents) > 0
-            && Number(probe.meshCost.loadedComponents) === Number(probe.meshCost.totalComponents)))
-        : true;
-      if (probe.modelKey && fullyPublished) {
+      if (isCompletePublication(probe)) {
         record.loaded = true;
         record.timeToLoadedMs = Date.now() - started;
+        break;
+      }
+      // Initial-load limitations are published only after admission/recovery
+      // fails. Once admitted work drains, waiting cannot complete this model.
+      if (probe.memoryPolicy?.lastLimitation && probe.memoryPolicy.reservationCount === 0) {
+        record.loadFailure = probe.memoryPolicy.lastLimitation;
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
     if (!record.loaded && !record.crashed) {
-      record.crashMessage = `timeout after ${args.timeoutMs} ms (stage: ${stage || "unknown"})`;
+      record.crashMessage = record.loadFailure
+        ? `memory admission failed for ${record.loadFailure.cid || record.loadFailure.label || "component"}`
+        : record.probeTimedOut
+        ? `renderer probe stopped responding (stage: ${stage || "unknown"})`
+        : `timeout after ${args.timeoutMs} ms (stage: ${stage || "unknown"})`;
     }
-    if (record.loaded) {
+    if (!record.crashed) {
       // Let the first frames render, then take the settled reading.
-      await new Promise((resolve) => setTimeout(resolve, 5000));
+      if (record.loaded) await new Promise((resolve) => setTimeout(resolve, 5000));
       try {
-        const settled = await page.evaluate(() => ({
+        const settled = await boundedProbe(page.evaluate(() => ({
           heap: { ...window.__heapStats },
           gpu: { ...window.__gpuBufferStats },
           lodEvents: (window.__lodEvents || []).length,
@@ -450,15 +510,22 @@ async function runOnce(runIndex) {
           // and render-asset cache stats.
           renderMemoryProbe: typeof window.__cadRenderMemoryProbe === "function"
             ? JSON.parse(JSON.stringify(window.__cadRenderMemoryProbe()))
-            : null
-        }));
+            : null,
+          sceneSync: (() => {
+            const entries = window.__cadSceneSync?.entries || [];
+            const last = entries[entries.length - 1];
+            return last ? { ...last } : null;
+          })(),
+        })), 2000);
         record.heap = settled.heap;
         record.gpu = settled.gpu;
         record.lodEventCount = settled.lodEvents;
-        if (settled.meshCost) record.meshCost = settled.meshCost;
+        record.meshCost = settled.meshCost || null;
+        if (settled.meshCost) record.lastPublishedMeshCost = settled.meshCost;
         record.meshCostRamp = settled.ramp || [];
         record.draw = settled.draw;
         record.renderMemoryProbe = settled.renderMemoryProbe;
+        record.sceneSync = settled.sceneSync;
         if (settled.firstGeometry) {
           record.firstGeometryPublishMs = settled.firstGeometry.firstGeometryPublishMs;
           record.firstGeometryFrameMs = settled.firstGeometry.firstGeometryFrameMs;
@@ -470,7 +537,7 @@ async function runOnce(runIndex) {
       // fixed by holding less — different work. A forced collection, then a
       // settle for the worker isolates and the allocator to give memory back,
       // reads the second number.
-      try {
+      if (record.loaded) try {
         const cdp = await page.context().newCDPSession(page);
         await cdp.send("HeapProfiler.enable").catch(() => {});
         await cdp.send("HeapProfiler.collectGarbage");
@@ -511,12 +578,16 @@ for (let run = 1; run <= args.runs; run += 1) {
       ? `  after GC   renderer=${fmt(record.afterGc.rss.renderer?.rssBytes)} (largest ${fmt(record.afterGc.rss.renderer?.largestPidBytes)}) gpu-process=${fmt(record.afterGc.rss["gpu-process"]?.rssBytes)} all=${fmt(record.afterGc.rss.all?.rssBytes)} heap=${fmt(record.afterGc.heapUsed)}`
       : "  after GC   (not read)",
     `  lod events=${record.lodEventCount ?? "n/a"} stage="${record.lastStageText}"`,
-    `  first publish=${record.timeToFirstPublishMs ?? "n/a"} ms  publishes=${record.meshCostRamp.length}  meshCost=${record.meshCost ? JSON.stringify(record.meshCost) : "ABSENT (old client)"}`,
+    `  first publish=${record.timeToFirstPublishMs ?? "n/a"} ms  publications/transitions=${record.meshCostRamp.length}  current meshCost=${record.meshCost ? JSON.stringify(record.meshCost) : "null"}`,
+    !record.meshCost && record.lastPublishedMeshCost
+      ? `  last published meshCost=${JSON.stringify(record.lastPublishedMeshCost)}`
+      : "",
     record.meshCostRamp.length
       ? `  ramp: ${record.meshCostRamp.slice(0, 4).map((step) => `${step.atMs}ms:${JSON.stringify(step.cost).slice(0, 110)}`).join("  ")}${record.meshCostRamp.length > 4 ? ` ... (+${record.meshCostRamp.length - 4})` : ""}`
       : "",
     `  first geometry: publish=${record.firstGeometryPublishMs ?? "n/a"} ms  ON SCREEN=${record.firstGeometryFrameMs ?? "n/a"} ms (from navigation start)`,
     `  renderMemoryProbe=${record.renderMemoryProbe ? JSON.stringify(record.renderMemoryProbe) : "ABSENT"}`,
+    `  final sceneSync=${record.sceneSync ? JSON.stringify(record.sceneSync) : "ABSENT"}`,
     `  draw calls total=${record.draw?.total ?? "n/a"} per-frame last=${record.draw?.lastFrame ?? "n/a"} peak=${record.draw?.peakFrame ?? "n/a"} median frame=${record.draw?.medianFrameMs?.toFixed?.(1) ?? "n/a"} ms`,
     record.inPageErrors.length ? `  in-page errors: ${record.inPageErrors.slice(0, 3).join(" ;; ")}` : "",
     record.pageErrors.length ? `  page errors: ${record.pageErrors.slice(0, 3).join(" ;; ")}` : ""

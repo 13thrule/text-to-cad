@@ -1,0 +1,35 @@
+{
+  "date": "2026-09-10",
+  "kind": "kernel-free-component-route-microprobe",
+  "store": "models/tmp/performance-hand-20260910/store",
+  "tree": "cf94256ded3999da22f302702cc272c8b2ff87eda3ea1ae532191d53ab089645",
+  "components": 866,
+  "occurrences": 3259,
+  "iterations": 5,
+  "before": {
+    "implementation": "descriptor_for_view per component request",
+    "descriptorMs": 41.092,
+    "virtualPathMs": [
+      38.172,
+      37.533,
+      51.733,
+      36.989,
+      47.08
+    ]
+  },
+  "after": {
+    "implementation": "linked tree component resolver",
+    "descriptorReferenceMs": 38.719,
+    "virtualPathMs": [
+      12.044,
+      11.907,
+      11.597,
+      11.715,
+      11.662
+    ]
+  },
+  "notes": [
+    "Separate Python interpreter invocations on the same host and store with a warm filesystem cache; no browser or CAD kernel work.",
+    "assembly.json continues to use descriptor_for_view; component requests walk tree component/link objects only."
+  ]
+}

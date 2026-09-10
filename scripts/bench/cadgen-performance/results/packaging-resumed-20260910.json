@@ -1,0 +1,90 @@
+{
+  "sourceFingerprint": "eb87cc22b0d4e6d1405512fa87223ba47095506705ac002736771f4a2d3fbc0c",
+  "wheelSha256": "2fe208132903e51561080863097b00bc186e6fe428b14bd28d87ec04858451cb",
+  "runtimeFiles": 28,
+  "exactRuntimePathsAndBytes": true,
+  "cleanSetuptoolsBuildStaging": true,
+  "runtimeHashes": {
+    "cadgen/_runtime/browser/THIRD_PARTY_LICENSES.txt": "f3f2e2341b55e27c390f37f08adb0e8ff7ddc1d9b499fdc18253f62270726407",
+    "cadgen/_runtime/browser/render.html": "159ca5781ae576a4a14e005391ab072d271c02a4424ef7adb4b22962c560eac4",
+    "cadgen/_runtime/browser/snapshot-render.js": "b7bfc49464c0895a3d9cd29e748f599fcbdd41f13bf30858a0b70673fd4f76f6",
+    "cadgen/_runtime/node/THIRD_PARTY_LICENSES.txt": "f3f2e2341b55e27c390f37f08adb0e8ff7ddc1d9b499fdc18253f62270726407",
+    "cadgen/_runtime/node/dxf-mesh.mjs": "6ac632a9aea7ff6e9ecf126485e9bcb73ae3d73511dcbd8d7c8caabf8d1321bd",
+    "cadgen/_runtime/node/mesh-export.mjs": "4e02ded7850e8fdac88141208bbcafd43bc487e583f61d61d39c35f8c448c9fd",
+    "cadgen/_runtime/node/package.json": "5a065fe7d8eab2a582f428e11c2ea63aaf70607a54f69cfd5c711b5c53d91b32",
+    "cadgen/_runtime/viewer/index.html": "3b335884b41d84e67984c6fc8d6aa69013d5966ecb5ba3b1e7602c1c51e286ab",
+    "cadgen/_runtime/viewer/assets/BufferGeometryUtils-BFvqAzeR.js": "f058c2a3ed01011532fdfbb835d5955db7a649b0783dcc034aba83c180b8e1d3",
+    "cadgen/_runtime/viewer/assets/GLTFLoader-CFJOvYtb.js": "c29fa0dab5115fff5d9713ef712535a70de6dba944f2b1c9405818c934eb0895",
+    "cadgen/_runtime/viewer/assets/STLLoader-CPPzmiED.js": "b206cea7fa6942c461b9a63b12e5d07cc6bb0d6e1beacbde4f10ec026578e6f8",
+    "cadgen/_runtime/viewer/assets/favicon-C-31TkWB.ico": "9585f3b5c67ad0f4c202daea10046dd6aacfd3ef29a06cdb7be17b0839d9f472",
+    "cadgen/_runtime/viewer/assets/glbMeshWorker-BKAG73hs.js": "fe763ffd228d6cdc8ea2784f8726b14e816d87ef4b5677b4d6be8ea5d6f04c0f",
+    "cadgen/_runtime/viewer/assets/index-B64l8dUG.js": "ad9a014cd3af0eee52bf774f61d551c9e64595de509760979fe272c20b93fd6f",
+    "cadgen/_runtime/viewer/assets/index-DxwPzKOq.css": "eca786b93de07badfde365fb134b5500c3684b6cad309c270fa1215b6cde9c08",
+    "cadgen/_runtime/viewer/assets/meshopt_decoder-BYaRp5mS.js": "c1ef051ab5639fbd2532f542af5dd4f0b885f6564dea2f118887d076d0dd0a3a",
+    "cadgen/_runtime/viewer/assets/parseSdf-Dd-Wh0vd.js": "499382144689717c36ec8c3770c84079c9abdf81facd1d69bd55981a311a2442",
+    "cadgen/_runtime/viewer/assets/parseSrdf-Bbt1IWYI.js": "6b5b9a0d6dc38d9674346f0145a3790ab2ab549607951f0c84e5beab0a46c09a",
+    "cadgen/_runtime/viewer/assets/parseUrdf-rDKHPRUc.js": "899447f952264e939e161e8571ba02a87e83ef9c136ba6543dda67d672aec0ed",
+    "cadgen/_runtime/viewer/assets/stlMeshWorker-k-Bj4GhT.js": "39dead3f3c1dd36a37fbeaca3cee4c33ecbd56dec066d862d9d060ad9b98281a",
+    "cadgen/_runtime/viewer/assets/surfMeshData-B8vUanjN.js": "94b05fe10061ee3a526e4e9f9aca0191edf28f7ba44c5e5045899c44bbe1048a",
+    "cadgen/_runtime/viewer/assets/surfSelectorBundle-erh40oKn.js": "25e4643da51fda377cd14f2c342a41fbae10647a8f6cfdef4ddd8ef70ab04763",
+    "cadgen/_runtime/viewer/assets/surfWorker-Bd1gktSL.js": "468897abe830ddd98809830bca54b720d4044a9e4ea88caf787b04e3aa11eb66",
+    "cadgen/_runtime/viewer/assets/three.module-CGr_ue6n.js": "299194e31d7859e9d28513346a10056a30b4e102abd8e1a8b949ea92d7fca9c7",
+    "cadgen/_runtime/viewer/assets/vendor-icons-C2qOLVwp.js": "e5f861b39c79eb7432d68c282116deea64e4f327a6745ca80801940a21c2fbbc",
+    "cadgen/_runtime/viewer/assets/vendor-react-7jnMmQ9s.js": "fa6a12da3a2e9600412b2b725f82fb41d18298624fbe6f2c4a5723bab3427e13",
+    "cadgen/_runtime/viewer/assets/vendor-three-gpkAaKBT.js": "0129e7429839db0995880be7082680433756d0120a72461ce6967dc9058274a7",
+    "cadgen/_runtime/viewer/assets/vendor-ui-BsxuH3Zm.js": "4f11950564551be03bf0fcc9b2042c987ca4418537360009b1ea94b3f4dc0efd"
+  },
+  "installedPackage": "/private/tmp/cadgen-performance-20260910/installed/venv/lib/python3.13/site-packages/cadgen/__init__.py",
+  "coldBuildThenWarmHit": true,
+  "installedCommandsPassed": 6,
+  "stepSidecarSchema": 7,
+  "snapshot": {
+    "ok": true,
+    "files": [
+      {
+        "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-performance/hinge.png",
+        "kind": "png",
+        "view": "iso",
+        "input": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-performance/hinge.step",
+        "tree": "e6ea7debb891f80729dc137260f49891afc23fd58d26d4f868ce0ab8ee03c326",
+        "frames": 0,
+        "fps": 0,
+        "seconds": 0.0
+      }
+    ],
+    "parts": [],
+    "warnings": [],
+    "timings": {
+      "job_count": 1,
+      "total_ms": 1305.5103751830757
+    },
+    "debug": []
+  },
+  "video": {
+    "ok": true,
+    "files": [
+      {
+        "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-performance/hinge.mp4",
+        "kind": "mp4",
+        "view": "iso",
+        "input": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-performance/hinge.step",
+        "tree": "e6ea7debb891f80729dc137260f49891afc23fd58d26d4f868ce0ab8ee03c326",
+        "frames": 3,
+        "fps": 10,
+        "seconds": 0.3
+      }
+    ],
+    "parts": [],
+    "warnings": [],
+    "timings": {
+      "job_count": 1,
+      "total_ms": 1062.7450831234455
+    },
+    "debug": []
+  },
+  "matchingCommittedRuntime": {
+    "commit": "d14d7f992ff675330e8429fd2e4a60e95574f11e",
+    "sourceFingerprint": "eb87cc22b0d4e6d1405512fa87223ba47095506705ac002736771f4a2d3fbc0c",
+    "verifiedAfterCommit": true
+  }
+}

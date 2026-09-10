@@ -1,0 +1,475 @@
+{
+  "coldImport": {
+    "indexedTreeAfterPublication": "60a4cbb4cdf6eb150373b2c62d7f4872798b1bec31713d1a2e54734170c26258",
+    "materialPresent": false,
+    "method": "Raw text STEP load into an empty store; scene_to_build123d_compound then build_tree_from_compound (same imported-scene packaging path). No Python author source, model record or generated tree consulted.",
+    "tree": {
+      "assembly": {
+        "root": {
+          "children": [
+            {
+              "children": [],
+              "id": "o1.1",
+              "leafPartIds": [
+                "o1.1"
+              ],
+              "name": "=>[0:1:1:2]",
+              "nodeType": "part"
+            }
+          ],
+          "id": "o1",
+          "leafPartIds": [
+            "o1.1"
+          ],
+          "name": "=>[0:1:1:2]",
+          "nodeType": "assembly"
+        }
+      },
+      "bbox": {
+        "max": [
+          2.0,
+          3.0,
+          4.0
+        ],
+        "min": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "components": {
+        "e12ffa49f0b8a1fc": {
+          "brep": "31c32d463fb4a3c439fdecd86d80b2d34d84042258df936dd3c15923cc629550",
+          "contentHash": "e12ffa49f0b8a1fc815c4fb3856a5b2284974daac116e4b8228a15b74bdedb2d",
+          "surf": "ab87125132efae310aa20e4ff3f3bfefa9c64a47a58dd3cdfe5d089bd9556f8a"
+        }
+      },
+      "entryKind": "part",
+      "label": "box",
+      "links": [],
+      "occurrences": [
+        {
+          "color": [
+            0.8,
+            0.7,
+            0.6,
+            1.0
+          ],
+          "component": "e12ffa49f0b8a1fc",
+          "id": "o1.1",
+          "name": "=>[0:1:1:2]",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      ],
+      "stats": {
+        "linkCount": 0,
+        "occurrenceCount": 1
+      },
+      "units": "mm"
+    },
+    "treeHash": "60a4cbb4cdf6eb150373b2c62d7f4872798b1bec31713d1a2e54734170c26258"
+  },
+  "command": "PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/cadgen/src /Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python tmp/material-document-identity-probe.py",
+  "comparison": {
+    "coldImportEqualsGeneratedA": false,
+    "coldImportEqualsGeneratedB": false,
+    "exactStepBytesEqual": true,
+    "generatedSavedComponentsEqual": true,
+    "generatedSavedTreeChangedTopLevelFields": [
+      "occurrences"
+    ],
+    "generatedSavedTreesEqual": false,
+    "previewTreesEqual": false,
+    "sameDocumentIndexAfterBothPublications": "b1cd6579066a68dbcc55cc410b2624fac25a20fc0f63b1379098a783f3009775",
+    "stepSha256Equal": true
+  },
+  "fixtureSource": "shape = Solid.make_box(2, 3, 4)\nshape.label = 'box'\nshape.color = Color(.8, .7, .6, 1)\nshape.cad_material = material\nbuild_tree_through_step(shape, output, root_name='box', on_preview=callback)\n",
+  "limitations": [
+    "A direct low-level generated STEP publication probe, not a full decorator/daemon integration test.",
+    "Only roughness and metalness vary; opacity/clearcoat fields are source-inspected but not individually probed.",
+    "Cold-import tree may differ in additional metadata; the generated A/B comparison isolates occurrence.material exactly.",
+    "No product source was edited for this diagnostic; no large assembly, browser or timed benchmark ran."
+  ],
+  "metadata": {
+    "cpu": "unavailable",
+    "cpuCount": 10,
+    "environment": {},
+    "gitHead": "9bcb5de052fd737652258a186b00e8c5557b06b2",
+    "implementationFiles": {
+      "packages/cadgen/src/cadgen/_internal/component_package.py": "d20d7f76cf8b9b99ca2cc65cb72e10fec9ff4efd649953d759c8170f7774b005",
+      "packages/cadgen/src/cadgen/_internal/source_sidecar.py": "ad76a19bc450fac3067bfb4bf7802cbb4074df20449d284e8d5683e60aeaa1b9",
+      "packages/cadgen/src/cadgen/_internal/step_scene_loader.py": "974e46bf4a67d22876c746bf2d892c50abdd1534a4121e99ecc3771d80240048",
+      "packages/cadgen/src/cadgen/_internal/step_scene_mesh.py": "afd75f88e84a80471d2fd9671d622d73a276736d4460692a71d93282d5977bfe",
+      "packages/cadgen/src/cadgen/step_export.py": "ded8734749d0c2aefffc1e6b8b92237fef3ea381ef468c8931ae3fc06b9934ab",
+      "packages/cadgen/src/cadgen/store/build.py": "f0a5242f1f99060df24b031b638db77baf39f3281dfc1ccbd1271b680ca05deb",
+      "packages/cadgen/src/cadgen/store/materialize.py": "7844344363b26373107e40fcc7e342a2472bcaf703419d5950940ce2783e708a",
+      "packages/cadgen/src/cadgen/store/records.py": "402c2bdb4050cecc325ba754b2622cf40188b9dd51aa4ff70719abad8606750e"
+    },
+    "machine": "arm64",
+    "node": "v26.7.0",
+    "physicalMemoryBytes": "unavailable",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "purpose": "Functional correctness diagnostic, not a performance measurement",
+    "python": "3.13.13 (main, Jun  2 2026, 22:33:40) [Clang 22.1.3 ]",
+    "pythonExecutable": "/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python",
+    "sourceFingerprint": "cbd6d3a33a5e4db8b2ca3f37a50ff4c3a24c1c376a1a58ea11f5c409d5878066",
+    "timeUtc": "2026-09-10T07:30:34.417918+00:00",
+    "versions": {
+      "build123d": "0.11.1",
+      "cadgen": "0.5.1",
+      "cadquery-ocp": "7.9.3.1.1",
+      "numpy": "2.5.2"
+    }
+  },
+  "probeSource": "\"\"\"Tiny saved-document identity diagnostic; run from the repository root.\"\"\"\nfrom __future__ import annotations\n\nimport hashlib\nimport importlib.util\nimport json\nimport os\nfrom pathlib import Path\nimport tempfile\n\nREPO = Path.cwd().resolve()\nRESULT = REPO / \"scripts/bench/cadgen-performance/results/material-document-identity-20260910.json\"\nCOMMON = REPO / \"scripts/bench/cadgen-performance/common.py\"\nspec = importlib.util.spec_from_file_location(\"cadgen_benchmark_common\", COMMON)\ncommon = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(common)\nmetadata = common.metadata()\npaths = (\n    \"packages/cadgen/src/cadgen/store/build.py\",\n    \"packages/cadgen/src/cadgen/store/materialize.py\",\n    \"packages/cadgen/src/cadgen/store/records.py\",\n    \"packages/cadgen/src/cadgen/_internal/component_package.py\",\n    \"packages/cadgen/src/cadgen/_internal/source_sidecar.py\",\n    \"packages/cadgen/src/cadgen/_internal/step_scene_loader.py\",\n    \"packages/cadgen/src/cadgen/_internal/step_scene_mesh.py\",\n    \"packages/cadgen/src/cadgen/step_export.py\",\n)\nmetadata[\"implementationFiles\"] = {\n    path: hashlib.sha256((REPO / path).read_bytes()).hexdigest() for path in paths\n}\nmetadata[\"purpose\"] = \"Functional correctness diagnostic, not a performance measurement\"\noriginal_cache = os.environ.get(\"CADGEN_CACHE_DIR\")\nscratch_base = REPO / \"models/tmp\"\nscratch_base.mkdir(parents=True, exist_ok=True)\nruns = []\nstep_payloads = []\ntry:\n    with tempfile.TemporaryDirectory(prefix=\"material-document-identity-\", dir=scratch_base) as tmp:\n        scratch = Path(tmp)\n        os.environ[\"CADGEN_CACHE_DIR\"] = str(scratch / \"generated-store\")\n        from build123d import Color, Solid\n        from cadgen.store.build import build_tree_from_compound, build_tree_through_step\n        from cadgen.store.records import note_document_tree, tree_for_document_hash\n        from cadgen._internal.step_scene_loader import load_step_scene\n        from cadgen._internal.step_scene_mesh import scene_to_build123d_compound\n\n        output = scratch / \"box.step\"\n        for material in ({\"roughness\": .1, \"metalness\": .2}, {\"roughness\": .9, \"metalness\": .8}):\n            shape = Solid.make_box(2, 3, 4)\n            shape.label = \"box\"\n            shape.color = Color(.8, .7, .6, 1)\n            shape.cad_material = material\n            previews = []\n            tree_hash, tree, _stats, document_hash = build_tree_through_step(\n                shape, output, root_name=\"box\", on_preview=lambda digest, value: previews.append((digest, value))\n            )\n            payload = output.read_bytes()\n            assert hashlib.sha256(payload).hexdigest() == document_hash\n            step_payloads.append(payload)\n            note_document_tree(document_hash, tree_hash)\n            runs.append({\n                \"authoredMaterial\": material, \"stepBytes\": len(payload), \"stepHash\": document_hash,\n                \"treeHash\": tree_hash, \"tree\": tree,\n                \"previewTreeHash\": previews[0][0], \"previewTree\": previews[0][1],\n                \"indexedTreeAfterPublication\": tree_for_document_hash(document_hash),\n                \"sidecarExists\": output.with_name(output.name + \".json\").exists(),\n            })\n        shared_document_hash = runs[0][\"stepHash\"]\n        indexed_tree_after_both = tree_for_document_hash(shared_document_hash)\n        os.environ[\"CADGEN_CACHE_DIR\"] = str(scratch / \"cold-import-store\")\n        assert tree_for_document_hash(shared_document_hash) is None\n        scene = load_step_scene(output, record_read=False)\n        imported = scene_to_build123d_compound(scene)\n        cold_hash, cold_tree, _ = build_tree_from_compound(imported, root_name=\"box\")\n        note_document_tree(shared_document_hash, cold_hash)\n        cold = {\n            \"method\": \"Raw text STEP load into an empty store; scene_to_build123d_compound then build_tree_from_compound (same imported-scene packaging path). No Python author source, model record or generated tree consulted.\",\n            \"treeHash\": cold_hash, \"tree\": cold_tree,\n            \"indexedTreeAfterPublication\": tree_for_document_hash(shared_document_hash),\n            \"materialPresent\": any(\"material\" in occ for occ in cold_tree.get(\"occurrences\", [])),\n        }\nfinally:\n    if original_cache is None:\n        os.environ.pop(\"CADGEN_CACHE_DIR\", None)\n    else:\n        os.environ[\"CADGEN_CACHE_DIR\"] = original_cache\n\nchanged_fields = sorted(key for key in set(runs[0][\"tree\"]) | set(runs[1][\"tree\"])\n                        if runs[0][\"tree\"].get(key) != runs[1][\"tree\"].get(key))\nresult = {\n    \"metadata\": metadata,\n    \"probeSource\": Path(__file__).read_text(encoding=\"utf-8\"),\n    \"fixtureSource\": \"shape = Solid.make_box(2, 3, 4)\\nshape.label = 'box'\\nshape.color = Color(.8, .7, .6, 1)\\nshape.cad_material = material\\nbuild_tree_through_step(shape, output, root_name='box', on_preview=callback)\\n\",\n    \"command\": \"PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/cadgen/src /Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python tmp/material-document-identity-probe.py\",\n    \"reproduction\": \"From the repository root, write this JSON's probeSource string to tmp/material-document-identity-probe.py and execute command. All CAD outputs and both isolated stores are temporary directories under models/tmp and are cleaned in finally/context exit.\",\n    \"runs\": runs, \"coldImport\": cold,\n    \"comparison\": {\n        \"exactStepBytesEqual\": step_payloads[0] == step_payloads[1],\n        \"stepSha256Equal\": runs[0][\"stepHash\"] == runs[1][\"stepHash\"],\n        \"generatedSavedTreesEqual\": runs[0][\"treeHash\"] == runs[1][\"treeHash\"],\n        \"generatedSavedTreeChangedTopLevelFields\": changed_fields,\n        \"generatedSavedComponentsEqual\": runs[0][\"tree\"][\"components\"] == runs[1][\"tree\"][\"components\"],\n        \"previewTreesEqual\": runs[0][\"previewTreeHash\"] == runs[1][\"previewTreeHash\"],\n        \"sameDocumentIndexAfterBothPublications\": indexed_tree_after_both,\n        \"coldImportEqualsGeneratedA\": cold_hash == runs[0][\"treeHash\"],\n        \"coldImportEqualsGeneratedB\": cold_hash == runs[1][\"treeHash\"],\n    },\n    \"limitations\": [\n        \"A direct low-level generated STEP publication probe, not a full decorator/daemon integration test.\",\n        \"Only roughness and metalness vary; opacity/clearcoat fields are source-inspected but not individually probed.\",\n        \"Cold-import tree may differ in additional metadata; the generated A/B comparison isolates occurrence.material exactly.\",\n        \"No product source was edited for this diagnostic; no large assembly, browser or timed benchmark ran.\",\n    ],\n    \"runtimeUnchangedDuringProbe\": common.source_fingerprint() == metadata[\"sourceFingerprint\"],\n}\ncommon.write_json(RESULT, result)\nprint(json.dumps({\"result\": str(RESULT), \"comparison\": result[\"comparison\"],\n                  \"coldImport\": {key: value for key, value in cold.items() if key != \"tree\"},\n                  \"runs\": [{key: run[key] for key in (\"stepBytes\", \"stepHash\", \"treeHash\", \"previewTreeHash\")} for run in runs]}, indent=2))\n",
+  "reproduction": "From the repository root, write this JSON's probeSource string to tmp/material-document-identity-probe.py and execute command. All CAD outputs and both isolated stores are temporary directories under models/tmp and are cleaned in finally/context exit.",
+  "runs": [
+    {
+      "authoredMaterial": {
+        "metalness": 0.2,
+        "roughness": 0.1
+      },
+      "indexedTreeAfterPublication": "bc7ad3c6dee72dfb42d13e79a282f59ecd886d2efeb939d2ef7ba08413e19688",
+      "previewTree": {
+        "assembly": {
+          "root": {
+            "children": [],
+            "id": "o1",
+            "leafPartIds": [
+              "o1"
+            ],
+            "name": "box",
+            "nodeType": "part"
+          }
+        },
+        "bbox": {
+          "max": [
+            2.0,
+            3.0,
+            4.0
+          ],
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "components": {
+          "e23555b45d0d33c7": {
+            "brep": "50f444162f1b322405296820817246a6c541bb927b7bcae7ab8e819461359d88",
+            "contentHash": "e23555b45d0d33c760ca34ab36ba824197e04d3bb06969d3f91ef6823b3972fd",
+            "surf": "7f4f74eca3a1314b20a876ad3728922d6771a5d80f5d8f8b7442517a246b9369"
+          }
+        },
+        "entryKind": "part",
+        "label": "box",
+        "links": [],
+        "occurrences": [
+          {
+            "color": [
+              0.8,
+              0.7,
+              0.6,
+              1.0
+            ],
+            "component": "e23555b45d0d33c7",
+            "id": "o1",
+            "material": {
+              "metalness": 0.2,
+              "roughness": 0.1
+            },
+            "name": "box",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        ],
+        "stats": {
+          "linkCount": 0,
+          "occurrenceCount": 1
+        },
+        "units": "mm"
+      },
+      "previewTreeHash": "bb1a09f73d9a2e0e9db624aff0b7d997542539a9d1aadfc5a62ad38b60170d36",
+      "sidecarExists": false,
+      "stepBytes": 17263,
+      "stepHash": "1a428e89198c16d60befc052af2ab97b4f7fcdff2f231a0b3c4a18ae899cf725",
+      "tree": {
+        "assembly": {
+          "root": {
+            "children": [],
+            "id": "o1",
+            "leafPartIds": [
+              "o1"
+            ],
+            "name": "box",
+            "nodeType": "part"
+          }
+        },
+        "bbox": {
+          "max": [
+            2.0,
+            3.0,
+            4.0
+          ],
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "components": {
+          "e12ffa49f0b8a1fc": {
+            "brep": "31c32d463fb4a3c439fdecd86d80b2d34d84042258df936dd3c15923cc629550",
+            "contentHash": "e12ffa49f0b8a1fc815c4fb3856a5b2284974daac116e4b8228a15b74bdedb2d",
+            "surf": "ab87125132efae310aa20e4ff3f3bfefa9c64a47a58dd3cdfe5d089bd9556f8a"
+          }
+        },
+        "entryKind": "part",
+        "label": "box",
+        "links": [],
+        "occurrences": [
+          {
+            "color": [
+              0.8,
+              0.7,
+              0.6,
+              1.0
+            ],
+            "component": "e12ffa49f0b8a1fc",
+            "id": "o1",
+            "material": {
+              "metalness": 0.2,
+              "roughness": 0.1
+            },
+            "name": "box",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        ],
+        "stats": {
+          "linkCount": 0,
+          "occurrenceCount": 1
+        },
+        "units": "mm"
+      },
+      "treeHash": "bc7ad3c6dee72dfb42d13e79a282f59ecd886d2efeb939d2ef7ba08413e19688"
+    },
+    {
+      "authoredMaterial": {
+        "metalness": 0.8,
+        "roughness": 0.9
+      },
+      "indexedTreeAfterPublication": "b1cd6579066a68dbcc55cc410b2624fac25a20fc0f63b1379098a783f3009775",
+      "previewTree": {
+        "assembly": {
+          "root": {
+            "children": [],
+            "id": "o1",
+            "leafPartIds": [
+              "o1"
+            ],
+            "name": "box",
+            "nodeType": "part"
+          }
+        },
+        "bbox": {
+          "max": [
+            2.0,
+            3.0,
+            4.0
+          ],
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "components": {
+          "e23555b45d0d33c7": {
+            "brep": "50f444162f1b322405296820817246a6c541bb927b7bcae7ab8e819461359d88",
+            "contentHash": "e23555b45d0d33c760ca34ab36ba824197e04d3bb06969d3f91ef6823b3972fd",
+            "surf": "7f4f74eca3a1314b20a876ad3728922d6771a5d80f5d8f8b7442517a246b9369"
+          }
+        },
+        "entryKind": "part",
+        "label": "box",
+        "links": [],
+        "occurrences": [
+          {
+            "color": [
+              0.8,
+              0.7,
+              0.6,
+              1.0
+            ],
+            "component": "e23555b45d0d33c7",
+            "id": "o1",
+            "material": {
+              "metalness": 0.8,
+              "roughness": 0.9
+            },
+            "name": "box",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        ],
+        "stats": {
+          "linkCount": 0,
+          "occurrenceCount": 1
+        },
+        "units": "mm"
+      },
+      "previewTreeHash": "b6c09cb1ca35eb680294759c3c5936810e9ba133e929c3f8028cd9e73ad605ca",
+      "sidecarExists": false,
+      "stepBytes": 17263,
+      "stepHash": "1a428e89198c16d60befc052af2ab97b4f7fcdff2f231a0b3c4a18ae899cf725",
+      "tree": {
+        "assembly": {
+          "root": {
+            "children": [],
+            "id": "o1",
+            "leafPartIds": [
+              "o1"
+            ],
+            "name": "box",
+            "nodeType": "part"
+          }
+        },
+        "bbox": {
+          "max": [
+            2.0,
+            3.0,
+            4.0
+          ],
+          "min": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "components": {
+          "e12ffa49f0b8a1fc": {
+            "brep": "31c32d463fb4a3c439fdecd86d80b2d34d84042258df936dd3c15923cc629550",
+            "contentHash": "e12ffa49f0b8a1fc815c4fb3856a5b2284974daac116e4b8228a15b74bdedb2d",
+            "surf": "ab87125132efae310aa20e4ff3f3bfefa9c64a47a58dd3cdfe5d089bd9556f8a"
+          }
+        },
+        "entryKind": "part",
+        "label": "box",
+        "links": [],
+        "occurrences": [
+          {
+            "color": [
+              0.8,
+              0.7,
+              0.6,
+              1.0
+            ],
+            "component": "e12ffa49f0b8a1fc",
+            "id": "o1",
+            "material": {
+              "metalness": 0.8,
+              "roughness": 0.9
+            },
+            "name": "box",
+            "transform": [
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          }
+        ],
+        "stats": {
+          "linkCount": 0,
+          "occurrenceCount": 1
+        },
+        "units": "mm"
+      },
+      "treeHash": "b1cd6579066a68dbcc55cc410b2624fac25a20fc0f63b1379098a783f3009775"
+    }
+  ],
+  "runtimeUnchangedDuringProbe": true,
+  "matchingCommittedRuntime": {
+    "commit": "ddd5817ece4ac2aeacd0d35419a32a9db059c2a6",
+    "sourceFingerprint": "cbd6d3a33a5e4db8b2ca3f37a50ff4c3a24c1c376a1a58ea11f5c409d5878066",
+    "verifiedAfterCommit": true
+  }
+}

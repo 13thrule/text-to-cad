@@ -130,3 +130,75 @@ daemon are stopped.
 Runtime changes are committed through `947f1dade`; the plan records the subsystem
 commits. These checks do not establish the unmet 250 ms preview target,
 large-hand targets, hard process-memory limits, or native-mesher quality parity.
+
+## Resumed implementation validation
+
+The earlier record describes the first implementation, not a completed plan.
+The resumed work adds native mutation integrity, complete pin checks, retained
+revision failure coverage, coalesced-consumer lifetime protection, exact browser
+reuse across revisions, initial coarse loading, and corrected progressive
+failure and worker-memory accounting.
+
+- Full package/skill Python suites: **1,872 tests pass**, including 1,441 cadgen
+  tests and its viewer backend. The expanded cases cover native Add/Remove and
+  orientation edits, descendant metadata, pinned child updates, cache deletion
+  and GC, all save publication boundaries, and coalesced producer disconnects.
+- Shared JavaScript: **945 tests pass**. Viewer: **398 tests pass** after the
+  final per-worker accounting and completed-scene reporting changes.
+- Global policies: **126 tests, one skipped**, no failures. Bundle generation,
+  freshness and docs build pass. Python and viewer suites were rerun after the
+  final dependency, component-route and diagnostic changes.
+- The benchmark completion gate rejects partial, missing and inconsistent
+  component counts, stale scene synchronization and incomplete rendered
+  occurrence counts. Its ramp includes clears/restarts. Node bounds page probes and reports a drained terminal
+  memory denial promptly instead of waiting for the entire timeout.
+
+The [real preview-reuse check](results/preview-reuse-20260910.json) uses the
+nine-part fixture, two geometry edits and a fresh browser. Each revision changes
+one component. There are no asset requests for the other eight, and no saved-tree
+geometry request while Follow edits retains the authored preview. Switching to
+Saved file requests the canonical saved tree; its document hash matches actual
+STEP bytes. Both edits retain all nine displayed components and there are no
+page errors. LOD refinement is disabled to isolate exact revision reuse. This
+is functional evidence, not a latency result: broader Python tests ran at the
+same time. The report includes the exact built asset hashes.
+
+Three earlier hand attempts are failed or partial evidence. The third keeps
+56 components visible after admission fails, with no late publication/retry
+loop, but still does not complete. Its largest-renderer peak is about 1,207 MiB.
+Subsequent small regressions reproduce real slot releases during an awaited
+reclaim and verify that a completely replaced worker pool starts with no stale
+high-water charge. Partial reclamation conservatively preserves the estimate.
+The hand milestone remains separate from those passing unit tests.
+
+The final [cold hand](results/hand-route-final-20260910.json) and
+[cached hand](results/hand-route-cached-20260910.json) complete all 866 components
+and 3,259 rendered occurrences in 67.86 and 18.77 seconds. First-geometry frame
+proxies are 2.12 and 1.64 seconds. Neither has a page exception or crash; cold
+cache resource-404s are expected and disappear in the cached run. Peak largest
+renderer RSS is 1,965 and 1,890 MiB, leaving little headroom below 2 GiB. Both
+use initial coarse detail with refinement disabled. They do not validate
+full-resolution interactive loading, large-hand orbiting, or a hard RSS limit.
+
+The [resumed wheel check](results/packaging-resumed-20260910.json) rebuilds clean
+setuptools staging and verifies all 28 runtime files against generated paths
+and bytes. Installed-package validation starts with an empty disposable store,
+asserts a real cold build followed by a warm hit, then inspects, re-emits STEP
+and exports GLB. The same wheel renders a posed PNG and a three-frame MP4;
+the PNG was visually inspected. No repository source supplies cadgen to that
+environment. The task-owned viewer has been stopped.
+
+The passing suites do **not** prove every store invariant. A new tiny diagnostic
+confirms a pre-existing source-PBR/document-key collision and generated versus
+cold-import naming/grouping mismatch. These remain unresolved. See the
+[evidence](results/material-document-identity-20260910.json) and
+[unimplemented repair design](SAVED-IDENTITY-FOLLOWUP.md); no material stripping
+or publication redesign was hidden inside the performance changes.
+
+The hand and warm-build reports match committed runtime `ddd5817ec` by a
+post-commit fingerprint check. A later conservative module-alias guard,
+`d14d7f992`, changes dependency classification only; it introduces no browser or
+kernel-performance change. The wheel was rebuilt and its installed checks
+repeated on that commit. The warm study retains source bytes/timestamps and
+still misses the preview target. No release version change or push is part of
+this integration.

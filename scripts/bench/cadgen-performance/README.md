@@ -85,6 +85,20 @@ commit and any runtime changes. Run it without competing builds or browsers
 when interpreting those timings. It neither clears server tessellation caches
 nor proves absence of every possible long-session leak.
 
+For a bounded large STEP load, `scripts/bench/viewer-memory/measure.mjs`
+requires the current client's complete component publication: a visible
+partial scene or a cleared diagnostic during failure/retry is not success.
+`loaded` requires `final: true`, equal positive loaded/total component counts,
+matching actual scene occurrence counts, and a completed scene synchronization
+after the final publication. This harness no longer supports the older
+single-publication fallback.
+Its response-failure list distinguishes expected tessellation-cache misses
+from asset failures. The first-geometry frame remains a separate measurement.
+The Node process bounds renderer probes; a blocked page cannot satisfy its own
+timeout. Partial-load ramps include explicit clears/restarts; current and last
+published costs remain separate. Memory readings are retained even if completion
+times out. A probe timeout is reported separately from a renderer crash.
+
 ## Warm builds and repeated imports
 
 `warm_build.py` imports the kernel before timing and invokes the normal model
