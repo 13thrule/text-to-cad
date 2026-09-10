@@ -126,6 +126,7 @@ import { scheduleRuntimeRaycastBvh } from "cadgen-js/lib/viewer/raycastBvh";
 import { renderMemoryAccounting } from "../render/renderMemoryAccounting";
 import { viewerMemoryPolicy } from "../render/viewerMemoryPolicy.js";
 import { inactiveExplodedViewNeedsReset } from "../render/explodedViewLifecycle.js";
+import { sampleLodCamera, resampleLodAfterViewportResize } from "../render/lodCameraSample.js";
 import {
   buildSurfaceLinePositions,
   projectPointToSurfaceUv,
@@ -1671,6 +1672,7 @@ const CadViewer = forwardRef(function CadViewer({
   drawingStrokes = [],
   onDrawingStrokesChange,
   onPerspectiveChange,
+  onLodCameraChange,
   onHoverReferenceChange,
   onActivateReference,
   onDoubleActivateReference,
@@ -1719,6 +1721,8 @@ const CadViewer = forwardRef(function CadViewer({
   const drawingStrokesRef = useRef(Array.isArray(drawingStrokes) ? drawingStrokes : []);
   const drawingChangeRef = useRef(onDrawingStrokesChange);
   const perspectiveChangeRef = useRef(onPerspectiveChange);
+  const lodCameraChangeRef = useRef(onLodCameraChange);
+  lodCameraChangeRef.current = onLodCameraChange;
   const viewerAlertChangeRef = useRef(onViewerAlertChange);
   // The last { title, message } the scene-effects pass raised, so it can be
   // deduplicated across frames and cleared when a pass runs clean.
@@ -2206,11 +2210,10 @@ const CadViewer = forwardRef(function CadViewer({
   }, [perspectiveRef]);
   const handleViewportResize = useCallback(() => {
     const runtime = runtimeRef.current;
-    if (!syncRuntimeViewportFraming(runtime)) {
-      return;
-    }
-    syncCameraZoomPercent(runtime);
-    emitPerspectiveChange(runtime);
+    resampleLodAfterViewportResize(runtime, {
+      syncFraming: syncRuntimeViewportFraming, syncZoom: syncCameraZoomPercent,
+      emitPerspective: emitPerspectiveChange, resample: () => lodCameraChangeRef.current?.()
+    });
   }, [syncCameraZoomPercent]);
   const applyZoomPercent = useCallback((nextZoomPercent) => {
     const runtime = runtimeRef.current;
@@ -3078,33 +3081,12 @@ const CadViewer = forwardRef(function CadViewer({
       return await copyImageBlobToClipboard(blobPromise);
     },
     // Viewport LOD sampler (design/unified-tessellation.md Phase 5): projection
-    // parameters + live distances from the camera to model-space points. CAD
-    // scenes render in model units, so distances and component diagonals share
-    // a unit; the model group transform (floor placement) is applied.
-    sampleLodCamera() {
+    // parameters + nearest eligible occurrence distances. Whole live bounds
+    // include floor/group placement; numeric samples retain no scene objects.
+    sampleLodCamera(options) {
       const runtime = runtimeRef.current;
-      const canvas = runtime?.renderer?.domElement;
-      const camera = runtime?.camera;
-      if (!runtime || !camera || !canvas) {
-        return null;
-      }
-      const cameraSpec = camera.isOrthographicCamera
-        ? {
-          kind: "orthographic",
-          visibleWorldHeight: (camera.top - camera.bottom) / (camera.zoom || 1)
-        }
-        : { kind: "perspective", fovYDeg: camera.fov };
-      runtime.modelGroup?.updateMatrixWorld?.(true);
-      const point = new THREE.Vector3();
-      return {
-        camera: cameraSpec,
-        viewportHeightPx: canvas.clientHeight || canvas.height || 0,
-        distanceToModelPoint: (x, y, z) => {
-          point.set(x, y, z);
-          runtime.modelGroup?.localToWorld?.(point);
-          return camera.position.distanceTo(point);
-        }
-      };
+      if (!runtimeModelKeyMatches(runtime, modelKeyRef.current)) return null;
+      return sampleLodCamera(THREE, runtime, options);
     },
     // Exposed so a toolbar can drive the camera the same way the view-plane widget does.
     // The DXF 2D/3D toggle is exactly "look straight down" vs "the default three-quarter
@@ -3912,6 +3894,7 @@ const CadViewer = forwardRef(function CadViewer({
     updateSpotLightTarget(runtime);
     updateStageEffects(runtime, viewerTheme, normalizedThemeSettings, radius, runtime.gridFloorZ ?? 0, resolvedFloorMode, normalizedSceneScaleMode);
 
+    const modelGroupPlacementChanged = !modelGroup.position.equals(modelOffset);
     modelGroup.position.copy(modelOffset);
     edgesGroup.position.copy(modelOffset);
     facePickGroup.position.copy(modelOffset);
@@ -4067,6 +4050,7 @@ const CadViewer = forwardRef(function CadViewer({
     }
 
     recordSceneSyncTiming(sceneSyncStartedAt, { mode: reuseScene ? "reuse" : "rebuild", records: runtime.displayRecords.length, reason: rebuildReason });
+    if (modelGroupPlacementChanged) lodCameraChangeRef.current?.();
     setError("");
     runtime.requestRender();
   }, [

@@ -8,6 +8,7 @@ import {
   reconcileCadSurfaceInstanceSets,
   surfaceInstancingStateEligible,
   syncCadSurfaceInstanceRecord,
+  syncCadSurfaceInstanceTransform,
 } from "./cadSurfaceInstances.js";
 
 function record(id, geometry, x, { mirrored = false } = {}) {
@@ -60,6 +61,116 @@ function keyFixture() {
     records.forEach((item) => item.material.dispose());
   } };
 }
+
+function viewFrustum() {
+  const camera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 100);
+  camera.position.set(0, 0, 10);
+  camera.updateMatrixWorld(true);
+  return new THREE.Frustum().setFromProjectionMatrix(
+    new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse)
+  );
+}
+
+test("surface instance bounds cull offscreen groups and follow in-place occurrence moves", () => {
+  const fixture = keyFixture();
+  const { records, set, group } = fixture;
+  const frustum = viewFrustum();
+  const inView = () => { group.updateMatrixWorld(true); return frustum.intersectsObject(set.object); };
+  try {
+    assert.equal(set.object.frustumCulled, true);
+    assert.equal(inView(), true);
+    for (const item of records) {
+      item.mesh.matrix.elements[12] += 100;
+      syncCadSurfaceInstanceTransform(item);
+    }
+    assert.equal(inView(), false, "offscreen instance group can skip its draw");
+    const settledBounds = set.object.boundingSphere;
+    records.forEach(syncCadSurfaceInstanceTransform);
+    assert.equal(set.object.boundingSphere, settledBounds, "unchanged transforms retain the computed bound");
+    records[0].mesh.matrix.elements[12] = 0;
+    syncCadSurfaceInstanceTransform(records[0]);
+    assert.equal(inView(), true, "moving an occurrence into view invalidates the previous bound");
+    records[0].mesh.matrix.elements[12] = 100;
+    syncCadSurfaceInstanceTransform(records[0]);
+    assert.equal(inView(), false);
+    group.position.x = -100;
+    assert.equal(inView(), true, "the parent placement remains part of Three's frustum test");
+    assert.deepEqual(set.object.userData.partIds, ["a", "b"]);
+    assert.deepEqual(records.map((item) => item.surfaceInstance.slot), [0, 1]);
+  } finally { fixture.dispose(); }
+});
+
+test("surface bounds enclose affine-transformed geometry and boundary-crossing occurrences", () => {
+  const fixture = keyFixture();
+  const { records, set, group } = fixture;
+  try {
+    records[0].mesh.matrix.set(1, 3, 0, 3.2, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+    records[1].mesh.matrix.makeTranslation(10, 0, 0);
+    records.forEach(syncCadSurfaceInstanceTransform);
+    group.updateMatrixWorld(true);
+    assert.equal(viewFrustum().intersectsObject(set.object), true, "a center outside the viewport can still have visible geometry");
+    const point = new THREE.Vector3();
+    const matrix = new THREE.Matrix4();
+    const positions = fixture.geometry.attributes.position;
+    for (let slot = 0; slot < records.length; slot += 1) {
+      set.object.getMatrixAt(slot, matrix);
+      for (let i = 0; i < positions.count; i += 1) {
+        point.fromBufferAttribute(positions, i).applyMatrix4(matrix);
+        assert.ok(point.distanceTo(set.object.boundingSphere.center) <= set.object.boundingSphere.radius + 1e-6);
+      }
+    }
+  } finally { fixture.dispose(); }
+});
+
+test("reactivating a surface slot refreshes bounds without changing occurrence identity", () => {
+  const fixture = keyFixture();
+  const { records, group, sets, set } = fixture;
+  const extra = record("c", fixture.geometry, 0);
+  // Three records keep the set compatible while one takes an ordinary mesh.
+  dissolveCadSurfaceInstanceSets(sets, group);
+  records.push(extra);
+  for (const next of buildCadSurfaceInstanceSets(THREE, records, group)) sets.add(next);
+  const current = [...sets][0];
+  try {
+    current.object.computeBoundingSphere();
+    records[0].material.transparent = true;
+    reconcileCadSurfaceInstanceSets(THREE, records, group, sets);
+    assert.equal(current.object.boundingSphere, null);
+    current.object.computeBoundingSphere();
+    records[0].mesh.matrix.makeTranslation(100, 0, 0);
+    records[0].material.transparent = false;
+    reconcileCadSurfaceInstanceSets(THREE, records, group, sets);
+    assert.equal(current.object.boundingSphere, null);
+    current.object.computeBoundingSphere();
+    assert.ok(current.object.boundingSphere.containsPoint(new THREE.Vector3(100, 0, 0)));
+    assert.equal(records[0].surfaceInstance.set, current);
+    assert.equal(records[0].surfaceInstance.slot, 0);
+    assert.equal(set.disposed, true);
+  } finally { fixture.dispose(); }
+});
+
+test("surface culling stays conservative under a sheared external parent", () => {
+  const fixture = keyFixture();
+  const { records, set, group } = fixture;
+  try {
+    records[1].mesh.matrix.identity();
+    syncCadSurfaceInstanceTransform(records[1]);
+    group.matrixAutoUpdate = false;
+    group.matrix.set(1, 1, 1, 3.3, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+    group.updateMatrixWorld(true);
+    const visibleCorner = new THREE.Vector3(-0.5, -0.5, -0.5).applyMatrix4(group.matrixWorld);
+    const frustum = viewFrustum();
+    assert.equal(frustum.containsPoint(visibleCorner), true);
+    assert.equal(frustum.intersectsObject(set.object), true);
+    const worldBound = set.object.boundingSphere.clone().applyMatrix4(set.object.matrixWorld);
+    const positions = fixture.geometry.attributes.position;
+    const point = new THREE.Vector3();
+    for (let i = 0; i < positions.count; i += 1) {
+      point.fromBufferAttribute(positions, i).applyMatrix4(group.matrixWorld);
+      assert.ok(point.distanceTo(worldBound.center) <= worldBound.radius + 1e-6);
+    }
+  } finally { fixture.dispose(); }
+});
 
 test("material keys retain exact bytes while observing every direct scalar mutation", () => {
   const fixture = keyFixture();

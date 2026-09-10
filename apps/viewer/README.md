@@ -110,6 +110,13 @@ the build — detection only; it keeps serving.
   individually oversized component may start coarse if its estimate fits.
   Refinement uses the camera and disposable memory budget; exact geometry,
   measurements and explicit mesh-export tolerances remain unchanged.
+  Static assemblies sample full transformed occurrence bounds against the camera
+  frustum, refining a component when at least one occurrence is on screen.
+  Offscreen components stay rendered at their existing level; this does not hide
+  parts or unload detail. Unknown or not-yet-adopted bounds remain eligible.
+  Scenes with joints, render modules, drawing poses or an active/collapsing
+  exploded view keep conservative eligibility, including paused/disabled pose
+  capabilities. Authored visibility and material flags are not LOD filters.
   Admission can reclaim idle tessellation workers and retry while preserving
   active consumers. Its ledger samples each live worker's own retained estimate
   before admission; a large component does not inflate every worker's charge.

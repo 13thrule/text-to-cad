@@ -6,6 +6,7 @@ import { ArrowLeftRight, ArrowRight, Circle, Eraser, Minus, PaintBucket, PenTool
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import CadRenderPane from "./workbench/CadRenderPane";
 import { useViewportLod } from "../render/useViewportLod";
+import { lodSceneMayMove } from "../render/lodCameraSample.js";
 import FileViewerSidebar from "./workbench/FileViewerSidebar";
 import {
   ThemeEditorPanel,
@@ -2701,7 +2702,12 @@ export default function CadWorkspace({
     viewerRef,
     lodPackage,
     applyComponentLodPayload,
-    componentLodNeedsSelectors
+    componentLodNeedsSelectors,
+    // Capability, not just the current pose: a paused/disabled module can move
+    // an offscreen part without a camera event when re-enabled.
+    dynamicScene: lodSceneMayMove({ robot: isUrdfView, drawing: selectedEntryIsDrawing,
+      kinematics: selectedStepModuleDefinition, kinematicsLoading: selectedStepModuleLoading,
+      renderModuleUrl: selectedRenderModuleUrl, exploded: displaySettings?.exploded?.enabled })
   });
   const previewUiStateRef = useRef(null);
   const panelResizeStateRef = useRef(null);
@@ -7132,6 +7138,7 @@ export default function CadWorkspace({
           drawingIsDocument={selectedEntryIsDrawingDocument}
           drawingThicknessMm={selectedEntryIsDrawing ? drawingThicknessMm : 0}
           onCameraZoomPercentChange={setViewerZoomPercent}
+          onLodCameraChange={onLodCameraMoved}
           renderPartsIndividually={
             isUrdfView || Boolean(selectedStepParameterRuntime) || Boolean(selectedAnimationRuntime)
           }

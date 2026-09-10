@@ -1,0 +1,117 @@
+// Camera-only LOD exclusion. This never changes display visibility or ownership.
+// Dynamic scenes deliberately keep the conservative all-occurrence policy until
+// pose changes have their own scheduler resampling boundary.
+export function lodSceneMayMove({ robot = false, drawing = false, kinematics = null,
+  kinematicsLoading = false, renderModuleUrl = "", exploded = false } = {}) {
+  return Boolean(robot || drawing || kinematics || kinematicsLoading || renderModuleUrl || exploded);
+}
+
+export function resampleLodAfterViewportResize(runtime, { syncFraming, syncZoom, emitPerspective, resample }) {
+  if (syncFraming(runtime)) {
+    syncZoom(runtime);
+    emitPerspective(runtime);
+  }
+  // Aspect/viewport changes can expose a part without changing persisted
+  // position/target/zoom, so perspective deduplication cannot own this signal.
+  resample?.();
+}
+
+function validBounds(bounds) {
+  return bounds?.min?.length === 3 && bounds?.max?.length === 3
+    && bounds.min.every(Number.isFinite) && bounds.max.every(Number.isFinite)
+    && bounds.min.every((value, axis) => value <= bounds.max[axis]);
+}
+
+function recordMayMove(record) {
+  return Boolean(record?.effectMatrix || record?.explodedViewMatrix || record?.effectDeformation
+    || record?.tubeDeformationState?.active || record?.tubeGpuState?.active);
+}
+
+function invalidMatrix(matrix) {
+  return matrix && (!matrix.isMatrix4 || !matrix.elements.every(Number.isFinite));
+}
+
+export function sampleLodCamera(THREE, runtime, { components = new Map(), dynamicScene = false } = {}) {
+  const camera = runtime?.camera, canvas = runtime?.renderer?.domElement;
+  if (!camera || !canvas) return null;
+  const records = runtime.displayRecords || [];
+  const failOpen = dynamicScene || records.some(recordMayMove);
+  const group = runtime.modelGroup;
+  group?.updateWorldMatrix?.(true, false);
+  camera.updateWorldMatrix?.(true, false);
+  const projection = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  const frustum = new THREE.Frustum().setFromProjectionMatrix(projection, camera.coordinateSystem, camera.reversedDepth);
+  const cameraPosition = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+  const box = new THREE.Box3(), point = new THREE.Vector3(), matrix = new THREE.Matrix4();
+  const byCid = new Map(), distances = new Map(), visibility = new Map();
+  const telemetry = { components: components.size, occurrences: 0, visibleOccurrences: 0,
+    excludedOccurrences: 0, fallbackOccurrences: 0, visibleComponents: 0,
+    excludedComponents: 0, fallbackComponents: 0, pendingOccurrences: 0, dynamicFailOpen: Number(failOpen) };
+  for (const record of records) {
+    const cid = record?.sourcePart?.componentId;
+    if (!components.has(cid)) continue;
+    let state = byCid.get(cid);
+    if (!state) { state = { count: 0, nearest: Infinity, nearestAll: Infinity, fallback: false }; byCid.set(cid, state); }
+    state.count++; telemetry.occurrences++;
+    // partBounds already contains the occurrence's base transform. Reapplying
+    // that transform would move it twice. Post-pose and floor/group transforms
+    // are applied in the same order as the displayed mesh.
+    if (!validBounds(record.partBounds) || invalidMatrix(record.effectMatrix)
+      || invalidMatrix(record.explodedViewMatrix) || invalidMatrix(group?.matrixWorld)) {
+      state.fallback = true; telemetry.fallbackOccurrences++; continue;
+    }
+    matrix.identity();
+    if (record.effectMatrix) matrix.premultiply(record.effectMatrix);
+    if (record.explodedViewMatrix) matrix.premultiply(record.explodedViewMatrix);
+    if (group) matrix.premultiply(group.matrixWorld);
+    if (!matrix.elements.every(Number.isFinite)) {
+      state.fallback = true; telemetry.fallbackOccurrences++; continue;
+    }
+    box.min.fromArray(record.partBounds.min); box.max.fromArray(record.partBounds.max);
+    box.applyMatrix4(matrix);
+    box.getCenter(point);
+    const distance = cameraPosition.distanceTo(point);
+    state.nearestAll = Math.min(state.nearestAll, distance);
+    // The full AABB, including near/far crossings, is conservative under
+    // rotations, mirrors and nonuniform scale. A center-only test is unsafe.
+    const visible = failOpen || frustum.intersectsBox(box);
+    if (visible) {
+      telemetry.visibleOccurrences++;
+      state.nearest = Math.min(state.nearest, distance);
+    } else telemetry.excludedOccurrences++;
+  }
+  for (const [cid, component] of components) {
+    const state = byCid.get(cid);
+    const pending = !state || state.count !== component.centers?.length;
+    if (pending || state.fallback) {
+      telemetry.pendingOccurrences += Math.max(0, (component.centers?.length || 0) - (state?.count || 0));
+      // The summary can arrive before React adopts its occurrences. Never
+      // exclude missing/new records using a partially adopted scene.
+      let nearest = state?.nearest ?? Infinity;
+      for (const center of component.centers || []) {
+        if (center?.length !== 3 || !center.every(Number.isFinite)) continue;
+        point.fromArray(center);
+        if (group) point.applyMatrix4(group.matrixWorld);
+        nearest = Math.min(nearest, cameraPosition.distanceTo(point));
+      }
+      distances.set(cid, Number.isFinite(nearest) ? nearest : 0);
+      visibility.set(cid, true);
+      telemetry.fallbackComponents++;
+    } else {
+      const visible = Number.isFinite(state.nearest);
+      distances.set(cid, visible ? state.nearest : state.nearestAll);
+      visibility.set(cid, visible);
+      if (visible) telemetry.visibleComponents++;
+      else telemetry.excludedComponents++;
+    }
+  }
+  return {
+    camera: camera.isOrthographicCamera
+      ? { kind: "orthographic", visibleWorldHeight: (camera.top - camera.bottom) / (camera.zoom || 1) }
+      : { kind: "perspective", fovYDeg: camera.fov },
+    viewportHeightPx: canvas.clientHeight || canvas.height || 0,
+    distanceFor: cid => distances.get(cid) ?? NaN,
+    visibleFor: cid => visibility.get(cid) !== false,
+    visibility: telemetry,
+  };
+}

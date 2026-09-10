@@ -218,7 +218,20 @@ export function buildCadSurfaceInstanceSets(THREE, records, modelGroup) {
       object.renderOrder = Number(group[0].mesh.renderOrder) || 0;
       object.userData.partIds = group.map((record) => record.partId);
       object.userData.faceIdsByInstance = group.map((record) => record.mesh.userData.faceIds || null);
-      object.frustumCulled = false;
+      // Preserve Three's camera/shadow frustum culling for the whole group.
+      // Bound transformed boxes rather than transformed spheres: authored
+      // instance matrices may contain nonuniform scale or shear. The shared
+      // component geometry stays immutable while this set owns it.
+      object.computeBoundingSphere = function () {
+        this.computeBoundingBox();
+        this.boundingSphere ||= new THREE.Sphere();
+        this.boundingBox.getBoundingSphere(this.boundingSphere);
+        // Three scales a world sphere by the largest matrix-column length.
+        // For an arbitrary affine parent, the true stretch is at most sqrt(3)
+        // times that value (the Frobenius bound). This conservative padding
+        // also covers external parent shear without a per-frame bounds pass.
+        this.boundingSphere.radius *= Math.sqrt(3);
+      };
       const set = {
         object,
         records: group,
@@ -283,6 +296,7 @@ function setSlotActive(set, record, active) {
   const matrix = active ? record.mesh.matrix : set.zeroMatrix;
   set.object.setMatrixAt(slot, matrix);
   set.object.instanceMatrix.needsUpdate = true;
+  set.object.boundingSphere = null;
 }
 
 // Reconcile mutable visual state without rebuilding compatible instance
@@ -336,6 +350,7 @@ export function syncCadSurfaceInstanceTransform(record) {
   if (float32Changed(set.matrixValues, matrixOffset, record.mesh.matrix.elements, 16)) {
     set.object.setMatrixAt(slot, record.mesh.matrix);
     set.object.instanceMatrix.needsUpdate = true;
+    set.object.boundingSphere = null;
   }
 }
 

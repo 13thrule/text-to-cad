@@ -287,6 +287,7 @@ export default function CadRenderPane({
   drawingIsDocument = false,
   drawingThicknessMm = 0,
   onCameraZoomPercentChange = null,
+  onLodCameraChange = null,
   viewPlaneOffsetRight = 16,
   viewerMode,
   assemblyPickingActive = false,
@@ -503,6 +504,7 @@ export default function CadRenderPane({
         drawingIsDocument={drawingIsDocument}
         drawingThicknessMm={drawingThicknessMm}
         onCameraZoomPercentChange={onCameraZoomPercentChange}
+        onLodCameraChange={onLodCameraChange}
         perspective={viewerPerspective}
         projection={cadProjection}
         perspectiveRef={viewerPerspectiveRef}

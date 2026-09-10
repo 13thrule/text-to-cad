@@ -63,6 +63,11 @@ snapshot renderer and the node builders in `bin/`).
   selected, hidden and deformed occurrences keep inactive slots until eligible
   again. Transform passes reuse each mesh's matrix while observing mutable source
   transforms and effect matrices on every update.
+  Surface instance groups use aggregate frustum bounds, invalidated by instance
+  matrix and slot changes. Transformed component boxes and conservative parent
+  affine padding keep boundary-crossing geometry eligible, including shear.
+  Culling changes draw submission only; occurrence slots and picking remain
+  intact. Screen-space edge instances retain their separate drawing policy.
   Material pass keys reuse serialized strings only after comparing their current
   scalar values, emission state, render order and clipping planes. Direct material
   and plane mutations remain observable; custom values use ordinary serialization.

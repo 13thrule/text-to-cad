@@ -2,7 +2,7 @@
 //
 // Owns a lodScheduler for the current package: camera-settle events sample
 // the viewer (projection, viewport height, live distances to each unique
-// component's nearest occurrence), the scheduler picks the worst offender,
+// component's nearest visible occurrence), the scheduler picks the worst offender,
 // the level-keyed loader re-tessellates it in the surf worker pool, and the
 // payload swaps in through useCadAssets' re-composition. Kill switch for
 // debugging: `window.__CAD_VIEWER_LOD__ = false` before loading a model.
@@ -28,13 +28,14 @@ function lodEnabled() {
   return typeof window === "undefined" || window.__CAD_VIEWER_LOD__ !== false;
 }
 
-export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload, componentLodNeedsSelectors }) {
+export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload, componentLodNeedsSelectors, dynamicScene = false }) {
   const componentsRef = useRef(new Map());
   const applyRef = useRef(applyComponentLodPayload);
   applyRef.current = applyComponentLodPayload;
   const selectorsRef = useRef(componentLodNeedsSelectors);
   selectorsRef.current = componentLodNeedsSelectors;
   const schedulerRef = useRef(null);
+  const visibilityRef = useRef(null);
 
   useEffect(() => {
     const scheduler = createLodScheduler({
@@ -106,7 +107,7 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
       }
     });
     schedulerRef.current = scheduler;
-    const snapshot = () => scheduler.snapshot();
+    const snapshot = () => ({ ...scheduler.snapshot(), visibility: visibilityRef.current });
     if (typeof window !== "undefined") window.__cadViewportLod = snapshot;
     return () => {
       scheduler.dispose();
@@ -124,6 +125,7 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
     const file = String(lodPackage?.file || "");
     const preserveLevels = !!file && file === lodPackageFileRef.current;
     lodPackageFileRef.current = file;
+    visibilityRef.current = null;
     componentsRef.current = new Map(components.map((component) => [component.cid, component]));
     schedulerRef.current?.setComponents(
       components.map(({ cid, diagonal, level }) => ({ cid, diagonal, level })),
@@ -131,35 +133,20 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
     );
   }, [lodPackage]);
 
-  // Call on every camera change (perspective callback); the scheduler owns the
-  // debounce, so this must stay cheap.
+  // One numeric distance map per camera/summary/capability change. The sampler
+  // checks whole occurrence bounds, never just centers or material visibility.
+  // The scheduler owns the debounce and does not rescan records per component.
   const onCameraMoved = useCallback(() => {
     if (!componentsRef.current.size) {
       return;
     }
-    const sampler = viewerRef.current?.sampleLodCamera?.();
+    const sampler = viewerRef.current?.sampleLodCamera?.({ components: componentsRef.current, dynamicScene });
     if (!sampler) {
       return;
     }
-    schedulerRef.current?.onCameraSample({
-      camera: sampler.camera,
-      viewportHeightPx: sampler.viewportHeightPx,
-      distanceFor: (cid) => {
-        const component = componentsRef.current.get(cid);
-        if (!component?.centers?.length) {
-          return NaN;
-        }
-        let best = Infinity;
-        for (const center of component.centers) {
-          const distance = sampler.distanceToModelPoint(center[0], center[1], center[2]);
-          if (distance < best) {
-            best = distance;
-          }
-        }
-        return best;
-      }
-    });
-  }, [viewerRef]);
+    visibilityRef.current = sampler.visibility;
+    schedulerRef.current?.onCameraSample(sampler);
+  }, [viewerRef, dynamicScene]);
 
   // Initial framing can notify before the package summary reaches this hook.
   // Sample once after installing the summary too: otherwise a stationary

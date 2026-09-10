@@ -125,6 +125,7 @@ export function createLodScheduler({
       entries.push({
         cid,
         currentLevel: state.level,
+        visible: lastSample.visibleFor?.(cid) !== false,
         sample: {
           diagonal: state.diagonal,
           cameraDistance,
@@ -142,7 +143,7 @@ export function createLodScheduler({
     }
     const entries = entriesForPlan();
     const pressure = memoryPressure?.() === true;
-    const plan = planLodWork(entries, levels)
+    const plan = planLodWork(entries.filter((entry) => entry.visible), levels)
       .map((item) => ({ ...item, level: Math.max(floorLevel, item.level) }))
       .filter((item) => item.level !== components.get(item.cid)?.level)
       .filter((item) => !failed.has(`${item.cid}:${item.level}`))
@@ -158,17 +159,17 @@ export function createLodScheduler({
     if (pressure) {
       const planned = new Set(plan.map((item) => `${item.cid}:${item.level}`));
       for (const entry of entries) {
-        if (entry.currentLevel <= 0) continue;
+        if (entry.currentLevel <= floorLevel) continue;
         const level = entry.currentLevel - 1;
         const key = `${entry.cid}:${level}`;
         if (!planned.has(key) && !failed.has(key)) {
           plan.push({
             cid: entry.cid,
             level,
-            errorPx: projectedChordErrorPx({
+            errorPx: entry.visible ? projectedChordErrorPx({
               ...entry.sample,
               chordRel: levels[entry.currentLevel],
-            }),
+            }) : 0,
           });
         }
       }
