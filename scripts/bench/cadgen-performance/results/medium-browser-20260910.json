@@ -1,0 +1,240 @@
+{
+  "args": {
+    "url": "http://127.0.0.1:3259",
+    "file": "planetary.step",
+    "label": "medium-planetary-fixed",
+    "runs": 1,
+    "timeoutMs": 20000,
+    "out": "/private/tmp/cadgen-performance-20260910/medium-browser-fixed.json",
+    "lod": true,
+    "sampleMs": 500
+  },
+  "results": [
+    {
+      "run": 1,
+      "label": "medium-planetary-fixed",
+      "file": "planetary.step",
+      "url": "http://127.0.0.1:3259/?file=planetary.step",
+      "lod": true,
+      "crashed": false,
+      "crashMessage": "",
+      "loaded": true,
+      "timeToFirstPaintMs": 20,
+      "timeToLoadedMs": 668,
+      "heap": {
+        "samples": 23,
+        "peakUsed": 18039208,
+        "peakTotal": 24759300,
+        "lastUsed": 16339696,
+        "lastTotal": 24139908
+      },
+      "gpu": {
+        "liveBytes": 265500,
+        "peakBytes": 265500,
+        "uploadCount": 56,
+        "liveBufferCount": 48,
+        "peakBufferCount": 48,
+        "textureUploads": 28,
+        "contexts": 1
+      },
+      "peakRss": {
+        "all": {
+          "rssBytes": 634650624,
+          "largestPidBytes": 305201152,
+          "processCount": 5
+        },
+        "browser": {
+          "rssBytes": 96337920,
+          "largestPidBytes": 96337920,
+          "processCount": 1
+        },
+        "gpu-process": {
+          "rssBytes": 110133248,
+          "largestPidBytes": 110133248,
+          "processCount": 1
+        },
+        "utility": {
+          "rssBytes": 50364416,
+          "largestPidBytes": 50364416,
+          "processCount": 1
+        },
+        "renderer": {
+          "rssBytes": 378077184,
+          "largestPidBytes": 305201152,
+          "processCount": 2
+        }
+      },
+      "lastStageText": "LOADING",
+      "lodEventCount": 0,
+      "timeToFirstPublishMs": 668,
+      "firstGeometryPublishMs": 315,
+      "firstGeometryFrameMs": 537,
+      "renderMemoryProbe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 262152,
+        "edgeBytes": 84636,
+        "bvhBytes": 63008,
+        "bvhGeometries": 9,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 346788,
+        "gpuEstimatedBytes": 346788,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 329256,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 18,
+            "limit": 24,
+            "bytes": 329256,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 346788,
+            "selectors": 0,
+            "bvh": 63008,
+            "gpuEstimated": 346788,
+            "deformation": 0,
+            "assetCaches": 329256,
+            "workerResidentEstimated": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 1085840,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 1085840,
+          "availableBytes": 1341091440,
+          "reservationCount": 0,
+          "lastLimitation": {
+            "category": "workerInFlight",
+            "label": "d0045544e557b7b5",
+            "kind": "decode",
+            "requestedBytes": 1218,
+            "estimatedOwnedBytes": 1342177280,
+            "availableBytes": 0,
+            "ownedLimitBytes": 1342177280,
+            "preservingCurrentView": false
+          },
+          "hardRssCap": false
+        },
+        "at": 5675.5
+      },
+      "meshCost": {
+        "composed": {
+          "triangleCount": 6452,
+          "typedArrayBytes": 329256
+        },
+        "componentTotalBytes": 329256,
+        "componentTotalTriangles": 6452,
+        "componentCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 531.7999997138977
+      },
+      "meshCostRamp": [
+        {
+          "atMs": 539,
+          "cost": {
+            "composed": {
+              "triangleCount": 6452,
+              "typedArrayBytes": 329256
+            },
+            "componentTotalBytes": 329256,
+            "componentTotalTriangles": 6452,
+            "componentCount": 9,
+            "totalComponents": 9,
+            "loadedComponents": 9,
+            "publishCount": 2,
+            "final": true,
+            "at": 531.7999997138977
+          }
+        }
+      ],
+      "draw": {
+        "total": 122,
+        "lastFrame": 0,
+        "peakFrame": 29,
+        "frames": 639,
+        "lastFrameMs": 8.400000095367432,
+        "medianFrameMs": 8.300000190734863
+      },
+      "pageErrors": [
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "inPageErrors": [],
+      "afterGc": {
+        "rss": {
+          "all": {
+            "rssBytes": 620658688,
+            "largestPidBytes": 295780352,
+            "processCount": 5
+          },
+          "browser": {
+            "rssBytes": 96337920,
+            "largestPidBytes": 96337920,
+            "processCount": 1
+          },
+          "gpu-process": {
+            "rssBytes": 105332736,
+            "largestPidBytes": 105332736,
+            "processCount": 1
+          },
+          "utility": {
+            "rssBytes": 50348032,
+            "largestPidBytes": 50348032,
+            "processCount": 1
+          },
+          "renderer": {
+            "rssBytes": 368640000,
+            "largestPidBytes": 295780352,
+            "processCount": 2
+          }
+        },
+        "heapUsed": 14632246
+      }
+    }
+  ],
+  "generatedAt": "2026-09-10T05:02:42.141Z"
+}

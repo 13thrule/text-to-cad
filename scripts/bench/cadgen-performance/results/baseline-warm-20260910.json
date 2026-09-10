@@ -1,0 +1,92 @@
+[
+  {
+    "run": "prime_disk",
+    "seconds": 1.1511797080747783,
+    "exit": 0,
+    "ops": {
+      "hits": 22,
+      "misses": 0,
+      "disk_hits": 22,
+      "unkeyable": 0,
+      "unstorable": 0,
+      "evicted": 0,
+      "errors": 0,
+      "entries": 22
+    }
+  },
+  {
+    "run": "prime_revert",
+    "seconds": 0.9628083338029683,
+    "exit": 0,
+    "ops": {
+      "hits": 22,
+      "misses": 0,
+      "disk_hits": 4,
+      "unkeyable": 0,
+      "unstorable": 0,
+      "evicted": 0,
+      "errors": 0,
+      "entries": 4
+    }
+  },
+  {
+    "run": "unchanged",
+    "seconds": 0.020438625011593103,
+    "exit": 0,
+    "ops": {
+      "hits": 0,
+      "misses": 0,
+      "disk_hits": 0,
+      "unkeyable": 0,
+      "unstorable": 0,
+      "evicted": 0,
+      "errors": 0,
+      "entries": 0
+    }
+  },
+  {
+    "run": "carrier_edit",
+    "seconds": 0.9471469582058489,
+    "exit": 0,
+    "ops": {
+      "hits": 22,
+      "misses": 0,
+      "disk_hits": 0,
+      "unkeyable": 0,
+      "unstorable": 0,
+      "evicted": 0,
+      "errors": 0,
+      "entries": 0
+    }
+  },
+  {
+    "run": "revert",
+    "seconds": 0.9275274160318077,
+    "exit": 0,
+    "ops": {
+      "hits": 22,
+      "misses": 0,
+      "disk_hits": 0,
+      "unkeyable": 0,
+      "unstorable": 0,
+      "evicted": 0,
+      "errors": 0,
+      "entries": 0
+    }
+  },
+  {
+    "run": "unchanged_again",
+    "seconds": 0.02376954210922122,
+    "exit": 0,
+    "ops": {
+      "hits": 0,
+      "misses": 0,
+      "disk_hits": 0,
+      "unkeyable": 0,
+      "unstorable": 0,
+      "evicted": 0,
+      "errors": 0,
+      "entries": 0
+    }
+  }
+]
