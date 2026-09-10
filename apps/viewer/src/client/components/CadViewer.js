@@ -126,6 +126,7 @@ import { scheduleRuntimeRaycastBvh } from "cadgen-js/lib/viewer/raycastBvh";
 import { renderMemoryAccounting } from "../render/renderMemoryAccounting";
 import { viewerMemoryPolicy } from "../render/viewerMemoryPolicy.js";
 import { inactiveExplodedViewNeedsReset } from "../render/explodedViewLifecycle.js";
+import { createStaticSceneReset, staticSceneResetEligible } from "../render/staticSceneReset.js";
 import { sampleLodCamera, resampleLodAfterViewportResize } from "../render/lodCameraSample.js";
 import {
   buildSurfaceLinePositions,
@@ -1673,6 +1674,7 @@ const CadViewer = forwardRef(function CadViewer({
   onDrawingStrokesChange,
   onPerspectiveChange,
   onLodCameraChange,
+  onMeshSourceAdoption,
   onHoverReferenceChange,
   onActivateReference,
   onDoubleActivateReference,
@@ -1691,6 +1693,12 @@ const CadViewer = forwardRef(function CadViewer({
   // model has no clip selected, and the evaluator never runs.
   const stepAnimationRuntime = stepAnimation;
   const stepAnimationPlaying = Boolean(stepAnimationRuntime?.playing);
+  // Fresh even when every prop is unchanged: a receipt can skip only the
+  // duplicate reset in this render, never work triggered by a later render.
+  const staticResetRenderToken = {};
+  const staticSceneResetRef = useRef(null);
+  if (!staticSceneResetRef.current) staticSceneResetRef.current = createStaticSceneReset();
+  useEffect(() => () => staticSceneResetRef.current.reset(), []);
   // What counts as "something is on screen" for overlays and the view cube.
   const viewportContent = meshData;
   const hasViewportContent = !!viewportContent;
@@ -1723,6 +1731,9 @@ const CadViewer = forwardRef(function CadViewer({
   const perspectiveChangeRef = useRef(onPerspectiveChange);
   const lodCameraChangeRef = useRef(onLodCameraChange);
   lodCameraChangeRef.current = onLodCameraChange;
+  const meshSourceAdoptionRef = useRef(onMeshSourceAdoption);
+  meshSourceAdoptionRef.current = onMeshSourceAdoption;
+  useEffect(() => () => { meshSourceAdoptionRef.current?.(null, false); }, []);
   const viewerAlertChangeRef = useRef(onViewerAlertChange);
   // The last { title, message } the scene-effects pass raised, so it can be
   // deduplicated across frames and cleared when a pass runs clean.
@@ -1806,6 +1817,19 @@ const CadViewer = forwardRef(function CadViewer({
   const explodedViewActive = normalizedExplodedSettings.enabled && explodablePartCount > 1;
   const effectiveRenderPartsIndividually = renderPartsIndividually ||
     explodedViewActive;
+  useLayoutEffect(() => {
+    const explosion = explodedViewAnimationRef.current;
+    staticSceneResetRef.current.beginRender(staticResetRenderToken, staticSceneResetEligible({
+      source: meshData,
+      renderFormat,
+      parameters: stepParameterRuntime,
+      animation: stepAnimationRuntime,
+      drawing: drawingIsDocument || drawingGeometry || planMode,
+      exploded: explodedViewActive || explosion.enabled || explosion.rafId || Number(explosion.progress) !== 0,
+      loading: isLoading,
+      records: runtimeRef.current?.displayRecords || [],
+    }));
+  });
   // CAD edges come from the topology package, so this is the `topology` capability, not
   // "is this STEP". A second format that ships topology inherits the edge rendering.
   const shouldUseCadEdgeSource = hasCapability(renderFormat, "topology");
@@ -3265,8 +3289,10 @@ const CadViewer = forwardRef(function CadViewer({
   }, []);
 
   const handleRuntimeInitializationError = useCallback((runtimeError) => {
+    meshSourceAdoptionRef.current?.(null, false);
     viewerAlertChangeRef.current?.(buildRuntimeInitializationAlert(runtimeError));
   }, []);
+  const handleRuntimeContextLost = useCallback(() => { meshSourceAdoptionRef.current?.(null, false); }, []);
 
   useViewerRuntime({
     mountRef,
@@ -3319,6 +3345,7 @@ const CadViewer = forwardRef(function CadViewer({
     sceneScaleMode: normalizedSceneScaleMode,
     floorMode: resolvedFloorMode,
     onInitializationError: handleRuntimeInitializationError,
+    onContextLost: handleRuntimeContextLost,
     onContextRestored: handleRuntimeContextRestored,
     preserveInteractionPixelRatio,
     runtimeResetToken
@@ -3604,6 +3631,7 @@ const CadViewer = forwardRef(function CadViewer({
     // BVHs; a rebuild of the SAME model (theme, display mode) keeps them so the
     // new records draw without re-uploading every component.
     const clearDisplayedModel = ({ preserveModelIdentity = false, releaseGpu = true } = {}) => {
+      staticSceneResetRef.current.invalidate();
       cancelCameraTransition(runtime);
       runtime.cadScene?.dispose?.({ releaseGpu });
       runtime.cadScene = null;
@@ -3629,15 +3657,18 @@ const CadViewer = forwardRef(function CadViewer({
 
     if (isLoading) {
       clearDisplayedModel();
+      meshSourceAdoptionRef.current?.(meshData, false);
       setError("");
       return;
     }
 
     if (!hasMeshGeometry(meshData)) {
       clearDisplayedModel();
+      meshSourceAdoptionRef.current?.(meshData, false);
       return;
     }
 
+    try {
     const sceneSyncStartedAt = performance.now();
     const { controls } = runtime;
     const hasFillRotation = normalizedThemeSettings.materials.cycleColors === true &&
@@ -4053,6 +4084,18 @@ const CadViewer = forwardRef(function CadViewer({
     if (modelGroupPlacementChanged) lodCameraChangeRef.current?.();
     setError("");
     runtime.requestRender();
+    if (shouldRenderParts) {
+      staticSceneResetRef.current.complete(staticResetRenderToken, {
+        source: meshData, runtime, visualState: currentPartVisualState, clipState: clipSettingsRef.current,
+      });
+    }
+    meshSourceAdoptionRef.current?.(meshData,
+      runtime.cadScene === cadScene && runtime.activeModelKey === (modelKey || "") && cadScene.source === meshData);
+    } catch (error) {
+      staticSceneResetRef.current.invalidate();
+      meshSourceAdoptionRef.current?.(meshData, false);
+      throw error;
+    }
   }, [
     meshGeometrySource,
     modelKey,
@@ -4275,6 +4318,12 @@ const CadViewer = forwardRef(function CadViewer({
       updateTransformedRuntimeState(setTransformedSelectorRuntime, null);
       updateTransformedRuntimeState(setTransformedDisplayEdgeRuntime, null);
       runtime.topologyDisplayEdgeTransformByRecord = explodedViewActive;
+      if (staticSceneResetRef.current.consume(staticResetRenderToken, {
+        source: meshData, runtime, visualState: partVisualStateRef.current, clipState: clipSettingsRef.current,
+      })) {
+        runtime.requestRender?.();
+        return;
+      }
       resetStepModuleRecordEffects(runtime.displayRecords, THREE);
       for (const record of runtime.displayRecords) {
         applyDisplayRecordTransform(runtime.THREE, record, runtime.modelRadius || 1);

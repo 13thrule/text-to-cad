@@ -79,6 +79,7 @@ import { selectRequestedAssemblyComponents } from "../../../workbench/referenceS
 import { viewerMemoryPolicy } from "../../../render/viewerMemoryPolicy.js";
 import { syncSurfWorkerMemory } from "../../../render/surfWorkerMemoryPolicy.js";
 import { componentMemoryAccounting } from "../../../render/renderMemoryAccounting.js";
+import { createLodSceneAdoption } from "../../../render/lodSceneAdoption.js";
 
 // Robot link meshes are STLs, and `loadRenderStl` parses them in the STL worker — the
 // fetch and the parse both happen off the main thread. The cap used to be 3 with a
@@ -304,12 +305,32 @@ export function useCadAssets({
   // summary the LOD hook consumes (component diagonals, occurrence centers in
   // model coordinates, and each component's surf URL).
   const lodPackageRef = useRef(null);
+  const lodSceneAdoptionRef = useRef(null);
+  if (!lodSceneAdoptionRef.current) {
+    lodSceneAdoptionRef.current = createLodSceneAdoption({ currentContext: () => lodPackageRef.current });
+  }
+  const onMeshSourceAdoption = useCallback((source, ok) => {
+    if (ok) lodSceneAdoptionRef.current.adopted(source);
+    else lodSceneAdoptionRef.current.failed(source);
+  }, []);
   // Unlike lodPackageRef (the active staging/scheduler context), this ref owns
   // only the complete package whose meshState is actually displayed. Keeping
   // it separate lets A survive a failed/cancelled B and seed C without letting
   // B regain publication or LOD ownership.
   const displayedLodPackageRef = useRef(null);
   const [lodPackage, setLodPackage] = useState(null);
+  useEffect(() => {
+    lodSceneAdoptionRef.current.checkContext();
+    if (!meshState || meshState.file !== lodPackageRef.current?.file) lodSceneAdoptionRef.current.cancel();
+  }, [lodPackage, meshState?.file]);
+  useEffect(() => {
+    const snapshot = () => lodSceneAdoptionRef.current.snapshot();
+    if (typeof window !== "undefined") window.__cadLodSceneAdoption = snapshot;
+    return () => {
+      lodSceneAdoptionRef.current.cancel();
+      if (typeof window !== "undefined" && window.__cadLodSceneAdoption === snapshot) delete window.__cadLodSceneAdoption;
+    };
+  }, []);
   // The composed reference state's ingredients: the lazily-loaded occurrence
   // subset and the selector bundle each component's topology was built from.
   // Kept so an LOD level swap can re-compose PICKING from the same
@@ -384,7 +405,7 @@ export function useCadAssets({
   const applyComponentLodPayload = useCallback(async (cid, level, payload, { signal } = {}) => {
     const ctx = lodPackageRef.current;
     const meshData = payload?.meshData;
-    if (!ctx || !meshData || signal?.aborted) {
+    if (!ctx || !meshData || signal?.aborted || meshStateRef.current?.file !== ctx.file) {
       return false;
     }
     const previousLevel = normalizeLodLevel(ctx.componentLodLevelByCid?.[cid]);
@@ -442,8 +463,11 @@ export function useCadAssets({
       final: ctx.complete,
     });
     const nextState = buildComposedPackageMeshStateRef.current(ctx.entry, ctx.descriptor, composed);
+    const adopted = lodSceneAdoptionRef.current.expect({ context: ctx, source: composed,
+      componentId: cid, componentMesh: meshData, signal });
+    try {
     setMeshState((current) => {
-      if (!current || current.file !== ctx.file) {
+      if (!current || current.file !== ctx.file || lodPackageRef.current !== ctx || signal?.aborted) {
         return current;
       }
       return nextState;
@@ -456,6 +480,7 @@ export function useCadAssets({
     if (payload.bundle) {
       recomposeReferenceStateForLodRef.current?.(ctx, cid, payload.bundle);
     }
+    if (!await adopted || lodPackageRef.current !== ctx || signal?.aborted) return false;
     if (previousLevel !== normalizedLevel) {
       if (component?.surf && packageUrl) {
         releaseRenderSurfLevel(resolvePackageAssetUrl(packageUrl, component.surf), {
@@ -465,6 +490,10 @@ export function useCadAssets({
       }
     }
     return true;
+    } catch (error) {
+      lodSceneAdoptionRef.current.failed(composed);
+      throw error;
+    }
   }, [componentLodNeedsSelectors]);
 
   // Rebuild the composed selector runtime with one component's bundle swapped
@@ -622,6 +651,7 @@ export function useCadAssets({
   }, []);
 
   const cancelMeshLoad = useCallback(() => {
+    lodSceneAdoptionRef.current.cancel();
     requestIdRef.current += 1;
     abortLoad(meshAbortControllerRef);
     publishMeshCostAccounting(null);
@@ -1437,6 +1467,7 @@ export function useCadAssets({
     setMeshState,
     lodPackage,
     applyComponentLodPayload,
+    onMeshSourceAdoption,
     componentLodNeedsSelectors,
     meshLoadInProgress,
     meshLoadTargetFile,

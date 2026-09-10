@@ -1277,6 +1277,7 @@ export default function CadWorkspace({
     setMeshState,
     lodPackage,
     applyComponentLodPayload,
+    onMeshSourceAdoption,
     componentLodNeedsSelectors,
     meshLoadInProgress,
     meshLoadTargetFile,
@@ -7139,6 +7140,7 @@ export default function CadWorkspace({
           drawingThicknessMm={selectedEntryIsDrawing ? drawingThicknessMm : 0}
           onCameraZoomPercentChange={setViewerZoomPercent}
           onLodCameraChange={onLodCameraMoved}
+          onMeshSourceAdoption={onMeshSourceAdoption}
           renderPartsIndividually={
             isUrdfView || Boolean(selectedStepParameterRuntime) || Boolean(selectedAnimationRuntime)
           }

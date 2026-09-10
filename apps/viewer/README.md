@@ -112,8 +112,9 @@ the build — detection only; it keeps serving.
   measurements and explicit mesh-export tolerances remain unchanged.
   Static assemblies sample full transformed occurrence bounds against the camera
   frustum, refining a component when at least one occurrence is on screen.
-  Offscreen components stay rendered at their existing level; this does not hide
-  parts or unload detail. Unknown or not-yet-adopted bounds remain eligible.
+  Offscreen components stay displayed. Ordinary camera sampling retains their
+  existing detail; memory pressure can coarsen them before visible components.
+  Unknown or not-yet-adopted bounds remain eligible.
   Scenes with joints, render modules, drawing poses or an active/collapsing
   exploded view keep conservative eligibility, including paused/disabled pose
   capabilities. Authored visibility and material flags are not LOD filters.
@@ -122,6 +123,15 @@ the build — detection only; it keeps serving.
   before admission; a large component does not inflate every worker's charge.
   Refinement reserves both replacement arrays and worker scratch space, and
   includes the coarse tier's relaxed angular tolerance in its estimate.
+  Replacement admission stays held until the viewer adopts the current
+  component payload at every occurrence and accounts for its scene ownership.
+  This acknowledgment schedules rendering; it is not a GPU upload-completion
+  fence. Modeled upload ownership remains separate. A superseding progressive
+  publication can satisfy it only with the same context, revision, occurrence
+  set and exact payload; switch, abort, unmount or scene failure cancels it.
+  A static component publication can reuse the main adoption's completed reset
+  only in that same React render. Later visual or clipping changes still run
+  normally, as do transitions out of modules, animation, drawings or poses.
   Display arrays shared with asset caches have one CPU charge for the entire
   backing allocation, including unused sections of packed buffers. GPU charges
   use uploaded view sizes; CPU-only edge inputs and picking allocations remain

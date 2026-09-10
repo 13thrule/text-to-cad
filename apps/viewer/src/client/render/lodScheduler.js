@@ -213,7 +213,13 @@ export function createLodScheduler({
         const state = components.get(cid);
         if (state) {
           const commitLevel = (applied) => {
-            if (applied === false || disposed || controller.signal.aborted) return;
+            if (disposed || controller.signal.aborted) return;
+            if (applied === false) {
+              // A refused scene adoption is a failed attempt, not permission
+              // to immediately requeue the same level in a microtask loop.
+              failed.add(`${cid}:${level}`);
+              return;
+            }
             const current = components.get(cid);
             if (current) current.level = level;
           };
