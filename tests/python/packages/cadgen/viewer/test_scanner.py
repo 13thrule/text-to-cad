@@ -9,6 +9,7 @@ on well-formed input and part company on the edges.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -69,6 +70,13 @@ class ScannerTestCase(unittest.TestCase):
     def package(self, rel: str, descriptor) -> str:
         """Seed ``root/<rel>``'s result in the store; returns the tree hash."""
         return seed_result(Path(self.root, rel), descriptor)
+
+    def sidecar(self, rel: str, payload: dict) -> str:
+        document = Path(self.root, rel)
+        body = dict(payload)
+        body["schemaVersion"] = 7
+        body["documentHash"] = hashlib.sha256(document.read_bytes()).hexdigest()
+        return self.write(f"{rel}.json", json.dumps(body))
 
     def scan(self) -> list[dict]:
         return scan_cad_directory(self.root)["entries"]
@@ -224,7 +232,7 @@ class DescriptorGate(ScannerTestCase):
 
     def _entry_with_sidecar(self, descriptor) -> dict:
         self.write("g.step", "x\n")
-        self.write("g.step.json", json.dumps({"kinematics": {"joints": []}}))
+        self.sidecar("g.step", {"kinematics": {"joints": []}})
         self.package("g.step", descriptor)
         return self.entry("g.step")
 
@@ -237,7 +245,7 @@ class DescriptorGate(ScannerTestCase):
 
     def test_no_package_suppresses_both(self):
         self.write("g.step", "x\n")
-        self.write("g.step.json", json.dumps({"kinematics": {}}))
+        self.sidecar("g.step", {"kinematics": {}})
         entry = self.entry("g.step")
         self.assertNotIn("sourceUrl", entry)
         self.assertNotIn("poseUrl", entry)
@@ -249,7 +257,7 @@ class SidecarTruthiness(ScannerTestCase):
     def _entry(self, sidecar_text: str | None) -> dict:
         self.write("s.step", "x\n")
         if sidecar_text is not None:
-            self.write("s.step.json", sidecar_text)
+            self.sidecar("s.step", json.loads(sidecar_text))
         self.package("s.step", {"kind": "assembly-package", "components": {}})
         return self.entry("s.step")
 
@@ -274,15 +282,41 @@ class SidecarTruthiness(ScannerTestCase):
 
 
     def test_the_catalog_publishes_no_provenance(self):
-        entry = self._entry(json.dumps({"schemaVersion": 5, "sourceKind": "step"}))
+        entry = self._entry(json.dumps({"sourceKind": "step"}))
         for forbidden in ("sourceKind", "source", "poseHatchUrl", "moduleUrl", "legacyParamsSidecar"):
             self.assertNotIn(forbidden, entry)
 
     def test_the_sidecar_suffix_is_appended_to_the_whole_name(self):
         self.write("u.STP", "x\n")
-        self.write("u.STP.json", json.dumps({"kinematics": {}}))
+        self.sidecar("u.STP", {"kinematics": {}})
         self.package("u.STP", {"kind": "assembly-package", "components": {}})
         self.assertEqual(self.entry("u.STP")["sourceUrl"], "/u.STP.json")
+
+    def test_a_sidecar_for_different_step_bytes_reports_annotation_error(self):
+        self.write("stale.step", "old\n")
+        self.sidecar("stale.step", {"kinematics": {}})
+        self.write("stale.step", "new\n")
+        self.package("stale.step", {"kind": "assembly-package", "components": {}})
+
+        entry = self.entry("stale.step")
+        self.assertIn("does not match stale.step sha256", entry["annotationError"])
+        self.assertNotIn("sourceUrl", entry)
+        self.assertNotIn("poseUrl", entry)
+        self.assertTrue(entry["url"].startswith("/__cad/store?file="))
+        self.assertEqual(entry["documentHash"], hashlib.sha256(b"new\n").hexdigest())
+
+    def test_a_schema_six_sidecar_is_a_hard_cutover_annotation_error(self):
+        self.write("old.step", "x\n")
+        self.write(
+            "old.step.json",
+            json.dumps({"schemaVersion": 6, "kinematics": {}}),
+        )
+        self.package("old.step", {"kind": "assembly-package", "components": {}})
+
+        entry = self.entry("old.step")
+        self.assertIn("unsupported sidecar schema 6 (expected 7)", entry["annotationError"])
+        self.assertNotIn("sourceUrl", entry)
+        self.assertNotIn("poseUrl", entry)
 
 
 class SrdfPairing(ScannerTestCase):

@@ -35,11 +35,11 @@ _guard = threading.Lock()
 _cache: tuple[float, list[dict]] = (0.0, [])
 
 
-def _daemon_jobs(now: float) -> list[dict]:
+def _daemon_jobs(now: float, *, max_age: float = FEED_CACHE_SECONDS) -> list[dict]:
     global _cache
     with _guard:
         stamp, jobs = _cache
-        if now - stamp < FEED_CACHE_SECONDS:
+        if now - stamp < max_age:
             return jobs
     from cadgen.daemon import client
 

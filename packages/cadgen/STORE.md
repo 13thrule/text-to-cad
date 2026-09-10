@@ -44,7 +44,9 @@ memo (bare), scope, blob. They do not appear in code or documentation.
 ```
 
 Nothing else lives under the root. A build's progress is process state, not
-content: the daemon's job ledger, read over its socket (§7, §9).
+content: the daemon's job ledger, read over its socket (§7, §9). Editing
+previews use the same immutable objects, with ephemeral request handles in
+that ledger (§9b); there is no preview directory or persistent session index.
 
 ### The two sides of the store — a law
 
@@ -69,6 +71,9 @@ test:
    compiled / compiling / rendered / failed) and it never learns which model
    wrote a document. "Is this document behind its source" is `cadgen store
    why`'s and the build tree's question.
+   An explicitly attached editing session has a different input: a complete
+   preview tree announced by the build runtime (§9b). It still reads no
+   model/output records and never runs source. This input is not a saved file.
 3. **Records are deletable.** `rm -rf index/model index/output` loses no
    artifact: every reader still works from objects; a rebuild re-creates the
    records without rebuilding a tree whose objects exist.
@@ -267,15 +272,19 @@ Each with the failure it prevents.
   executes it (an audit hook on `exec`), not after the build. Prevents: a file
   edited during a long build being recorded with the bytes that did NOT run,
   which would make a stale result read as current forever.
-- **Publish order.** Objects first (components, then the tree), then the
-  outputs (`.step` moved into place atomically; sidecar), then the record.
+- **Publish order.** Objects first (components, then the complete tree), the
+  document-byte mapping, the outputs (`.step` moved into place atomically;
+  digest-bound sidecar), output mappings, then the record. STEP export and
+  read-back use a private sibling staging directory outside the store.
   Prevents: a record pointing at a tree that does not exist yet, or a `.step`
   whose sha the record has not seen.
-- **Publish rule.** `cadgen.store.publish.decide`: a build never replaces a
+- **Publish rule.** `cadgen.store.publish.decide`: a build rejects replacing a
   current record with a stale one — if the record on disk already reflects the
   closure as it is NOW and the build that finished ran against older sources,
-  the result is discarded. Prevents: two concurrent builds of one model ending
-  with the older source's result on disk.
+  the result is discarded and an explicit save fails. The expected document
+  and annotation digests also detect a competing edit during the build.
+  These checks narrow conflicting publication; they are not atomic exclusion
+  against another process's rename (§7).
 - **Children from calls, never from links.** Prevents: a modified or discarded
   child dropping out of the dependency edge, so an edit to it would not reach
   the parent.
@@ -330,6 +339,11 @@ Decided mechanically; there is no error path.
   a build123d `Compound` and TAGS it with the tree hash and a handle to the
   shape it was built from. The tag is metadata for the build, not part of any
   contract a model author sees.
+- Its process cache retains at most 64 MiB of immutable canonical BREP bytes.
+  Each independent materialization reconstructs fresh kernel shapes; repeated
+  occurrences within that materialization share their prototype. A byte-cache
+  hit still requires the object to exist on disk. Clearing the memo releases
+  only retained bytes, leaving active consumers' shapes valid.
 - When the parent's result is written, every tagged compound found in it whose
   shape is still the one it was materialized with (`IsPartner`: same
   underlying shape, any rigid placement, relabelled or recolored or not)
@@ -353,12 +367,14 @@ Decided mechanically; there is no error path.
 
 ## 7. Concurrency
 
-No serialization, no cancellation, no waiting on another build.
+No persistent build locks. CPU admission and identical child coalescing may
+wait; memory admission fails when progress cannot fit (§9). Explicit builds
+are not cancelled merely because a newer editing request exists.
 
 - **Same model twice.** Both builds run. Each publishes objects (idempotent)
   and then consults the publish rule: the one whose closure matches the
   sources as they are now wins the record; the other's result is left as
-  unreferenced objects for GC.
+  unreferenced objects for GC. A rejected explicit save reports failure.
 - **Edit a child while its parent builds.** The parent already pinned the
   child's tree when it called it; it materializes that pin and publishes a
   record whose pin no longer matches the child's current tree. The parent is
@@ -367,8 +383,9 @@ No serialization, no cancellation, no waiting on another build.
 - **Edit a parent while a child builds.** Unrelated: the child's record and
   tree are its own. The parent's next build calls the child, finds it
   current, and pins the new tree.
-- **The only wait** is a parent forcing a child it submitted itself (§Lazy
-  children); it never waits for a build it did not start.
+- **Dependency waits** release the parent's CPU slot but retain its geometry
+  and memory reservation. A coalesced child may have been started by another
+  consumer; it must remain alive while any required consumer uses it.
 - **No locks.** There is no lock layer: every store write is atomic
   (temp + rename) and idempotent, the document is written to a temp file and
   moved into place, the record cross-validates the outputs by sha (gate
@@ -380,6 +397,26 @@ No serialization, no cancellation, no waiting on another build.
   and nothing reads any of it to decide freshness. With `CADGEN_DAEMON=0`
   there is no ledger, and concurrent builds are unbrokered
   — safe by the two invariants above, wasteful, and a debugging mode.
+
+Before a generated body runs, the build captures its target STEP and sidecar
+digests (absence counts too). It prepares the result once, exports and reads
+back a private STEP, publishes complete immutable objects, and checks source
+freshness and the expected output pair. A concurrently written byte-identical
+pair is idempotent; a different pair makes the save fail. After the final
+renames it verifies the written digests before recording success. A STEP
+re-emission has an explicit immutable input/annotation digest, not a Python
+closure; its output-pair check still applies.
+
+Each rename is atomic; the group is not a transaction or compare-and-swap.
+There is a check-to-rename race with independent CLI or external writers, and
+an external writer can replace a successfully saved document later. A failure
+before publication preserves the previous pair. A crash after the STEP rename
+can leave a missing or mismatched annotation: schema 7 binds kinematics to the
+STEP's SHA-256, so readers reject that annotation instead of applying old
+mates to new geometry. A stale/missing record does not block saved-byte reads;
+missing derived objects are compiled from the bytes that actually exist.
+Explicit regeneration repairs the annotation pair. No reader consults locks
+or source to recover an artifact.
 
 ## 8. GC
 
@@ -405,8 +442,8 @@ Every build goes through one interface, `cadgen.daemon.executors.submit(model)
   binds a spare and a replacement starts in the background; no spare means a
   spawn. Spares: `CADGEN_DAEMON_SPARES` (default 2). Requests that name no
   model (`inspect`, `snapshot` on a document) borrow a spare without binding
-  it. Nothing waits on another build, nothing is capped, nothing counts
-  memory, no bound worker is idle-reaped; a worker is recycled after
+  it. Worker admission accounts for resident memory and pending reservations,
+  and may reclaim idle workers or refuse work (§9 below). A worker is recycled after
   `CADGEN_DAEMON_RECYCLE` jobs (default 1000) as a leak hedge, and the daemon
   exits after `CADGEN_DAEMON_IDLE_TIMEOUT` seconds idle (default 3600).
   Inside a worker, `submit` is the same client call back to the daemon, so a
@@ -445,8 +482,7 @@ are themselves dispatched through the daemon when one is reachable, so they
 run on warm kernels; the subject-less commands (`store`, `doctor`, `daemon
 status`, the mesh and drawing snapshots) run in-process and never touch it.
 
-Three static mechanisms bound the pool — none adaptive, none heuristic, no
-memory is ever measured (`cadgen.daemon.broker`):
+CPU scheduling and reuse remain independent of memory admission:
 
 1. **Job slots — one running build per core.** A FIFO counting semaphore of
    `N = os.cpu_count()` slots per executor (`CADGEN_JOBS` overrides; daemon-wide
@@ -454,8 +490,9 @@ memory is ever measured (`cadgen.daemon.broker`):
    root process runs a private broker its workers inherit). A job takes a slot
    before its body runs and holds it through its emit; it **yields the slot
    while it waits for a child it forced** and reacquires — queuing if it must —
-   when the child is done. A waiting parent therefore holds nothing, which is
-   why a 1-slot pool still builds a 3-level tree. Slots count kernel work only:
+   when the child is done. A waiting parent holds no CPU slot, which is
+   why a 1-slot pool still builds a 3-level tree. It retains its geometry and
+   memory reservation. Slots count kernel work only:
    the build pipeline takes one around a model body and its emit. **Doors take
    none and never run a body**: `inspect`, `snapshot` and the mesh doors
    (`stl|3mf|glb build`) ask one question of a document — does the store have a
@@ -478,6 +515,35 @@ memory is ever measured (`cadgen.daemon.broker`):
    idle that long returns to the spare set (spares beyond K exit); its model's
    next build rebinds a spare — no import repaid — with a cold RAM op-memo tier.
    Purely RAM: idle workers hold no slot and never block a new model.
+
+**Memory admission.** The daemon sums worker RSS including extraction
+descendants, pending spawn reservations, and retiring workers until they exit.
+Idle workers are reclaimed oldest first. Busy/suspended workers retain at
+least a worker reservation. Root requests cannot spend dependency headroom;
+nested requests can. If another dependency cannot fit, the build receives an
+explicit error rather than waiting indefinitely with parent geometry held.
+Reclamation drops process state only; it never runs persistent-store GC.
+
+| Setting | Default |
+|---|---|
+| `CADGEN_MEMORY_MB` | 70% of discovered physical/cgroup RAM; `0` disables |
+| `CADGEN_WORKER_MEMORY_MB` | up to 2048 MiB, scaled down for smaller limits |
+| `CADGEN_DEPENDENCY_MEMORY_MB` | one worker reservation, bounded by the limit |
+| `CADGEN_COMPONENT_MEMORY_MB` | 384 MiB per extraction subprocess |
+
+This is a soft admission envelope, not a native allocator limit. A single
+OCCT operation may grow between RSS samples. Where RSS cannot be enumerated,
+reservations still apply. Transient execution receives extraction-pool sizing,
+but has no daemon-wide aggregate process budget. CPU slot counts remain upper
+bounds, and extraction concurrency also fits the parent worker allowance.
+
+**Browser resources.** Disposable decoded meshes, selectors, BVHs, GPU buffers,
+textures and worker work may have byte budgets and be reclaimed when unused.
+Admission includes replacement overlap and temporary allocations; active
+owners must not be invalidated by another scene's release. GPU and worker heap
+figures are estimates where browser APIs expose no measurement. Such budgets
+do not change exact objects, canonical tree hashes or export tolerances, do
+not delete the disk cache, and must preserve a usable view on denied work.
 
 ## 9a. Lazy children
 
@@ -510,6 +576,50 @@ non-TTY gets one JSON line per model transition. Child events reach the root
 through the pool, tagged with the root request's id, identically for both
 executors. After publishing, the root runs its gate once more and says
 `already stale: …; rerun` if a child changed during the build.
+
+## 9b. Editing previews and explicit saves
+
+Running existing decorated code publishes a complete preview before the root's
+own STEP export/read-back, then continues that same build until its declared
+outputs finish. No model author imports a session, cache or ownership helper.
+Source files remain the durable authored inputs. The active worker owns the
+prepared geometry and frozen child pins for the pending save; a worker crash
+fails that request. There is no crash-resumable save queue hidden in the cache.
+
+The daemon identifies each accepted request by an epoch and monotonic ordinal,
+records its store root and declared output paths, and attaches producer IDs to
+events. An editing session selects the newest request for its output and store;
+late older events cannot replace it. It may retain the previous visible model
+while the newer request builds. A daemon restart expires request ordering; a
+disconnected preview is labelled as such. The ledger is short-lived and
+deletable, never the only durable copy of an authored change.
+
+Only model-run producers advance editing order. Compiling saved bytes and
+attaching a coalesced subscriber to an existing producer do not create a new
+editing revision or hide the producer's preview.
+
+These ephemeral preview handles are not GC roots. The normal grace period
+protects newly published objects; explicit GC or cache deletion can expire an
+older preview, including one retained after a failed save. The feed then
+reports that its geometry is unavailable. Already displayed browser resources
+remain owned until replaced or closed, but reopening requires a new build.
+The durable source and saved STEP remain the recovery path.
+
+The viewer's explicit **Follow edits** mode (`?file=part.step&mode=editing`)
+reads this channel via `GET /__cad/preview`, validates transitive object
+availability, and fetches geometry from the existing object routes. The server
+does no kernel work and exposes no source/closure/model record. Plain file
+links stay in **Saved file** mode. Preview kinematics are resolved against the
+preview tree; the saved sidecar is resolved separately against the read-back
+tree and bound to the saved bytes. Adjacent authored render modules remain
+independent. A saved-tree identity change clears incompatible selection and
+measurement state.
+
+Preview roots never replace `record.tree`, canonical child pins or a document
+mapping. A child still finishes its canonical STEP save before its parent can
+materialize that pin. Successful explicit saves require all declared outputs;
+publishing a preview alone is not success. The session changes back to the
+saved representation only after byte-based resolution verifies it.
 
 ## 10. Debugging
 
@@ -556,7 +666,9 @@ executors. After publishing, the root runs its gate once more and says
   `index/document` → objects.
 - Make a reader refuse, or a door rebuild from source: a missing tree is a
   compile job from the file's bytes; "behind its script" is `store why`'s.
-- Add a memory cap, a worker cap, or an age-based eviction rule.
+- Run automatic persistent-store GC or use process/display eviction as a
+  reason to mutate exact geometry. Disposable memory budgets and worker
+  reclamation follow §9 and never determine saved-artifact freshness.
 - Let a decorator argument change the geometry a model produces: arguments
   place files, tune how they are written, and declare kinematics; the tree
   is the return value as returned (README law 16).

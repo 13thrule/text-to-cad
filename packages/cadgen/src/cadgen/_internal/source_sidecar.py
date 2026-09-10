@@ -4,31 +4,29 @@ The tree (in the user-level store, keyed by the document's content
 hash) is a pure function of the STEP file's bytes plus schema versions — the
 cache engine's world, freely evictable. The model's DECLARATIONS live in ONE
 sidecar FILE BESIDE THE MODEL, ``<name>.step.json``: the KINEMATICS section
-(typed mates with axes resolved to world numbers, couplings, pose presets) and
-the MESH EXPORTS section (what the model's ``@stl``/``@glb``/``@threemf``
-declarations resolved to, so a bare mesh door reads DECLARATIONS from the
-document instead of importing the model module). Choreography is NOT here: the
-render module beside the document (``<name>.step.js``) is authored, loaded by
-the viewer by name, and read by no build. NOTHING source-derived-as-identity — no paths, hashes, closures, or
-timestamps: a sidecar ships beside the artifact, and a generated file carries
-no tie back to its source. Provenance lives in the RECORDS tier below. The
+(typed mates with axes resolved to world numbers, couplings, pose presets).
+Choreography and mesh-export declarations are not here. The render module
+beside the document (``<name>.step.js``) is authored, loaded by
+the viewer by name, and read by no build. The one hash here is
+``documentHash``: an artifact binding that prevents declarations from being
+applied to different STEP bytes after a partial copy or replacement. It is not
+source identity or provenance. No source paths, closure hashes, or timestamps
+belong here; provenance lives in the RECORDS tier below. The
 sidecar sits beside the model because declarations cannot be re-derived from
 the STEP bytes: evicting the store must never lose kinematics. New capability
 = new SECTION + schema bump, never a second sidecar file.
 
-A sidecar exists ONLY when the model NEEDS one: a kinematics section, an
-animation section, or declared mesh exports. A plain model — geometry and
-nothing else — writes no sidecar at all; its provenance and freshness ride
+A sidecar exists ONLY when the model NEEDS one: a kinematics section. A plain
+model — geometry and nothing else — writes no sidecar at all; its provenance and freshness ride
 the PROVENANCE RECORD in the evictable records tier (bottom of this module),
 which every generated build writes and every gate reads — the ONE home of
 source-derived identity. Eviction costs one rebuild, never correctness (an
 evicted record simply reads as an import until the next build re-records it).
-Imports write neither. The JS authority
-(``apps/viewer/server/artifact_status.py``) mirrors this: a sidecar at THIS schema
-is a fast yes, and the record decides everything else.
+Imports write neither.
 
-Write ordering matters: the sidecar is written BEFORE the tree lands at
-its content key, so a resolvable package never races a missing sidecar.
+Write ordering matters: the named STEP and sidecar land before the model record
+that makes their tree current, so a resolvable package never races a missing
+sidecar.
 Readers are lock-blind and tolerate a MISSING sidecar; a sidecar that is
 present must declare ``SOURCE_SIDECAR_SCHEMA_VERSION``, because reading
 sections out of a file written to a different shape is how a model silently
@@ -49,17 +47,19 @@ from cadgen._internal.atomic_replace import replace_atomic, temp_suffix
 # path from the artifact (:func:`source_sidecar_path`), or match the artifact
 # suffix too (`.step.json` / `.stp.json`).
 SOURCE_SIDECAR_SUFFIX = ".json"
+# 7: documentHash binds resolved kinematics to the exact STEP bytes they name.
 # 6: the animation and meshExports sections are gone. Choreography is the render
 #    module beside the document (`<name>.step.js`), loaded by the viewer and never
 #    by a build; a mesh door tessellates the document's tree and writes the file
 #    it was asked for, and what a model declares lives in its record. A sidecar
 #    is written for kinematics alone. 5 moved provenance OUT of the sidecar.
-SOURCE_SIDECAR_SCHEMA_VERSION = 6
+SOURCE_SIDECAR_SCHEMA_VERSION = 7
 
-# What a sidecar may CONTAIN: declarations only. Anything source-derived-as-
-# provenance (paths, hashes, closures, timestamps) belongs to the provenance
-# record; a sidecar sits beside the artifact and ships with it.
-_SIDECAR_SECTIONS = ("schemaVersion", "kinematics")
+# What a sidecar may CONTAIN: declarations plus the exact-document binding.
+# Anything source-derived-as-provenance (paths, closure hashes, timestamps)
+# belongs to the provenance record; a sidecar sits beside the artifact and
+# ships with it.
+_SIDECAR_SECTIONS = ("schemaVersion", "documentHash", "kinematics")
 
 
 def source_sidecar_path(step_path: Path | str) -> Path:
@@ -70,6 +70,10 @@ def source_sidecar_path(step_path: Path | str) -> Path:
 
 class SidecarSchemaError(ValueError):
     """A sidecar file that is not at the schema this cadgen reads."""
+
+
+class SidecarBindingError(ValueError):
+    """A sidecar bound to different STEP bytes than the adjacent document."""
 
 
 def _raw_source_sidecar(step_path: Path | str) -> dict[str, Any] | None:
@@ -87,13 +91,39 @@ def sidecar_schema_is_current(payload: Mapping[str, Any] | None) -> bool:
     return bool(payload) and payload.get("schemaVersion") == SOURCE_SIDECAR_SCHEMA_VERSION
 
 
-def read_source_sidecar(step_path: Path | str) -> dict[str, Any] | None:
+def _verified_document_hash(step_path: Path | str, document_hash: str | None) -> str:
+    if document_hash is None:
+        from cadgen._internal.step_hash import step_file_hash
+
+        return step_file_hash(Path(step_path))
+    digest = str(document_hash).strip().lower()
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise ValueError(f"document_hash must be a sha256 hex digest, got {document_hash!r}")
+    return digest
+
+
+def _binding_error(step_path: Path | str, found: object, expected: str) -> SidecarBindingError:
+    artifact = Path(step_path)
+    return SidecarBindingError(
+        f"{source_sidecar_path(artifact).name}: documentHash {found or 'none'} does not match "
+        f"{artifact.name} sha256 {expected} — rebuild the model (python {artifact.stem}.py) "
+        f"or re-annotate the document (cadgen step build)"
+    )
+
+
+def read_source_sidecar(
+    step_path: Path | str,
+    *,
+    document_hash: str | None = None,
+) -> dict[str, Any] | None:
     """The document's declarations, or ``None`` when it has no sidecar.
 
     A sidecar that IS there must declare this schema: reading sections out of
     a file written to a different shape is how a model silently loses its
     kinematics. Missing/unreadable stays ``None`` (an import, or a plain model
-    that declares nothing); wrong schema is an error with the fix.
+    that declares nothing); wrong schema or a binding to different STEP bytes
+    is an error with the fix. ``document_hash`` may carry a digest already
+    computed from the bytes being resolved, avoiding a second read.
     """
     payload = _raw_source_sidecar(step_path)
     if payload is None:
@@ -107,14 +137,39 @@ def read_source_sidecar(step_path: Path | str) -> dict[str, Any] | None:
             f"(python {artifact.stem}.py) or re-annotate the document "
             f"(cadgen step build)"
         )
+    expected = _verified_document_hash(step_path, document_hash)
+    found = str(payload.get("documentHash") or "").strip().lower()
+    if found != expected:
+        raise _binding_error(step_path, found, expected)
     return payload
 
 
 def model_is_generated(step_path: Path | str) -> bool:
-    """Whether this artifact carries a sidecar this cadgen reads — the same
-    fast yes ``artifactStatus.mjs`` takes. Never raises: classification is not
-    a render, and the loud refusal belongs to the readers of the SECTIONS."""
-    return sidecar_schema_is_current(_raw_source_sidecar(step_path))
+    """Whether this artifact carries a sidecar this cadgen reads. Never
+    raises: classification is not a render, and the loud refusal belongs to
+    the readers of the SECTIONS."""
+    return source_sidecar_matches_document(step_path)
+
+
+def source_sidecar_matches_document(
+    step_path: Path | str,
+    *,
+    document_hash: str | None = None,
+) -> bool:
+    """Whether a sidecar is current and bound to these STEP bytes.
+
+    Classification and current gates need a non-throwing predicate. Readers
+    use :func:`read_source_sidecar` to receive the teaching error.
+    """
+    payload = _raw_source_sidecar(step_path)
+    if not sidecar_schema_is_current(payload):
+        return False
+    try:
+        expected = _verified_document_hash(step_path, document_hash)
+    except (OSError, ValueError):
+        return False
+    found = str(payload.get("documentHash") or "").strip().lower()
+    return found == expected
 
 
 # The sections that WARRANT a sidecar. Provenance alone does not: it also
@@ -132,10 +187,17 @@ def sidecar_is_warranted(payload: Mapping[str, Any] | None) -> bool:
     return any(payload.get(section) for section in _WARRANTING_SECTIONS)
 
 
-def write_source_sidecar(step_path: Path | str, payload: Mapping[str, Any]) -> None:
+def write_source_sidecar(
+    step_path: Path | str,
+    payload: Mapping[str, Any],
+    *,
+    document_hash: str | None = None,
+) -> None:
     """Write the sidecar — or, for a payload that warrants none, remove any
     stale one (a model that DROPPED its kinematics must lose the file).
-    Only the FILE: the build's provenance record stays."""
+    The written ``documentHash`` describes the adjacent STEP bytes, or the
+    caller's already-verified digest for those bytes. Only the FILE: the
+    build's provenance record stays."""
     if not sidecar_is_warranted(payload):
         source_sidecar_path(step_path).unlink(missing_ok=True)
         return
@@ -143,6 +205,7 @@ def write_source_sidecar(step_path: Path | str, payload: Mapping[str, Any]) -> N
     target.parent.mkdir(parents=True, exist_ok=True)
     body = {k: v for k, v in payload.items() if k in _SIDECAR_SECTIONS}
     body["schemaVersion"] = SOURCE_SIDECAR_SCHEMA_VERSION
+    body["documentHash"] = _verified_document_hash(step_path, document_hash)
     # A rewrite that changes nothing but the timestamp is pure churn — for
     # committed sidecars (imported/ projects) it dirties git on every no-op.
     if _raw_source_sidecar(step_path) == body:

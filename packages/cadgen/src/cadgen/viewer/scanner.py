@@ -29,10 +29,8 @@ FIDELITY NOTES (each one is a place a "natural" Python spelling diverges)
 * ``path.extname`` is not ``os.path.splitext`` (see ``content_types``).
 * JS ``\\s`` and ``\\w`` are not Python's, so ``_xml_root_name`` spells both
   character classes out.
-* ``typeof x === "object"`` is true for ARRAYS and false for ``null``, and JS
-  ``{}``/``[]`` are TRUTHY where Python's are falsy. A sidecar that parses to
-  ``[1, 2]`` counts as a sidecar and emits ``sourceUrl``; a ``kinematics: {}``
-  emits ``poseUrl``.
+* A ``kinematics: {}`` object is a declaration even though Python considers it
+  falsey, so it still emits ``poseUrl``.
 """
 
 from __future__ import annotations
@@ -512,7 +510,7 @@ def _read_json(file_path):
         return None
 
 
-def read_step_catalog_metadata(descriptor, source_path=None) -> dict:
+def read_step_catalog_metadata(descriptor, source_path=None, *, document_hash=None) -> dict:
     """Catalog-facing facts from a document's flattened tree, or ``{}`` when
     there is no valid one.
 
@@ -528,12 +526,21 @@ def read_step_catalog_metadata(descriptor, source_path=None) -> dict:
     # Everything SOURCE-derived rides the model-side sidecar
     # (<name>.step.json); the store assembly.json is STEP-pure.
     sidecar = None
+    annotation_error = None
     if source_path:
-        parsed = _read_json(source_sidecar_path(source_path))
-        sidecar = parsed if _is_js_object(parsed) else None
+        from cadgen._internal.source_sidecar import (
+            SidecarBindingError,
+            SidecarSchemaError,
+            read_source_sidecar,
+        )
+
+        try:
+            sidecar = read_source_sidecar(source_path, document_hash=document_hash)
+        except (SidecarBindingError, SidecarSchemaError) as error:
+            annotation_error = str(error)
     entry_kind = descriptor.get("entryKind")
     kinematics = sidecar.get("kinematics") if isinstance(sidecar, dict) else None
-    return {
+    result = {
         "topology": {
             "index": descriptor,
             "entryKind": str(entry_kind if entry_kind is not None else "").strip().lower(),
@@ -544,12 +551,18 @@ def read_step_catalog_metadata(descriptor, source_path=None) -> dict:
         "hasSourceSidecar": sidecar is not None,
         "kinematics": kinematics if _is_js_object(kinematics) else None,
     }
+    if annotation_error:
+        result["annotationError"] = annotation_error
+    return result
 
 
 def _create_step_entry(repo_root, root_path, source_path, extension) -> dict:
     tree = result_tree(source_path)
     descriptor = result_descriptor(tree) if tree else None
-    metadata = read_step_catalog_metadata(descriptor, source_path)
+    document_hash = _sha256_file(source_path)
+    metadata = read_step_catalog_metadata(
+        descriptor, source_path, document_hash=document_hash
+    )
     topology = metadata.get("topology")
     descriptor_body = json.dumps(descriptor) if metadata else ""
     # An EMPTY `kinematics: {}` block still yields a poseUrl (JS truthiness);
@@ -562,8 +575,11 @@ def _create_step_entry(repo_root, root_path, source_path, extension) -> dict:
         # deterministic URL the store route answers 404 for.
         "url": _store_asset_url(tree or f"unbuilt-{artifact_path_key(source_path)}"),
         "hash": tree if metadata else "",
+        "documentHash": document_hash,
         "bytes": len(descriptor_body.encode("utf-8")),
     }
+    if metadata.get("annotationError"):
+        entry["annotationError"] = metadata["annotationError"]
     if metadata.get("hasSourceSidecar"):
         # The model-side sidecar lives in the root and is served by the ordinary
         # asset route; the client fetches and merges it. No ?v= token here.

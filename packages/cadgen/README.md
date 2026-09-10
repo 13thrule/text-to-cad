@@ -39,6 +39,11 @@ in the store is compiled from those bytes (`cadgen step compile` semantics),
 never from source. Deleting every `.py` in a project must not change what
 renders.
 
+An explicit editing session can instead follow a build's immutable preview
+tree before STEP persistence ([`STORE.md`](STORE.md) §9b). This is a separate
+runtime input: it does not change what opening a saved file means and does not
+allow artifact readers to inspect source or model records.
+
 - Nothing a renderer reads references the source tree: the sidecar's
   kinematics are resolved numbers and labels, and choreography is the
   authored render module beside the document (`<name>.step.js`), read live
@@ -158,7 +163,9 @@ path.
 
 Kinematics is pure data and choreography is pure JS, fully independent
 (11). Clients render from file + sidecar + the store's artifact side and never
-read source, a record, or trigger builds (12). Correctness never depends on a
+read source, a record, or trigger source builds (12). An explicit editing
+session may consume runtime-announced preview trees as specified in STORE §9b.
+Correctness never depends on a
 store hit (13). Composition: importing binds, calling links — a parent
 depends on a child by its RESULT (the pinned tree), on a constant by its
 VALUE, on a helper by its FILE — and a model must never `read_step` its own
@@ -204,6 +211,12 @@ dropped its declaration deletes the stale file. Metadata with no reader
 beside the artifact — what a model declares about its own outputs, where a
 build came from, when it ran — belongs in the store record, never in a
 file next to the geometry.
+
+Schema 7 sidecars contain only `schemaVersion`, the saved STEP's `documentHash`
+and `kinematics`. The digest binds those declarations to the artifact; it is
+not provenance. An old schema or a mismatched digest must be rebuilt or
+re-annotated, never silently applied. Compiling an imported STEP preserves
+its authored sidecar bytes.
 
 Two sections were deleted for violating this: `meshExports`, a copy of the
 mesh decorators' declarations that only a door read back (a door now

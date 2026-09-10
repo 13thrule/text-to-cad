@@ -100,7 +100,7 @@ def _build_fixture(root: str, cache: str) -> None:
 
     # --- sidecar variants -------------------------------------------------
     for name, sidecar in (
-        ("e_kin", json.dumps({"schemaVersion": 5, "kinematics": {"joints": []}})),
+        ("e_kin", json.dumps({"kinematics": {"joints": []}})),
         ("f_anim", json.dumps({"animation": {"text": "x"}})),
         ("g_array", "[1,2]"),
         ("h_empty_kin", json.dumps({"kinematics": {}})),
@@ -109,6 +109,11 @@ def _build_fixture(root: str, cache: str) -> None:
         ("q_scalar", '"hello"'),
     ):
         write(f"{name}.step", f"{name}\n")
+        if name in {"e_kin", "f_anim", "h_empty_kin", "i_nulls"}:
+            payload = json.loads(sidecar)
+            payload["schemaVersion"] = 7
+            payload["documentHash"] = hashlib.sha256(f"{name}\n".encode()).hexdigest()
+            sidecar = json.dumps(payload)
         write(f"{name}.step.json", sidecar)
         package(f"{name}.step", valid)
     # A sidecar with a WRONG descriptor kind publishes neither url.
@@ -117,7 +122,16 @@ def _build_fixture(root: str, cache: str) -> None:
     package("k_wrong_kind.step", {"kind": "not-a-package"})
     # Uppercase suffix: the sidecar name follows the artifact's whole name.
     write("p_upper.STP", "upper\n")
-    write("p_upper.STP.json", json.dumps({"kinematics": {"j": 1}}))
+    write(
+        "p_upper.STP.json",
+        json.dumps(
+            {
+                "schemaVersion": 7,
+                "documentHash": hashlib.sha256(b"upper\n").hexdigest(),
+                "kinematics": {"j": 1},
+            }
+        ),
+    )
     package("p_upper.STP", valid)
 
     # --- non-STEP assets and non-entries ---------------------------------
@@ -288,7 +302,7 @@ class CatalogShapeSnapshot(unittest.TestCase):
         self.assertGreaterEqual(sum(1 for e in entries if e["kind"] == "assembly"), 2)
         self.assertGreaterEqual(sum(1 for e in entries if "poseUrl" in e), 3)
         self.assertGreaterEqual(sum(1 for e in entries if "renderModuleUrl" in e), 1)
-        self.assertGreaterEqual(sum(1 for e in entries if "sourceUrl" in e), 6)
+        self.assertGreaterEqual(sum(1 for e in entries if "sourceUrl" in e), 5)
         self.assertGreaterEqual(sum(1 for e in entries if "relations" in e), 4)
         self.assertGreaterEqual(sum(1 for e in entries if e["hash"] == ""), 4)
         self.assertTrue(any(e["file"].startswith("library/") for e in entries))

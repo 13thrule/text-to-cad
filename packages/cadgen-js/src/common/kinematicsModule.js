@@ -17,10 +17,9 @@ import {
 import { normalizeStepModuleDefinition } from "./stepModule.js";
 
 // The sidecar schema this runtime reads. Mirrors cadgen's
-// source_sidecar.SOURCE_SIDECAR_SCHEMA_VERSION and the viewer's
-// packageContract.mjs; pinned across the three by
+// source_sidecar.SOURCE_SIDECAR_SCHEMA_VERSION; pinned across both by
 // tests/python/global/test_render_contract_sync.py.
-export const SOURCE_SIDECAR_SCHEMA_VERSION = 6;
+export const SOURCE_SIDECAR_SCHEMA_VERSION = 7;
 
 function isObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -99,6 +98,17 @@ export function stepModuleFromKinematics(block) {
   };
 }
 
+function moduleDefinitionFromKinematics(block, { cadPath = "", url = "" } = {}) {
+  const raw = stepModuleFromKinematics(block);
+  return raw ? normalizeStepModuleDefinition(raw, { url, cadPath }) : null;
+}
+
+/** Compile already-resolved preview kinematics without fetching a saved
+ * sidecar. Preview data is bound to its in-memory STEP by the build response. */
+export function previewKinematicsModuleDefinition(block, { cadPath = "" } = {}) {
+  return moduleDefinitionFromKinematics(block, { cadPath });
+}
+
 // Reading sections out of a sidecar written to a different shape is how a
 // model silently loses its kinematics, so the schema is checked before any
 // section is touched. The viewer surfaces this as the step-module load error.
@@ -111,7 +121,12 @@ function sidecarName(url) {
   return target.replace(/\\/g, "/").split("/").filter(Boolean).pop() || "sidecar";
 }
 
-function sidecarSections(sidecar, url) {
+function normalizedDocumentHash(value) {
+  const digest = String(value || "").trim().toLowerCase();
+  return /^[0-9a-f]{64}$/.test(digest) ? digest : "";
+}
+
+function sidecarSections(sidecar, url, documentHash) {
   const schemaVersion = sidecar?.schemaVersion;
   if (schemaVersion !== SOURCE_SIDECAR_SCHEMA_VERSION) {
     const name = sidecarName(url);
@@ -122,10 +137,23 @@ function sidecarSections(sidecar, url) {
       + `(python ${model}.py) or re-annotate the document (cadgen step build)`
     );
   }
+  const expected = normalizedDocumentHash(documentHash);
+  if (!expected) {
+    throw new Error(`${sidecarName(url)}: saved sidecar load requires the STEP documentHash`);
+  }
+  const found = normalizedDocumentHash(sidecar?.documentHash);
+  if (found !== expected) {
+    const name = sidecarName(url);
+    const model = name.replace(/\.(step|stp)\.json$/i, "");
+    throw new Error(
+      `${name}: documentHash ${found || "none"} does not match STEP sha256 ${expected} `
+      + `— rebuild the model (python ${model}.py) or re-annotate the document (cadgen step build)`
+    );
+  }
   return sidecar;
 }
 
-async function fetchSidecar(sidecarUrl) {
+async function fetchSidecar(sidecarUrl, { documentHash = "" } = {}) {
   const url = String(sidecarUrl || "").trim();
   if (!url) {
     return null;
@@ -134,20 +162,22 @@ async function fetchSidecar(sidecarUrl) {
   if (!response.ok) {
     throw new Error(`Failed to load model sidecar: HTTP ${response.status}`);
   }
-  return sidecarSections(await response.json(), url);
+  return sidecarSections(await response.json(), url, documentHash);
 }
 
 /** Fetch the model's sidecar (<name>.step.json) and compile its
  * kinematics section into a normalized step-module definition. Models with no
  * kinematics resolve to null (nothing to pose). */
-export async function loadKinematicsModuleDefinition(sidecarUrl, { cadPath = "" } = {}) {
-  const sidecar = await fetchSidecar(sidecarUrl);
+export async function loadKinematicsModuleDefinition(
+  sidecarUrl,
+  { cadPath = "", documentHash = "" } = {}
+) {
+  const sidecar = await fetchSidecar(sidecarUrl, { documentHash });
   if (!sidecar) {
     return null;
   }
-  const raw = stepModuleFromKinematics(sidecar.kinematics);
-  if (!raw) {
-    return null;
-  }
-  return normalizeStepModuleDefinition(raw, { url: String(sidecarUrl).trim(), cadPath });
+  return moduleDefinitionFromKinematics(sidecar.kinematics, {
+    url: String(sidecarUrl).trim(),
+    cadPath
+  });
 }

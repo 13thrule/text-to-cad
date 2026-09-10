@@ -116,7 +116,7 @@ class StepReemitTests(unittest.TestCase):
         self.assertFalse(result.skipped)
 
         sidecar = self._sidecar()
-        self.assertEqual(6, sidecar["schemaVersion"])
+        self.assertEqual(7, sidecar["schemaVersion"])
         # Declarations only: no source tie of any kind in the file
         # beside the artifact. The freshness identity — sourceKind "step", the
         # INPUT's content hash — lives in the provenance RECORD.

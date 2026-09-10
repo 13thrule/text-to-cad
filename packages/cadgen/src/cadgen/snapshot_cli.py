@@ -973,8 +973,11 @@ def resolve_step_render_job(
     }
     resolved["package"] = {"descriptor": descriptor, "componentUrls": component_urls}
     from cadgen._internal.source_sidecar import read_source_sidecar, source_sidecar_path
+    from cadgen._internal.step_hash import step_file_hash
 
-    sidecar = read_source_sidecar(source_path) or {}
+    document_hash = step_file_hash(source_path)
+    resolved["documentHash"] = document_hash
+    sidecar = read_source_sidecar(source_path, document_hash=document_hash) or {}
     kinematics_block = (
         sidecar.get("kinematics") if isinstance(sidecar.get("kinematics"), dict) else None
     )

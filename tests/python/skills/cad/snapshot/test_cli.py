@@ -29,7 +29,7 @@ def write_package(step_path, *, entry_kind="part", source_kind="step", kinematic
     step_path = Path(step_path)
     if not step_path.is_file():
         step_path.parent.mkdir(parents=True, exist_ok=True)
-        step_path.write_text(f"ISO-10303-21;\n{step_path.name}\n")
+        step_path.write_text(f"ISO-10303-21;\n{step_path.name}\n", encoding="utf-8")
     pkg_dir = result_view_dir(step_path)
     comp_dir = pkg_dir / "components"
     pkg_dir.mkdir(parents=True, exist_ok=True)
@@ -62,10 +62,9 @@ def write_package(step_path, *, entry_kind="part", source_kind="step", kinematic
     if kinematics:
         # Kinematics (source-derived) rides the MODEL-SIDE sidecar, never
         # assembly.json.
-        from cadgen._internal.source_sidecar import SOURCE_SIDECAR_SCHEMA_VERSION
+        from cadgen._internal.source_sidecar import write_source_sidecar
 
-        sidecar = {"schemaVersion": SOURCE_SIDECAR_SCHEMA_VERSION, "kinematics": kinematics}
-        Path(f"{step_path}.json").write_text(json.dumps(sidecar))
+        write_source_sidecar(step_path, {"kinematics": kinematics})
     if render_module is not None:
         # Choreography is the render module beside the document, authored and
         # discovered by name: part.step -> part.step.js.
@@ -2021,6 +2020,14 @@ class StepPoseParameterTests(unittest.TestCase):
         resolved = packet["jobs"][0]["resolved"]
         self.assertIn(".step.json", str(resolved["stepParameterUrl"]))
         self.assertNotIn("stepParameterPath", resolved)
+
+    def test_pose_parameters_reject_a_sidecar_bound_to_previous_step_bytes(self) -> None:
+        from cadgen._internal.source_sidecar import SidecarBindingError
+
+        step_path = self._step()
+        step_path.write_text("ISO-10303-21;\nchanged after annotation\nEND-ISO-10303-21;\n", encoding="utf-8")
+        with self.assertRaisesRegex(SidecarBindingError, "documentHash .* does not match"):
+            self._resolve(self._job(kinematics={"stroke": 1}))
 
     def test_animation_never_gates_the_parameter_url(self) -> None:
         # Choreography is INDEPENDENT of kinematics: a render module beside the

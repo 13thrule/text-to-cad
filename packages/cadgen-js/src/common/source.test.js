@@ -166,7 +166,8 @@ test("loadSource rejects STEP parameter options for non-STEP sources", async () 
 // CLI cannot tell one from the other — the declared names live in the model's
 // kinematics block — so a name arrives as a bare string and is resolved here.
 const HINGE_SIDECAR = {
-  schemaVersion: 6,
+  schemaVersion: 7,
+  documentHash: "a".repeat(64),
   kinematics: {
     mates: [
       {
@@ -201,7 +202,12 @@ function poseJob(kinematics, sidecarUrl) {
     kind: "step",
     meshData: meshData(),
     kinematics,
-    resolved: { kind: "step", stepParameterUrl: sidecarUrl, inputPath: "/models/hinge.step" }
+    resolved: {
+      kind: "step",
+      stepParameterUrl: sidecarUrl,
+      documentHash: HINGE_SIDECAR.documentHash,
+      inputPath: "/models/hinge.step"
+    }
   };
 }
 
@@ -236,7 +242,8 @@ test("pose VALUES still pass straight through", async (t) => {
 test("refuses a pose name against a model that declares no poses", async (t) => {
   const sidecarUrl = "/__cad/sidecar/hinge.step.json";
   stubSidecarFetch(t, sidecarUrl, {
-    schemaVersion: 6,
+    schemaVersion: 7,
+    documentHash: HINGE_SIDECAR.documentHash,
     kinematics: { ...HINGE_SIDECAR.kinematics, poses: {} }
   });
 
@@ -365,7 +372,8 @@ test("loadSource leaves no source scope behind", async (t) => {
 test("loadSource accepts sidecar kinematics for STEP sources", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
-    schemaVersion: 6,
+    schemaVersion: 7,
+    documentHash: HINGE_SIDECAR.documentHash,
     kinematics: {
       mates: [{ name: "drive", kind: "revolute", parent: "#base", child: "#rotor",
         axis: { origin: [0, 0, 0], dir: [0, 0, 1] }, limits: { value: [0, 360] } }]
@@ -377,6 +385,7 @@ test("loadSource accepts sidecar kinematics for STEP sources", async () => {
       meshData: meshData(),
       cadPath: "part.step",
       stepParameterUrl: "/__render_asset/pkg/model.step.json",
+      documentHash: HINGE_SIDECAR.documentHash,
       kinematics: { drive: 90 }
     });
 

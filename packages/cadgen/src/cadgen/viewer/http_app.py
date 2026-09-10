@@ -332,6 +332,10 @@ class CadApp:
                     self._handle_catalog(request, response)
                 elif pathname == "/__cad/artifact":
                     self._handle_artifact_status(request, response, query)
+                elif pathname == "/__cad/preview":
+                    from .preview import preview_status
+
+                    response.send_json(200, preview_status(self.backend.root_path, query.get("file") or ""))
                 elif pathname == "/__cad/store":
                     self._handle_store_asset(request, response, query)
                 elif pathname == "/__cad/asset":

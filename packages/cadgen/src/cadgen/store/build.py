@@ -39,7 +39,7 @@ import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from cadgen.coordination import PHASE_COMPONENTS, PHASE_FINALIZE, PHASE_PACKAGE
 from cadgen.coordination import resolve as resolve_progress
@@ -526,6 +526,7 @@ def build_tree_through_step(
     progress: Any | None = None,
     extra: dict[str, Any] | None = None,
     logger: Any | None = None,
+    on_preview: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any], str]:
     """Write ``step_path`` from ``compound`` and publish the tree of what was
     WRITTEN. Returns ``(tree_hash, tree, stats, step_hash)``.
@@ -592,8 +593,30 @@ def build_tree_through_step(
             shape.cad_face_ordinal_colors = face_colors
         own_shapes[cid] = shape
     descriptor = flatten_tree(walk.draft_tree(root_name=root_name))
-    with timed(f"tree: assemble STEP {step_path.name}"):
+    with timed("tree: prepare document"):
         document = materialize_descriptor(descriptor, shapes=own_shapes, label=root_name)
+    if on_preview is not None:
+        from copy import deepcopy
+        from dataclasses import replace
+        from cadgen.store.trees import tree_complete
+
+        # Freeze pure metadata separately: the read-back below replaces own
+        # component ids in its walk. Shapes remain owned by this active build;
+        # the prepared document already contains the exact transitive pins.
+        preview_walk = replace(
+            walk, occurrences=deepcopy(walk.occurrences), links=deepcopy(walk.links),
+            components=deepcopy(walk.components), root=deepcopy(walk.root),
+            shapes=dict(walk.shapes), brep_bytes_by_cid=dict(walk.brep_bytes_by_cid),
+        )
+        with timed("tree: preview"):
+            preview_hash, preview_tree, _ = _publish_tree(
+                preview_walk, bbox_shape=document, root_name=root_name,
+                force=False, progress=progress, extra=extra,
+            )
+            if not tree_complete(preview_hash):
+                raise RuntimeError("preview components disappeared before publication")
+            on_preview(preview_hash, preview_tree)
+    with timed(f"tree: assemble STEP {step_path.name}"):
         step_path.parent.mkdir(parents=True, exist_ok=True)
         step_hash = export_build123d_step_file(document, step_path, logger=logger)
 

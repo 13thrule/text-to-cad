@@ -343,11 +343,13 @@ async function loadStepParameters({
   kind,
   kinematics,
   stepParameterUrl,
+  documentHash,
   cadPath,
   selectorRuntime
 }) {
   assertStepOnlyOption(kind, kinematics, "kinematics");
   assertStepOnlyOption(kind, stepParameterUrl, "stepParameterUrl");
+  assertStepOnlyOption(kind, documentHash, "documentHash");
   const explicit = hasStepParameterRenderValues(kinematics);
   if (!stepParameterUrl) {
     if (!explicit) {
@@ -357,7 +359,10 @@ async function loadStepParameters({
   }
   // stepParameterUrl is the model SIDECAR url (the .step.json); its
   // kinematics section is the one articulation mechanism.
-  const definition = await loadKinematicsModuleDefinition(stepParameterUrl, { cadPath });
+  const definition = await loadKinematicsModuleDefinition(stepParameterUrl, {
+    cadPath,
+    documentHash
+  });
   if (!definition) {
     if (explicit) {
       throw new Error("model declares no kinematics, so the kinematics values have nothing to drive");
@@ -435,10 +440,14 @@ export async function loadSource(input, options = {}) {
   const stepParameterUrl = String(
     inputObject.stepParameterUrl || resolved.stepParameterUrl || options.stepParameterUrl || ""
   ).trim();
+  const documentHash = String(
+    inputObject.documentHash || resolved.documentHash || options.documentHash || ""
+  ).trim();
 
   const cadPath = String(inputObject.cadPath || resolved.inputPath || options.cadPath || "").trim();
   assertStepOnlyOption(kind, kinematics, "kinematics");
   assertStepOnlyOption(kind, stepParameterUrl, "stepParameterUrl");
+  assertStepOnlyOption(kind, documentHash, "documentHash");
 
   let meshData = explicitMeshData;
   // Component-GLB package: the canonical assembly artifact is a directory, so there is
@@ -463,6 +472,7 @@ export async function loadSource(input, options = {}) {
         kind: "step",
         kinematics,
         stepParameterUrl,
+        documentHash,
         cadPath,
         selectorRuntime: packageSelectorRuntime
       }),
@@ -532,6 +542,7 @@ export async function loadSource(input, options = {}) {
       kind,
       kinematics,
       stepParameterUrl,
+      documentHash,
       cadPath,
       selectorRuntime
     });
