@@ -706,6 +706,25 @@ Coalescing is scoped by store, model and source closure. The same stale child
 called twice shares one job. A failed child without a result raises `ChildBuildError` at the forcing site,
 naming the call site in the parent and carrying the worker's output.
 
+Within a model body, an exact `Compound(obj=list_or_tuple)` of lazy children can
+prepare later already-pinned inputs before the first pending input yields its
+execution slot. This constructs fresh private geometry from a verified tree
+snapshot; it does not force another job, publish a wrapper, or apply authored
+placement or metadata early. Ordinary forcing still checks the exact pin and
+rereads/verifies every prepared object before consuming its own private result.
+Preparation errors are retried in the original force order at the same pin.
+The constructor hook installs once, and active state belongs to that constructor
+and build frame on its thread; exit or failure releases unused preparations.
+A plain `Compound(children=list_or_tuple)` also qualifies when `obj` and `parent`
+are absent or `None`, and the exact lazy inputs are distinct and unparented.
+The original attachment-triggered force starts preparation; anytree still
+performs its own validation, attachment and error rollback. Nested constructors,
+arbitrary iterators, subclasses and child reparenting keep ordinary forcing.
+Admission permits at most eight small unlinked trees,
+with 768 KiB of verified BREP bytes and 4 MiB of verified SURF bytes in total;
+tree size and component/occurrence counts are also bounded. These limit extra
+work and retention, not native allocator RSS. No native cache or thread is added.
+
 Every called child still owes all declared outputs, including a call whose
 geometry was discarded. A parent publishes its complete source result and
 preview, then waits for all child outputs before its own save. The run retains

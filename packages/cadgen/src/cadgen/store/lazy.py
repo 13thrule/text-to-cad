@@ -28,6 +28,17 @@ later call composes (snapshot isolation). Materialize it, apply the placement wi
 child intact and writes a link), and tag the result exactly as
 :func:`cadgen.store.materialize.materialize` does.
 
+During a model body's exact ``Compound(obj=[...])`` or tuple construction,
+waiting on one input can first prepare bounded, already-pinned later inputs.
+These fresh private compounds remain unexposed until ordinary ordered force,
+which rechecks their exact objects before applying authored metadata/placement.
+The permanent constructor hook is inactive outside a build frame; active state
+is thread-local and clears at constructor exit. A plain ``Compound(children=...)``
+also qualifies with an exact list/tuple of unparented children and no ``obj`` or
+``parent``. Its original attachment-triggered force starts preparation; anytree
+validation and rollback remain unchanged. Nested constructors, generators,
+subclasses, and child reparenting retain ordinary forcing without preparation.
+
 A failed child raises when forced; the error names the child, carries the
 call site of the ``child()`` call, and includes the worker's output.
 
@@ -47,6 +58,7 @@ from build123d import Compound
 from build123d.topology.shape_core import downcast
 from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
 
+from cadgen.store import _ready_children
 from cadgen.store.materialize import PARTNER_TAG, ROOT_LOC_TAG, TREE_TAG, _Partner, materialize
 
 
@@ -272,12 +284,15 @@ class LazyCompound(Compound):
     def _force(self) -> None:
         if self._lazy_forcing:
             raise RuntimeError(f"child model {self.model_name} forced re-entrantly")
+        _ready_children.prepare_for(self)
         self._lazy_forcing = True
         try:
             tree = self.tree_hash()
             material_overridden = "cad_material" in self.__dict__
             face_colors_overridden = "cad_face_ordinal_colors" in self.__dict__
-            compound = _materialize_tree(tree, self._lazy_label)
+            compound = _ready_children.take_prepared(self, tree, self._lazy_label)
+            if compound is None:
+                compound = _materialize_tree(tree, self._lazy_label)
             shape = compound.wrapped
             if self._lazy_placement is not None:
                 shape = shape.Moved(self._lazy_placement.wrapped)
@@ -340,3 +355,8 @@ def _call_site() -> str:
             continue
         return f"{frame.filename}:{frame.lineno}"
     return "<unknown>"
+
+
+# LazyCompound is loaded only on a kernel-owning execution path. The permanent
+# hook does nothing outside a model body and keeps active state thread-local.
+_ready_children.install()
