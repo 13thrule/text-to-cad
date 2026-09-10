@@ -18,11 +18,13 @@ import {
   progressivePublishDue,
   publishMeshCostAccounting,
   meshStateIsComplete,
+  shouldRetainCompleteSameFileMesh,
   tolerantAnimationClip,
   createDecodeSizeEstimator,
   PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
   PROGRESSIVE_LOAD_UNMEASURED_SHARE
 } from "./packageProgressiveLoad.js";
+import { createViewerMemoryPolicy } from "../../../render/viewerMemoryPolicy.js";
 import { createAnimationFrame } from "cadgen-js/common/animationRuntime.js";
 import * as THREE from "three";
 
@@ -190,6 +192,55 @@ test("the final publish equals the single post-load composition", async () => {
     Object.keys(finalPublish.componentMeshDataByCid).sort(),
     Object.keys(all).sort()
   );
+});
+
+test("same-file complete revision replacement publishes atomically and accounts pending bytes", async () => {
+  const descriptor = makeDescriptor({ componentCount: 9, occurrenceCount: 9 });
+  const { loadComponent } = makeLoader(descriptor, { componentFloats: () => 12 });
+  const publishes = [];
+  const retained = [];
+  await createProgressivePackageLoader({
+    descriptor,
+    loadComponent,
+    concurrency: 2,
+    maxComponents: 2,
+    publishIntermediate: false,
+    onRetainedChange: (state) => retained.push(state),
+    onPublish: ({ loaded, final, meshData }) => publishes.push({ loaded, final, parts: meshData.parts.length })
+  }).run();
+  assert.deepEqual(publishes, [{ loaded: 9, final: true, parts: 9 }]);
+  assert.equal(retained.length, 9, "each newly retained component updates admission accounting");
+  assert.ok(retained.every((state, index) => index === 0 || state.retainedBytes >= retained[index - 1].retainedBytes));
+  assert.equal(retained.at(-1).loaded, 9);
+  const current = { file: "gear.step", meshHash: "old", meshData: { parts: Array(9) }, assemblyInteractionReady: true };
+  assert.equal(shouldRetainCompleteSameFileMesh(current, { file: "gear.step", kind: "assembly" }, "new"), true);
+  assert.equal(shouldRetainCompleteSameFileMesh(current, { file: "gear.step", kind: "assembly" }, "old"), false);
+  assert.equal(shouldRetainCompleteSameFileMesh(current, { file: "other.step", kind: "assembly" }, "new"), false);
+  assert.equal(shouldRetainCompleteSameFileMesh({ ...current, assemblyInteractionReady: false }, { file: "gear.step", kind: "assembly" }, "new"), false);
+});
+
+test("an atomic revision cancel publishes nothing and releases pending replacement ownership", async () => {
+  const descriptor = makeDescriptor({ componentCount: 9, occurrenceCount: 9 });
+  const { loadComponent } = makeLoader(descriptor);
+  let current = true;
+  const publishes = [];
+  const retained = [];
+  const loader = createProgressivePackageLoader({
+    descriptor,
+    loadComponent,
+    concurrency: 1,
+    publishIntermediate: false,
+    isCurrent: () => current,
+    onRetainedChange: (state) => {
+      retained.push(state.retainedBytes);
+      if (state.loaded === 3) current = false;
+    },
+    onPublish: (publish) => publishes.push(publish)
+  });
+  await assert.rejects(loader.run(), (error) => error.name === "AbortError");
+  assert.deepEqual(publishes, [], "the retained complete scene never receives a partial replacement");
+  assert.ok(retained.some((bytes) => bytes > 0));
+  assert.equal(retained.at(-1), 0, "cancel drops all pending replacement ownership");
 });
 
 test("a superseded request publishes nothing further and releases what it loaded", async () => {
@@ -464,17 +515,88 @@ test("byte-aware admission: decodes in flight stay under the byte budget, and un
   });
   await wide.run();
   assert.ok(wide.peakInFlight() <= 3 && wide.peakInFlight() >= 2, `count cap ${wide.peakInFlight()}`);
-  // A component larger than the whole budget runs alone rather than never.
+  // Once calibrated, a component larger than the whole decode budget is an
+  // explicit limitation. It is never auto-admitted as a run-alone spike.
   const { loadComponent: load3 } = makeLoader(descriptor, { componentFloats: () => 400 });
   const huge = createProgressivePackageLoader({
     descriptor, loadComponent: load3, sizeHint: async () => 1648, concurrency: 8, maxInFlightBytes: 100, onPublish: () => {}
   });
-  const result = await huge.run();
-  assert.equal(result.loaded, 24);
+  await assert.rejects(huge.run(), (error) => error.code === "VIEWER_MEMORY_LIMIT");
   // The estimator itself.
   const estimator = createDecodeSizeEstimator({ maxInFlightBytes: 400 });
   assert.equal(estimator.estimate(10), 100, "unmeasured share");
   estimator.observe(10, 300);
   assert.equal(estimator.estimate(20), 600, "hint scaled by the measured ratio");
   assert.equal(estimator.estimate(null), 300, "no hint: running mean");
+});
+
+test("an oversized component is rejected explicitly instead of running alone", async () => {
+  const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
+  let started = false;
+  const limitations = [];
+  const policy = createViewerMemoryPolicy({ budgetBytes: 30, gpuHeadroomBytes: 10 });
+  const externallyBounded = createProgressivePackageLoader({
+    descriptor,
+    maxInFlightBytes: 100,
+    loadComponent: async () => {
+      started = true;
+      return fakeComponent("c0");
+    },
+    reserveLoad: ({ cid, estimatedBytes }) => policy.reserve({
+      category: "workerInFlight", bytes: estimatedBytes, label: cid,
+    }),
+    releaseLoad: (token) => policy.release(token),
+    onMemoryLimitation: (detail) => limitations.push(detail),
+    onPublish: () => {},
+  });
+  await assert.rejects(externallyBounded.run(), (error) => error.code === "VIEWER_MEMORY_LIMIT");
+  assert.equal(started, false, "decode never starts");
+  assert.equal(policy.snapshot().reservationCount, 0);
+  assert.equal(limitations.length, 1);
+});
+
+test("worker reservation spans decode and is released after success", async () => {
+  const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
+  const policy = createViewerMemoryPolicy({ budgetBytes: 1000, gpuHeadroomBytes: 100 });
+  const seen = [];
+  await createProgressivePackageLoader({
+    descriptor,
+    maxInFlightBytes: 400,
+    reserveLoad: ({ cid, estimatedBytes }) => policy.reserve({
+      category: "workerInFlight", bytes: estimatedBytes, label: cid,
+    }),
+    releaseLoad: (token) => policy.release(token),
+    loadComponent: async () => {
+      seen.push(policy.snapshot().inFlightBytes);
+      return fakeComponent("c0");
+    },
+    onPublish: () => {},
+  }).run();
+  assert.deepEqual(seen, [100], "unmeasured decode reserves one quarter of the local cap");
+  assert.equal(policy.snapshot().inFlightBytes, 0);
+});
+
+test("a transient global miss waits for admitted work and leaves no stale limitation", async () => {
+  const descriptor = makeDescriptor({ componentCount: 5, occurrenceCount: 5 });
+  const { loadComponent } = makeLoader(descriptor, { componentFloats: () => 12 });
+  const policy = createViewerMemoryPolicy({ budgetBytes: 250, gpuHeadroomBytes: 50 });
+  const loader = createProgressivePackageLoader({
+    descriptor,
+    concurrency: 5,
+    maxInFlightBytes: 400,
+    reserveLoad: ({ cid, estimatedBytes }) => policy.reserve({
+      category: "workerInFlight",
+      bytes: estimatedBytes,
+      label: cid,
+      recordLimitation: false,
+    }),
+    releaseLoad: (token) => policy.release(token),
+    loadComponent,
+    onPublish: () => {},
+  });
+  const result = await loader.run();
+  assert.equal(result.loaded, 5);
+  assert.equal(policy.snapshot().lastLimitation, null);
+  assert.equal(policy.snapshot().reservationCount, 0);
+  assert.ok(loader.peakInFlight() <= 2, "the global 200-byte owned limit admits two 100-byte estimates");
 });

@@ -6,6 +6,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 
 import {
+  applyDisplayRecordTransform,
   applyPartVisualState,
   buildModel,
   CAD_DISPLAY_MODE,
@@ -543,19 +544,19 @@ function composedPackage(sourceMesh, count) {
   };
 }
 
-test("a component's occurrences share one surface geometry and one instanced edge draw: 5 buffers + 2 textures, draw calls = occurrences + 1", () => {
+test("a component's occurrences share one surface draw and one instanced edge draw", () => {
   const sourceMesh = surfComponentMeshData();
   const first = buildModel(THREE, composedPackage(sourceMesh, 4), { renderPartsIndividually: true });
   const geometries = new Set();
   const buffers = new Set();
   let drawables = 0;
   first.root.traverse((object) => {
-    if (!object.geometry || object.userData.cadEdgeInstancesHighlight) return;
+    if (!object.geometry || object.userData.cadEdgeInstancesHighlight || object.material?.visible === false) return;
     drawables += 1;
     geometries.add(object.geometry);
     for (const buffer of geometryBuffers(object.geometry)) buffers.add(buffer);
   });
-  assert.equal(drawables, 5, "one mesh per occurrence and one edge draw for the component");
+  assert.equal(drawables, 2, "four occurrences collapse to one surface draw plus one edge draw");
   assert.equal(geometries.size, 2, "one surface geometry and one edge quad for the component");
   assert.equal(buffers.size, 5, "position, normal, index + quad position, quad index");
   const [a, b] = first.displayRecords;
@@ -576,6 +577,45 @@ test("a component's occurrences share one surface geometry and one instanced edg
   assert.equal(second.displayRecords[0].geometry, a.geometry, "surface geometry reused");
   assert.equal(second.displayRecords[4].edgeInstance.set.segments, set.segments, "segment texture reused");
   second.dispose();
+});
+
+test("surface instances follow transforms and keep the unaffected majority instanced through hover/selection", () => {
+  const sourceMesh = surfComponentMeshData();
+  const scene = buildModel(THREE, composedPackage(sourceMesh, 4), { renderPartsIndividually: true });
+  const record = scene.displayRecords[2];
+  const { set, slot } = record.surfaceInstance;
+  assert.equal(scene.runtime.cadSurfaceInstanceSets.size, 1);
+  assert.equal(scene.modelGroup.children.filter((object) => object.material?.visible !== false).length, 1);
+
+  record.explodedViewMatrix = new THREE.Matrix4().makeTranslation(0, 6, 0);
+  applyDisplayRecordTransform(THREE, record);
+  const matrix = new THREE.Matrix4();
+  set.object.getMatrixAt(slot, matrix);
+  assert.equal(matrix.elements[12], 20);
+  assert.equal(matrix.elements[13], 6);
+
+  scene.update({ clip: { enabled: true, axis: "x", offsets: { x: 0.5 } } });
+  assert.equal(set.object.material.clippingPlanes.length, 1, "shared surface pass receives clipping");
+  const originalRecords = [...scene.displayRecords];
+  const originalMaterials = scene.displayRecords.map((item) => item.material);
+  const object = set.object;
+  scene.update({ selection: { hoveredPartId: "o2" } });
+  assert.equal(scene.runtime.cadSurfaceInstanceSets.size, 1);
+  assert.equal(scene.runtime.cadSurfaceInstanceSets.values().next().value.object, object, "hover reuses the instance buffer");
+  assert.deepEqual(scene.displayRecords, originalRecords, "hover does not rebuild display records");
+  assert.deepEqual(scene.displayRecords.map((item) => item.material), originalMaterials, "hover reuses materials");
+  assert.equal(record.material.visible, true, "hovered record uses its ordinary transparent highlight pass");
+  assert.ok(scene.displayRecords.filter((item) => item !== record).every((item) => item.material.visible === false));
+
+  scene.update({ selection: { selectedPartIds: ["o2"] } });
+  assert.equal(scene.runtime.cadSurfaceInstanceSets.size, 1, "the unaffected three records stay instanced");
+  assert.equal(scene.runtime.cadSurfaceInstanceSets.values().next().value.object, object);
+  assert.equal(record.material.visible, true);
+  assert.equal(scene.displayRecords.find((item) => item.partId === "o2").mesh.userData.partId, "o2");
+  scene.update({ selection: { selectedPartIds: [], hoveredPartId: "" } });
+  assert.equal(record.material.visible, false, "cleared transient state rejoins the same instance slot");
+  assert.equal(scene.runtime.cadSurfaceInstanceSets.values().next().value.object, object);
+  scene.dispose();
 });
 
 // A component large enough for the budget to mean something: a 60x60 vertex
@@ -1274,6 +1314,61 @@ test("departed components free their GPU buffers, BVH and edge draw; a returning
   scene.dispose();
   assert.deepEqual(disposedAtEnd.sort(), ["A", "B"]);
   assert.equal(scene.displayRecords.length, 0);
+});
+
+test("shared component GPU resources survive another scene's removal and disposal", () => {
+  const componentA = surfComponentMeshData();
+  const componentB = surfComponentMeshData();
+  const source = twoComponentPackage(componentA, componentB, [0, 1, 3]);
+  const first = buildModel(THREE, source, { renderPartsIndividually: true });
+  const second = buildModel(THREE, source, { renderPartsIndividually: true });
+  const geometry = first.displayRecords[1].geometry;
+  const segments = first.displayRecords[1].edgeInstance.set.segments;
+  assert.equal(second.displayRecords[1].geometry, geometry);
+  assert.equal(second.displayRecords[1].edgeInstance.set.segments, segments);
+  const bvh = geometry.boundsTree = { shared: true };
+  let geometryDisposals = 0;
+  let textureDisposals = 0;
+  geometry.addEventListener("dispose", () => { geometryDisposals += 1; });
+  segments.texture.addEventListener("dispose", () => { textureDisposals += 1; });
+
+  first.update({ source: twoComponentPackage(componentA, componentB, [0]) });
+  first.dispose();
+  assert.equal(geometryDisposals, 0);
+  assert.equal(textureDisposals, 0);
+  assert.equal(geometry.boundsTree, bvh, "the second scene still owns its picking structure");
+  assert.equal(second.displayRecords[1].edgeInstance.set.disposed, false);
+  second.dispose();
+  assert.equal(geometryDisposals, 1, "the last scene frees the shared upload once");
+  assert.equal(textureDisposals, 1);
+  assert.equal(geometry.boundsTree, null);
+  second.dispose();
+  assert.equal(geometryDisposals, 1);
+});
+
+test("shared wireframe geometry is freed only after its last scene, and retained uploads can be released later", () => {
+  const component = surfComponentMeshData();
+  const source = twoComponentPackage(component, component, [0, 1]);
+  const settings = { renderPartsIndividually: true, displayMode: CAD_DISPLAY_MODE.WIREFRAME };
+  const first = buildModel(THREE, source, settings);
+  const second = buildModel(THREE, source, settings);
+  const geometry = first.displayRecords[0].geometry;
+  const edges = first.displayRecords[0].edges.geometry;
+  assert.equal(second.displayRecords[0].edges.geometry, edges);
+  let geometryDisposals = 0;
+  let edgeDisposals = 0;
+  geometry.addEventListener("dispose", () => { geometryDisposals += 1; });
+  edges.addEventListener("dispose", () => { edgeDisposals += 1; });
+  first.dispose();
+  assert.equal(geometryDisposals, 0);
+  assert.equal(edgeDisposals, 0);
+  second.dispose({ releaseGpu: false });
+  assert.equal(geometryDisposals, 0);
+  assert.equal(edgeDisposals, 0);
+  const replacement = buildModel(THREE, source, settings);
+  replacement.dispose();
+  assert.equal(geometryDisposals, 1);
+  assert.equal(edgeDisposals, 1);
 });
 
 test("a deformed tube's private edges keep per-class thickness", () => {

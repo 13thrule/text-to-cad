@@ -8,10 +8,21 @@
 // debugging: `window.__CAD_VIEWER_LOD__ = false` before loading a model.
 import { useCallback, useEffect, useRef } from "react";
 
-import { loadRenderSurfPayloadAtLevel } from "cadgen-js/lib/renderAssetClient";
+import { loadRenderSurfPayloadAtLevel, releaseSurfWorkers } from "cadgen-js/lib/renderAssetClient";
+import { estimateMeshRenderCost } from "cadgen-js/lib/render/meshCost.js";
 import { LOD_CHORD_LEVELS } from "cadgen-js/lib/surf/lodPolicy.js";
 
 import { createLodScheduler } from "./lodScheduler.js";
+import { viewerMemoryPolicy } from "./viewerMemoryPolicy.js";
+
+const LOD_SELECTOR_AND_GPU_ESTIMATE_MULTIPLIER = 2.5;
+
+function publishLodMemoryLimitation(detail) {
+  if (typeof window === "undefined") return;
+  window.__cadViewerMemoryLimitation = detail;
+  window.__cadViewerMemory = viewerMemoryPolicy.snapshot();
+  window.dispatchEvent(new CustomEvent("cad:memory-limitation", { detail }));
+}
 
 function lodEnabled() {
   return typeof window === "undefined" || window.__CAD_VIEWER_LOD__ !== false;
@@ -25,6 +36,26 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
 
   useEffect(() => {
     const scheduler = createLodScheduler({
+      reserveLevel: ({ cid, currentLevel, level, direction }) => {
+        const component = componentsRef.current.get(cid);
+        const currentBytes = Math.max(1, Number(component?.meshBytes) || 0);
+        const toleranceRatio = LOD_CHORD_LEVELS[currentLevel] / LOD_CHORD_LEVELS[level];
+        const nextMeshBytes = Math.ceil(currentBytes * Math.max(0.2, toleranceRatio));
+        return viewerMemoryPolicy.reserve({
+          category: "replacement",
+          bytes: nextMeshBytes * LOD_SELECTOR_AND_GPU_ESTIMATE_MULTIPLIER,
+          label: `${cid}@L${level}`,
+          kind: direction,
+          replacingBytes: currentBytes,
+          finalBytes: nextMeshBytes,
+        });
+      },
+      releaseLevel: (token) => viewerMemoryPolicy.release(token),
+      memoryPressure: () => {
+        const memory = viewerMemoryPolicy.snapshot();
+        return memory.availableBytes < memory.ownedLimitBytes * 0.15;
+      },
+      onLimitation: publishLodMemoryLimitation,
       loadLevel: (cid, level, { signal }) => {
         const component = componentsRef.current.get(cid);
         if (!component) {
@@ -34,10 +65,20 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
           signal,
           // Level 0 is the plain-URL cache entry the initial load shares.
           tessellation: level > 0 ? { chordTolerance: LOD_CHORD_LEVELS[level] } : undefined
+        }).finally(() => {
+          releaseSurfWorkers().then((released) => {
+            if (released) viewerMemoryPolicy.setRetained("workerResidentEstimated", 0);
+          }).catch(() => {});
         });
       },
       applyLevel: (cid, level, payload) => {
         applyRef.current?.(cid, level, payload);
+        viewerMemoryPolicy.clearLimitation();
+        const component = componentsRef.current.get(cid);
+        if (component && payload?.meshData) {
+          component.meshBytes = estimateMeshRenderCost(payload.meshData).typedArrayBytes;
+          component.level = level;
+        }
         // Observable swap signal: headless verification and debugging listen
         // for it; carries no payload references.
         if (typeof window !== "undefined") {
@@ -63,7 +104,7 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
     lodPackageFileRef.current = file;
     componentsRef.current = new Map(components.map((component) => [component.cid, component]));
     schedulerRef.current?.setComponents(
-      components.map(({ cid, diagonal }) => ({ cid, diagonal })),
+      components.map(({ cid, diagonal, level }) => ({ cid, diagonal, level })),
       { preserveLevels }
     );
   }, [lodPackage]);

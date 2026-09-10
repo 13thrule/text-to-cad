@@ -11,6 +11,7 @@ const BVH_OPTIONS = Object.freeze({ indirect: true });
 // large geometries are skipped rather than risking a visible idle-time stall;
 // they keep stock raycasting.
 export const DEFAULT_MAX_BVH_TRIANGLES = 2_500_000;
+export const ESTIMATED_BVH_BYTES_PER_TRIANGLE = 32;
 
 function geometryTriangleCount(geometry) {
   if (geometry?.index) {
@@ -18,6 +19,17 @@ function geometryTriangleCount(geometry) {
   }
   const position = geometry?.attributes?.position;
   return position ? Math.floor(position.count / 3) : 0;
+}
+
+export function estimateGeometryBvhBytes(geometry) {
+  return geometryTriangleCount(geometry) * ESTIMATED_BVH_BYTES_PER_TRIANGLE;
+}
+
+function builtBvhBytes(geometry) {
+  const roots = geometry?.boundsTree?._roots;
+  return Array.isArray(roots)
+    ? roots.reduce((sum, root) => sum + (Number(root?.byteLength) || 0), 0)
+    : 0;
 }
 
 // Builds wait for REAL idle time: a 2 s timeout forced one build every two
@@ -68,7 +80,12 @@ function buildGeometryBvh(geometry, maxTriangles) {
 
 // Attaches accelerated raycasting to every display mesh and builds one BVH per
 // unique (shared) geometry in idle time, one geometry per idle slice.
-export function scheduleRuntimeRaycastBvh(runtime, { maxTriangles = DEFAULT_MAX_BVH_TRIANGLES } = {}) {
+export function scheduleRuntimeRaycastBvh(runtime, {
+  maxTriangles = DEFAULT_MAX_BVH_TRIANGLES,
+  reserveBuild = null,
+  finishBuild = null,
+  onBuildDenied = null,
+} = {}) {
   const records = Array.isArray(runtime?.displayRecords) ? runtime.displayRecords : [];
   const pending = [];
   for (const record of records) {
@@ -97,7 +114,14 @@ export function scheduleRuntimeRaycastBvh(runtime, { maxTriangles = DEFAULT_MAX_
     // by a later publish while the older queue still holds it) build once.
     if (geometry.userData.__bvhQueued) {
       delete geometry.userData.__bvhQueued;
-      buildGeometryBvh(geometry, maxTriangles);
+      const estimatedBytes = estimateGeometryBvhBytes(geometry);
+      const reservation = reserveBuild?.({ geometry, estimatedBytes }) ?? { ok: true, token: null };
+      if (reservation.ok === false) {
+        onBuildDenied?.({ geometry, estimatedBytes, ...(reservation.detail || {}) });
+      } else {
+        buildGeometryBvh(geometry, maxTriangles);
+        finishBuild?.(reservation.token, { geometry, builtBytes: builtBvhBytes(geometry) });
+      }
     }
     if (pending.length) {
       scheduleIdle(step);
@@ -111,7 +135,13 @@ export function scheduleRuntimeRaycastBvh(runtime, { maxTriangles = DEFAULT_MAX_
 // The merged face-pick proxy is rebuilt as a fresh BufferGeometry on every
 // selector sync, but always wraps the same proxy typed arrays, so the built
 // BVH is cached on the proxy and reattached across rebuilds.
-export function ensureFacePickBvh(runtime, selectorRuntime, { maxTriangles = DEFAULT_MAX_BVH_TRIANGLES } = {}) {
+export function ensureFacePickBvh(runtime, selectorRuntime, options = null) {
+  const {
+    maxTriangles = DEFAULT_MAX_BVH_TRIANGLES,
+    reserveBuild = null,
+    finishBuild = null,
+    onBuildDenied = null,
+  } = options || runtime?.raycastBvhOptions || {};
   const mesh = runtime?.facePickMesh;
   const proxy = selectorRuntime?.proxy;
   if (!mesh?.geometry || !proxy) {
@@ -138,13 +168,21 @@ export function ensureFacePickBvh(runtime, selectorRuntime, { maxTriangles = DEF
       proxy.__facePickBvhSkipped = true;
       return;
     }
+    const estimatedBytes = estimateGeometryBvhBytes(geometry);
+    const reservation = reserveBuild?.({ geometry, estimatedBytes }) ?? { ok: true, token: null };
+    if (reservation.ok === false) {
+      onBuildDenied?.({ geometry, estimatedBytes, ...(reservation.detail || {}) });
+      return;
+    }
     try {
       const bvh = new MeshBVH(geometry, BVH_OPTIONS);
       bvh.__builtFromIndexArray = proxy.faceIndices;
       proxy.__facePickBvh = bvh;
       geometry.boundsTree = bvh;
+      finishBuild?.(reservation.token, { geometry, builtBytes: builtBvhBytes(geometry) });
     } catch {
       proxy.__facePickBvhSkipped = true;
+      finishBuild?.(reservation.token, { geometry, builtBytes: 0 });
     }
   });
 }

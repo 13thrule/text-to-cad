@@ -26,6 +26,17 @@ snapshot renderer and the node builders in `bin/`).
   (`<name>.step.json`), its optional adjacent render module
   (`<name>.step.js`), and the cache — never source, never a build. The
   code in this package must be writable against exactly those inputs.
+  An explicitly attached editing session may provide an immutable preview
+  tree and resolved kinematics instead; it must not alias that tree to saved
+  STEP bytes. Saved sidecar kinematics require a matching schema-7 document
+  digest. Session state and UI remain in the app.
+- **Resource ownership**: component geometry and edge textures can have more
+  than one scene owner; only the last release disposes shared GPU/BVH state.
+  Render-only loads do not construct selector topology until requested.
+  Repeated compatible opaque surfaces share instanced draws and retain
+  occurrence identity; mirrors, transparency and deformation use explicit
+  fallback paths. Disposable resource admission never changes exact geometry
+  or persistent cache identity.
 - **Kinematics is data, choreography is JS, independently**: the FK
   evaluator (`kinematicsRuntime.js`) folds sidecar mate data into
   transforms and is the operation-for-operation twin of the Python

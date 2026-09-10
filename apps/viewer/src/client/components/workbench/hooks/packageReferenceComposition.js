@@ -60,3 +60,79 @@ export function swapCompositionBundle(composition, cid, bundle) {
     bundleByCid: { ...composition.bundleByCid, [String(cid || "").trim()]: bundle }
   };
 }
+
+// Resolve selector bundles against the LOD state that is live immediately
+// before composition. Initial selector fetches can overlap a viewport LOD
+// swap; their result is exact for the level they requested, but no longer for
+// the mesh on screen. Keys include the component surf URL and effective
+// tessellation inputs, so a same-named LOD level can never stand in for a
+// different concrete geometry request.
+export async function reconcileLivePackageSelectorBundles({
+  cids,
+  initialBundleByCid,
+  initialKeyByCid,
+  snapshotLiveLod,
+  keyForLevel,
+  loadForLevel,
+  isCurrent = () => true,
+  maxPasses = 16
+}) {
+  const resolved = {};
+  for (const rawCid of cids || []) {
+    const cid = String(rawCid || "").trim();
+    if (!cid) continue;
+    resolved[cid] = {
+      key: initialKeyByCid?.[cid] || "",
+      bundle: initialBundleByCid?.[cid] || null
+    };
+  }
+
+  for (let pass = 0; pass < maxPasses; pass += 1) {
+    if (!isCurrent()) return null;
+    const live = snapshotLiveLod() || {};
+    const loads = [];
+    for (const cid of Object.keys(resolved)) {
+      const level = Number(live.levelByCid?.[cid]) || 0;
+      const key = keyForLevel(cid, level);
+      const liveBundle = live.bundleByCid?.[cid];
+      if (liveBundle) {
+        resolved[cid] = { key, bundle: liveBundle };
+      } else if (resolved[cid].key !== key) {
+        loads.push((async () => {
+          const bundle = await loadForLevel(cid, level, key);
+          return { cid, key, bundle: bundle || null };
+        })());
+      }
+    }
+    if (loads.length) {
+      for (const result of await Promise.all(loads)) {
+        resolved[result.cid] = result;
+      }
+      continue;
+    }
+
+    // One final synchronous snapshot closes a swap between the scan above and
+    // composition. If it moved again without publishing a bundle, the next
+    // pass fetches that exact concrete tessellation and rechecks once more.
+    const finalLive = snapshotLiveLod() || {};
+    let stable = true;
+    for (const cid of Object.keys(resolved)) {
+      const level = Number(finalLive.levelByCid?.[cid]) || 0;
+      const key = keyForLevel(cid, level);
+      const liveBundle = finalLive.bundleByCid?.[cid];
+      if (liveBundle) {
+        resolved[cid] = { key, bundle: liveBundle };
+      } else if (resolved[cid].key !== key) {
+        stable = false;
+      }
+    }
+    if (stable && isCurrent()) {
+      return Object.fromEntries(
+        Object.entries(resolved)
+          .filter(([, value]) => value.bundle)
+          .map(([cid, value]) => [cid, value.bundle])
+      );
+    }
+  }
+  throw new Error("Selector topology could not settle on the displayed component LOD");
+}

@@ -28,6 +28,10 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   (`<name>.step.js`), and the cache. The viewer never reads
   source code and never rebuilds on source changes — generated outputs are
   detached, and a stale artifact stays stale until someone runs its script.
+  **Follow edits** is an explicit alternative input: the runtime announces
+  complete immutable preview trees while an already-running decorated build
+  saves its outputs. The viewer consumes those trees and resolved kinematics,
+  never source or model/output records. Plain links remain saved-file views.
 - **Kinematics/animation independence**: the Kinematics tab drives the sidecar's
   mate data through the shared FK runtime; the Animation tab evaluates the
   `clips` the authored render module beside the artifact (`<name>.step.js`)
@@ -84,6 +88,19 @@ the `dist/` it serves also warns once on stderr when any source is newer than
 the build — detection only; it keeps serving.
 
 ## Behaviours worth knowing before concluding something is broken
+
+- Choose **Follow edits** in the file toolbar, or open
+  `?file=part.step&mode=editing`, to see the root preview before its STEP save.
+  Run the model normally; existing decorators need no new imports. The daemon
+  must be running for live updates. The prior model stays visible while the
+  next request builds; save errors or a disconnected feed remain visible.
+  Restarting the daemon expires the ephemeral session, and rerunning the model
+  reconnects it. Source files hold authored changes; there is no hidden durable
+  preview document. Every explicit model run still waits for declared outputs.
+- A schema-7 STEP sidecar includes the STEP byte digest. A mismatch displays
+  **Annotations unavailable** while permitting saved geometry to render.
+  Rebuild or re-annotate the pair to repair it; importing a file never rewrites
+  its authored sidecar.
 
 - **The catalog scan skips dot-directories.** A buildable entry under
   `.review/` (or any dotted path) never appears, even when the server is

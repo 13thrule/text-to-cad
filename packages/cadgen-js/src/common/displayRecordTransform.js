@@ -48,4 +48,8 @@ export function applyDisplayRecordTransform(THREE, record) {
   if (record.edgeInstance && !record.edgeInstance.set.disposed) {
     record.edgeInstance.set.setMatrix(record.edgeInstance.slot, combinedMatrix);
   }
+  if (record.surfaceInstance && !record.surfaceInstance.set.disposed) {
+    record.surfaceInstance.set.object.setMatrixAt(record.surfaceInstance.slot, combinedMatrix);
+    record.surfaceInstance.set.object.instanceMatrix.needsUpdate = true;
+  }
 }

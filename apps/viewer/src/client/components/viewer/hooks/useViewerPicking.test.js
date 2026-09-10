@@ -309,6 +309,11 @@ test("partIdFromIntersection returns the mesh's userData.partId, else null", () 
   assert.equal(partIdFromIntersection({}), null);
 });
 
+test("partIdFromIntersection resolves a stable occurrence id from an instanced hit", () => {
+  const hit = { instanceId: 1, object: { userData: { partIds: ["o1.2", "o1.5"] } } };
+  assert.equal(partIdFromIntersection(hit), "o1.5");
+});
+
 test("shouldRaycastRecordForPick applies bucket-level focus/hidden to per-mesh records", () => {
   const focusIds = new Set(["o1.5"]);
   // in focus -> kept; out of focus -> dropped

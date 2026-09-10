@@ -381,7 +381,7 @@ export class CadEdgeInstances {
   }
 
   release(slot) {
-    if (!Number.isInteger(slot) || slot < 0 || slot >= this.slotCount) {
+    if (!Number.isInteger(slot) || slot < 0 || slot >= this.slotCount || this.freeSlots.has(slot)) {
       return;
     }
     const base = slot * INSTANCE_FLOATS;
@@ -408,35 +408,48 @@ export class CadEdgeInstances {
   setMatrix(slot, matrix) {
     const base = slot * INSTANCE_FLOATS;
     const elements = matrix.elements;
+    let changed = false;
     for (let index = 0; index < 16; index += 1) {
-      this.instanceData[base + index] = elements[index];
+      const value = Math.fround(elements[index]);
+      if (this.instanceData[base + index] !== value) {
+        this.instanceData[base + index] = value;
+        changed = true;
+      }
     }
-    this.instanceTexture.needsUpdate = true;
+    if (changed) {
+      this.instanceTexture.needsUpdate = true;
+    }
   }
 
   // Override colour (a THREE.Color) with a uniform opacity, or — without a
   // colour — the class colours at their class opacity times `opacityScale`.
   setStyle(slot, { color = null, opacity = null, opacityScale = 1 } = {}) {
     const base = slot * INSTANCE_FLOATS;
-    if (color) {
-      this.instanceData[base + 16] = color.r;
-      this.instanceData[base + 17] = color.g;
-      this.instanceData[base + 18] = color.b;
-      this.instanceData[base + 19] = 1;
-      this.instanceData[base + 20] = clamp(opacity === null ? opacityScale : opacity, 0, 1);
-    } else {
-      this.instanceData[base + 16] = 0;
-      this.instanceData[base + 17] = 0;
-      this.instanceData[base + 18] = 0;
-      this.instanceData[base + 19] = 0;
-      this.instanceData[base + 20] = clamp(opacity === null ? opacityScale : opacity, 0, 1);
+    const red = Math.fround(color?.r ?? 0);
+    const green = Math.fround(color?.g ?? 0);
+    const blue = Math.fround(color?.b ?? 0);
+    const override = color ? 1 : 0;
+    const alpha = Math.fround(clamp(opacity === null ? opacityScale : opacity, 0, 1));
+    if (this.instanceData[base + 16] === red && this.instanceData[base + 17] === green &&
+        this.instanceData[base + 18] === blue && this.instanceData[base + 19] === override &&
+        this.instanceData[base + 20] === alpha) {
+      return;
     }
+    this.instanceData[base + 16] = red;
+    this.instanceData[base + 17] = green;
+    this.instanceData[base + 18] = blue;
+    this.instanceData[base + 19] = override;
+    this.instanceData[base + 20] = alpha;
     this.instanceTexture.needsUpdate = true;
   }
 
   setVisible(slot, visible) {
     const base = slot * INSTANCE_FLOATS;
-    this.instanceData[base + 21] = visible ? 1 : 0;
+    const next = visible ? 1 : 0;
+    if (this.instanceData[base + 21] === next) {
+      return;
+    }
+    this.instanceData[base + 21] = next;
     this.instanceTexture.needsUpdate = true;
   }
 

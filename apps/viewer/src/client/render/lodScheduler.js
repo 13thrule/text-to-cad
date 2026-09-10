@@ -7,7 +7,7 @@
 // plan. It knows nothing about three.js or React: the host feeds camera
 // samples and receives level swaps through a callback.
 
-import { LOD_CHORD_LEVELS, planLodWork } from "cadgen-js/lib/surf/lodPolicy.js";
+import { LOD_CHORD_LEVELS, planLodWork, projectedChordErrorPx } from "cadgen-js/lib/surf/lodPolicy.js";
 
 export const LOD_DEBOUNCE_MS = 200;
 
@@ -15,6 +15,10 @@ export const LOD_DEBOUNCE_MS = 200;
  * createLodScheduler({
  *   loadLevel(cid, level, { signal }) -> Promise<payload>,
  *   applyLevel(cid, level, payload),
+ *   reserveLevel?({ cid, currentLevel, level, direction }) -> { ok, token?, detail? },
+ *   releaseLevel?(token),
+ *   memoryPressure?() -> boolean,
+ *   onLimitation?(detail),
  *   debounceMs?, levels?,
  *   setTimeoutFn?/clearTimeoutFn? (test clocks),
  * })
@@ -31,6 +35,10 @@ export const LOD_DEBOUNCE_MS = 200;
 export function createLodScheduler({
   loadLevel,
   applyLevel,
+  reserveLevel = null,
+  releaseLevel = null,
+  memoryPressure = () => false,
+  onLimitation = null,
   debounceMs = LOD_DEBOUNCE_MS,
   levels = LOD_CHORD_LEVELS,
   setTimeoutFn = (...args) => setTimeout(...args),
@@ -43,15 +51,15 @@ export function createLodScheduler({
   const failed = new Set();
   let lastSample = null;
   let timer = null;
-  let inFlight = null; // { cid, level, controller }
+  let inFlight = null; // { cid, level, controller, reservation }
   let disposed = false;
 
   function setComponents(list, { preserveLevels = false } = {}) {
     const previous = preserveLevels ? new Map(components) : null;
     components.clear();
-    for (const { cid, diagonal } of list || []) {
+    for (const { cid, diagonal, level } of list || []) {
       if (cid && Number.isFinite(diagonal) && diagonal > 0) {
-        components.set(cid, { diagonal, level: previous?.get(cid)?.level ?? 0 });
+        components.set(cid, { diagonal, level: previous?.get(cid)?.level ?? (Number(level) || 0) });
       }
     }
     // A model switch cancels stale work; a growing model keeps a load whose
@@ -64,9 +72,18 @@ export function createLodScheduler({
 
   function cancelInFlight() {
     if (inFlight) {
-      inFlight.controller.abort();
+      const task = inFlight;
+      task.controller.abort();
+      releaseReservation(task);
       inFlight = null;
     }
+  }
+
+  function releaseReservation(task) {
+    if (!task?.reservation) return;
+    const token = task.reservation;
+    task.reservation = null;
+    releaseLevel?.(token);
   }
 
   function onCameraSample(sample) {
@@ -109,14 +126,59 @@ export function createLodScheduler({
     if (disposed || !lastSample || inFlight) {
       return;
     }
-    const plan = planLodWork(entriesForPlan(), levels)
-      .filter((item) => !failed.has(`${item.cid}:${item.level}`));
+    const entries = entriesForPlan();
+    const pressure = memoryPressure?.() === true;
+    const plan = planLodWork(entries, levels)
+      .filter((item) => !failed.has(`${item.cid}:${item.level}`))
+      .filter((item) => !pressure || item.level < (components.get(item.cid)?.level ?? 0));
+    if (pressure) {
+      const planned = new Set(plan.map((item) => `${item.cid}:${item.level}`));
+      for (const entry of entries) {
+        if (entry.currentLevel <= 0) continue;
+        const level = entry.currentLevel - 1;
+        const key = `${entry.cid}:${level}`;
+        if (!planned.has(key) && !failed.has(key)) {
+          plan.push({
+            cid: entry.cid,
+            level,
+            errorPx: projectedChordErrorPx({
+              ...entry.sample,
+              chordRel: levels[entry.currentLevel],
+            }),
+          });
+        }
+      }
+    }
     if (!plan.length) {
       return;
     }
+    if (pressure) {
+      // A downgrade releases retained detail. Under pressure it must run
+      // before a visually useful but memory-increasing refinement.
+      plan.sort((a, b) => {
+        const aCurrent = components.get(a.cid)?.level ?? 0;
+        const bCurrent = components.get(b.cid)?.level ?? 0;
+        const aCoarsens = aCurrent > a.level;
+        const bCoarsens = bCurrent > b.level;
+        if (aCoarsens !== bCoarsens) return aCoarsens ? -1 : 1;
+        return aCoarsens ? a.errorPx - b.errorPx : b.errorPx - a.errorPx;
+      });
+    }
     const { cid, level } = plan[0];
+    const currentLevel = components.get(cid)?.level ?? 0;
+    const direction = level < currentLevel ? "coarsen" : "refine";
+    const reservation = reserveLevel?.({ cid, currentLevel, level, direction }) ?? { ok: true, token: null };
+    if (reservation.ok === false) {
+      failed.add(`${cid}:${level}`);
+      onLimitation?.(reservation.detail || { cid, currentLevel, level, direction });
+      // Try another component. The denied level stays parked until a fresh
+      // camera sample (or changed retained accounting) explicitly retries it.
+      evaluate();
+      return;
+    }
     const controller = new AbortController();
-    inFlight = { cid, level, controller };
+    const task = { cid, level, controller, reservation: reservation.token || null };
+    inFlight = task;
     Promise.resolve(loadLevel(cid, level, { signal: controller.signal }))
       .then((payload) => {
         if (disposed || controller.signal.aborted) {
@@ -135,6 +197,7 @@ export function createLodScheduler({
         failed.add(`${cid}:${level}`);
       })
       .finally(() => {
+        releaseReservation(task);
         if (inFlight?.controller === controller) {
           inFlight = null;
         }

@@ -124,6 +124,7 @@ import {
 } from "cadgen-js/lib/viewer/selectorPickGroups";
 import { scheduleRuntimeRaycastBvh } from "cadgen-js/lib/viewer/raycastBvh";
 import { renderMemoryAccounting } from "../render/renderMemoryAccounting";
+import { viewerMemoryPolicy } from "../render/viewerMemoryPolicy.js";
 import {
   buildSurfaceLinePositions,
   projectPointToSurfaceUv,
@@ -3930,8 +3931,42 @@ const CadViewer = forwardRef(function CadViewer({
     facePickGroup.updateMatrixWorld(true);
     edgePickGroup.updateMatrixWorld(true);
     vertexPickGroup.updateMatrixWorld(true);
+    // Refresh retained scene/GPU estimates before admitting idle BVH work.
+    // A denied accelerator keeps stock raycasting and therefore cannot make
+    // selection incorrect or blank the current model.
+    const initialRenderMemory = renderMemoryAccounting(runtime);
+    if (import.meta.env?.DEV && typeof document !== "undefined") {
+      // Main-world diagnostic that browser automation can read even when its
+      // JavaScript executes in an isolated extension world.
+      document.documentElement.dataset.cadRenderMemory = JSON.stringify({
+        displayCpuBytes: initialRenderMemory.displayCpuBytes,
+        gpuEstimatedBytes: initialRenderMemory.gpuEstimatedBytes,
+        bvhBytes: initialRenderMemory.bvhBytes,
+        policy: initialRenderMemory.memoryPolicy
+      });
+    }
+    const raycastBvhOptions = {
+      reserveBuild: ({ estimatedBytes }) => viewerMemoryPolicy.reserve({
+        category: "bvhBuild",
+        bytes: estimatedBytes,
+        label: "display raycast BVH",
+        kind: "accelerator"
+      }),
+      finishBuild: (token, { builtBytes }) => {
+        viewerMemoryPolicy.release(token);
+        const current = viewerMemoryPolicy.snapshot().retainedByCategory.bvh || 0;
+        viewerMemoryPolicy.setRetained("bvh", current + builtBytes);
+      },
+      onBuildDenied: (detail) => {
+        if (typeof window !== "undefined") {
+          window.__cadViewerMemoryLimitation = detail;
+          window.dispatchEvent(new CustomEvent("cad:memory-limitation", { detail }));
+        }
+      }
+    };
+    runtime.raycastBvhOptions = raycastBvhOptions;
     syncSelectorPickGroups(runtime, displaySelectorRuntime, modelOffset, { clearSceneGroup });
-    scheduleRuntimeRaycastBvh(runtime);
+    scheduleRuntimeRaycastBvh(runtime, raycastBvhOptions);
     syncRuntimeStepClipPlane(runtime, clipSettingsRef.current);
     if (typeof window !== "undefined") {
       // Byte attribution for the headless memory harness (read, never polled here).

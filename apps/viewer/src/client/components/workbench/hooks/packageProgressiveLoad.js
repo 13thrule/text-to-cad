@@ -11,6 +11,7 @@
 // copies nothing), publishing each batch. The last publish is the full model.
 import { buildComposedPackageMeshData } from "cadgen-js/lib/assembly/meshData.js";
 import { estimateMeshRenderCost } from "cadgen-js/lib/render/meshCost.js";
+import { ViewerMemoryLimitError } from "../../../render/viewerMemoryPolicy.js";
 
 // A batch publishes as soon as EITHER ceiling is crossed by the components
 // that arrived since the previous publish — whichever comes first — and both
@@ -99,6 +100,13 @@ export function meshStateIsComplete(meshState) {
   }
   const missing = meshState.meshData.missingComponentIds;
   return !(Array.isArray(missing) && missing.length > 0);
+}
+
+export function shouldRetainCompleteSameFileMesh(current, entry, targetMeshHash) {
+  return String(entry?.kind || "") === "assembly" &&
+    String(current?.file || "") === String(entry?.file || "") &&
+    String(current?.meshHash || "") !== String(targetMeshHash || "") &&
+    meshStateIsComplete(current);
 }
 
 // A clip's model handle for a PARTIAL composition. The runtime's m.get() throws
@@ -259,6 +267,9 @@ export function orderComponentsForProgressiveLoad(descriptor) {
  *   isCurrent(),                       // false once the request is superseded or aborted
  *   sizeHint?(cid, component),         // -> Promise<fetched byte length | null> before admission
  *   maxInFlightBytes?,                 // estimated decoded bytes in flight (PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES)
+ *   reserveLoad?({ cid, estimatedBytes }) -> { ok, token?, detail? },
+ *   releaseLoad?(token), onMemoryLimitation?(detail),
+ *   onRetainedChange?({ loaded, total, retainedBytes }),
  *   swappedComponents?(),              // the live LOD working set (cid -> meshData) or null
  *   onPublish({ meshData, componentMeshDataByCid, loaded, total, final, composeMs, publishCount }),
  *   maxComponents?, maxBytes?
@@ -282,8 +293,13 @@ export function createProgressivePackageLoader({
   isCurrent = () => true,
   sizeHint = null,
   maxInFlightBytes = PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
+  reserveLoad = null,
+  releaseLoad = null,
+  onMemoryLimitation = null,
+  onRetainedChange = null,
   swappedComponents = () => null,
   onPublish,
+  publishIntermediate = true,
   firstComponents = PROGRESSIVE_PUBLISH_FIRST_COMPONENTS,
   firstBytes = PROGRESSIVE_PUBLISH_FIRST_BYTES,
   maxComponents = PROGRESSIVE_PUBLISH_MAX_COMPONENTS,
@@ -297,11 +313,18 @@ export function createProgressivePackageLoader({
   let pendingBytes = 0;
   let publishes = 0;
   let publishedFinal = false;
+  let retainedBytes = 0;
+
+  function notifyRetained() {
+    onRetainedChange?.({ loaded, total, retainedBytes });
+  }
 
   function release() {
     for (const cid of Object.keys(loadedByCid)) {
       delete loadedByCid[cid];
     }
+    retainedBytes = 0;
+    notifyRetained();
   }
 
   function stop() {
@@ -343,30 +366,66 @@ export function createProgressivePackageLoader({
   }
 
   function canAdmit(estimate) {
-    return inFlight < concurrency && (inFlight === 0 || inFlightBytes + estimate <= maxInFlightBytes);
+    return inFlight < concurrency && inFlightBytes + estimate <= maxInFlightBytes;
   }
 
   // Re-estimates on every wake: a decode finishing while this one waited has
   // calibrated the estimator, and the size it should be admitted at is the
   // current one, not the one it computed before waiting.
-  async function admit(hint) {
+  async function admit(hint, cid) {
     let estimate = estimator.estimate(hint);
     while (!canAdmit(estimate)) {
       if (cancelled) {
         throw abortError();
       }
+      if (inFlight === 0) {
+        const detail = {
+          cid,
+          requestedBytes: estimate,
+          availableBytes: maxInFlightBytes,
+          category: "workerInFlight",
+          preservingCurrentView: true,
+        };
+        onMemoryLimitation?.(detail);
+        throw new ViewerMemoryLimitError(
+          `Component ${cid} needs an estimated ${Math.ceil(estimate / (1024 * 1024))} MiB decode, above the viewer's ${Math.floor(maxInFlightBytes / (1024 * 1024))} MiB in-flight limit. The current view was kept.`,
+          detail
+        );
+      }
       await new Promise((resolve) => waiters.push(resolve));
       estimate = estimator.estimate(hint);
+    }
+    let reservation = { ok: true, token: null };
+    if (typeof reserveLoad === "function") {
+      reservation = reserveLoad({ cid, estimatedBytes: estimate }) || { ok: false };
+      if (reservation.ok === false) {
+        if (inFlight > 0) {
+          await new Promise((resolve) => waiters.push(resolve));
+          return admit(hint, cid);
+        }
+        const detail = {
+          ...(reservation.detail || {}),
+          cid,
+          requestedBytes: estimate,
+          preservingCurrentView: true,
+        };
+        onMemoryLimitation?.(detail);
+        throw new ViewerMemoryLimitError(
+          `Loading component ${cid} would exceed the viewer memory envelope. The current view was kept.`,
+          detail
+        );
+      }
     }
     inFlight += 1;
     inFlightBytes += estimate;
     peakInFlight = Math.max(peakInFlight, inFlight);
-    return estimate;
+    return { estimate, reservation: reservation.token };
   }
 
-  function releaseSlot(estimate) {
+  function releaseSlot({ estimate, reservation }) {
     inFlight -= 1;
     inFlightBytes -= estimate;
+    releaseLoad?.(reservation, { estimatedBytes: estimate });
     wakeWaiters();
   }
 
@@ -385,7 +444,7 @@ export function createProgressivePackageLoader({
     if (!isCurrent()) {
       stop();
     }
-    const estimate = await admit(hint);
+    const admission = await admit(hint, cid);
     let meshData;
     try {
       if (!isCurrent()) {
@@ -393,7 +452,7 @@ export function createProgressivePackageLoader({
       }
       meshData = await loadComponent(cid, component);
     } finally {
-      releaseSlot(estimate);
+      releaseSlot(admission);
     }
     if (!isCurrent()) {
       stop();
@@ -402,13 +461,15 @@ export function createProgressivePackageLoader({
     estimator.observe(hint, decodedBytes);
     loadedByCid[cid] = meshData;
     loaded += 1;
+    retainedBytes += decodedBytes;
+    notifyRetained();
     pendingComponents += 1;
     pendingBytes += decodedBytes;
     const final = loaded === total;
-    if (final || progressivePublishDue(
+    if (final || (publishIntermediate && progressivePublishDue(
       { pendingComponents, pendingBytes, publishCount: publishes },
       { firstComponents, firstBytes, maxComponents, maxBytes }
-    )) {
+    ))) {
       publish(final);
     }
   }

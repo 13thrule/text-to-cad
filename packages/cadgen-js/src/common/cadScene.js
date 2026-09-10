@@ -36,6 +36,12 @@ import {
   syncEdgeInstanceStyle
 } from "./cadEdgeInstances.js";
 import {
+  dissolveCadSurfaceInstanceSets,
+  reconcileCadSurfaceInstanceSets,
+  surfaceInstancingStateEligible,
+  syncCadSurfaceInstanceRecord,
+} from "./cadSurfaceInstances.js";
+import {
   applyDisplayRecordTransform,
   composeDisplayRecordEffectMatrix
 } from "./displayRecordTransform.js";
@@ -85,6 +91,10 @@ const DEFAULT_THEME = Object.freeze({
 const CAD_EDGE_LINE_RENDER_ORDER = 3;
 
 const meshGeometryCache = new WeakMap();
+// Components can be displayed in several scenes (tabs, snapshots, comparison
+// views). GPU disposal must account for all owners, not just one scene's parts.
+const geometryOwners = new WeakMap();
+const segmentTextureOwners = new WeakMap();
 
 function cacheOwnerForMeshData(meshData) {
   const geometrySource = meshData?.geometrySource;
@@ -1366,6 +1376,9 @@ function syncClip(runtime, clip, bounds, modelOffset = null) {
   for (const set of runtime.cadEdgeInstanceSets) {
     syncMaterialClipPlanes(set.materials, clipPlanes);
   }
+  for (const set of runtime.cadSurfaceInstanceSets) {
+    syncMaterialClipPlanes(set.object.material, clipPlanes);
+  }
 }
 
 function normalizeSelection(selection = {}) {
@@ -1766,6 +1779,7 @@ function cadEdgeInstanceSet(THREE, runtime, cadEdges) {
     syncMaterialClipPlanes(material, runtime.activeClipPlanes);
   }
   byStyle.set(styleKey, set);
+  segmentTextureOwners.set(segments, (segmentTextureOwners.get(segments) || 0) + 1);
   runtime.cadEdgeInstanceSets.add(set);
   runtime.edgesGroup.add(set.object);
   return set;
@@ -1803,6 +1817,9 @@ function attachCadEdgeInstance(THREE, runtime, record, cadEdges) {
 }
 
 function disposeCadEdgeInstanceSet(runtime, set) {
+  if (!runtime.cadEdgeInstanceSets.has(set)) {
+    return;
+  }
   for (const material of set.materials) {
     runtime.unregisterScreenSpaceLineMaterial(material);
   }
@@ -1812,8 +1829,12 @@ function disposeCadEdgeInstanceSet(runtime, set) {
   // The segment texture is cached on the component (a later scene reuses its
   // arrays); its GPU copy goes when no live set draws it, and three re-uploads
   // it on the next use.
-  if (![...runtime.cadEdgeInstanceSets].some((other) => other.segments === set.segments)) {
+  const owners = (segmentTextureOwners.get(set.segments) || 1) - 1;
+  if (owners === 0) {
+    segmentTextureOwners.delete(set.segments);
     set.segments.texture.dispose();
+  } else {
+    segmentTextureOwners.set(set.segments, owners);
   }
 }
 
@@ -1840,30 +1861,45 @@ function recordRestGeometry(record) {
   return record?.tubeDeformationState?.original || record?.geometry || null;
 }
 
-// Free the GPU buffers and the raycast BVH of component geometries that no
-// remaining record uses. The geometry stays in the component cache with its
+// Free the GPU buffers and raycast BVH only after the last scene releases a
+// component. The geometry stays in the component cache with its
 // CPU arrays (a later publish or scene over the same component reuses it and
 // three re-uploads on the next draw); only the GPU copy and the BVH go.
-function releaseUnusedRecordGeometry(releasedRecords, keptRecords) {
+function syncRecordGeometryOwnership(runtime, keptRecords, { releaseGpu = true } = {}) {
   const kept = new Set();
   for (const record of keptRecords) {
     const geometry = recordRestGeometry(record);
     if (geometry) {
       kept.add(geometry);
     }
+    record.edges?.traverse((object) => {
+      if (object.geometry?.userData?.cadSceneCachedGeometry === true) {
+        kept.add(object.geometry);
+      }
+    });
   }
-  const released = new Set();
-  for (const record of releasedRecords) {
-    const geometry = recordRestGeometry(record);
-    if (geometry && !kept.has(geometry)) {
-      released.add(geometry);
+  for (const geometry of kept) {
+    if (!runtime.ownedGeometries.has(geometry)) {
+      geometryOwners.set(geometry, (geometryOwners.get(geometry) || 0) + 1);
     }
   }
-  for (const geometry of released) {
-    geometry.boundsTree = null;
-    delete geometry.userData.__bvhQueued;
-    geometry.dispose();
+  for (const geometry of runtime.ownedGeometries) {
+    if (kept.has(geometry)) {
+      continue;
+    }
+    const owners = (geometryOwners.get(geometry) || 1) - 1;
+    if (owners > 0) {
+      geometryOwners.set(geometry, owners);
+      continue;
+    }
+    geometryOwners.delete(geometry);
+    if (releaseGpu) {
+      geometry.boundsTree = null;
+      delete geometry.userData.__bvhQueued;
+      geometry.dispose();
+    }
   }
+  runtime.ownedGeometries = kept;
 }
 
 function displayRecordBuildContext(THREE, runtime, meshData, settings) {
@@ -2123,7 +2159,6 @@ function reconcileDisplayRecords(THREE, runtime, meshData, settings) {
     }
   }
   const records = [];
-  const released = [];
   for (const part of renderParts) {
     const geometryEntry = buildPartGeometryEntry(THREE, meshData, part, recomputeNormals);
     if (!geometryEntry) {
@@ -2140,7 +2175,6 @@ function reconcileDisplayRecords(THREE, runtime, meshData, settings) {
       continue;
     }
     if (candidate) {
-      released.push(candidate);
       disposeDisplayRecord(candidate);
     }
     records.push(createDisplayRecord(THREE, runtime, meshData, settings, {
@@ -2154,11 +2188,10 @@ function reconcileDisplayRecords(THREE, runtime, meshData, settings) {
   }
   for (const queue of available.values()) {
     for (const record of queue) {
-      released.push(record);
       disposeDisplayRecord(record);
     }
   }
-  releaseUnusedRecordGeometry(released, records);
+  syncRecordGeometryOwnership(runtime, records);
   disposeEmptyCadEdgeInstanceSets(runtime);
   return records;
 }
@@ -2264,6 +2297,7 @@ export function buildModel(THREE, source, settings = {}) {
     modelGroup,
     edgesGroup,
     displayRecords: [],
+    ownedGeometries: new Set(),
     records: [],
     baseBounds,
     bounds: baseBounds,
@@ -2275,6 +2309,7 @@ export function buildModel(THREE, source, settings = {}) {
     // Instanced CAD edge draws, one per (component, edge style); see cadEdgeInstances.js.
     cadEdgeInstanceSets: new Set(),
     cadEdgeInstanceSetsByOwner: new WeakMap(),
+    cadSurfaceInstanceSets: new Set(),
     // The last viewport size the line materials were synced to, so a material
     // created mid-load (a later publish's component) starts at the right one.
     lineResolution: null,
@@ -2314,7 +2349,7 @@ export function buildModel(THREE, source, settings = {}) {
   };
 
   const rebuild = (nextSettings = currentSettings) => {
-    const previousRecords = runtime.displayRecords;
+    dissolveCadSurfaceInstanceSets(runtime.cadSurfaceInstanceSets, modelGroup);
     disposeCadEdgeInstanceSets(runtime);
     clearGroup(modelGroup);
     clearGroup(edgesGroup);
@@ -2322,7 +2357,7 @@ export function buildModel(THREE, source, settings = {}) {
     runtime.displayRecords = buildDisplayRecords(THREE, runtime, meshData, nextSettings);
     // A rebuild over the same components keeps their uploads; geometry the new
     // records do not use (a settings change that drops parts) is freed.
-    releaseUnusedRecordGeometry(previousRecords, runtime.displayRecords);
+    syncRecordGeometryOwnership(runtime, runtime.displayRecords);
     runtime.records = runtime.displayRecords;
     syncRuntimeBounds();
     currentSignature = settingsSignature(meshData, runtime.theme, nextSettings);
@@ -2332,6 +2367,7 @@ export function buildModel(THREE, source, settings = {}) {
   // Same build settings, different parts (a progressive publish, a LOD swap,
   // a filter): keep every record that still applies, add and remove the rest.
   const reconcile = (nextSettings = currentSettings) => {
+    dissolveCadSurfaceInstanceSets(runtime.cadSurfaceInstanceSets, modelGroup);
     setRuntimeTheme(runtime, nextSettings);
     const records = reconcileDisplayRecords(THREE, runtime, meshData, nextSettings);
     if (!records) {
@@ -2374,6 +2410,19 @@ export function buildModel(THREE, source, settings = {}) {
       ...nextSettings.selection,
       showEdges: nextSettings.selection?.showEdges !== false
     });
+    if (surfaceInstancingStateEligible(nextSettings)) {
+      runtime.cadSurfaceInstanceSets = reconcileCadSurfaceInstanceSets(
+        THREE,
+        runtime.displayRecords,
+        modelGroup,
+        runtime.cadSurfaceInstanceSets
+      );
+    } else {
+      dissolveCadSurfaceInstanceSets(runtime.cadSurfaceInstanceSets, modelGroup);
+    }
+    for (const record of runtime.displayRecords) {
+      syncCadSurfaceInstanceRecord(record);
+    }
     syncClip(runtime, nextSettings.clip, runtime.bounds, nextSettings.modelOffset || modelGroup.position);
   };
 
@@ -2457,14 +2506,10 @@ export function buildModel(THREE, source, settings = {}) {
       if (activeParameterSetup) {
         cleanupParameterRuntime(runtime, activeParameters, currentSettings.callbacks);
       }
-      const records = runtime.displayRecords;
+      dissolveCadSurfaceInstanceSets(runtime.cadSurfaceInstanceSets, modelGroup);
       disposeCadEdgeInstanceSets(runtime);
       clearGroup(root);
-      if (releaseGpu) {
-        // Nothing draws these components here any more, so their GPU buffers
-        // and BVHs go too (the component cache keeps the arrays).
-        releaseUnusedRecordGeometry(records, []);
-      }
+      syncRecordGeometryOwnership(runtime, [], { releaseGpu });
       runtime.displayRecords = [];
       runtime.records = [];
     }

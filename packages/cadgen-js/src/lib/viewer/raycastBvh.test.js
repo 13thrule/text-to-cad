@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
 
-import { ensureFacePickBvh, scheduleRuntimeRaycastBvh } from "./raycastBvh.js";
+import { ensureFacePickBvh, estimateGeometryBvhBytes, scheduleRuntimeRaycastBvh } from "./raycastBvh.js";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -121,4 +121,41 @@ test("a geometry queued twice builds once", async () => {
   await tick();
   await tick();
   assert.equal(builds, 1, "one tree, not one per queue entry");
+});
+
+test("a denied BVH reservation leaves correct stock raycasting available", async () => {
+  const geometry = indexedGeometry();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
+  mesh.updateMatrixWorld();
+  const denied = [];
+  scheduleRuntimeRaycastBvh({ displayRecords: [{ mesh }] }, {
+    reserveBuild: ({ estimatedBytes }) => ({ ok: false, detail: { requestedBytes: estimatedBytes } }),
+    onBuildDenied: (detail) => denied.push(detail),
+  });
+  await tick();
+  assert.equal(geometry.boundsTree, undefined);
+  assert.equal(denied[0].requestedBytes, estimateGeometryBvhBytes(geometry));
+  const hits = new THREE.Raycaster(
+    new THREE.Vector3(0.6, 0.3, 5),
+    new THREE.Vector3(0, 0, -1)
+  ).intersectObject(mesh, false);
+  assert.equal(hits[0]?.faceIndex, 0, "acceleratedRaycast falls back without a tree");
+});
+
+test("a BVH reservation spans the idle build and reports retained bytes", async () => {
+  const geometry = indexedGeometry();
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial());
+  const events = [];
+  scheduleRuntimeRaycastBvh({ displayRecords: [{ mesh }] }, {
+    reserveBuild: ({ estimatedBytes }) => {
+      events.push(["reserve", estimatedBytes]);
+      return { ok: true, token: "b1" };
+    },
+    finishBuild: (token, { builtBytes }) => events.push(["finish", token, builtBytes]),
+  });
+  await tick();
+  assert.equal(events[0][0], "reserve");
+  assert.equal(events[1][0], "finish");
+  assert.equal(events[1][1], "b1");
+  assert.ok(events[1][2] > 0);
 });

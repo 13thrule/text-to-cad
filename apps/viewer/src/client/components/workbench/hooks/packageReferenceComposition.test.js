@@ -22,6 +22,7 @@ import {
   buildPackageOccurrenceRuntimes,
   composePackageSelectorRuntime,
   compositionUsesComponent,
+  reconcileLivePackageSelectorBundles,
   swapCompositionBundle
 } from "./packageReferenceComposition.js";
 
@@ -162,4 +163,63 @@ test("occurrence runtimes build identically through both entrypoints", () => {
   // mesh's sourcePartRanges — pin it.
   const reference = runtimes[0].references?.[0];
   assert.ok(String(reference?.id || "").includes("o1.1"), `reference ids carry the occurrence: ${reference?.id}`);
+});
+
+test("topology landing after a LOD swap composes from the live bundle", async () => {
+  let releaseLevel0;
+  const level0Pending = new Promise((resolve) => { releaseLevel0 = resolve; });
+  let live = { levelByCid: { c0: 0 }, bundleByCid: {} };
+  const load = (async () => {
+    const level0Bundle = await level0Pending;
+    return reconcileLivePackageSelectorBundles({
+      cids: ["c0"],
+      initialBundleByCid: { c0: level0Bundle },
+      initialKeyByCid: { c0: "c0:t0" },
+      snapshotLiveLod: () => live,
+      keyForLevel: (cid, level) => `${cid}:t${level}`,
+      loadForLevel: async () => assert.fail("published live bundle needs no second fetch")
+    });
+  })();
+  const level0Bundle = { level: 0 };
+  const level1Bundle = { level: 1 };
+  live = { levelByCid: { c0: 1 }, bundleByCid: { c0: level1Bundle } };
+  releaseLevel0(level0Bundle);
+  assert.deepEqual(await load, { c0: level1Bundle });
+});
+
+test("missing live selector state fetches the exact level and rechecks after another swap", async () => {
+  let live = { levelByCid: { c0: 1 }, bundleByCid: {} };
+  const fetched = [];
+  const level2Bundle = { level: 2 };
+  const result = await reconcileLivePackageSelectorBundles({
+    cids: ["c0"],
+    initialBundleByCid: { c0: { level: 0 } },
+    initialKeyByCid: { c0: "c0:t0" },
+    snapshotLiveLod: () => live,
+    keyForLevel: (cid, level) => `${cid}:t${level}`,
+    loadForLevel: async (cid, level, key) => {
+      fetched.push({ cid, level, key });
+      live = { levelByCid: { c0: 2 }, bundleByCid: { c0: level2Bundle } };
+      return { level: 1 };
+    }
+  });
+  assert.deepEqual(fetched, [{ cid: "c0", level: 1, key: "c0:t1" }]);
+  assert.deepEqual(result, { c0: level2Bundle });
+});
+
+test("an obsolete reference job stops before publishing", async () => {
+  let current = true;
+  const result = await reconcileLivePackageSelectorBundles({
+    cids: ["c0"],
+    initialBundleByCid: { c0: { level: 0 } },
+    initialKeyByCid: { c0: "c0:t0" },
+    snapshotLiveLod: () => ({ levelByCid: { c0: 1 }, bundleByCid: {} }),
+    keyForLevel: (cid, level) => `${cid}:t${level}`,
+    loadForLevel: async () => {
+      current = false;
+      return { level: 1 };
+    },
+    isCurrent: () => current
+  });
+  assert.equal(result, null);
 });

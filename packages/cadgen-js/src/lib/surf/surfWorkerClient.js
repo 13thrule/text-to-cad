@@ -2,10 +2,10 @@
 //
 // Unlike the single-worker GLB client this is a POOL: a large assembly has
 // hundreds of independent components and tessellation is pure CPU, so the
-// wall-clock win scales with cores. Requests round-robin across workers;
-// each resolves to { meshData, bundle } for one component URL. Returns null
-// from loadSurfComponentInWorker when Workers are unavailable (node, old
-// browsers) so callers can fall back to inline tessellation.
+// wall-clock win scales with cores. Requests round-robin across workers and
+// name the render/selectors capabilities they require. Returns null from
+// loadSurfComponentInWorker when Workers are unavailable (node, old browsers)
+// so callers can fall back to inline tessellation.
 
 import {
   getCachedEntryBytes,
@@ -15,9 +15,11 @@ import {
 } from "./tessellationCache.js";
 
 let pool = null;
+let poolGeneration = 0;
 let nextWorkerIndex = 0;
 let nextRequestId = 1;
 const pendingRequests = new Map();
+const idleReleaseWaiters = new Map();
 
 // A component surf under a package's components/ dir is CONTENT-ADDRESSED —
 // its stem is the cid the shared tessellation cache keys on. Anything else
@@ -75,6 +77,23 @@ function workersSupported() {
   return typeof Worker === "function" && typeof URL === "function";
 }
 
+function normalizeCapabilities(value) {
+  if (value === undefined) {
+    return { render: true, selectors: true };
+  }
+  if (!value || typeof value !== "object") {
+    throw new TypeError("Surf worker capabilities must be an object");
+  }
+  const capabilities = {
+    render: value.render === true,
+    selectors: value.selectors === true,
+  };
+  if (!capabilities.render && !capabilities.selectors) {
+    throw new TypeError("Surf worker request must require render or selectors capability");
+  }
+  return capabilities;
+}
+
 function poolSize() {
   const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 4 : 4;
   return Math.max(2, Math.min(cores - 1, 8));
@@ -88,6 +107,34 @@ function rejectAllPending(error) {
   pendingRequests.clear();
 }
 
+function resolveIdleReleaseWaiters(generation, released) {
+  const waiters = idleReleaseWaiters.get(generation);
+  if (!waiters) return;
+  for (const resolve of waiters) resolve(released);
+  idleReleaseWaiters.delete(generation);
+}
+
+function releaseIdlePool(generation = poolGeneration) {
+  if (generation !== poolGeneration) {
+    resolveIdleReleaseWaiters(generation, false);
+    return false;
+  }
+  if (pendingRequests.size > 0) return false;
+  if (pool) {
+    for (const worker of pool) {
+      worker.terminate?.();
+    }
+    pool = null;
+    nextWorkerIndex = 0;
+  }
+  resolveIdleReleaseWaiters(generation, true);
+  return true;
+}
+
+function releaseDeferredPoolIfIdle(generation = poolGeneration) {
+  if (idleReleaseWaiters.has(generation)) releaseIdlePool(generation);
+}
+
 function ensurePool() {
   if (!workersSupported()) {
     return null;
@@ -96,6 +143,7 @@ function ensurePool() {
     return pool;
   }
   try {
+    poolGeneration += 1;
     pool = Array.from({ length: poolSize() }, () => {
       const worker = new Worker(new URL("./surfWorker.js", import.meta.url), { type: "module" });
       worker.addEventListener("message", (event) => {
@@ -106,11 +154,15 @@ function ensurePool() {
         }
         pendingRequests.delete(message.id);
         request.cleanup();
+        releaseDeferredPoolIfIdle(request.poolGeneration);
         if (message.ok) {
           if (message.entryBytes && request.writeBack) {
             request.writeBack(message.entryBytes); // fire-and-forget
           }
-          request.resolve({ meshData: message.meshData, bundle: message.bundle });
+          request.resolve({
+            ...(message.meshData ? { meshData: message.meshData } : {}),
+            ...(message.bundle ? { bundle: message.bundle } : {}),
+          });
           return;
         }
         const error = new Error(message.error?.message || "Failed to load surf component in worker.");
@@ -120,9 +172,11 @@ function ensurePool() {
       worker.addEventListener("error", (event) => {
         // One broken worker poisons in-flight requests; tear the pool down
         // so the next load falls back (or rebuilds a fresh pool).
+        const failedGeneration = poolGeneration;
         rejectAllPending(new Error(event?.message || "surf worker failed."));
         for (const w of pool || []) w.terminate?.();
         pool = null;
+        resolveIdleReleaseWaiters(failedGeneration, true);
       });
       return worker;
     });
@@ -146,15 +200,31 @@ export function releaseSurfWorkerPool() {
   if (!pool || pendingRequests.size > 0) {
     return false;
   }
-  for (const worker of pool) {
-    worker.terminate?.();
-  }
-  pool = null;
-  nextWorkerIndex = 0;
-  return true;
+  return releaseIdlePool();
 }
 
-export function loadSurfComponentInWorker(url, { signal, tessellation } = {}) {
+// A package load and a viewport refinement can briefly overlap. The immediate
+// release above must leave in-flight work alone, but its caller still needs to
+// know when the isolates are actually gone so retained-memory accounting can
+// be cleared. Resolve once the last pending request completes or aborts; no
+// pool is also a successfully released state.
+export function releaseSurfWorkerPoolWhenIdle() {
+  const generation = poolGeneration;
+  if (!pool) {
+    return Promise.resolve(true);
+  }
+  if (pendingRequests.size === 0) {
+    return Promise.resolve(releaseIdlePool(generation));
+  }
+  return new Promise((resolve) => {
+    const waiters = idleReleaseWaiters.get(generation) || new Set();
+    waiters.add(resolve);
+    idleReleaseWaiters.set(generation, waiters);
+  });
+}
+
+export function loadSurfComponentInWorker(url, { signal, tessellation, capabilities: rawCapabilities } = {}) {
+  const capabilities = normalizeCapabilities(rawCapabilities);
   const workers = ensurePool();
   if (!workers) {
     return null;
@@ -181,15 +251,18 @@ export function loadSurfComponentInWorker(url, { signal, tessellation } = {}) {
       signal?.removeEventListener?.("abort", abort);
     };
     const abort = () => {
+      const request = pendingRequests.get(id);
       pendingRequests.delete(id);
       cleanup();
       worker.postMessage({ type: "cancel", id });
+      releaseDeferredPoolIfIdle(request?.poolGeneration);
       reject(makeAbortError());
     };
     pendingRequests.set(id, {
       resolve,
       reject,
       cleanup,
+      poolGeneration,
       writeBack: cacheable
         ? (entryBytes) => { writeBackEntryBytes(cid, tessellation || {}, entryBytes); }
         : null,
@@ -204,6 +277,7 @@ export function loadSurfComponentInWorker(url, { signal, tessellation } = {}) {
           type: "loadSurf",
           id,
           url,
+          capabilities,
           ...(tessellation ? { tessellation } : {}),
           ...(cachedEntry ? { cachedEntry } : {}),
           ...(cacheable ? { wantEntry: !cachedEntry } : {}),

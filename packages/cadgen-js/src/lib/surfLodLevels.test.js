@@ -24,14 +24,21 @@ function surfArrayBuffer() {
   );
 }
 
-test("cache keys: default tessellation keeps the plain URL, levels get suffixes", () => {
-  assert.equal(surfTessellationCacheKey("u.surf", undefined), "u.surf");
-  assert.equal(surfTessellationCacheKey("u.surf", {}), "u.surf");
+test("mesh identity includes component, effective tolerances, algorithm and payload", () => {
+  const defaultKey = surfTessellationCacheKey("u.surf", undefined);
+  assert.equal(defaultKey, surfTessellationCacheKey("u.surf", {}));
+  assert.match(defaultKey, /^u\.surf#mesh=anonymous-t\d+-l1\.500000e-3-a3\.500000e-1-p\d+$/);
   const l1 = surfTessellationCacheKey("u.surf", { chordTolerance: 5e-4 });
-  assert.match(l1, /^u\.surf#l5\.000000e-4-aNaN$/);
+  assert.match(l1, /^u\.surf#mesh=anonymous-t\d+-l5\.000000e-4-a3\.500000e-1-p\d+$/);
   assert.notEqual(l1, surfTessellationCacheKey("u.surf", { chordTolerance: 1.5e-4 }));
+  assert.notEqual(l1, surfTessellationCacheKey("u.surf", { chordTolerance: 5e-4, angleTolerance: 0.2 }));
   // 0.0005 and 5e-4 hit the same entry.
   assert.equal(l1, surfTessellationCacheKey("u.surf", { chordTolerance: 0.0005 }));
+  assert.match(
+    surfTessellationCacheKey("/pkg/components/abc123.surf", {}),
+    /#mesh=abc123-t\d+-/,
+    "content-addressed component identity participates in the key",
+  );
 });
 
 test("levels tessellate once each, differ in density, and stay consistent", async (t) => {

@@ -124,7 +124,10 @@ test("dispose aborts in-flight work and a late resolve applies nothing", async (
   const gate = deferred();
   let aborted = false;
   const applied = [];
+  const releases = [];
   const scheduler = createLodScheduler({
+    reserveLevel: () => ({ ok: true, token: "dispose-reservation" }),
+    releaseLevel: (token) => releases.push(token),
     loadLevel: (cid, level, { signal }) => {
       signal.addEventListener("abort", () => {
         aborted = true;
@@ -144,6 +147,7 @@ test("dispose aborts in-flight work and a late resolve applies nothing", async (
   gate.resolve({});
   await tick();
   assert.deepEqual(applied, [], "a late payload is dropped");
+  assert.deepEqual(releases, ["dispose-reservation"], "cancellation releases its reservation exactly once");
 });
 
 test("a failed level load leaves the current level standing and does not wedge", async () => {
@@ -168,6 +172,89 @@ test("a failed level load leaves the current level standing and does not wedge",
   assert.equal(scheduler.levelOf("part"), 0, "level unchanged after failure");
   assert.equal(scheduler.busy(), false, "scheduler is not wedged");
   assert.ok(calls >= 1);
+  scheduler.dispose();
+});
+
+test("a denied refinement keeps the usable level and reports the limitation", async () => {
+  const clock = makeClock();
+  const loads = [];
+  const limitations = [];
+  const scheduler = createLodScheduler({
+    loadLevel: (cid, level) => {
+      loads.push(`${cid}@${level}`);
+      return Promise.resolve({});
+    },
+    applyLevel: () => {},
+    reserveLevel: ({ cid, currentLevel, level, direction }) => ({
+      ok: false,
+      detail: { cid, currentLevel, level, direction, requestedBytes: 400 },
+    }),
+    onLimitation: (detail) => limitations.push(detail),
+    setTimeoutFn: clock.setTimeoutFn,
+    clearTimeoutFn: clock.clearTimeoutFn,
+  });
+  scheduler.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler.onCameraSample(sampleWith({ part: 60 }));
+  clock.fire();
+  await tick();
+  assert.deepEqual(loads, [], "denied work never starts");
+  assert.equal(scheduler.levelOf("part"), 0, "current display remains usable");
+  assert.deepEqual(limitations.map(({ direction }) => direction), ["refine"]);
+  assert.equal(scheduler.busy(), false);
+  scheduler.dispose();
+});
+
+test("LOD reservation spans replacement load and apply, then releases", async () => {
+  const clock = makeClock();
+  const gate = deferred();
+  const events = [];
+  const scheduler = createLodScheduler({
+    reserveLevel: ({ direction }) => {
+      events.push(`reserve:${direction}`);
+      return { ok: true, token: "r1" };
+    },
+    loadLevel: () => {
+      events.push("load");
+      return gate.promise;
+    },
+    applyLevel: () => events.push("apply"),
+    releaseLevel: (token) => events.push(`release:${token}`),
+    setTimeoutFn: clock.setTimeoutFn,
+    clearTimeoutFn: clock.clearTimeoutFn,
+  });
+  scheduler.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler.onCameraSample(sampleWith({ part: 60 }));
+  clock.fire();
+  assert.deepEqual(events, ["reserve:refine", "load"]);
+  gate.resolve({});
+  await tick();
+  assert.deepEqual(events.slice(0, 4), ["reserve:refine", "load", "apply", "release:r1"]);
+  scheduler.dispose();
+});
+
+test("memory pressure coarsens the least-visible detail even while the camera requests fine geometry", async () => {
+  const clock = makeClock();
+  const loads = [];
+  const scheduler = createLodScheduler({
+    memoryPressure: () => true,
+    loadLevel: (cid, level) => {
+      loads.push(`${cid}@L${level}`);
+      return Promise.resolve({});
+    },
+    applyLevel: () => {},
+    setTimeoutFn: clock.setTimeoutFn,
+    clearTimeoutFn: clock.clearTimeoutFn,
+  });
+  scheduler.setComponents([
+    { cid: "near", diagonal: 100, level: 2 },
+    { cid: "farther", diagonal: 100, level: 2 },
+  ]);
+  scheduler.onCameraSample(sampleWith({ near: 52, farther: 80 }));
+  clock.fire();
+  for (let i = 0; i < 8; i += 1) await tick();
+  assert.equal(loads[0], "farther@L1", "smaller screen error releases detail first");
+  assert.equal(scheduler.levelOf("near"), 0);
+  assert.equal(scheduler.levelOf("farther"), 0);
   scheduler.dispose();
 });
 

@@ -27,6 +27,9 @@ test("render memory accounting counts shared component buffers once and splits e
   assert.equal(totals.edgeBytes, 6 * 4 + 8 * 2 + 2 * 4);
   assert.equal(totals.bvhBytes, 96);
   assert.equal(totals.bvhGeometries, 1);
+  assert.equal(totals.displayCpuBytes, totals.surfaceBytes + totals.edgeBytes);
+  assert.equal(totals.gpuEstimatedBytes, totals.surfaceBytes + totals.edgeBytes);
+  assert.equal(totals.memoryPolicy.hardRssCap, false);
   assert.equal(typeof totals.assetCaches.surfPayload.entries, "number");
   assert.deepEqual(renderMemoryAccounting(null).occurrences, 0);
 });
@@ -66,4 +69,42 @@ test("component bytes are counted once across occurrences, picking is counted se
   assert.equal(totals.pickBytes, 9 * 9 * 4 + 9 * 3 * 4, "the proxy's bytes are not surface bytes");
   assert.equal(totals.bvhBytes, 2048);
   assert.equal(totals.bvhGeometries, 1);
+  assert.equal(totals.gpuEstimatedBytes, totals.surfaceBytes + totals.pickBytes);
+});
+
+test("surface instances and packed deformation backing buffers are admitted", () => {
+  const shared = geometry(2);
+  const records = [0, 1].map(() => ({
+    mesh: new THREE.Mesh(shared, new THREE.MeshStandardMaterial())
+  }));
+  const instance = new THREE.InstancedMesh(
+    shared,
+    new THREE.MeshStandardMaterial(),
+    2
+  );
+  instance.setColorAt(0, new THREE.Color("white"));
+  instance.setColorAt(1, new THREE.Color("white"));
+  const packed = new ArrayBuffer(128);
+  records[0].tubeDeformationState = {
+    mapping: [new Uint8Array(packed, 16, 8)]
+  };
+
+  const directTotals = renderMemoryAccounting({
+    displayRecords: records,
+    cadSurfaceInstanceSets: new Set([{ object: instance, records }])
+  });
+  const totals = renderMemoryAccounting({
+    displayRecords: records,
+    cadScene: { runtime: { cadSurfaceInstanceSets: new Set([{ object: instance, records }]) } }
+  });
+
+  const instanceBytes = instance.instanceMatrix.array.byteLength + instance.instanceColor.array.byteLength;
+  assert.equal(directTotals.surfaceInstanceBytes, instanceBytes, "focused callers keep the direct runtime shape");
+  assert.equal(totals.surfaceInstanceSets, 1);
+  assert.equal(totals.surfaceInstances, 2);
+  assert.equal(totals.surfaceInstanceBytes, instanceBytes);
+  assert.equal(totals.deformationBytes, packed.byteLength, "a short view retains its full backing allocation");
+  assert.equal(totals.materials, 3, "the instance draw's cloned material is owned too");
+  assert.equal(totals.displayCpuBytes, totals.surfaceBytes + totals.edgeBytes);
+  assert.ok(totals.memoryPolicy.retainedByCategory.displayCpu >= instanceBytes);
 });

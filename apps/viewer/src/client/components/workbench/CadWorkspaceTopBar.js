@@ -969,6 +969,11 @@ function VersionReleaseLink({ version, releaseUrl, releaseCheck = emptyLatestRel
 
 export default function CadWorkspaceTopBar({
   previewMode,
+  editingAvailable = false,
+  followEdits = false,
+  onFollowEditsChange,
+  editingStatus = "",
+  annotationError = "",
   sidebarLabelForEntry,
   directoryTree = null,
   selectedKey = "",
@@ -1171,6 +1176,16 @@ export default function CadWorkspaceTopBar({
             </Button>
           ) : null}
 
+          {editingAvailable ? (
+            <div className="flex min-w-0 items-center gap-2">
+              {followEdits ? <span role="status" className="max-w-48 truncate text-xs text-muted-foreground" title={editingStatus}>{editingStatus}</span> : null}
+              <Button type="button" variant="ghost" size="sm" aria-pressed={followEdits}
+                aria-label="Follow edits" onClick={onFollowEditsChange}>
+                {followEdits ? "Follow edits" : "Saved file"}
+              </Button>
+            </div>
+          ) : null}
+          {annotationError ? <span role="alert" className="max-w-48 truncate text-xs text-destructive" title={annotationError}>Annotations unavailable</span> : null}
           {/* A plain toggle for the theme sidebar, matching the file-sheet
               button beside it. Theme selection lives inside the sidebar. */}
           <Button

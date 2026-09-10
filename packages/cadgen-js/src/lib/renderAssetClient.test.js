@@ -19,6 +19,7 @@ import {
   peekRenderJson,
   peekRenderSdf,
   renderAssetCacheStats,
+  releaseRenderSurfLevel,
   configureSurfLeash
 } from "./renderAssetClient.js";
 import { readFileSync } from "node:fs";
@@ -27,6 +28,13 @@ import { fileURLToPath } from "node:url";
 import {
   setRenderAssetSourceScope
 } from "./renderAssetSourceScope.js";
+import { parseSurf } from "./surf/container.js";
+import { tessellateComponent } from "./surf/tessellate.js";
+import {
+  edgeClassesFromSurfIndex,
+  encodeComponentTessellation,
+  setTessellationCacheProvider,
+} from "./surf/tessellationCache.js";
 
 class FakeElement {
   constructor(tagName, attributes = {}, children = [], text = "") {
@@ -297,8 +305,14 @@ test("selector bundles decode STEP_topology bufferViews from GLB", async (t) => 
     globalThis.fetch = originalFetch;
   });
 
+  const retainedBefore = renderAssetCacheStats().selector.typedBytes;
   const bundle = await loadRenderSelectorBundle(glbUrl);
   assert.deepEqual(Array.from(bundle.buffers.edgeIds), [7, 11]);
+  assert.equal(
+    renderAssetCacheStats().selector.typedBytes - retainedBefore,
+    glb.byteLength,
+    "buffer views charge the complete GLB allocation they retain",
+  );
   const displayBundle = await loadRenderDisplayEdgeBundle(glbUrl);
   assert.deepEqual(Array.from(displayBundle.buffers.surfaceHalfEdges.slice(0, 2)), [7, 11]);
   assert.equal(displayBundle.manifest.profile, "surface-edges");
@@ -587,7 +601,8 @@ test("surf payloads and selector bundles live on one bounded leash and re-decode
   const first = await loadRenderSurf(url(0));
   assert.ok(first.vertices instanceof Float32Array);
   assert.equal(fetches, 1);
-  // A selector bundle for the same component reuses the payload (no refetch).
+  // Selector construction is deferred. The already-fetched surf bytes avoid a
+  // second network request when selection is first used.
   await loadRenderSurfSelectorBundle(url(0));
   assert.equal(fetches, 1);
   for (let i = 1; i < 30; i += 1) {
@@ -596,10 +611,110 @@ test("surf payloads and selector bundles live on one bounded leash and re-decode
   const stats = renderAssetCacheStats();
   assert.ok(stats.surfLeash.entries <= stats.surfLeash.limit, "leash bounded");
   assert.ok(stats.surfPayload.entries <= stats.surfLeash.limit, `surf payload cache bounded (${stats.surfPayload.entries})`);
-  assert.ok(stats.surfPayload.typedBytes > 0 && stats.surfPayload.manifestRows > 0, "stats attribute retained bytes and rows");
+  assert.ok(stats.surfPayload.typedBytes > 0, "stats attribute retained render bytes");
+  assert.equal(stats.selector.manifestRows, 0, "an old selector is evicted independently of displayed meshes");
   // The first component was evicted: loading it again decodes a FRESH payload
   // (the array-buffer cache may absorb the fetch itself).
   const again = await loadRenderSurf(url(0));
   assert.notEqual(again, first, "evicted entry is re-decoded, not retained");
   assert.ok(fetches >= 30);
+});
+
+test("cached surf display skips the surf fetch and constructs selectors on first use", async (t) => {
+  const surfBytes = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "surf/fixtures/sun_gear.surf"));
+  const surfBuffer = surfBytes.buffer.slice(surfBytes.byteOffset, surfBytes.byteOffset + surfBytes.byteLength);
+  const { index, floats } = parseSurf(surfBuffer);
+  const component = tessellateComponent(index, floats);
+  const entry = encodeComponentTessellation(component, {
+    partColor: index.partColor,
+    edgeClasses: edgeClassesFromSurfIndex(index),
+  });
+  const url = `https://cache.test/cached/components/cached-${Date.now()}.surf`;
+  let fetches = 0;
+  let gets = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    fetches += 1;
+    return new Response(surfBuffer.slice(0), { status: 200 });
+  };
+  setTessellationCacheProvider({
+    async get() {
+      gets += 1;
+      return entry.slice();
+    },
+    async put() {},
+  });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    setTessellationCacheProvider(null);
+  });
+
+  const meshData = await loadRenderSurf(url);
+  assert.ok(meshData.indices.length > 0);
+  assert.equal(fetches, 0, "display hit needs no surf bytes");
+  assert.equal(gets, 1, "display performs one input-addressed cache lookup");
+  const selectorsBeforeDemand = renderAssetCacheStats().selector.entries;
+
+  const bundle = await loadRenderSurfSelectorBundle(url);
+  assert.equal(fetches, 1, "topology is fetched only when selectors are requested");
+  assert.equal(
+    renderAssetCacheStats().selector.entries,
+    selectorsBeforeDemand + 1,
+    "display did not populate the selector cache",
+  );
+  assert.equal(bundle.manifest.faces.length, index.faces.length);
+  assert.equal(bundle.manifest.edges.length, index.edges.length);
+  assert.equal(bundle.manifest.faces[0][5], index.faces[0].area, "exact stored face area survives");
+  assert.equal(bundle.manifest.edges[0][5], index.edges[0].length, "exact stored edge length survives");
+});
+
+test("cached display with missing optional header falls back to surf and upgrades the entry", async (t) => {
+  const surfBytes = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "surf/fixtures/sun_gear.surf"));
+  const surfBuffer = surfBytes.buffer.slice(surfBytes.byteOffset, surfBytes.byteOffset + surfBytes.byteLength);
+  const { index, floats } = parseSurf(surfBuffer);
+  let stored = encodeComponentTessellation(tessellateComponent(index, floats));
+  const url = `https://cache.test/incomplete/components/incomplete-${Date.now()}.surf`;
+  let fetches = 0;
+  let puts = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    fetches += 1;
+    return new Response(surfBuffer.slice(0), { status: 200 });
+  };
+  setTessellationCacheProvider({
+    async get() { return stored.slice(); },
+    async put(_key, bytes) {
+      puts += 1;
+      stored = bytes.slice();
+    },
+  });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    setTessellationCacheProvider(null);
+  });
+
+  const meshData = await loadRenderSurf(url);
+  assert.ok(meshData.indices.length > 0);
+  assert.equal(fetches, 1, "incomplete display metadata is a recoverable miss");
+  assert.equal(puts, 1, "the complete display entry replaces the incomplete one");
+});
+
+test("obsolete concrete surf levels release browser cache references only", async (t) => {
+  const surfBytes = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "surf/fixtures/sun_gear.surf"));
+  const surfBuffer = surfBytes.buffer.slice(surfBytes.byteOffset, surfBytes.byteOffset + surfBytes.byteLength);
+  const url = `https://cache.test/release/components/release-${Date.now()}.surf`;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(surfBuffer.slice(0), { status: 200 });
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const meshData = await loadRenderSurf(url);
+  const bundle = await loadRenderSurfSelectorBundle(url);
+  const before = renderAssetCacheStats();
+  assert.ok(meshData.indices.length > 0 && bundle.manifest.faces.length > 0);
+  assert.ok(releaseRenderSurfLevel(url) >= 2);
+  const after = renderAssetCacheStats();
+  assert.ok(after.surfPayload.entries < before.surfPayload.entries);
+  assert.equal(after.selector.entries, before.selector.entries - 1);
+  assert.ok(meshData.indices.length > 0, "the displayed owner remains valid");
+  assert.ok(bundle.manifest.faces.length > 0, "the exact selector owner remains valid");
 });

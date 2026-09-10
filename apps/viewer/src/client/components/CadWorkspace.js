@@ -54,6 +54,8 @@ import FloatingToolBar from "./workbench/FloatingToolBar";
 import CadWorkspaceTopBar from "./workbench/CadWorkspaceTopBar";
 import CadWorkspaceHome from "./workbench/CadWorkspaceHome";
 import { useCadAssets } from "./workbench/hooks/useCadAssets";
+import { useEditingPreview } from "./workbench/hooks/useEditingPreview.js";
+import { previewGeometryChanged } from "@/workbench/editingPreview.js";
 import {
   resolveDesktopPanelWidths,
   useCadWorkspaceLayout
@@ -243,6 +245,10 @@ import {
   writeCadParam,
 } from "@/workbench/sidebar";
 import { buildCadRefToken, isNativeCadSelector } from "cadgen-js/lib/cadRefs.js";
+import {
+  stepModuleRequiresTopology,
+  stepModuleTopologyOccurrenceIds
+} from "@/workbench/topologyCapabilities";
 import { shortestUniquePathSuffixes } from "cadgen-js/lib/filePathSuffix.js";
 import {
   applyUrdfPoseToMeshData,
@@ -293,7 +299,7 @@ import {
   normalizeStepModuleParameterValues
 } from "cadgen-js/common/stepModule";
 import { meshStateIsComplete, tolerantAnimationClip } from "./workbench/hooks/packageProgressiveLoad.js";
-import { loadKinematicsModuleDefinition } from "cadgen-js/common/kinematicsModule";
+import { loadKinematicsModuleDefinition, previewKinematicsModuleDefinition } from "cadgen-js/common/kinematicsModule";
 import { loadRenderModule, validateRenderModuleClips } from "cadgen-js/common/renderModule";
 import {
   normalizeParameterValue,
@@ -1051,6 +1057,18 @@ export default function CadWorkspace({
   const manifestEntries = Array.isArray(manifestEntriesProp) ? manifestEntriesProp : [];
   const catalogEntries = manifestEntries;
   const explicitFileParam = readCadParam();
+  const [followEdits, setFollowEdits] = useState(() => typeof window !== "undefined" &&
+    new URL(window.location.href).searchParams.get("mode") === "editing");
+  const handleFollowEditsChange = useCallback(() => {
+    setFollowEdits(current => {
+      const next = !current;
+      const url = new URL(window.location.href);
+      if (next) url.searchParams.set("mode", "editing");
+      else url.searchParams.delete("mode");
+      window.history.replaceState(null, "", url);
+      return next;
+    });
+  }, []);
   // Session state is namespaced per origin, and an origin (host + port) is one viewer
   // serving one root. This used to be keyed on the directory in the URL path, back when
   // one instance could show any folder.
@@ -1081,6 +1099,10 @@ export default function CadWorkspace({
   const [referenceQuery, setReferenceQuery] = useState("");
   const [selectedReferenceIds, setSelectedReferenceIds] = useState([]);
   const [largeFileState, setLargeFileState] = useState(() => normalizeLargeFileState(DEFAULT_LARGE_FILE_STATE));
+  // Capability demand is scoped to the artifact the user acted on. The
+  // default Select tool alone does not imply topology work during file open.
+  const [requestedTopologyFileRef, setRequestedTopologyFileRef] = useState("");
+  const pendingModelReferenceActivationRef = useRef(null);
   const [hoveredListReferenceId, setHoveredListReferenceId] = useState("");
   const [hoveredModelReferenceId, setHoveredModelReferenceId] = useState("");
   const [selectedPartIds, setSelectedPartIds] = useState([]);
@@ -1333,6 +1355,12 @@ export default function CadWorkspace({
         catalogRefreshing
       });
   const catalogSelectedEntrySourceFormat = entrySourceFormat(catalogSelectedEntry);
+  const editingFile = catalogSelectedEntry ? fileKey(catalogSelectedEntry) : explicitFileParam;
+  const editingAvailable = /\.st(?:ep|p)$/i.test(editingFile || "");
+  const editingPreview = useEditingPreview(editingFile, {
+    enabled: followEdits && editingAvailable,
+    catalogEntry: catalogSelectedEntry,
+  });
   // Unified render-artifact status for the selected entry: ready (render) | generating (loading) |
   // error (fatal). A missing/stale cache is not an issue — it just triggers a (re)build. Replaces
   // the per-entry step-source-status fetch, the mesh-stripping merge, and the build effect.
@@ -1348,7 +1376,8 @@ export default function CadWorkspace({
       freshnessKey: `${catalogSelectedEntry?.hash || ""}:${manifestRevision}`,
     }
   );
-  const selectedArtifactGenerating = selectedArtifact.status === "compiling";
+  const editingHasView = Boolean(editingPreview.entry || (followEdits && entryHasMesh(catalogSelectedEntry)));
+  const selectedArtifactGenerating = selectedArtifact.status === "compiling" && !editingHasView;
   // The in-flight build's own report of where it is (null until it reports, and for
   // every loading state that is not an artifact build). Only meaningful while
   // generating — a stale frame must not outlive the build that produced it.
@@ -1375,19 +1404,33 @@ export default function CadWorkspace({
   );
   const selectedEntry = useMemo(
     () => {
-      const base = !catalogSelectedEntry || selectedArtifact.status === "rendered"
+      const base = editingPreview.entry || (!catalogSelectedEntry || selectedArtifact.status === "rendered" ||
+        (followEdits && entryHasMesh(catalogSelectedEntry))
         ? catalogSelectedEntry
-        : entryWithoutRenderAssets(catalogSelectedEntry);
+        : entryWithoutRenderAssets(catalogSelectedEntry));
       if (!base) {
         return base;
       }
       const fileRefPrefix = fileRefPrefixByPath.get(cadFileParamForEntry(base)) || "";
       return fileRefPrefix ? { ...base, fileRefPrefix } : base;
     },
-    [catalogSelectedEntry, selectedArtifact.status, fileRefPrefixByPath]
+    [catalogSelectedEntry, selectedArtifact.status, fileRefPrefixByPath, editingPreview.entry, followEdits]
   );
+  const previousPreviewTree = useRef(null);
+  useEffect(() => {
+    const previous = previousPreviewTree.current;
+    const next = { file: selectedEntry?.file, hash: selectedEntry?.hash, preview: selectedEntry?.editingPreview };
+    if (previewGeometryChanged(previous, next)) {
+      pendingModelReferenceActivationRef.current = null;
+      setSelectedReferenceIds([]);
+      setSelectedPartIds([]);
+      setSelectedRenderPartIdByAssemblyPartId({});
+      setSelectedWholeEntryCadRefToken("");
+    }
+    previousPreviewTree.current = next;
+  }, [selectedEntry?.file, selectedEntry?.hash, selectedEntry?.editingPreview]);
   // Cache states never become user-facing "issues"; only a fatal build/source failure does.
-  const selectedStepSourceStatus = selectedArtifact.status === "failed"
+  const selectedStepSourceStatus = selectedArtifact.status === "failed" && !editingHasView
     ? {
         artifact: {
           ok: false,
@@ -1436,7 +1479,8 @@ export default function CadWorkspace({
       urdfTrajectoryPlaybackRef.current?.frameId
     )
   );
-  const selectedStepModuleUrl = supportsSidecarParams ? entryPoseUrl(selectedEntry) : "";
+  const selectedStepModuleUrl = selectedEntry?.editingPreview && selectedEntry.previewKinematics
+    ? `preview:${selectedEntry.hash}` : supportsSidecarParams ? entryPoseUrl(selectedEntry) : "";
   const selectedStepModuleCadPath = selectedStepModuleUrl ? cadPathForEntry(selectedEntry) : "";
   const selectedStepModuleDefinition = stepModuleLoadState.url === selectedStepModuleUrl
     ? stepModuleLoadState.definition
@@ -1633,9 +1677,14 @@ export default function CadWorkspace({
     setStepModuleParameterValues({});
     setStepModuleEnabled(true);
 
-    loadKinematicsModuleDefinition(selectedStepModuleUrl, {
-      cadPath: selectedStepModuleCadPath
-    }).then((definition) => {
+    const modulePromise = selectedEntry?.editingPreview
+      ? Promise.resolve().then(() => previewKinematicsModuleDefinition(selectedEntry.previewKinematics, {
+          cadPath: selectedStepModuleCadPath,
+        }))
+      : loadKinematicsModuleDefinition(selectedStepModuleUrl, {
+          cadPath: selectedStepModuleCadPath, documentHash: selectedEntry?.documentHash,
+        });
+    modulePromise.then((definition) => {
       if (cancelled) {
         return;
       }
@@ -1820,23 +1869,8 @@ export default function CadWorkspace({
   // act on whatever is present; only clip validation waits for the complete
   // model, and a partial model's clip tolerates labels not yet loaded.
   const selectedMeshPartial = selectedMeshMatches && !meshStateIsComplete(meshState);
-  const selectedStepParameterRuntime = useMemo(() => {
-    if (!selectedStepModuleDefinition || !stepModuleEnabled) {
-      return null;
-    }
-    return {
-      definition: selectedStepModuleDefinition,
-      parameterValues: normalizeStepModuleParameterValues(selectedStepModuleDefinition, stepModuleParameterValues),
-      cadPath: selectedStepModuleDefinition.cadPath || selectedStepModuleCadPath,
-      sourceUrl: selectedStepModuleUrl
-    };
-  }, [
-    selectedStepModuleCadPath,
-    selectedStepModuleDefinition,
-    selectedStepModuleUrl,
-    stepModuleEnabled,
-    stepModuleParameterValues
-  ]);
+  const selectedStepModuleTopologyRequired = stepModuleRequiresTopology(selectedStepModuleDefinition);
+  const selectedStepModuleTopologyRequested = stepModuleEnabled && selectedStepModuleTopologyRequired;
   // What the viewport needs to draw one animated frame: the compiled clip and a
   // time. The render pane swaps in the live clock while playing; everything else
   // about playback stays out of the render path.
@@ -2324,7 +2358,10 @@ export default function CadWorkspace({
       return [];
     }
     return uniqueStringList(
-      expandedStepTreeNodeIds
+      [
+        ...expandedStepTreeNodeIds,
+        ...(stepModuleEnabled ? stepModuleTopologyOccurrenceIds(selectedStepModuleDefinition) : [])
+      ]
         .map((id) => String(id || "").trim())
         .filter((id) => id && loadableStepTreeTopologyNodeIdSet.has(id))
     );
@@ -2333,7 +2370,9 @@ export default function CadWorkspace({
     isAssemblyView,
     supportsTopology,
     loadableStepTreeTopologyNodeIdSet,
-    selectedEntryHasReferences
+    selectedStepModuleDefinition,
+    selectedEntryHasReferences,
+    stepModuleEnabled,
   ]);
   const viewerSelectableAssemblyNodeIds = useMemo(
     () => (isAssemblyView
@@ -2472,7 +2511,7 @@ export default function CadWorkspace({
   // otherwise spin forever behind its own error.
   const artifactBlocksRender =
     isArtifactManagedFormat(effectiveRenderFormat) &&
-    selectedArtifact.status === "failed";
+    selectedArtifact.status === "failed" && !editingHasView;
   const meshViewerLoading =
     !!selectedEntry &&
     // A DRAWING has no flat pattern and bakes nothing, so "no mesh yet" is its finished state,
@@ -2490,7 +2529,7 @@ export default function CadWorkspace({
     // mesh path, so its readiness is the mesh loader's.
     [ASSET_KIND.DRAWING]: meshViewerLoading
   }[assetKindForRenderFormat(effectiveRenderFormat)];
-  const effectiveViewerLoading = viewerLoading || selectedArtifactGenerating || fileParamSelectionPending;
+  const effectiveViewerLoading = viewerLoading || selectedArtifactGenerating || (fileParamSelectionPending && !editingPreview.entry);
   // The file explorer spins the entry the viewer is actually working on. Artifact
   // generation is only half of that -- a built package still has to be fetched and
   // decoded, and an entry sitting un-built is NOT loading (nothing loads in a static
@@ -4016,6 +4055,30 @@ export default function CadWorkspace({
     referenceState.referenceHash === buildReferenceCacheKey(selectedEntry) &&
     (referenceState.loadedTopologyKey || "*") === requestedTopologyKey;
   const selectedSelectorRuntime = selectedReferencesMatch ? referenceState?.selectorRuntime || null : null;
+  const selectedStepParameterRuntime = useMemo(() => {
+    if (
+      !selectedStepModuleDefinition ||
+      !stepModuleEnabled ||
+      (selectedStepModuleTopologyRequested && !selectedSelectorRuntime)
+    ) {
+      return null;
+    }
+    return {
+      definition: selectedStepModuleDefinition,
+      parameterValues: normalizeStepModuleParameterValues(selectedStepModuleDefinition, stepModuleParameterValues),
+      selectorRuntime: selectedSelectorRuntime,
+      cadPath: selectedStepModuleDefinition.cadPath || selectedStepModuleCadPath,
+      sourceUrl: selectedStepModuleUrl
+    };
+  }, [
+    selectedSelectorRuntime,
+    selectedStepModuleCadPath,
+    selectedStepModuleDefinition,
+    selectedStepModuleTopologyRequested,
+    selectedStepModuleUrl,
+    stepModuleEnabled,
+    stepModuleParameterValues
+  ]);
   const selectedDisplayEdgesMatch =
     !!displayEdgeState &&
     !!selectedEntry &&
@@ -4028,6 +4091,12 @@ export default function CadWorkspace({
     effectiveRenderFormat === RENDER_FORMAT.STEP &&
     selectedEntryHasReferences &&
     !isAssemblyView;
+  const topologyCapabilityRequested = Boolean(
+    selectedEntry && requestedTopologyFileRef === fileKey(selectedEntry)
+  );
+  const plainStepReferencePickingRequested =
+    plainStepReferencePickingEnabled &&
+    (topologyCapabilityRequested || selectedStepModuleTopologyRequested);
   const assemblyStepTreeTopologyLoadingEnabled =
     effectiveRenderFormat === RENDER_FORMAT.STEP &&
     selectedEntryHasReferences &&
@@ -4044,25 +4113,28 @@ export default function CadWorkspace({
     (selectedMeshMatches && isLargeMeshData(selectedMeshData))
   );
   const selectedTopologyWaitingForMeshCost = Boolean(
-    plainStepReferencePickingEnabled &&
+    plainStepReferencePickingRequested &&
     !hasStepGlbByteCost(selectedEntry) &&
     !selectedMeshMatches
   );
-  const referenceLoadingExplicitlyRequested = selectedStepPartRootActive;
+  const referenceLoadingExplicitlyRequested =
+    selectedStepPartRootActive ||
+    topologyCapabilityRequested ||
+    selectedStepModuleTopologyRequested;
   const selectedTopologyDeferredByCost = Boolean(
-    plainStepReferencePickingEnabled &&
+    plainStepReferencePickingRequested &&
     selectedTopologyLargeByCost &&
     !selectedTopologyExplicitlyEnabled &&
     !referenceLoadingExplicitlyRequested
   );
   const topLevelReferenceSelectionActive =
     selectedStepPartRootActive ||
-    plainStepReferencePickingEnabled;
+    plainStepReferencePickingRequested;
   const referenceLoadingEnabled =
     selectedStepPartRootActive ||
     assemblyStepTreeTopologyLoadingEnabled ||
     (
-      plainStepReferencePickingEnabled &&
+      plainStepReferencePickingRequested &&
       !selectedTopologyDeferredByCost &&
       !selectedTopologyWaitingForMeshCost
     );
@@ -4496,7 +4568,7 @@ export default function CadWorkspace({
   }, [measureMeasurements]);
   useEffect(() => {
     setMeasureRulerState((current) => measureRulerStateForChange(current, { entryChanged: true }));
-  }, [selectedKey]);
+  }, [selectedKey, selectedEntry?.hash]);
   useEffect(() => {
     setMeasureRulerState((current) => measureRulerStateForChange(current, { toolActive: measureModeActive }));
   }, [measureModeActive]);
@@ -5956,6 +6028,18 @@ export default function CadWorkspace({
       return;
     }
     const nextReferenceId = String(referenceId || "").trim();
+    if (
+      selectedEntry &&
+      selectedEntryHasReferences &&
+      effectiveRenderFormat === RENDER_FORMAT.STEP &&
+      !selectedReferencesMatch
+    ) {
+      pendingModelReferenceActivationRef.current = nextReferenceId
+        ? { fileRef: fileKey(selectedEntry), tree: selectedEntry.hash, referenceId: nextReferenceId, multiSelect }
+        : null;
+      setRequestedTopologyFileRef(fileKey(selectedEntry));
+      return;
+    }
     if (!nextReferenceId) {
       clearAssemblySelection();
       return;
@@ -5981,15 +6065,36 @@ export default function CadWorkspace({
     toggleReferenceSelection(nextReferenceId, { multiSelect });
   }, [
     clearAssemblySelection,
+    effectiveRenderFormat,
     effectiveActiveReferenceMap,
     isViewerTopologyReference,
     resolvePickedAssemblyPartId,
+    selectedEntry,
+    selectedEntryHasReferences,
+    selectedReferencesMatch,
     stepUpdateInProgress,
     toggleReferenceSelection,
     togglePartSelection,
     viewerInAssemblyMode,
     stepModuleTreeSelectionDisabled
   ]);
+
+  // A click that first demands topology is not discarded. Once the selector
+  // runtime for that exact artifact is ready, replay the same activation so
+  // the first click selects the intended face/edge/part.
+  useEffect(() => {
+    const pending = pendingModelReferenceActivationRef.current;
+    if (!pending) return;
+    if (pending.fileRef !== fileKey(selectedEntry) || pending.tree !== selectedEntry?.hash) {
+      pendingModelReferenceActivationRef.current = null;
+      return;
+    }
+    if (!selectedReferencesMatch) {
+      return;
+    }
+    pendingModelReferenceActivationRef.current = null;
+    handleModelReferenceActivate(pending.referenceId, { multiSelect: pending.multiSelect });
+  }, [handleModelReferenceActivate, selectedEntry, selectedReferencesMatch]);
 
   const handleModelReferenceDoubleActivate = useCallback((referenceId) => {
     if (stepUpdateInProgress || stepModuleTreeSelectionDisabled || !isAssemblyView) {
@@ -6591,10 +6696,17 @@ export default function CadWorkspace({
       ? mode
       : TAB_TOOL_MODE.REFERENCES;
     setTabToolMode(normalizedMode);
+    if (
+      selectedEntry &&
+      selectedEntryHasReferences &&
+      (normalizedMode === TAB_TOOL_MODE.REFERENCES || normalizedMode === TAB_TOOL_MODE.MEASURE)
+    ) {
+      setRequestedTopologyFileRef(fileKey(selectedEntry));
+    }
     if (normalizedMode === TAB_TOOL_MODE.DRAW && drawingTool === DRAWING_TOOL.SURFACE_LINE) {
       setDrawingTool(DRAWING_TOOL.FREEHAND);
     }
-  }, [drawingTool]);
+  }, [drawingTool, selectedEntry, selectedEntryHasReferences]);
 
   const handleEnableSelectableTopology = useCallback(() => {
     if (!selectedEntry || !selectedEntryHasReferences) {
@@ -6608,6 +6720,7 @@ export default function CadWorkspace({
     });
     setViewerAlertOpen(false);
     setTabToolMode(TAB_TOOL_MODE.REFERENCES);
+    setRequestedTopologyFileRef(fileKey(selectedEntry));
   }, [selectedEntry, selectedEntryHasReferences]);
 
   const handleToggleFileSheet = useCallback(() => {
@@ -6999,7 +7112,7 @@ export default function CadWorkspace({
           stepAnimation={selectedAnimationRuntime}
           selectedMeshData={selectedMeshData}
           selectedKey={selectedKey}
-          missingFileRef={missingFileRef}
+          missingFileRef={editingPreview.entry ? "" : missingFileRef}
           viewerServerInfo={viewerServerInfo}
           viewerPerspective={viewerPerspective}
           viewerPerspectiveRef={activePerspectiveRef}
@@ -7074,6 +7187,11 @@ export default function CadWorkspace({
       <SidebarInset className="pointer-events-none relative z-10 h-svh min-w-0 overflow-hidden bg-transparent">
         <CadWorkspaceTopBar
           previewMode={previewMode}
+          editingAvailable={editingAvailable}
+          followEdits={followEdits}
+          onFollowEditsChange={handleFollowEditsChange}
+          editingStatus={editingPreview.label}
+          annotationError={selectedEntry?.editingPreview ? "" : selectedEntry?.annotationError || ""}
           sidebarLabelForEntry={sidebarLabelForEntry}
           directoryTree={allEntriesTree}
           selectedKey={selectedKey}

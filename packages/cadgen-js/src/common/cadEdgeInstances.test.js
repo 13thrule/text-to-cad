@@ -215,3 +215,38 @@ test("an instance slot keeps its own matrix, style, visibility and highlight", (
   assert.equal(set.highlightObject.visible, false);
   set.dispose();
 });
+
+test("unchanged edge state does not schedule another instance texture upload", () => {
+  const set = instanceSet(FEATURE);
+  const slot = set.allocate();
+  const matrix = new THREE.Matrix4().makeRotationZ(0.123).setPosition(0.1, 0.2, 0.3);
+  const style = { color: new THREE.Color("#537a92"), opacity: 0.7 };
+  set.setMatrix(slot, matrix);
+  set.setStyle(slot, style);
+  set.setVisible(slot, true);
+  const version = set.instanceTexture.version;
+  for (let frame = 0; frame < 10; frame += 1) {
+    set.setMatrix(slot, matrix);
+    set.setStyle(slot, style);
+    set.setVisible(slot, true);
+    set.setHighlighted(slot, false);
+  }
+  assert.equal(set.instanceTexture.version, version, "float32 packing does not turn unchanged doubles into changes");
+  set.setVisible(slot, false);
+  assert.equal(set.instanceTexture.version, version + 1);
+  set.setStyle(slot, { ...style, opacity: 0.5 });
+  assert.equal(set.instanceTexture.version, version + 2);
+  set.dispose();
+});
+
+test("releasing an interior edge slot twice cannot free another occurrence", () => {
+  const set = instanceSet(FEATURE);
+  const first = set.allocate();
+  set.allocate();
+  set.release(first);
+  set.release(first);
+  assert.equal(set.liveCount, 1);
+  assert.equal(set.allocate(), first);
+  assert.equal(set.liveCount, 2);
+  set.dispose();
+});

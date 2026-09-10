@@ -16,18 +16,23 @@ import {
   peekRenderSdf,
   peekRenderSrdf,
   peekRenderTopologyIndex,
-  peekRenderUrdf
+  peekRenderUrdf,
+  renderAssetCacheStats,
+  releaseRenderSurfLevel,
+  surfTessellationCacheKey
 } from "cadgen-js/lib/renderAssetClient";
 import {
   assemblyRootFromTopology,
   buildComposedPackageMeshData
 } from "cadgen-js/lib/assembly/meshData";
 import { mapWithConcurrency } from "cadgen-js/lib/async/concurrency";
+import { LOD_CHORD_LEVELS } from "cadgen-js/lib/surf/lodPolicy.js";
 import { resolvePackageAssetUrl } from "./packageAssetUrl.js";
 import {
   createProgressivePackageLoader,
   progressiveLoadStage,
-  publishMeshCostAccounting
+  publishMeshCostAccounting,
+  shouldRetainCompleteSameFileMesh
 } from "./packageProgressiveLoad.js";
 import { ASSET_STATUS, REFERENCE_STATUS } from "../../../workbench/constants";
 import {
@@ -47,21 +52,59 @@ import {
   peekRenderMeshByUrl
 } from "cadgen-js/lib/render/meshLoaders";
 import { releaseSurfWorkers } from "cadgen-js/lib/renderAssetClient";
-import { shouldUseGlbMeshWorkerForEntry } from "cadgen-js/lib/render/meshCost";
+import { estimateMeshRenderCost, shouldUseGlbMeshWorkerForEntry } from "cadgen-js/lib/render/meshCost";
 import { RENDER_FORMAT, entrySourceFormat } from "cadgen-js/lib/fileFormats";
 import { buildDisplayEdgeRuntime, buildSelectorRuntime } from "cadgen-js/lib/selectors/runtime";
 import {
   composePackageSelectorRuntime,
   compositionUsesComponent,
+  reconcileLivePackageSelectorBundles,
   swapCompositionBundle
 } from "./packageReferenceComposition.js";
 import { selectRequestedAssemblyComponents } from "../../../workbench/referenceSelection";
+import { viewerMemoryPolicy } from "../../../render/viewerMemoryPolicy.js";
 
 // Robot link meshes are STLs, and `loadRenderStl` parses them in the STL worker — the
 // fetch and the parse both happen off the main thread. The cap used to be 3 with a
 // main-thread yield either side of every mesh, which was right when parsing blocked the
 // UI and is pure latency now: it serialised 13 fetches three at a time for no benefit.
 const ROBOT_MESH_LOAD_CONCURRENCY = 8;
+
+const GPU_BUFFER_ESTIMATE_MULTIPLIER = 1.15;
+const SURF_WORKER_TEMP_ESTIMATE_MULTIPLIER = 2;
+
+function componentMeshBytes(componentMeshDataByCid) {
+  return Object.values(componentMeshDataByCid || {}).reduce(
+    (sum, meshData) => sum + estimateMeshRenderCost(meshData).typedArrayBytes,
+    0
+  );
+}
+
+function syncAssetCacheMemory() {
+  const caches = renderAssetCacheStats();
+  viewerMemoryPolicy.setRetained("selectors", Number(caches.selector?.typedBytes) || 0);
+  const assetCaches = Object.entries(caches).reduce((sum, [name, stats]) => (
+    name === "surfLeash" || name === "selector" ? sum : sum + (Number(stats?.typedBytes) || 0)
+  ), 0);
+  viewerMemoryPolicy.setRetained("assetCaches", assetCaches);
+}
+
+function syncDisplayedMemory(componentMeshDataByCid) {
+  const displayCpu = componentMeshBytes(componentMeshDataByCid);
+  viewerMemoryPolicy.setRetained("displayCpu", displayCpu);
+  viewerMemoryPolicy.setRetained("gpuEstimated", Math.ceil(displayCpu * GPU_BUFFER_ESTIMATE_MULTIPLIER));
+  syncAssetCacheMemory();
+  if (typeof window !== "undefined") {
+    window.__cadViewerMemory = viewerMemoryPolicy.snapshot();
+  }
+}
+
+function publishMemoryLimitation(detail) {
+  viewerMemoryPolicy.noteLimitation(detail);
+  if (typeof window === "undefined") return;
+  window.__cadViewerMemoryLimitation = detail;
+  window.dispatchEvent(new CustomEvent("cad:memory-limitation", { detail }));
+}
 
 function abortLoad(controllerRef) {
   controllerRef.current?.abort();
@@ -206,6 +249,8 @@ export function useCadAssets({
   buildNormalizedReferenceState,
 }) {
   const [meshState, setMeshState] = useState(null);
+  const meshStateRef = useRef(meshState);
+  meshStateRef.current = meshState;
   const [meshLoadInProgress, setMeshLoadInProgress] = useState(false);
   const [meshLoadTargetFile, setMeshLoadTargetFile] = useState("");
   const [meshLoadStage, setMeshLoadStage] = useState("");
@@ -296,7 +341,14 @@ export function useCadAssets({
         if (!centers.length || !(diagonal > 0)) {
           return null;
         }
-        return { cid, diagonal, centers, surfUrl: resolvePackageAssetUrl(meshUrl, component.surf) };
+        return {
+          cid,
+          diagonal,
+          centers,
+          surfUrl: resolvePackageAssetUrl(meshUrl, component.surf),
+          meshBytes: estimateMeshRenderCost(componentMeshDataByCid[cid]).typedArrayBytes,
+          level: Number(componentMeshDataByCid[cid]?.lodLevel) || 0
+        };
       })
       .filter(Boolean);
     return { file: entry.file, components };
@@ -313,14 +365,36 @@ export function useCadAssets({
     if (!ctx || !meshData) {
       return false;
     }
+    const previousLevel = Number(ctx.componentLodLevelByCid?.[cid]) || 0;
     meshData.lodLevel = level;
     ctx.componentMeshDataByCid = { ...ctx.componentMeshDataByCid, [cid]: meshData };
+    syncDisplayedMemory(ctx.componentMeshDataByCid);
     // Remember the level's selector bundle: picking re-composes from it below,
     // and a topology load that lands AFTER this swap must prefer it over the
     // level-0 bundle cache (loadReferencesForEntry consults this map).
-    if (payload.bundle) {
-      ctx.componentLodBundleByCid = { ...(ctx.componentLodBundleByCid || {}), [cid]: payload.bundle };
+    const component = ctx.descriptor?.components?.[cid];
+    const packageUrl = entryAssetUrl(ctx.entry, "glb");
+    const surfUrl = component?.surf && packageUrl
+      ? resolvePackageAssetUrl(packageUrl, component.surf)
+      : "";
+    const bundleByCid = { ...(ctx.componentLodBundleByCid || {}) };
+    const bundleKeyByCid = { ...(ctx.componentLodBundleKeyByCid || {}) };
+    if (payload.bundle && surfUrl) {
+      bundleByCid[cid] = payload.bundle;
+      bundleKeyByCid[cid] = surfTessellationCacheKey(
+        surfUrl,
+        level > 0 ? { chordTolerance: LOD_CHORD_LEVELS[level] } : undefined
+      );
+    } else {
+      // Never leave the previous level's bundle under a newly-published level.
+      // A display-only worker payload is valid, but picking must refetch the
+      // selector state for this concrete tessellation before composing it.
+      delete bundleByCid[cid];
+      delete bundleKeyByCid[cid];
     }
+    ctx.componentLodBundleByCid = bundleByCid;
+    ctx.componentLodBundleKeyByCid = bundleKeyByCid;
+    ctx.componentLodLevelByCid = { ...(ctx.componentLodLevelByCid || {}), [cid]: level };
     const composed = buildComposedPackageMeshData(ctx.descriptor, ctx.componentMeshDataByCid);
     const nextState = buildComposedPackageMeshStateRef.current(ctx.entry, ctx.descriptor, composed);
     let applied = false;
@@ -338,6 +412,15 @@ export function useCadAssets({
     // an entry change collapse to no-ops.
     if (payload.bundle) {
       recomposeReferenceStateForLodRef.current?.(ctx, cid, payload.bundle);
+    }
+    if (previousLevel !== level) {
+      if (component?.surf && packageUrl) {
+        releaseRenderSurfLevel(resolvePackageAssetUrl(packageUrl, component.surf), {
+          tessellation: previousLevel > 0
+            ? { chordTolerance: LOD_CHORD_LEVELS[previousLevel] }
+            : undefined
+        });
+      }
     }
     return applied;
   }, []);
@@ -497,6 +580,7 @@ export function useCadAssets({
     requestIdRef.current += 1;
     abortLoad(meshAbortControllerRef);
     publishMeshCostAccounting(null);
+    viewerMemoryPolicy.setRetained("replacementPending", 0);
     // A load cancelled mid-way leaves a PARTIAL composition published; drop it
     // and its LOD working set so the component arrays it references can go. A
     // complete model stays (it is still the right thing to show).
@@ -507,6 +591,7 @@ export function useCadAssets({
       setMeshState((current) => (
         current && current.file === ctx.file && !current.assemblyInteractionReady ? null : current
       ));
+      syncDisplayedMemory(null);
     }
     setMeshLoadInProgress(false);
     setMeshLoadTargetFile("");
@@ -537,14 +622,21 @@ export function useCadAssets({
     const requestId = requestIdRef.current;
 
     if (!entryHasMesh(entry)) {
+      syncDisplayedMemory(null);
       setMeshState(null);
       setStatus(ASSET_STATUS.PENDING);
       setError("");
       return;
     }
 
+    const targetMeshHash = getAssemblyMeshHash(entry);
+    const atomicSameFileReplacement = shouldRetainCompleteSameFileMesh(
+      meshStateRef.current,
+      entry,
+      targetMeshHash
+    );
     const cachedMeshState = getCachedMeshState(entry);
-    if (cachedMeshState) {
+    if (cachedMeshState && !atomicSameFileReplacement) {
       setMeshState(cachedMeshState);
       setStatus(ASSET_STATUS.READY);
       setError("");
@@ -558,11 +650,13 @@ export function useCadAssets({
     setMeshLoadInProgress(true);
     setMeshLoadTargetFile(String(entry?.file || "").trim());
     setMeshLoadStage(entry?.kind === "assembly" ? "loading assembly mesh" : "loading mesh");
-    // Any new load invalidates the previous entry's LOD working set.
+    // Any new load invalidates the previous entry's LOD working set. A
+    // complete same-file scene can remain rendered while its replacement is
+    // decoded; it is frozen at its current LOD until the atomic commit.
     lodPackageRef.current = null;
     setLodPackage(null);
     referenceCompositionRef.current = null;
-    const keepRenderedAssemblyVisible = entry?.kind === "assembly" && !!cachedMeshState;
+    const keepRenderedAssemblyVisible = entry?.kind === "assembly" && (!!cachedMeshState || atomicSameFileReplacement);
     let assemblyPreviewVisible = keepRenderedAssemblyVisible;
     if (!keepRenderedAssemblyVisible) {
       setStatus(ASSET_STATUS.LOADING);
@@ -592,6 +686,8 @@ export function useCadAssets({
           // publish carries every component and is the state the single
           // post-load publish used to produce.
           let publishedOnce = false;
+          let workerResidentMaxEstimate = 0;
+          let workerResidentSlots = 0;
           const loader = createProgressivePackageLoader({
             descriptor: packageDescriptor,
             concurrency: packageComponentLoadConcurrency(),
@@ -606,6 +702,39 @@ export function useCadAssets({
             // server does not answer, and the loader falls back to its running
             // mean.
             sizeHint: (cid, component) => surfContentLength(resolvePackageAssetUrl(meshUrl, component.surf), controller.signal),
+            reserveLoad: ({ cid, estimatedBytes }) => viewerMemoryPolicy.reserve({
+              category: "workerInFlight",
+              bytes: estimatedBytes * SURF_WORKER_TEMP_ESTIMATE_MULTIPLIER,
+              label: cid,
+              kind: "replace",
+              // A miss can be transient while another admitted worker owns
+              // the remaining bytes. The loader reports only a miss that is
+              // still impossible after all in-flight work drains.
+              recordLimitation: false
+            }),
+            releaseLoad: (token, { estimatedBytes } = {}) => {
+              viewerMemoryPolicy.release(token);
+              workerResidentMaxEstimate = Math.max(workerResidentMaxEstimate, Number(estimatedBytes) || 0);
+              workerResidentSlots = Math.min(8, workerResidentSlots + 1);
+              // The surf pool is capped at eight isolates. Browsers expose no
+              // Worker heap sizes, so retain a conservative per-isolate
+              // high-water estimate until the pool is terminated below.
+              viewerMemoryPolicy.setRetained(
+                "workerResidentEstimated",
+                workerResidentMaxEstimate * SURF_WORKER_TEMP_ESTIMATE_MULTIPLIER * workerResidentSlots
+              );
+            },
+            onMemoryLimitation: publishMemoryLimitation,
+            // Revision replacement is a transaction: loaded component arrays
+            // are accounted beside the current complete scene, but only the
+            // final composition is published.
+            publishIntermediate: !atomicSameFileReplacement,
+            onRetainedChange: ({ loaded, total, retainedBytes }) => {
+              if (!atomicSameFileReplacement || requestId !== requestIdRef.current) return;
+              viewerMemoryPolicy.setRetained("replacementPending", retainedBytes);
+              syncAssetCacheMemory();
+              setMeshLoadStage(progressiveLoadStage(loaded, total));
+            },
             // The same staleness guard every publish below re-checks: the
             // request is current and not aborted.
             isCurrent: () => requestId === requestIdRef.current && !controller.signal.aborted,
@@ -616,6 +745,8 @@ export function useCadAssets({
               lodPackageRef.current?.requestId === requestId ? lodPackageRef.current.componentMeshDataByCid : null
             ),
             onPublish: ({ meshData, componentMeshDataByCid, loaded, total, final, publishCount }) => {
+              if (final) viewerMemoryPolicy.clearLimitation();
+              syncDisplayedMemory(componentMeshDataByCid);
               // window.__cadMeshCost for the headless memory harness; not React state.
               publishMeshCostAccounting({ meshData, componentMeshDataByCid, loaded, total, publishCount, final });
               const nextState = buildComposedPackageMeshState(entry, packageDescriptor, meshData);
@@ -660,6 +791,9 @@ export function useCadAssets({
               // loads; the summary only lists components with bounds (loaded).
               setLodPackage(buildLodPackageSummary(entry, meshUrl, packageDescriptor, componentMeshDataByCid));
               setMeshLoadStage(final ? "building assembly" : progressiveLoadStage(loaded, total));
+              if (atomicSameFileReplacement && final) {
+                viewerMemoryPolicy.setRetained("replacementPending", 0);
+              }
             }
           });
           setMeshLoadStage(progressiveLoadStage(0, loader.total));
@@ -671,7 +805,9 @@ export function useCadAssets({
             // process instead of holding the heap each grew for the largest
             // component it decoded. Also on the failure path: an aborted load
             // is exactly when the memory is most worth returning.
-            releaseSurfWorkers().catch(() => {});
+            releaseSurfWorkers().then((released) => {
+              if (released) viewerMemoryPolicy.setRetained("workerResidentEstimated", 0);
+            }).catch(() => {});
           }
           return;
         }
@@ -715,7 +851,7 @@ export function useCadAssets({
       }
       if (entry?.kind === "assembly" && assemblyPreviewVisible) {
         setMeshState((current) => {
-          if (!current || current.file !== entry.file || current.meshHash !== getAssemblyMeshHash(entry)) {
+          if (!current || current.file !== entry.file || (!atomicSameFileReplacement && current.meshHash !== getAssemblyMeshHash(entry))) {
             return current;
           }
           return {
@@ -723,6 +859,7 @@ export function useCadAssets({
             assemblyBackgroundError: err instanceof Error ? err.message : String(err)
           };
         });
+        setStatus(ASSET_STATUS.READY);
         return;
       }
       setStatus(ASSET_STATUS.ERROR);
@@ -788,7 +925,13 @@ export function useCadAssets({
         );
         const lodCtx = lodPackageRef.current;
         const lodBundleByCid = (lodCtx && lodCtx.file === entry.file && lodCtx.componentLodBundleByCid) || {};
-        const componentBundleByCid = {};
+        const lodLevelByCid = (lodCtx && lodCtx.file === entry.file && lodCtx.componentLodLevelByCid) || {};
+        let componentBundleByCid = {};
+        const componentBundleKeyByCid = {};
+        const componentSurfUrlByCid = {};
+        const tessellationForLevel = (level) => (
+          level > 0 ? { chordTolerance: LOD_CHORD_LEVELS[level] } : undefined
+        );
         await mapWithConcurrency(
           neededCids,
           robotMeshLoadConcurrency(),
@@ -797,6 +940,13 @@ export function useCadAssets({
             if (!component) {
               return;
             }
+            const surfUrl = resolvePackageAssetUrl(glbUrl, component.surf);
+            componentSurfUrlByCid[cid] = surfUrl;
+            const initialLevel = Number(lodLevelByCid[cid]) || 0;
+            componentBundleKeyByCid[cid] = surfTessellationCacheKey(
+              surfUrl,
+              tessellationForLevel(initialLevel)
+            );
             // A component the viewport already swapped to a finer LOD level must
             // compose picking from THAT level's bundle, not the level-0 cache —
             // the displayed triangles are the level's, and faceRuns are triangle
@@ -808,14 +958,58 @@ export function useCadAssets({
             // Exact-surface topology (design/surface-rendering.md R3): the
             // selector bundle is synthesized client-side from the .surf.
             componentBundleByCid[cid] = await loadRenderSurfSelectorBundle(
-              resolvePackageAssetUrl(glbUrl, component.surf),
-              { signal: controller.signal }
+              surfUrl,
+              {
+                signal: controller.signal,
+                // A missing optional bundle after a mesh-only LOD publish is
+                // recoverable. Rebuild selectors against the concrete level
+                // now on screen so triangle ranges remain exact.
+                tessellation: tessellationForLevel(initialLevel)
+              }
             ).catch(() => null);
           }
         );
         if (requestId !== referenceRequestIdRef.current) {
           return;
         }
+        componentBundleByCid = await reconcileLivePackageSelectorBundles({
+          cids: neededCids,
+          initialBundleByCid: componentBundleByCid,
+          initialKeyByCid: componentBundleKeyByCid,
+          snapshotLiveLod: () => {
+            const live = lodPackageRef.current;
+            if (!live || live.file !== entry.file) {
+              return { levelByCid: lodLevelByCid, bundleByCid: {} };
+            }
+            const liveLevels = live.componentLodLevelByCid || {};
+            const liveBundles = live.componentLodBundleByCid || {};
+            const liveKeys = live.componentLodBundleKeyByCid || {};
+            const exactBundles = {};
+            for (const cid of neededCids) {
+              const level = Number(liveLevels[cid]) || 0;
+              const expectedKey = surfTessellationCacheKey(
+                componentSurfUrlByCid[cid],
+                tessellationForLevel(level)
+              );
+              if (liveKeys[cid] === expectedKey && liveBundles[cid]) {
+                exactBundles[cid] = liveBundles[cid];
+              }
+            }
+            return { levelByCid: liveLevels, bundleByCid: exactBundles };
+          },
+          keyForLevel: (cid, level) => surfTessellationCacheKey(
+            componentSurfUrlByCid[cid],
+            tessellationForLevel(level)
+          ),
+          loadForLevel: (cid, level) => loadRenderSurfSelectorBundle(
+            componentSurfUrlByCid[cid],
+            { signal: controller.signal, tessellation: tessellationForLevel(level) }
+          ).catch(() => null),
+          isCurrent: () => (
+            requestId === referenceRequestIdRef.current && !controller.signal.aborted
+          )
+        });
+        if (!componentBundleByCid) return;
         // A single-component part renders as a topology tree (not an assembly structure), so its
         // topology must graft onto the synthetic part root via fallbackPartId — i.e. carry NO
         // partId (an occurrence-namespaced partId would orphan it). Multi-occurrence assemblies
@@ -839,6 +1033,7 @@ export function useCadAssets({
           isSingleComponentPart
         };
         setReferenceState(nextReferenceState);
+        syncAssetCacheMemory();
         setReferenceStatus(nextReferenceState.disabledReason ? REFERENCE_STATUS.DISABLED : REFERENCE_STATUS.READY);
         setReferenceError(nextReferenceState.disabledReason || "");
         return;
@@ -853,6 +1048,7 @@ export function useCadAssets({
       }
       const nextReferenceState = buildNormalizedReferenceState(entry, bundle);
       setReferenceState(nextReferenceState);
+      syncAssetCacheMemory();
       setReferenceStatus(nextReferenceState.disabledReason ? REFERENCE_STATUS.DISABLED : REFERENCE_STATUS.READY);
       setReferenceError(nextReferenceState.disabledReason || "");
     } catch (err) {
