@@ -221,13 +221,27 @@ def _resolve_module(name: str, roots: Iterable[Path]) -> Path | None:
     return None
 
 
-def _taken_names(tree: ast.Module, alias: str) -> set[str]:
-    """Attribute names read off ``alias`` anywhere in the module (``alias.x``)."""
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == alias:
-            names.add(node.attr)
-    return names
+def _taken_names(tree: ast.Module, alias: str) -> set[str] | None:
+    """Static attribute reads, or None when the module escapes that boundary.
+
+    ``getattr(alias, ...)``, passing the module elsewhere or copying its alias
+    can consume helpers without a visible ``alias.helper`` expression. Every
+    alias load must therefore be the direct base of a read-only Attribute.
+    This deliberately scans all scopes conservatively rather than guessing
+    whether another function uses the same name for an unrelated object.
+    """
+    nodes = tuple(ast.walk(tree))
+    attributes = {
+        id(node.value): node.attr
+        for node in nodes
+        if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load)
+        and isinstance(node.value, ast.Name) and node.value.id == alias
+    }
+    for node in nodes:
+        if isinstance(node, ast.Name) and node.id == alias and isinstance(node.ctx, ast.Load):
+            if id(node) not in attributes:
+                return None
+    return set(attributes.values())
 
 
 def static_imports(script: Path) -> StaticImports:
@@ -279,12 +293,11 @@ def static_imports(script: Path) -> StaticImports:
                     note(target, None)  # star import: treat as source
                 continue
             # `from pkg import module` resolves the submodule, not a name in pkg.
-            submodules = {n for n in names if _resolve_module(prefix + n, from_roots) is not None}
-            for sub in submodules:
-                sub_target = _resolve_module(prefix + sub, from_roots)
+            for alias in node.names:
+                sub_target = _resolve_module(prefix + alias.name, from_roots)
                 if sub_target is not None:
-                    note(sub_target, _taken_names(tree, sub))
-            names -= submodules
+                    note(sub_target, _taken_names(tree, alias.asname or alias.name))
+                    names.discard(alias.name)
             if names and target is not None:
                 note(target, names)
     for target, taken in imports.items():

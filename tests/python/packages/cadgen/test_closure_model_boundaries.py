@@ -173,6 +173,85 @@ class ModelClosureBoundaries(unittest.TestCase):
         self.assertTrue(verdict.stale, "an identical child pin must not hide the parent's direct helper input")
         self.assertTrue(any(clause["clause"] == 2 and clause["stale"] for clause in verdict.clauses))
 
+    def assert_alias_helper_edit_is_stale(self, family, imports, alias, helper_expression):
+        from cadgen.store.gate import stale
+        from cadgen.store.records import read_record
+        from cadgen.store.trees import put_tree
+
+        family.write_text(FAMILY, encoding="utf-8")
+        child_tree = put_tree({"label": "child", "components": {}, "links": []})
+        left = self.record(family, "left", tree=child_tree)
+        parent_script = self.parent(
+            imports,
+            body=f"result = {alias}.left()\nresult.label = str({helper_expression})\nreturn result",
+        )
+        parent = self.record(parent_script, "parent", tree=child_tree, children=[(left, child_tree)])
+        self.assertEqual(read_record(parent)["children"], [{"model": left, "tree": child_tree}])
+        self.assertFalse(stale(parent).stale)
+        family.write_text(FAMILY.replace("WIDTH = 4", "WIDTH = 5"), encoding="utf-8")
+        # Only the helper changes. Rebuilding left makes its exact result pin
+        # current again, so the parent's source edge must detect the change.
+        self.record(family, "left", tree=child_tree)
+        self.assertFalse(stale(left).stale)
+        verdict = stale(parent)
+        self.assertTrue(verdict.stale, "an escaped module must not hide a helper edit behind an unchanged child")
+        self.assertTrue(any(clause["clause"] == 2 and clause["stale"] for clause in verdict.clauses))
+        self.assertIn(family.relative_to(self.root).as_posix(), read_record(parent)["closure"]["files"])
+
+    def test_module_alias_escapes_cannot_hide_helper_edits_after_identical_child_rebuilds(self):
+        cases = (
+            ("import family", "family", "getattr(family, 'helper')()"),
+            ("import family as parts", "parts", "(lambda module: module.helper())(parts)"),
+            ("import family as parts", "parts", "vars(parts)['helper']()"),
+        )
+        for imports, alias, expression in cases:
+            with self.subTest(imports=imports, expression=expression):
+                self.assert_alias_helper_edit_is_stale(self.family, imports, alias, expression)
+
+    def test_static_module_model_call_keeps_an_exact_result_only_dependency(self):
+        from cadgen.store.gate import stale
+        from cadgen.store.records import read_record
+        from cadgen.store.trees import put_tree
+
+        child_tree = put_tree({"label": "child", "components": {}, "links": []})
+        left = self.record(self.family, "left", tree=child_tree)
+        script = self.parent("import family as parts", body="return parts.left()")
+        parent = self.record(script, "parent", tree=child_tree, children=[(left, child_tree)])
+        self.assertEqual(read_record(parent)["closure"]["files"], ["parent.py"])
+        self.assertEqual(read_record(parent)["children"], [{"model": left, "tree": child_tree}])
+        self.family.write_text(FAMILY.replace("WIDTH = 4", "WIDTH = 5"), encoding="utf-8")
+        self.assertTrue(stale(parent).stale, "the called child's whole-file source is stale until rebuilt")
+        self.record(self.family, "left", tree=child_tree)
+        self.assertFalse(stale(parent).stale, "a static model call depends on its result, not an unused helper")
+
+    def test_aliased_package_submodule_uses_the_bound_name_for_result_and_source_edges(self):
+        from cadgen.store.closure import static_closure
+
+        (self.root / "parts").mkdir()
+        self.write("parts/__init__.py", "")
+        family = self.write("parts/family.py", FAMILY)
+        imports = "from parts import family as models"
+        with mock.patch("cadgen.metadata.imported_model", side_effect=AssertionError("model imported")):
+            control = static_closure(self.parent(imports, body="return models.left()"))
+        self.assertEqual(control.child_models, (family,))
+        self.assertEqual(control.source_files, ())
+        for expression in (
+            "models.helper()",
+            "getattr(models, 'helper')()",
+            "(lambda module: module.helper())(models)",
+        ):
+            with self.subTest(expression=expression):
+                self.assert_alias_helper_edit_is_stale(family, imports, "models", expression)
+
+    def test_writing_or_deleting_a_module_attribute_is_source_owned(self):
+        from cadgen.store.closure import static_closure
+
+        for statement in ("family.left = family.right", "del family.left"):
+            with self.subTest(statement=statement):
+                closure = static_closure(self.parent("import family", body=statement + "\nreturn family.right()"))
+                self.assertEqual(closure.source_files, (self.family,))
+                self.assertEqual(closure.child_models, ())
+
     def test_nested_model_imports_do_not_hide_nested_helper_dependencies(self):
         from cadgen.store.closure import build_closure, static_closure
 
