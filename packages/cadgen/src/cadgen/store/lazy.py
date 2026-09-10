@@ -20,7 +20,7 @@ for an empty shape and answer with nothing. A build123d path not anticipated
 here therefore degrades to "forced early": correct geometry, less overlap, never
 wrong output.
 
-Forcing: wait for the job (if any), then use the pinned tree — a current child was
+Forcing: wait for the job's final source result (if any), then use its exact tree — a current child was
 pinned at the CALL (the wrapper read its record then), a stale child's tree is the
 one its job produced; the first tree a child resolves to in a build is what every
 later call composes (snapshot isolation). Materialize it, apply the placement with
@@ -220,35 +220,54 @@ class LazyCompound(Compound):
         return self._lazy_tree is None and self._lazy_job is not None
 
     def tree_hash(self) -> str:
-        """The tree this child resolves to in this build. Waits for the job."""
-        if self._lazy_tree is not None:
-            return self._lazy_tree
-        job = self._lazy_job
-        if job is not None:
-            if getattr(job, "done", True):
-                code = job.wait()
-            else:
-                # A waiting parent does no kernel work: give its job slot back for the
-                # wait and take one again after (cadgen.daemon.broker).
-                from cadgen.daemon.broker import yielded
+        """The exact authored tree this call pins, independent of STEP persistence."""
+        from cadgen.store.trees import tree_complete
 
-                with yielded():
-                    code = job.wait()
-            if code != 0:
+        if self._lazy_tree is not None:
+            tree = self._lazy_tree
+        elif self._lazy_job is not None:
+            job = self._lazy_job
+            try:
+                if job.result_ready:
+                    tree = job.wait_result()
+                else:
+                    from cadgen.daemon.broker import yielded
+
+                    with yielded():
+                        tree = job.wait_result()
+            except RuntimeError as exc:
                 raise ChildBuildError(
                     f"child model {self.model_name} failed to build "
-                    f"(called at {self._lazy_call_site}):\n{job.output().rstrip()}"
-                )
-        record = _read_record(self._lazy_model) or {}
-        tree = str(record.get("tree") or "")
-        if not tree:
+                    f"(called at {self._lazy_call_site}):\n{exc}"
+                ) from exc
+        else:
             raise ChildBuildError(
-                f"child model {self.model_name} built but left no record "
+                f"child model {self.model_name} has no pinned source result "
                 f"(called at {self._lazy_call_site})"
             )
         frame = self._lazy_frame
         self._lazy_tree = frame.pin(self._lazy_model, tree) if frame is not None else tree
+        if not tree_complete(self._lazy_tree):
+            raise ChildBuildError(f"child model {self.model_name}: pinned source geometry disappeared from the cache")
         return self._lazy_tree
+
+    def wait_outputs(self) -> None:
+        """The parent owes every called child's declared outputs, even discarded calls."""
+        job = self._lazy_job
+        if job is None:
+            return
+        if job.done:
+            code = job.wait()
+        else:
+            from cadgen.daemon.broker import yielded
+
+            with yielded():
+                code = job.wait()
+        if code != 0:
+            raise ChildBuildError(
+                f"child model {self.model_name} failed to build "
+                f"(called at {self._lazy_call_site}):\n{job.output().rstrip()}"
+            )
 
     def _force(self) -> None:
         if self._lazy_forcing:
@@ -298,12 +317,6 @@ class LazyCompound(Compound):
             setattr(self, PARTNER_TAG, holder.retarget(self) if isinstance(holder, _Partner) else _Partner(self))
         finally:
             self._lazy_forcing = False
-
-
-def _read_record(model: Path) -> dict | None:
-    from cadgen.store.records import read_record
-
-    return read_record(model)
 
 
 def materialize_model(tree: str, *, label: str) -> Compound:

@@ -1,4 +1,4 @@
-"""A model's tree is the geometry of the STEP it wrote — not the shape it returned.
+"""Saved document trees describe STEP bytes; model results preserve authored geometry.
 
 ``read_step`` on a cadgen-built ``.step`` used to answer from the store tree,
 whose components were BinTools serializations of the shapes the script
@@ -10,7 +10,7 @@ reloads from STEP as the complementary lower cap (0.35 mm³). So the same
 call on the same file gave different solids depending on cache state, and a
 point inside the tree's solid was outside the file's (PR #370 bug records 028-030).
 
-The build now writes the STEP, re-reads it, and publishes THOSE prototypes
+The build writes the STEP, re-reads it, and publishes those DOCUMENT prototypes
 (``cadgen.store.build.build_tree_through_step``). This suite pins the
 consequence from the outside: warm ``read_step`` == cold ``read_step`` ==
 ``import_step`` on the written bytes, for the lossy solid above, for an
@@ -30,6 +30,7 @@ from pathlib import Path
 from unittest import mock
 
 from tests.python.support.paths import add_repo_path
+from tests.python.support.tmp_root import generated_cad_directory
 
 CADGEN_SRC = add_repo_path("packages/cadgen/src")
 
@@ -99,7 +100,7 @@ def _volumes(shape) -> list[float]:
 
 class TreeReflectsWrittenStep(unittest.TestCase):
     def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory(prefix="tree-through-step-")
+        self._tmp = generated_cad_directory(prefix="tree-through-step-")
         self.addCleanup(self._tmp.cleanup)
         self.project = Path(self._tmp.name).resolve()
         self.store = self.project / "store"
@@ -146,6 +147,17 @@ class TreeReflectsWrittenStep(unittest.TestCase):
     def test_a_lossy_solid_reads_the_same_warm_cold_and_through_build123d(self) -> None:
         self._write("rot_cap.py", _ROT_CAP)
         self._run("rot_cap.py")
+        from cadgen.store.materialize import materialize
+        from cadgen.store.records import read_record
+
+        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(self.store)}):
+            source_tree = read_record(self.project / "rot_cap.py")["tree"]
+            self.assertGreater(_volumes(materialize(source_tree))[0], 40.0)
+        # A fresh worker exercising disk op-memo hits must preserve that same
+        # source geometry and identity, regardless of the lossy saved geometry.
+        self._run("rot_cap.py")
+        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(self.store)}):
+            self.assertEqual(read_record(self.project / "rot_cap.py")["tree"], source_tree)
         warm, cold, imported = self._read_three_ways(self.project / "rot_cap.step")
 
         self.assertEqual(_volumes(warm), _volumes(cold))

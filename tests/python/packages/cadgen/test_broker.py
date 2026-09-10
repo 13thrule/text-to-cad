@@ -125,6 +125,37 @@ class Slots(PrivateBrokerFixture):
 class Coalescing(PrivateBrokerFixture):
     LIMIT = 4
 
+    def test_late_subscriber_gets_exact_source_result_before_exit(self):
+        mine = broker.claim_inflight("/m/leaf.py::leaf", "sha-1")
+        event = {"sourceResult": {"model": "/m/leaf.py::leaf", "tree": "immutable-source"}}
+        broker.report_result(mine[1], event)
+        theirs = broker.claim_inflight("/m/leaf.py::leaf", "sha-1")
+        ready = threading.Event()
+        results = []
+        exits = []
+
+        def receive(event):
+            results.append(event)
+            ready.set()
+
+        thread = threading.Thread(target=lambda: exits.append(broker.wait_attached(theirs[1], on_event=receive)))
+        thread.start()
+        try:
+            self.assertTrue(ready.wait(3))
+            self.assertEqual(results, [event])
+            self.assertEqual(exits, [])
+        finally:
+            broker.report_done(mine[1], 1)
+            thread.join(5)
+        self.assertEqual(exits, [1])
+
+    def test_different_stores_do_not_share_source_results(self):
+        first = broker.claim_inflight("/m/leaf.py", "sha-1", store_root="/store/first")
+        second = broker.claim_inflight("/m/leaf.py", "sha-1", store_root="/store/second")
+        self.assertEqual((first[0], second[0]), ("yours", "yours"))
+        broker.report_done(first[1], 0)
+        broker.report_done(second[1], 0)
+
     def test_identical_source_in_flight_is_joined_not_rebuilt(self):
         mine = broker.claim_inflight("/m/leaf.py", "sha-1")
         self.assertEqual(mine[0], "yours")

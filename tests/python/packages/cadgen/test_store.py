@@ -457,7 +457,7 @@ class TreeFlattening(StoreCase):
 
 class TreeBounds(StoreCase):
     """The tree's bbox is the merge of per-occurrence TIGHT boxes, memoized on
-    (component content, world placement). A control-polygon bound reported a
+    (component content, rotation), followed by translation. A control-polygon bound reported a
     NURBS radius 8% too large (PR #370 bug record 004), and measuring the whole compound
     tightly on every finalize would have charged a 150k-face assembly seconds
     it never spends twice.
@@ -519,11 +519,13 @@ class TreeBounds(StoreCase):
             },
         )
 
-    def test_only_occurrences_that_moved_are_measured_again(self) -> None:
+    def test_translations_reuse_the_same_tight_box_in_memory_and_on_disk(self) -> None:
         from build123d import Compound, Location
 
         from cadgen._internal import component_package, op_memo
         from cadgen.store.build import build_tree_from_compound
+
+        op_memo.clear()
 
         def bank(offset: float) -> Compound:
             left = Location((-20, 0, 0)) * self.nurbs_cylinder()
@@ -541,7 +543,7 @@ class TreeBounds(StoreCase):
 
         with mock.patch.object(component_package, "optimal_box", counted):
             _h, cold, _s = build_tree_from_compound(bank(0), root_name="bank")
-            self.assertEqual(len(calls), 2, "one measurement per occurrence, cold")
+            self.assertEqual(len(calls), 1, "translated copies share one tight measurement")
 
             # Cleared memory: the second build reads the disk tier, so an
             # unchanged assembly measures nothing at all.
@@ -554,8 +556,46 @@ class TreeBounds(StoreCase):
             op_memo.clear()
             calls.clear()
             _h, moved, _s = build_tree_from_compound(bank(5), root_name="bank")
-            self.assertEqual(len(calls), 1, "only the occurrence that moved")
+            self.assertEqual(len(calls), 0, "translation does not repeat surface extrema")
             self.assertEqual(moved["bbox"]["max"][0], cold["bbox"]["max"][0] + 5)
+
+    def test_rotation_changes_the_measured_box_without_changing_caller_placement(self) -> None:
+        from build123d import Location
+        from cadgen._internal import component_package, op_memo
+
+        op_memo.clear()
+        part = self.nurbs_cylinder()
+        real = component_package.optimal_box
+        with mock.patch.object(component_package, "optimal_box", wraps=real) as measure:
+            for rotation, translation in [((0, 0, 0), (10, 20, 30)), ((90, 0, 0), (-8, 4, 2)),
+                                          ((90, 0, 0), (200, -300, 400))]:
+                placed = Location(translation, rotation) * part
+                location = placed.wrapped.Location().Transformation()
+                before = tuple(location.Value(row, column) for row in (1, 2, 3) for column in (1, 2, 3, 4))
+                expected = real(placed.wrapped)
+                actual = component_package._bbox_from_shape(placed)
+                after = placed.wrapped.Location().Transformation()
+                self.assertEqual(before, tuple(after.Value(row, column) for row in (1, 2, 3) for column in (1, 2, 3, 4)))
+                self.assert_bounds(actual, {"min": expected[:3], "max": expected[3:]})
+            self.assertEqual(measure.call_count, 2)
+            op_memo.clear()
+            again = Location((-123, 321, -20), (90, 0, 0)) * part
+            component_package._bbox_from_shape(again)
+            self.assertEqual(measure.call_count, 2, "rotation-specific bounds survive RAM eviction")
+
+    def test_translated_nested_and_mirrored_shapes_keep_native_tight_bounds(self) -> None:
+        from build123d import Box, Compound, Location, Plane
+        from cadgen._internal import component_package
+
+        source = Box(3, 5, 7).moved(Location((2, 4, 6)))
+        mirrored = source.mirror(Plane.YZ)
+        child = Compound(children=[source, mirrored]).moved(Location((12, -3, 8), (23, 41, 17)))
+        root = Compound(children=[child]).moved(Location((-8, 14, 32), (9, 7, 11)))
+        leaves = component_package._world_leaves(root.wrapped)
+        direct = [component_package.optimal_box(leaf) for leaf in leaves]
+        expected = {"min": [min(box[axis] for box in direct) for axis in range(3)],
+                    "max": [max(box[axis + 3] for box in direct) for axis in range(3)]}
+        self.assert_bounds(component_package._bbox_from_shape(root), expected)
 
 
 class TreeKind(StoreCase):

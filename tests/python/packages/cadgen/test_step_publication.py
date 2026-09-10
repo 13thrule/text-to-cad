@@ -94,12 +94,15 @@ class StepPublicationTests(unittest.TestCase):
         self.assertEqual(list(self.root.glob(".part-*")), [])
 
     def test_preview_is_complete_before_readback_and_saved_file_is_still_previous(self) -> None:
+        from cadgen.daemon import executors
         from cadgen.store import build as store_build
         from cadgen.store.trees import tree_complete
 
         self.assertEqual(self.build(10), 0, self.output)
         before = self.step.read_bytes()
         events = []
+        executors.set_event_sink(events.append)
+        self.addCleanup(executors.set_event_sink, None)
         original = store_build._reread_component
 
         def reread(*args, **kwargs):
@@ -109,9 +112,7 @@ class StepPublicationTests(unittest.TestCase):
             self.assertEqual(self.step.read_bytes(), before)
             return original(*args, **kwargs)
 
-        with mock.patch("cadgen.daemon.executors.sink_installed", return_value=True), \
-                mock.patch("cadgen.daemon.executors.emit_event", side_effect=events.append), \
-                mock.patch.object(store_build, "_reread_component", side_effect=reread):
+        with mock.patch.object(store_build, "_reread_component", side_effect=reread):
             self.assertEqual(self.build(12), 0, self.output)
         saved = [event["saved"] for event in events if "saved" in event]
         self.assertEqual(len(saved), 1)
@@ -266,10 +267,12 @@ class StepPublicationTests(unittest.TestCase):
 
     def test_source_location_and_preview_session_do_not_enter_geometry_identity(self) -> None:
         from cadgen.catalog import result_tree_for
+        from cadgen.daemon import executors
         from cadgen.store.objects import object_path
         from cadgen.store.trees import tree_objects
 
         identities = []
+        self.addCleanup(executors.set_event_sink, None)
         for name in ("session-first", "session-second"):
             directory = self.root / name
             directory.mkdir()
@@ -277,9 +280,8 @@ class StepPublicationTests(unittest.TestCase):
             self.step = directory / "part.step"
             self.sidecar = directory / "part.step.json"
             events = []
-            with mock.patch("cadgen.daemon.executors.sink_installed", return_value=True), \
-                    mock.patch("cadgen.daemon.executors.emit_event", side_effect=events.append):
-                self.assertEqual(self.build(10, force=True), 0, self.output)
+            executors.set_event_sink(events.append)
+            self.assertEqual(self.build(10, force=True), 0, self.output)
             previews = [event["preview"]["tree"] for event in events if "preview" in event]
             self.assertEqual(len(previews), 1)
             identities.append((self.step.read_bytes(), result_tree_for(self.step), previews[0]))
@@ -289,6 +291,45 @@ class StepPublicationTests(unittest.TestCase):
                     for forbidden in (str(directory).encode(), b"sourcePath", b"generatedAt", b"session-first", b"session-second"):
                         self.assertNotIn(forbidden, payload)
         self.assertEqual(identities[0], identities[1])
+
+    def test_cold_compile_ignores_code_records_and_declared_outputs(self) -> None:
+        from cadgen.catalog import result_tree_for
+        from cadgen.step import compile as compile_step
+        from cadgen.store import index, records
+        from cadgen.store.trees import tree_complete
+
+        self.assertEqual(self.build(10), 0, self.output)
+        saved_bytes = self.step.read_bytes()
+        expected_tree = result_tree_for(self.step)
+        self.model.unlink()
+        shutil.rmtree(self.root / "store")
+        self.assertIsNone(result_tree_for(self.step))
+        # Even leftover compiler bookkeeping cannot supply a tree or resurrect
+        # mesh declarations when the document's geometry cache is absent.
+        phantom = self.root / "phantom.stl"
+        records.write_record(self.step, {
+            "tree": "0" * 64,
+            "outputs": {str(phantom): {"declared": "stl", "sha256": "old"}},
+        })
+        read_entry = index.read_entry
+
+        def artifact_read(kind, key):
+            self.assertNotIn(kind, ("model", "output"), "cold compile consulted a code record")
+            return read_entry(kind, key)
+
+        output = io.StringIO()
+        with mock.patch.object(index, "read_entry", side_effect=artifact_read), \
+                mock.patch.object(records, "read_entry", side_effect=artifact_read), \
+                contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+            # Calling the compiler directly keeps the guard in its process;
+            # patching only a parent document reader misses worker-side reads.
+            result = compile_step(self.step)
+        self.assertTrue(result.ok, output.getvalue())
+        self.assertEqual(result.tree, expected_tree)
+        self.assertTrue(tree_complete(result.tree))
+        self.assertEqual(self.step.read_bytes(), saved_bytes)
+        self.assertEqual(records.read_record(self.step)["outputs"], {})
+        self.assertFalse(phantom.exists())
 
     def test_competing_write_observed_after_rename_does_not_publish_success(self) -> None:
         from cadgen._internal import atomic_replace

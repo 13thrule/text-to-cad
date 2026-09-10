@@ -313,7 +313,9 @@ class MaterializedIdentityTest(unittest.TestCase):
                 self.assertEqual(descriptor["links"], [])
                 # STEP can normalize solid orientation. Its canonical tree must
                 # match that read-back; the preview/export must retain our edit.
-                self.assertAlmostEqual(self.signed_volume(again), self.saved_step_volume() if step else -25.0, places=9)
+                self.assertAlmostEqual(self.signed_volume(again), -25.0, places=9)
+                if step:
+                    self.assertAlmostEqual(self.saved_step_volume(), 25.0, places=9)
                 descendants = again.children[0].children
                 self.assertEqual([node.label for node in descendants], ["first", "second"])
                 self.assertEqual(tuple(descendants[0].color), (1, 0, 0, 1))
@@ -337,7 +339,9 @@ class MaterializedIdentityTest(unittest.TestCase):
                 self.assertAlmostEqual(self.signed_volume(child), -23.0, places=9)
                 descriptor, again = self.parent(child, step=step, expected_export_volume=-23.0)
                 self.assertEqual(descriptor["links"], [])
-                self.assertAlmostEqual(self.signed_volume(again), self.saved_step_volume() if step else -23.0, places=9)
+                self.assertAlmostEqual(self.signed_volume(again), -23.0, places=9)
+                if step:
+                    self.assertAlmostEqual(self.saved_step_volume(), 25.0, places=9)
                 descendants = again.children[0].children
                 self.assertEqual([node.label for node in descendants], ["second", "first"])
                 self.assertEqual(tuple(descendants[1].color), (1, 0, 0, 1))
@@ -396,6 +400,130 @@ class MaterializedIdentityTest(unittest.TestCase):
         fresh = materialize(tree)
         self.assertFalse(child.wrapped.IsPartner(fresh.wrapped))
         self.assertEqual(_tagged_intact(fresh), tree)
+
+    def test_clean_moved_root_carries_component_identity_after_integrity_check(self):
+        from build123d import Location
+        from cadgen._internal import component_package
+        from cadgen.store.build import build_tree_from_compound
+        from cadgen.store.materialize import PARTNER_TAG, materialize
+        from cadgen.store.trees import get_tree
+
+        tree, child = self.child(curved=True)
+        expected_components = set((get_tree(tree) or {})["components"])
+        moved = child.moved(Location((20, -3, 7), (11, 23, 37)))
+        with mock.patch.object(
+            component_package,
+            "_content_hash_and_bytes",
+            wraps=component_package._content_hash_and_bytes,
+        ) as identities:
+            _result, descriptor, stats = build_tree_from_compound(moved, root_name="moved")
+        self.assertEqual(set(descriptor["components"]), expected_components)
+        self.assertEqual(identities.call_count, 0, "known components were re-hashed")
+        self.assertEqual(stats["components_built"], 0)
+        self.assertEqual(stats["components_reused"], len(expected_components))
+
+        unverified = materialize(tree).moved(Location((20, -3, 7), (11, 23, 37)))
+        delattr(unverified, PARTNER_TAG)
+        with mock.patch.object(
+            component_package,
+            "_content_hash_and_bytes",
+            wraps=component_package._content_hash_and_bytes,
+        ) as fallback_identities:
+            _result, _fallback, _stats = build_tree_from_compound(unverified, root_name="fallback")
+        self.assertEqual(fallback_identities.call_count, len(expected_components))
+
+    def test_native_mutation_rejects_carried_component_identity(self):
+        from OCP.BRep import BRep_Builder
+        from OCP.gp import gp_Pnt
+        from cadgen._internal import component_package
+        from cadgen.store.build import build_tree_from_compound
+        from cadgen.store.trees import get_tree
+
+        tree, child = self.child(assembly=False)
+        old_components = set((get_tree(tree) or {})["components"])
+        BRep_Builder().UpdateVertex(child.vertices()[0].wrapped, gp_Pnt(0.2, 0, 0), 1e-7)
+        with mock.patch.object(
+            component_package,
+            "_content_hash_and_bytes",
+            wraps=component_package._content_hash_and_bytes,
+        ) as identities:
+            _result, descriptor, _stats = build_tree_from_compound(child, root_name="mutated")
+        self.assertEqual(identities.call_count, 1, "mutation did not take the canonical hash path")
+        self.assertNotEqual(set(descriptor["components"]), old_components)
+
+    def test_forced_moved_root_rebuilds_the_pinned_component_bytes(self):
+        from build123d import Location
+        from cadgen.store.build import build_tree_from_compound
+        from cadgen.store.trees import get_tree
+
+        tree, child = self.child(curved=True)
+        original = (get_tree(tree) or {})["components"]
+        moved = child.moved(Location((20, -3, 7), (11, 23, 37)))
+        _result, descriptor, stats = build_tree_from_compound(moved, root_name="moved", force=True)
+        self.assertEqual(stats["components_built"], len(original))
+        for cid, expected in original.items():
+            for key in ("contentHash", "brep", "surf"):
+                self.assertEqual(descriptor["components"][cid][key], expected[key])
+
+    def test_moved_root_can_prepare_and_save_its_pinned_preview_components(self):
+        from build123d import Location
+        from cadgen.store.build import build_tree_through_step
+        from cadgen.store.trees import get_tree, tree_complete
+
+        tree, child = self.child(curved=True)
+        original = (get_tree(tree) or {})["components"]
+        moved = child.moved(Location((20, -3, 7), (11, 23, 37)))
+        previews = []
+        result, _descriptor, stats, _step_hash = build_tree_through_step(
+            moved, self.root / "parent.step", root_name="moved",
+            on_preview=lambda digest, descriptor: previews.append((digest, descriptor)),
+        )
+        self.assertEqual(set(previews[0][1]["components"]), set(original))
+        self.assertTrue(tree_complete(previews[0][0]))
+        self.assertEqual(result, previews[0][0], "the published source result is never replaced after saving")
+        self.assertTrue(tree_complete(result))
+        self.assertTrue(tree_complete(stats["documentTree"]))
+        self.assertAlmostEqual(self.saved_step_volume(), self.signed_volume(moved), places=7)
+
+    def test_missing_pinned_brep_rederives_identity_from_owned_geometry(self):
+        from build123d import Location
+        from cadgen._internal import component_package
+        from cadgen.store.build import build_tree_from_compound
+        from cadgen.store.objects import object_path
+        from cadgen.store.trees import get_tree
+
+        tree, child = self.child(assembly=False, curved=True)
+        original = (get_tree(tree) or {})["components"]
+        for component in original.values():
+            object_path(component["brep"]).unlink()
+        moved = child.moved(Location((20, -3, 7), (11, 23, 37)))
+        with mock.patch.object(
+            component_package, "_content_hash_and_bytes", wraps=component_package._content_hash_and_bytes,
+        ) as identities:
+            _result, descriptor, _stats = build_tree_from_compound(moved, root_name="recovered")
+        self.assertEqual(identities.call_count, 1)
+        for component in descriptor["components"].values():
+            self.assertTrue(object_path(component["brep"]).is_file())
+
+    def test_pinned_objects_repair_a_missing_component_index_without_extraction(self):
+        from cadgen._internal import component_package
+        from cadgen.store.build import build_tree_from_compound
+        from cadgen.store.index import read_entry, remove_entry
+        from cadgen.store.trees import get_tree
+
+        tree, child = self.child(assembly=False)
+        cid = next(iter((get_tree(tree) or {})["components"]))
+        remove_entry("component", cid)
+        with mock.patch.object(
+            component_package,
+            "_build_component_surf_worker",
+            wraps=component_package._build_component_surf_worker,
+        ) as extracted:
+            _result, descriptor, stats = build_tree_from_compound(child, root_name="reindexed")
+        self.assertEqual(extracted.call_count, 0)
+        self.assertEqual(set(descriptor["components"]), {cid})
+        self.assertEqual(stats["components_reused"], 1)
+        self.assertIsNotNone(read_entry("component", cid))
 
     def test_missing_holder_and_standard_geometry_replacements_do_not_link(self):
         from build123d import Location, Plane

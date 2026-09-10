@@ -18,11 +18,11 @@ Scope and placement:
 - The cache lives in this module, which survives the generation runner's
   first-party module eviction (cadgen and site-packages are never evicted), so
   a warm daemon worker keeps its cache across requests.
-- Keys hash input shapes by their BinTools BREP bytes: bytes stripped of
-  location, orientation and triangulation, memoized per TShape, combined with
-  the shape's own location matrix and orientation. What the digest strips is
-  what a TShape SHARES with its re-expressions, and it has to be, because the
-  digest is memoized per TShape pointer -- see ``_tshape_digest``. Fresh
+- Keys hash current input shapes by their BinTools BREP bytes: bytes stripped
+  of location, orientation and triangulation, combined with the shape's own
+  location matrix and orientation. A native edit can change a TShape without
+  changing its pointer, so input digests are recomputed -- see
+  ``_tshape_digest``. Fresh
   rebuilds of identical geometry serialize byte-identically (verified in the
   design doc's Phase 0 spike), so keys hit across full re-executions.
 - Every consumer — the missing caller, a warm in-memory hit, a disk hit —
@@ -59,10 +59,14 @@ sub-shape test part, Copy kept 114 sub-shapes byte-identical and a second
 round trip 219 -- so bytes tell one edge apart from itself. World geometry
 is what survives every re-expression, and rounding absorbs the ULP noise a
 re-composed rotation leaves. Orientation is not in the signature, matching
-``IsSame``. The hash is the signature's, so sets and dicts agree with ``==``.
+``IsSame``. Hashing uses a subset of that signature, so sets and dicts agree
+with ``==`` without sampling every curve and surface on insertion.
 Two coincident, identical sub-shapes (an edge fused onto itself, two faces
 sharing one plane and outline) therefore compare equal, where the pointer
 check told them apart; that is the semantics a model sees under the memo.
+Hashing uses only the signature's type and rounded vertex points. Equal full
+signatures necessarily hash equally; curves/surfaces sharing those vertices
+are distinguished by full equality when hashes collide.
 
 Kill switch: ``CADGEN_OP_MEMO=0`` (and ``CADGEN_OP_MEMO_DISK=0`` for just the
 disk tier). It disables the identity shims too: without the memo every op
@@ -86,25 +90,13 @@ from functools import lru_cache
 from cadgen._internal.atomic_replace import replace_atomic
 
 # Salt: bump _OP_MEMO_VERSION whenever keying or hit semantics change.
-_OP_MEMO_VERSION = 4
+_OP_MEMO_VERSION = 5
 
 _lock = threading.RLock()
 _cache: OrderedDict[tuple, object] = OrderedDict()
-# Digest per TShape, so a shape that is an input to several ops serializes once.
-# BOUNDED and LRU, not "clear when huge": the keys are strong references to
-# OCCT TShapes, so every entry keeps a whole solid alive. Unbounded (it cleared
-# only past 4x the result cache, 131072 entries) it pinned every intermediate
-# boolean result of a 1400-part engine for the run's lifetime -- one input to
-# a process the OS killed at 200+ GB. Recent shapes are the ones re-hashed; a
-# miss costs one BinTools write.
-_TSHAPE_DIGEST_CAPACITY = 2048
-_tshape_bytes_memo: OrderedDict[object, str] = OrderedDict()
-# NOTE: an earlier revision stamped op-result TShapes with their producing
-# key so chained inputs could key without serialization. It destabilized
-# keys on movement-class models (1444 re-misses per warm run vs ~25
-# without): stamps assume a result's content never changes after return,
-# and real pipelines violate that. Digest keying keys the actual
-# first-seen content of every TShape, which is what stays stable.
+# Retain only canonical result bytes and recipes. In particular, a TShape
+# pointer is not an input digest: native geometry/descendants can mutate while
+# the pointer remains unchanged, and retaining pointer keys also pins topology.
 _stats = {"hits": 0, "misses": 0, "disk_hits": 0, "unkeyable": 0,
           "unstorable": 0, "evicted": 0, "errors": 0}
 _installed = False
@@ -130,19 +122,17 @@ def _capacity() -> int:
 
 
 def _tshape_digest(wrapped) -> str:
-    """Content digest of a TopoDS_Shape's TShape, memoized per TShape.
+    """Digest the TShape's current content without retaining mutable topology.
 
-    The digest must be a pure function of the TShape's GEOMETRY, because the
-    memo is keyed by the TShape pointer: the first shape that reaches this
-    function for a given TShape decides the digest every later sharer of it
-    gets. Anything read off ``wrapped`` that is not TShape content therefore
-    becomes cache state, and two runs that touch the same geometry in a
-    different order key it differently.
+    The first-seen digest of a TShape is not reusable: native vertex, curve,
+    surface or descendant edits need not replace its pointer. Recompute from
+    the actual bytes on every call. Normalizing handle-only properties keeps
+    placement/orientation expressions independent of encounter order.
 
-    Three things are normalized away, in that spirit:
+    The geometry-independent properties normalized here are:
 
     - **Location.** Stripped, and folded back in separately by
-      :func:`_location_key`, so a moved copy of a solid serializes once.
+      :func:`_location_key`, so moved copies share the content digest.
     - **Orientation.** Forced FORWARD. A reversed shape SHARES its TShape with
       the forward one, so writing ``wrapped`` as it came in baked whichever
       orientation arrived first into the shared digest: hashing the forward
@@ -158,39 +148,38 @@ def _tshape_digest(wrapped) -> str:
       explicit form matches the canonical bytes :func:`_write_brep` and the
       component store already write.
 
-    NOT normalized, and a known residue: BinTools serializes each TShape's
-    mutable bookkeeping flags, and ``Checked`` is one OCCT clears on every FACE
-    when anything tessellates the shape. So a shape measured (which meshes it)
-    before being keyed still digests differently from the same geometry keyed
-    first -- a missed disk-tier hit, never a wrong result, since every op-memo
-    consumer gets the same canonical reconstruction. The only fix available is
-    to force the flag over the shape and all its sub-shapes before writing,
-    which mutates state the caller owns and costs ~2x per uncached digest
-    (5.6ms -> 10.2ms on a 626-face, 3576-sub-shape solid), so it is a
-    deliberate open item rather than something done quietly here.
+    - **Free and Checked bookkeeping.** Attaching a shape to a container can
+      clear Free, and meshing clears Checked. Neither changes geometry. Copy
+      the topology without copying its geometry or mesh, then normalize only
+      these flags on that private topology. No caller-owned flag or geometry
+      is changed and no live shape is retained by key construction.
     """
     from OCP.BinTools import BinTools, BinTools_FormatVersion
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
     from OCP.TopAbs import TopAbs_Orientation
+    from OCP.TopExp import TopExp
     from OCP.TopLoc import TopLoc_Location
+    from OCP.TopTools import TopTools_IndexedMapOfShape
 
-    tshape = wrapped.TShape()
-    cached = _tshape_bytes_memo.get(tshape)
-    if cached is not None:
-        _tshape_bytes_memo.move_to_end(tshape)
-        return cached
+    private = BRepBuilderAPI_Copy(
+        wrapped.Located(TopLoc_Location()).Oriented(TopAbs_Orientation.TopAbs_FORWARD),
+        False, False,
+    ).Shape()
+    shapes = TopTools_IndexedMapOfShape()
+    TopExp.MapShapes_s(private, shapes)
+    for index in range(1, shapes.Extent() + 1):
+        shape = shapes.FindKey(index)
+        shape.Free(False)
+        shape.Checked(False)
     stream = io.BytesIO()
     BinTools.Write_s(
-        wrapped.Located(TopLoc_Location()).Oriented(TopAbs_Orientation.TopAbs_FORWARD),
+        private,
         stream,
         False,  # theWithTriangles
         False,  # theWithNormals
         BinTools_FormatVersion.BinTools_FormatVersion_CURRENT,
     )
-    digest = hashlib.sha256(stream.getvalue()).hexdigest()
-    _tshape_bytes_memo[tshape] = digest
-    while len(_tshape_bytes_memo) > _TSHAPE_DIGEST_CAPACITY:
-        _tshape_bytes_memo.popitem(last=False)
-    return digest
+    return hashlib.sha256(stream.getvalue()).hexdigest()
 
 
 def _location_key(wrapped) -> tuple:
@@ -989,6 +978,30 @@ _CLASSMETHOD_TARGETS = (
 _SIGNATURE_DECIMALS = 6
 
 
+@lru_cache(maxsize=8192)
+def _rounded_coordinate_bytes(bits: bytes) -> tuple[float, float, float]:
+    """Bounded pure numeric work; keys contain no shape, pointer or signature."""
+    x, y, z = struct.unpack("<ddd", bits)
+    return round(x, _SIGNATURE_DECIMALS), round(y, _SIGNATURE_DECIMALS), round(z, _SIGNATURE_DECIMALS)
+
+
+def _rounded_coordinates(coordinates: tuple) -> tuple[float, float, float]:
+    """Round freshly read coordinates, preserving signed zero and NaNs.
+
+    Native vertices/surfaces are always read again. Only rounding their exact
+    immutable IEEE754 values is memoized. Packed keys distinguish +0 and -0;
+    NaNs bypass the cache so tuple identity cannot change NaN equality.
+    """
+    x, y, z = coordinates
+    if type(x) is not float or type(y) is not float or type(z) is not float:
+        # A numeric subclass may implement __round__ differently from its
+        # conversion to IEEE754. Preserve those callbacks on the ordinary path.
+        return round(x, _SIGNATURE_DECIMALS), round(y, _SIGNATURE_DECIMALS), round(z, _SIGNATURE_DECIMALS)
+    if x != x or y != y or z != z:
+        return round(x, _SIGNATURE_DECIMALS), round(y, _SIGNATURE_DECIMALS), round(z, _SIGNATURE_DECIMALS)
+    return _rounded_coordinate_bytes(struct.pack("<ddd", x, y, z))
+
+
 def _signature(wrapped) -> tuple:
     """World-space geometric signature of a TopoDS_Shape (module docstring).
 
@@ -1006,6 +1019,45 @@ def _signature(wrapped) -> tuple:
     builder's pre/post selections, even within one ``_add_to_context`` call.
     """
     return _signature_evaluator()(wrapped)
+
+
+def _signature_hash(wrapped) -> int:
+    """A cheap hash consistent with full geometric equality.
+
+    Equal signatures necessarily have the same type and rounded vertex points.
+    Hashing those fields avoids evaluating every curve/surface merely to put a
+    shape in a builder's set. An arc and its chord may collide here; ``is_same``
+    still compares their complete signatures, so a collision cannot substitute
+    geometry. Read current vertices on every call: no mutable shape is memoized.
+    """
+    return _signature_hash_evaluator()(wrapped)
+
+
+@lru_cache(maxsize=1)
+def _signature_hash_evaluator():
+    from OCP.BRep import BRep_Tool
+    from OCP.TopAbs import TopAbs_ShapeEnum
+    from OCP.TopExp import TopExp
+    from OCP.TopoDS import TopoDS
+    from OCP.TopTools import TopTools_IndexedMapOfShape
+
+    vertex_kind = TopAbs_ShapeEnum.TopAbs_VERTEX
+    vertex_point, as_vertex = BRep_Tool.Pnt_s, TopoDS.Vertex_s
+    map_shapes = TopExp.MapShapes_s
+    def rounded(vertex):
+        return _rounded_coordinates(vertex_point(as_vertex(vertex)).Coord())
+
+    def signature_hash(wrapped):
+        kind = wrapped.ShapeType()
+        if kind == vertex_kind:
+            points = (rounded(wrapped),)
+        else:
+            vertices = TopTools_IndexedMapOfShape()
+            map_shapes(wrapped, vertex_kind, vertices)
+            points = tuple(sorted(rounded(vertices.FindKey(i)) for i in range(1, vertices.Extent() + 1)))
+        return hash((int(kind), points))
+
+    return signature_hash
 
 
 @lru_cache(maxsize=1)
@@ -1037,15 +1089,8 @@ def _signature_evaluator():
     as_vertex = TopoDS.Vertex_s
     as_edge = TopoDS.Edge_s
     as_face = TopoDS.Face_s
-    decimals = _SIGNATURE_DECIMALS
-
     def rounded(point) -> tuple:
-        x, y, z = point.Coord()
-        return (
-            round(x, decimals),
-            round(y, decimals),
-            round(z, decimals),
-        )
+        return _rounded_coordinates(point.Coord())
 
     def sub_shapes(wrapped, kind):
         found = TopTools_IndexedMapOfShape()
@@ -1136,7 +1181,7 @@ def _identity(attr: str, original):
         if not _enabled():
             return original(self)
         try:
-            return hash(_signature(self.wrapped))
+            return _signature_hash(self.wrapped)
         except Exception:
             return hash(self.wrapped)
 
@@ -1226,4 +1271,4 @@ def stats() -> dict:
 def clear() -> None:
     with _lock:
         _cache.clear()
-        _tshape_bytes_memo.clear()
+        _rounded_coordinate_bytes.cache_clear()

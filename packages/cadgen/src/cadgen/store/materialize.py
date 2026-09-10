@@ -43,6 +43,21 @@ PARTNER_TAG = "__cadgen_tree_shape__"
 ROOT_LOC_TAG = "__cadgen_tree_root_loc__"
 
 
+@dataclass(frozen=True)
+class _ComponentIdentity:
+    """Canonical extraction identity carried by one materialized leaf.
+
+    These are immutable store addresses, not permission to trust a live TShape.
+    The packager may reuse them only after the owning ``_Partner`` verifies the
+    complete materialized result against its private baseline.
+    """
+
+    cid: str
+    content_hash: str
+    surf: str
+    brep: str
+
+
 class _Partner:
     """Immutable evidence of the geometry and hierarchy initially handed out.
 
@@ -67,12 +82,18 @@ class _Partner:
         return holder
 
     def intact(self, node: Any) -> bool:
+        return self.verified_baseline(node) is not None
+
+    def verified_baseline(self, node: Any) -> "_MaterializedState | None":
+        """Return the immutable baseline only when ``node`` still matches it."""
         try:
-            return node.wrapped.IsPartner(self.shape) and _same_materialized_state(
+            if node.wrapped.IsPartner(self.shape) and _same_materialized_state(
                 self.baseline, _capture_materialized_state(node)
-            )
+            ):
+                return self.baseline
+            return None
         except Exception:  # an unverifiable shape becomes an own component
-            return False
+            return None
 
     def __copy__(self) -> "_Partner":
         return self
@@ -107,6 +128,7 @@ class _MaterializedState:
     children: tuple["_MaterializedState", ...]
     native_children: tuple
     wrapper_keys: tuple
+    component: _ComponentIdentity | None
 
 
 def _native_key(shape: Any) -> tuple:
@@ -244,6 +266,7 @@ def _capture_materialized_state(
         ),
         native_children=tuple(_native_key(child) for child in _native_children(shape)),
         wrapper_keys=tuple(_native_key(child.wrapped) for child in children),
+        component=node.__dict__.get("__cadgen_component_identity__"),
     )
 
 
@@ -562,6 +585,15 @@ def materialize_descriptor(
             # ``shapes`` may supply a wrapper carrying process-local metadata.
             # The descriptor is authoritative, including an absent finish.
             child.__dict__.pop("cad_material", None)
+        content_hash = str((components.get(cid) or {}).get("contentHash") or "")
+        surf = str((components.get(cid) or {}).get("surf") or "")
+        brep = str((components.get(cid) or {}).get("brep") or "")
+        if content_hash and cid == content_hash[:16] and surf and brep:
+            child.__dict__["__cadgen_component_identity__"] = _ComponentIdentity(
+                cid=cid, content_hash=content_hash, surf=surf, brep=brep,
+            )
+        else:
+            child.__dict__.pop("__cadgen_component_identity__", None)
         placed_by_id[str(occurrence.get("id") or "")] = child
 
     def build_node(node: dict[str, Any]):

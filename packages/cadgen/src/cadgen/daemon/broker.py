@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import copy
 import json
 import os
 import secrets
@@ -72,7 +73,7 @@ class Broker:
         # losing a waiting subscriber never cancels canonical work another
         # subscriber still needs, while losing the owner plus its last consumer
         # leaves the worker eligible for cancellation by the supervisor.
-        self._inflight: dict[tuple[str, str], dict[str, Any]] = {}
+        self._inflight: dict[tuple[str, str, str], dict[str, Any]] = {}
         self._coalesced = 0
 
     # slots -------------------------------------------------------------------------
@@ -109,14 +110,14 @@ class Broker:
 
     # in flight ------------------------------------------------------------------------
 
-    def claim_entry(self, model: str, closure: str) -> tuple[bool, dict[str, Any]]:
+    def claim_entry(self, model: str, closure: str, *, store_root: str = "") -> tuple[bool, dict[str, Any]]:
         """Claim a unique in-flight entry.
 
         Returns ``(True, entry)`` for its producer and ``(False, entry)`` for
         an attached consumer. The entry token, rather than its reusable key,
         makes late completion unable to finish a replacement producer.
         """
-        key = (model, closure)
+        key = (os.path.realpath(store_root) if store_root else "", model, closure)
         with self._cv:
             entry = self._inflight.get(key)
             if entry is not None and not entry["done"].is_set():
@@ -128,12 +129,28 @@ class Broker:
                 "key": key,
                 "done": threading.Event(),
                 "exit": None,
+                "result": None,
                 "ownerActive": True,
                 "consumers": 0,
                 "orphaned": threading.Event(),
             }
             self._inflight[key] = entry
             return True, entry
+
+    def publish_result(self, entry: dict[str, Any], event: dict) -> None:
+        """Retain this producer's source result for present and late consumers."""
+        if not isinstance(event.get("sourceResult"), dict):
+            return
+        with self._cv:
+            if entry["result"] is None and not entry["done"].is_set():
+                entry["result"] = copy.deepcopy(event)
+                self._cv.notify_all()
+
+    def wait_update(self, entry: dict[str, Any], *, result_seen: bool, timeout: float = .1) -> tuple[dict | None, bool, int]:
+        with self._cv:
+            self._cv.wait_for(lambda: entry["done"].is_set() or (entry["result"] is not None and not result_seen), timeout)
+            event = copy.deepcopy(entry["result"]) if not result_seen else None
+            return event, entry["done"].is_set(), int(entry["exit"] if entry["exit"] is not None else 1)
 
     def claim(self, model: str, closure: str) -> dict[str, Any] | None:
         """Register ``(model, closure)`` as in flight. Returns None when it is now
@@ -188,7 +205,7 @@ class Broker:
 
     def finish(self, model: str, closure: str, code: int) -> None:
         with self._cv:
-            entry = self._inflight.get((model, closure))
+            entry = self._inflight.get(("", model, closure))
         if entry is not None:
             self.finish_entry(entry, code)
 
@@ -246,26 +263,37 @@ class Broker:
         closure = str(request.get("closure") or "")
         op = request.get("op")
         if op == "claim":
-            owned, entry = self.claim_entry(model, closure)
+            owned, entry = self.claim_entry(model, closure, store_root=str(request.get("store_root") or ""))
             if owned:
                 _send(conn, {"inflight": "yours"})
                 # The claimer reports the outcome on this same connection; if it dies
                 # first, the attached parties are released with a failure.
                 code = 1
                 try:
-                    raw = conn.recv(None)
-                    if raw:
+                    while raw := conn.recv(None):
                         payload = json.loads(raw.decode("utf-8"))
-                        code = int(payload.get("exit", 1))
+                        if isinstance(payload.get("event"), dict):
+                            self.publish_result(entry, payload["event"])
+                        if "exit" in payload:
+                            code = int(payload["exit"])
+                            break
                 except (OSError, ValueError):
                     pass
                 self.finish_entry(entry, code)
                 return
             _send(conn, {"inflight": "attached"})
             try:
-                entry["done"].wait()
-                with contextlib.suppress(OSError):
-                    _send(conn, {"exit": entry["exit"] if entry["exit"] is not None else 1})
+                result_seen = False
+                while True:
+                    event, done, code = self.wait_update(entry, result_seen=result_seen)
+                    if event is not None:
+                        _send(conn, {"event": event})
+                        result_seen = True
+                    if done:
+                        _send(conn, {"exit": code})
+                        break
+                    if conn.recv(0.0) == b"":
+                        break
             finally:
                 self.detach(entry)
         else:
@@ -422,9 +450,10 @@ def held(label: str, *, on_queued: Callable[[], None] | None = None) -> Iterator
     try:
         yield lease
     finally:
+        active = current_lease()
         _CURRENT.lease = previous
-        if lease is not None:
-            lease.release()
+        if active is not None:
+            active.release()
 
 
 @contextlib.contextmanager
@@ -443,12 +472,12 @@ def yielded() -> Iterator[None]:
         _CURRENT.lease = acquire_slot(lease.label)
 
 
-def claim_inflight(model: str, closure: str) -> tuple[str, transport.Channel] | None:
+def claim_inflight(model: str, closure: str, *, store_root: str = "") -> tuple[str, transport.Channel] | None:
     """Ask the broker who builds ``(model, closure)``. ``("yours", conn)`` means build
     it and call :func:`report_done` on ``conn``; ``("attached", conn)`` means another
     job with identical source is running and :func:`wait_attached` yields its exit.
     None when there is no broker."""
-    conn = _open({"kind": "inflight", "op": "claim", "model": model, "closure": closure})
+    conn = _open({"kind": "inflight", "op": "claim", "model": model, "closure": closure, "store_root": store_root})
     if conn is None:
         return None
     raw = conn.recv(30.0)
@@ -472,11 +501,19 @@ def report_done(conn: transport.Channel, code: int) -> None:
     conn.close()
 
 
-def wait_attached(conn: transport.Channel) -> int:
+def report_result(conn: transport.Channel, event: dict) -> None:
+    with contextlib.suppress(OSError):
+        _send(conn, {"event": event})
+
+
+def wait_attached(conn: transport.Channel, *, on_event: Callable[[dict], None] | None = None) -> int:
     try:
-        raw = conn.recv(None)
-        if raw:
-            return int(json.loads(raw.decode("utf-8")).get("exit", 1))
+        while raw := conn.recv(None):
+            frame = json.loads(raw.decode("utf-8"))
+            if isinstance(frame.get("event"), dict) and on_event is not None:
+                on_event(frame["event"])
+            if "exit" in frame:
+                return int(frame["exit"])
     except (OSError, ValueError):
         pass
     finally:

@@ -513,25 +513,9 @@ class OpMemoSubShapeIdentityTest(unittest.TestCase):
 class TShapeDigestPurityTest(unittest.TestCase):
     """``_tshape_digest`` must be a function of the TShape's GEOMETRY alone.
 
-    The digest is memoized by the TShape POINTER, so the first shape that
-    reaches it for a given TShape decides the digest every later sharer of that
-    TShape receives. Anything the digest reads off the passed handle that is not
-    TShape content is therefore not a detail -- it is cache state, and two runs
-    that touch the same geometry in a different order key it differently and
-    re-run kernel work they already have.
-
-    Two such leaks are pinned here, both found by keying the same solid twice:
-
-    * ORIENTATION. A reversed shape shares its TShape with the forward one, so
-      writing the handle as it arrived baked whichever orientation came first
-      into the shared digest -- forward-first gave one digest for BOTH, and
-      reversed-first gave a different digest for BOTH.
-    * TRIANGULATION. The two-argument ``BinTools.Write_s`` alias writes
-      triangulation data, so a shape's digest changed the moment anything
-      meshed it -- and, memoized per TShape, whether that had happened yet was
-      the run's history, not the model's geometry. It was also enormous: a
-      tessellated sphere serialized 68 KB of mesh to be hashed instead of
-      939 bytes of geometry.
+    Handle orientation and attached triangulation must not enter the content
+    digest. Native geometry edits must enter it even when the TShape pointer
+    stays unchanged. Every call observes current input bytes.
 
     Orientation stays in the KEY (``_shape_key`` carries it explicitly), which
     is where a distinction that must not alias belongs; the digest is only the
@@ -561,9 +545,7 @@ class TShapeDigestPurityTest(unittest.TestCase):
             forward.TShape(), reversed_.TShape(), "precondition: one TShape, two orientations"
         )
 
-        op_memo._tshape_bytes_memo.clear()
         forward_first = op_memo._tshape_digest(forward)
-        op_memo._tshape_bytes_memo.clear()
         reversed_first = op_memo._tshape_digest(reversed_)
         self.assertEqual(forward_first, reversed_first)
 
@@ -577,8 +559,53 @@ class TShapeDigestPurityTest(unittest.TestCase):
         solid.wrapped = solid.wrapped.Reversed()
         self.assertNotEqual(forward_key, op_memo._shape_key(solid))
 
+    def test_native_descendant_mutation_changes_an_existing_shape_key(self):
+        from OCP.BRep import BRep_Builder
+        from OCP.gp import gp_Pnt
+        from build123d.topology import Solid
+
+        shape = Solid.make_box(10, 8, 6)
+        pointer = shape.wrapped.TShape()
+        before = op_memo._shape_key(shape)
+        vertex = shape.vertices()[0]
+        BRep_Builder().UpdateVertex(vertex.wrapped, gp_Pnt(0.25, 0, 6), 1e-7)
+        self.assertEqual(shape.wrapped.TShape(), pointer)
+        self.assertNotEqual(op_memo._shape_key(shape), before)
+
+    def test_native_curve_mutation_changes_key_without_moving_vertices(self):
+        from OCP.BRep import BRep_Tool
+        from OCP.Geom import Geom_Circle
+        from build123d.topology import Edge
+
+        edge = Edge.make_circle(4)
+        pointer = edge.wrapped.TShape()
+        before = op_memo._shape_key(edge)
+        curve = BRep_Tool.Curve_s(edge.wrapped, 0.0, 0.0)
+        self.assertIsInstance(curve, Geom_Circle)
+        curve.SetRadius(5)
+        self.assertEqual(edge.wrapped.TShape(), pointer)
+        self.assertNotEqual(op_memo._shape_key(edge), before)
+
+    def test_bookkeeping_normalization_never_changes_the_callers_flags(self):
+        from OCP.TopExp import TopExp
+        from OCP.TopTools import TopTools_IndexedMapOfShape
+
+        shape = self._fresh_box()
+        shapes = TopTools_IndexedMapOfShape()
+        TopExp.MapShapes_s(shape, shapes)
+        children = [shapes.FindKey(i) for i in range(1, shapes.Extent() + 1)]
+        for child in children:
+            child.Free(True)
+            child.Checked(True)
+        before = [(child.Free(), child.Checked()) for child in children]
+        checked = op_memo._tshape_digest(shape)
+        self.assertEqual([(child.Free(), child.Checked()) for child in children], before)
+        for child in children:
+            child.Free(False)
+            child.Checked(False)
+        self.assertEqual(checked, op_memo._tshape_digest(shape))
+
     def _digest(self, wrapped) -> str:
-        op_memo._tshape_bytes_memo.clear()  # the memo is per TShape; re-serialize
         return op_memo._tshape_digest(wrapped)
 
     def test_the_mesh_on_a_shape_is_not_in_its_digest(self):
@@ -618,11 +645,9 @@ class TShapeDigestPurityTest(unittest.TestCase):
 
         sphere = Solid.make_sphere(10).wrapped
         self._mesh(sphere, linear=0.05, angular=0.2)
-        op_memo._tshape_bytes_memo.clear()
         reference = op_memo.placed_shape_key(sphere)
 
         self._mesh(sphere, linear=0.005, angular=0.05)
-        op_memo._tshape_bytes_memo.clear()
         self.assertEqual(reference, op_memo.placed_shape_key(sphere))
 
     def test_the_location_is_still_out_of_the_digest_and_in_the_key(self):
@@ -637,3 +662,134 @@ class TShapeDigestPurityTest(unittest.TestCase):
             "a moved copy shares its geometry; only the location key may differ",
         )
         self.assertNotEqual(op_memo._shape_key(solid), op_memo._shape_key(moved))
+
+
+class CurrentInputKeyTest(unittest.TestCase):
+    def test_repeated_native_inputs_keep_exact_keys_and_read_current_geometry(self):
+        from build123d import Location, Solid
+        from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+
+        shape = Solid.make_box(10, 8, 6)
+        moved = shape.moved(Location((5, -2, 1), (13, 27, 41)))
+        reversed_shape = Solid(shape.wrapped.Reversed())
+        tool = Solid.make_cylinder(2, 8)
+        args = (shape, [moved, reversed_shape], (tool,), BRepAlgoAPI_Cut())
+        expected = (op_memo._OP_MEMO_VERSION, "bool_op", tuple(op_memo._normalize(arg) for arg in args), ())
+        with mock.patch.object(op_memo, "_tshape_digest", wraps=op_memo._tshape_digest) as digests:
+            actual = op_memo._build_key("bool_op", args, {})
+        self.assertEqual(digests.call_count, 4)
+        self.assertEqual(repr(actual).encode(), repr(expected).encode())
+        self.assertEqual(op_memo._op_index_key(actual), op_memo._op_index_key(expected))
+
+    def test_native_mutation_is_seen_on_the_next_key_traversal(self):
+        from build123d import Solid
+        from OCP.BRep import BRep_Builder
+        from OCP.BRepAlgoAPI import BRepAlgoAPI_Cut
+        from OCP.gp import gp_Pnt
+
+        shape = Solid.make_box(10, 8, 6)
+        args = (shape, [shape], (), BRepAlgoAPI_Cut())
+        first = op_memo._build_key("bool_op", args, {})
+        BRep_Builder().UpdateVertex(shape.vertices()[0].wrapped, gp_Pnt(0.25, 0, 6), 1e-7)
+        second = op_memo._build_key("bool_op", args, {})
+        self.assertNotEqual(first, second)
+        self.assertEqual(second[2][0], second[2][1][1][0])
+
+    def test_caller_conversion_preserves_mutation_of_a_later_input(self):
+        from build123d import Solid
+        from OCP.BRep import BRep_Builder
+        from OCP.gp import gp_Pnt
+
+        shape = Solid.make_box(10, 8, 6)
+        converter = Solid.make_box(1, 1, 1)
+        calls = []
+
+        def convert():
+            calls.append(True)
+            BRep_Builder().UpdateVertex(shape.vertices()[0].wrapped, gp_Pnt(0.25, 0, 6), 1e-7)
+            return (0, 0, 0)
+
+        converter.to_tuple = convert
+        key = op_memo._build_key("caller-conversion", (shape, converter, shape), {})
+        self.assertEqual(calls, [True])
+        self.assertNotEqual(key[2][0], key[2][2])
+
+    def test_custom_iterator_can_mutate_between_repeated_shape_arguments(self):
+        from build123d import Solid
+        from OCP.BRep import BRep_Builder
+        from OCP.gp import gp_Pnt
+
+        shape = Solid.make_box(10, 8, 6)
+        calls = []
+
+        class MutatingList(list):
+            def __iter__(self):
+                calls.append(True)
+                yield shape
+                BRep_Builder().UpdateVertex(shape.vertices()[0].wrapped, gp_Pnt(0.25, 0, 6), 1e-7)
+                yield shape
+
+        key = op_memo._build_key("caller-iterator", (MutatingList(),), {})
+        self.assertEqual(calls, [True], "key construction consumed the custom iterator twice")
+        first, second = key[2][0][1]
+        self.assertNotEqual(first, second)
+
+    def test_value_property_preserves_mutation_of_a_later_input(self):
+        from build123d import Solid
+        from OCP.BRep import BRep_Builder
+        from OCP.gp import gp_Pnt
+
+        shape = Solid.make_box(10, 8, 6)
+        calls = []
+
+        class ConvertingValue:
+            __module__ = "build123d.custom"
+
+            @property
+            def to_tuple(self):
+                calls.append(True)
+                BRep_Builder().UpdateVertex(shape.vertices()[0].wrapped, gp_Pnt(0.25, 0, 6), 1e-7)
+                return lambda: (1, 2, 3)
+
+        key = op_memo._build_key("caller-property", (shape, ConvertingValue(), shape), {})
+        self.assertEqual(calls, [True])
+        self.assertNotEqual(key[2][0], key[2][2])
+
+    def test_exact_shape_class_property_mutation_cannot_reuse_an_earlier_digest(self):
+        from build123d import Solid
+        from OCP.BRep import BRep_Builder
+        from OCP.gp import gp_Pnt
+
+        original_wrapped = Solid.wrapped
+
+        def construct(attribute, ordinary):
+            shape = Solid.make_box(10, 8, 6)
+            trigger = Solid.make_box(1, 1, 1)
+            vertex = shape.vertices()[0].wrapped
+            calls = []
+
+            def getter(node):
+                if node is trigger and not calls:
+                    calls.append(True)
+                    BRep_Builder().UpdateVertex(vertex, gp_Pnt(0.25, 0, 6), 1e-7)
+                return original_wrapped.fget(node) if attribute == "wrapped" else None
+
+            with mock.patch.object(Solid, attribute, property(getter), create=True):
+                args = (shape, trigger, shape)
+                if ordinary:
+                    parts = []
+                    for value in args:
+                        op_memo._reject_lazy(value)
+                        parts.append(op_memo._normalize(value))
+                    key = (op_memo._OP_MEMO_VERSION, "class-callback", tuple(parts), ())
+                else:
+                    key = op_memo._build_key("class-callback", args, {})
+            self.assertEqual(calls, [True])
+            self.assertNotEqual(key[2][0], key[2][2])
+            return key
+
+        for attribute in ("wrapped", "to_tuple"):
+            with self.subTest(attribute=attribute):
+                expected = construct(attribute, ordinary=True)
+                actual = construct(attribute, ordinary=False)
+                self.assertEqual(repr(actual).encode(), repr(expected).encode())

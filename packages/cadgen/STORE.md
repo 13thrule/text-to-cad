@@ -142,15 +142,12 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
 
 - `components` are geometry this model created itself, keyed by component id
   (`cid`, a hash of the component extraction inputs); each names the `.surf` and
-  `.brep` objects. For a model that writes a `.step`, that exact shape is the
-  one READ BACK from the document the build wrote, not the shape the script
-  returned: the build assembles and writes the STEP first, re-reads it with
-  the scene loader, and publishes its prototypes
-  (`cadgen.store.build.build_tree_through_step`). OCCT's STEP translation is
-  lossy for some geometry, and a tree serialized from the returned shapes
-  described solids the file did not hold — so the store, the Viewer and a warm
-  `read_step` disagreed with any cold parse of the same bytes. Colours,
-  materials and occurrence names still come from the build. `occurrences`
+  `.brep` objects. A model result contains the exact authored source geometry,
+  reconstructed from canonical BREP bytes. It is the same result on a miss,
+  RAM/disk reuse, a top-level return, and a child call, independent of STEP
+  declarations or an attached UI. OCCT's STEP translation can change geometry,
+  so a saved document always has a separate tree read back from its bytes
+  (`cadgen.store.build.build_tree_through_step`). `occurrences`
   place components; `links` place children's
   trees. Two placements of one child are two links to one tree. Transforms
   are 16 numbers, row-major, translation in the fourth column, in the
@@ -179,7 +176,12 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   geometry while retaining their own finishes. Appearance-sensitive exports
   include the normalized appearance digest in their variant, including absence.
 
-  Model records and document mappings use payload schema 2. Old entries are
+  Model records and document mappings use payload schema 3.
+  Schema 2 model records used STEP-translated own components and are misses.
+  Schema 2 document mappings are also misses: exact bounds now reuse a
+  translation-independent derivation, whose final floating-point rounding can
+  change the canonical tree. Component identities and SURF objects are unchanged.
+  Old entries are
   misses; no directory or document-byte key is salted. Rebuild authored outputs
   to write schema-8 annotations. Legacy cache-only finishes cannot be recovered
   after the cache and source are lost, and are never guessed from another
@@ -204,7 +206,7 @@ A real one (`link_robot`: a base, two placements of `link_arm`, one of
 ```json
 {
   "kind": "record",
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "model": "/abs/models/assemblies/src/link_robot/link_robot.py::link_robot",
   "script": "/abs/models/assemblies/src/link_robot/link_robot.py",
   "function": "link_robot",
@@ -256,7 +258,8 @@ A real one (`link_robot`: a base, two placements of `link_arm`, one of
   constants): the gate runs it.
 - A leaf has `children: []`. Roots and leaves have the same record. A record
   for an imported document (`sourceKind: "step"`) has the document's bytes as
-  its closure.
+  its closure. Cold compilation does not read earlier model/output records
+  or preserve their declared exports when writing this bookkeeping.
 - A **drawing** (`@dxf`) is a model like any other: the same wrapper, record,
   gate and job. `entryKind: "drawing"`, `tree: null` (gate clause 4 is
   vacuous), its `.dxf` as the one output, and `children` pinned from the
@@ -402,6 +405,12 @@ Decided mechanically from the returned geometry and occurrence metadata.
   Native additions/removals are reconciled with surviving wrapper metadata.
   Conflicting native/wrapper hierarchy edits or ambiguous removal of identical
   occurrences fail explicitly instead of discarding geometry or guessing labels.
+- A directly returned materialized root carries its component addresses through
+  clean placement after that same full integrity check. Packaging reuses the
+  pinned BREP/SURF objects instead of deriving their identity a second time.
+  Forced extraction uses the pinned canonical bytes; deleted pinned assets
+  cause an ordinary identity derivation from the owned geometry. No pointer-only
+  shortcut bypasses the native mutation check.
 - Placement that keeps the link: `child.moved(loc)` and `Location * child`
   (the same shape, re-placed). build123d's `child.located(loc)` deep-copies
   the geometry (`BRepBuilderAPI_Copy`), which serializes to different bytes —
@@ -416,6 +425,20 @@ Decided mechanically from the returned geometry and occurrence metadata.
   two links to one object, and a child shared by many parents is stored once.
   Materialization requires the complete transitive object graph. A missing pin
   is an error, never an empty subtree or a request for the child's newer record.
+- Tight occurrence bounds use the existing `op` index, keyed by current native
+  geometry and its full linear transform. Translation shifts those six bounds
+  directly, so translated instances share the expensive surface calculation.
+  Rotation still requires its own tight box; control-polygon bounds are not
+  substituted. Disabled, memory-hit and disk-hit paths evaluate the same
+  origin-normalized function, and cached numeric arrays are never mutated.
+
+Operation keys serialize current geometry from private topology, normalizing
+only non-geometric `Free`/`Checked` flags. Native mutations must change the key.
+Each input is read again: Python properties can mutate geometry even during key
+construction. No TShape-to-content mapping replaces those reads. Shape hashes
+use a cheaper subset of the full equality signature, so collisions still require
+the complete equality check. The bounded rounding memo stores numeric inputs
+and outputs, never shapes or geometric signatures.
 
 ## 7. Concurrency
 
@@ -548,8 +571,8 @@ CPU scheduling and reuse remain independent of memory admission:
    for the daemon executor, per top-level build for the transient one, whose
    root process runs a private broker its workers inherit). A job takes a slot
    before its body runs and holds it through its emit; it **yields the slot
-   while it waits for a child it forced** and reacquires — queuing if it must —
-   when the child is done. A waiting parent holds no CPU slot, which is
+   while it waits for a child's source result or declared outputs** and reacquires
+   — queuing if it must — when that wait ends. A waiting parent holds no CPU slot, which is
    why a 1-slot pool still builds a 3-level tree. It retains its geometry and
    memory reservation. Slots count kernel work only:
    the build pipeline takes one around a model body and its emit. **Doors take
@@ -565,7 +588,7 @@ CPU scheduling and reuse remain independent of memory admission:
    on the document's bytes and shows in the tree. The tree shows `queued` when a
    slot did not come at once.
 2. **In-flight coalescing.** A child submit carries its source's closure hash;
-   a submit for `(model, closure)` matching a job already in flight attaches to
+   a submit for `(store, model, closure)` matching a job already in flight attaches to
    that job instead of starting another. In flight only, identical source only,
    never a lookup into the past — and never the model a top-level request named
    (a second `python a.py` still runs, on an extra). Two parents needing one
@@ -627,14 +650,29 @@ submitted itself. Deferred without forcing: `Pos/Rot/Location * child`,
 `.bounding_box()`, booleans, `copy.copy`, `Compound(children=...)`) forces:
 a body that reads a child before placing the next forces it there, and
 parallelism follows the dependencies the author wrote. Forcing waits for the
-job, materializes the pinned tree (§6), applies the deferred placement, label
+job's complete final source result, materializes the pinned tree (§6), applies the deferred placement, label
 and color, and tags the result exactly as an eager materialize would, so the
 link/component decision is unchanged. **Pins are taken at the call**: a
 current child's record is read when the parent calls it and its tree is pinned
 then, so a rebuild of that child between the call and the force cannot change
 what this build composes; a stale child's pin is its job's result, fixed when
-the job was submitted. The same stale child called twice shares one job. A failed child raises `ChildBuildError` at the forcing site,
+that particular job produces it. A `sourceResult` event carries the exact model
+reference and tree hash. The job captures it directly; forcing never rereads
+the mutable model record. Daemon and transient coalesced consumers receive the
+same event, including subscribers attaching after source publication.
+Coalescing is scoped by store, model and source closure. The same stale child
+called twice shares one job. A failed child without a result raises `ChildBuildError` at the forcing site,
 naming the call site in the parent and carrying the worker's output.
+
+Every called child still owes all declared outputs, including a call whose
+geometry was discarded. A parent publishes its complete source result and
+preview, then waits for all child outputs before its own save. The run retains
+these handles and drains every child even if the parent's body or packaging
+fails. A child save failure leaves the parent's previous saved document intact;
+the attempted source preview may remain visible with failure status. Waiting
+for source or saves yields the CPU slot and reacquires it before kernel work;
+a one-slot nested build progresses, although it cannot overlap persistence.
+Missing pinned objects fail the request rather than substituting a newer tree.
 
 The top-level call renders the graph these calls reveal as a build tree on
 stderr (`cadgen.cli_tree`): a TTY gets one refreshed block — `submitted`,
@@ -683,9 +721,11 @@ tree and bound to the saved bytes. Adjacent authored render modules remain
 independent. A saved-tree identity change clears incompatible selection and
 measurement state.
 
-Preview roots never replace `record.tree`, canonical child pins or a document
-mapping. A child still finishes its canonical STEP save before its parent can
-materialize that pin. Successful explicit saves require all declared outputs;
+The preview is the model's final immutable source result. Parents may pin and
+materialize that result before the child's STEP save finishes. It becomes
+`record.tree` only after the model's publication checks and dependent saves
+succeed; it is never replaced by translated STEP geometry and never used as a
+document-byte mapping. Successful explicit saves require all declared outputs;
 publishing a preview alone is not success. In **Follow
 edits**, a successful save keeps that revision's authored preview on screen:
 the status confirms the STEP save, while the viewport remains explicitly a

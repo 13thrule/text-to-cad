@@ -72,7 +72,8 @@ class PreviewWorker:
                           "sequence": sequence, "state": "building", **extra}}
 
     def frames(self, **_kwargs):
-        yield self.event(1, preview={"output": str(self.output), "tree": self.tree})
+        yield self.event(1, preview={"output": str(self.output), "tree": self.tree},
+                         sourceResult={"model": f"{self.model}::part", "tree": self.tree})
         self.preview_relayed.set()  # The supervisor has folded and relayed it.
         if not self.allow_save.wait(5):
             raise AssertionError("Test did not release the save barrier")
@@ -134,13 +135,13 @@ class CoalescedPreviewRequests(unittest.TestCase):
         claim_pending, allow_claim, follower_attached = (threading.Event() for _ in range(3))
         original_claim = self.broker.claim_entry
 
-        def claim(*args):
+        def claim(*args, **kwargs):
             # The producer has reached its preview before the follower starts.
             if worker.preview_relayed.is_set():
                 claim_pending.set()
                 if not allow_claim.wait(5):
                     raise AssertionError("Test did not release the claim barrier")
-            result = original_claim(*args)
+            result = original_claim(*args, **kwargs)
             if not result[0]:
                 follower_attached.set()
             return result
@@ -168,13 +169,14 @@ class CoalescedPreviewRequests(unittest.TestCase):
                 self.assertFalse(follower_future.done())
                 self.assertEqual(self.feed()["request"], producer_id)
                 self.assertFalse(self.output.exists())
-                self.assertEqual(follower_conn.frames, [])
+                self.wait_until(lambda: bool(follower_conn.frames), "late subscriber did not receive the source result")
+                self.assertEqual(follower_conn.frames[0]["event"]["sourceResult"]["tree"], self.tree)
 
                 worker.allow_save.set()
                 self.assertTrue(worker.saved_relayed.wait(3))
                 self.assertFalse(producer_future.done())
                 self.assertFalse(follower_future.done(), "STEP publication alone cannot finish a follower")
-                self.assertEqual(follower_conn.frames, [])
+                self.assertEqual(len(follower_conn.frames), 1)
                 if exit_code == 0:
                     self.assertEqual(self.feed()["saved"]["tree"], self.tree)
                 else:
@@ -188,7 +190,8 @@ class CoalescedPreviewRequests(unittest.TestCase):
                 worker.allow_exit.set()
 
         worker_pool.acquire.assert_called_once_with(str(self.model), dependency=True)
-        self.assertEqual(follower_conn.frames, [{"exit": exit_code}])
+        self.assertEqual(follower_conn.frames[-1], {"exit": exit_code})
+        self.assertEqual(len(follower_conn.frames), 2)
         producer, follower = self.ledger.snapshot()
         self.assertEqual(producer["id"], producer_id)
         self.assertNotEqual(producer["id"], follower["id"])

@@ -96,6 +96,15 @@ class CadGenerationTests(unittest.TestCase):
     def _cad_ref(self, name: str) -> str:
         return f"{self.relative_dir}/{name}"
 
+    def _generated_result(self, spec, scene=None):
+        """A mocked producer still delivers its complete, exact job result."""
+        from cadgen.daemon.executors import emit_source_result
+        from cadgen.store.trees import put_tree
+
+        tree = put_tree({"components": {}, "occurrences": [], "links": []})
+        emit_source_result(cad_generation._model_for_spec(spec), tree)
+        return cad_generation.GeneratedStepResult(spec=spec, scene=scene, tree=tree)
+
     def _write_step_at(
         self,
         directory: Path,
@@ -841,6 +850,7 @@ class CadGenerationTests(unittest.TestCase):
         def fake_generate(spec, *, entries_by_step_path, **_extra):
             self.assertIn(spec.step_path.resolve(), entries_by_step_path)
             calls.append(spec.cad_ref)
+            return self._generated_result(spec)
 
         with mock.patch.object(cad_generation, "_generate_step_outputs", side_effect=fake_generate):
             cad_generation.generate_step_targets([str(second_path), str(first_path)])
@@ -859,7 +869,7 @@ class CadGenerationTests(unittest.TestCase):
 
         def fake_outputs(spec, **kwargs):
             calls.append(kwargs)
-            return cad_generation.GeneratedStepResult(spec=spec, scene=scene)
+            return self._generated_result(spec, scene)
 
         with mock.patch.object(cad_generation, "run_script_generator", return_value=scene) as run_generator, mock.patch.object(
             cad_generation,
@@ -929,6 +939,7 @@ class CadGenerationTests(unittest.TestCase):
 
         def fake_generate(spec, *, entries_by_step_path, **_extra):
             calls.append(spec.script_path.resolve())
+            return self._generated_result(spec)
 
         with mock.patch.object(cad_generation, "_generate_step_outputs", side_effect=fake_generate):
             cad_generation.generate_step_targets([str(assembly_path)])
@@ -961,6 +972,7 @@ class CadGenerationTests(unittest.TestCase):
             nonlocal observed_scene
             observed_scene = preloaded_scene
             self.assertIs(spec, spec_arg)
+            return self._generated_result(spec, preloaded_scene)
 
         with mock.patch.object(cad_generation, "_generate_part_outputs", side_effect=fake_outputs):
             cad_generation._generate_step_outputs(spec, entries_by_step_path={spec.step_path.resolve(): spec})
@@ -976,33 +988,28 @@ class CadGenerationTests(unittest.TestCase):
     def test_normal_python_generation_reuses_current_package(self) -> None:
         script_path = self._generator_script("flat")
         spec = next(spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("flat"))
-        step_path = script_path.with_suffix(".step")
-        source_identity = cad_generation.python_source_hash(script_path)
-        scene = LoadedStepScene(
-            step_path=step_path.resolve(),
-            roots=[],
-            prototype_shapes={},
-            source_kind="python",
-            source_hash=source_identity.source_hash,
-            source_path=cad_generation.relative_to_cwd(script_path),
-        )
+        from cadgen.store.trees import put_tree
+
+        tree = put_tree({"components": {}, "occurrences": [], "links": []})
 
         # A current model reuses its tree: the topology options match, the tree is
         # complete, and its source closure is unchanged -> no remesh.
         with (
-            mock.patch.object(cad_generation, "_existing_topology_artifact_matches_options", return_value=True),
-            mock.patch.object(cad_generation, "_assembly_glb_package_current", return_value=True),
-            mock.patch.object(cad_generation, "_generated_assembly_glb_closure_current", return_value=True),
+            mock.patch.object(cad_generation, "_checked_source_tree", return_value=tree),
+            mock.patch.object(cad_generation, "_existing_topology_artifact_matches_spec_without_scene", return_value=True),
+            mock.patch.object(cad_generation, "run_script_generator") as run_generator,
+            mock.patch.object(cad_generation, "_generate_part_outputs") as package,
             ):
-            result = cad_generation._generate_part_outputs(
+            result = cad_generation._generate_step_outputs(
                 spec,
                 entries_by_step_path={spec.step_path.resolve(): spec},
-                preloaded_scene=scene,
-                require_step_file=False,
                 force=False,
             )
 
-        self.assertIs(scene, result.scene)
+        run_generator.assert_not_called()
+        package.assert_not_called()
+        self.assertEqual(tree, result.tree)
+        self.assertIsNone(result.scene)
         self.assertIsNone(result.selector_bundle)
 
 
@@ -1054,6 +1061,7 @@ class CadGenerationTests(unittest.TestCase):
 
         def fake_generate(spec, *, entries_by_step_path, **_extra):
             calls.append(spec)
+            return self._generated_result(spec)
 
         with mock.patch.object(cad_generation, "_generate_step_outputs", side_effect=fake_generate):
             cad_generation.generate_step_targets(

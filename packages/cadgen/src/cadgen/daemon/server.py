@@ -181,7 +181,17 @@ def _wait_for_inflight_consumer(conn: transport.Channel, entry: dict) -> int | N
     an EOF probe. It emits no heartbeat frames and cannot disturb other users of
     the same in-flight entry.
     """
-    while not entry["done"].wait(CLIENT_LIVENESS_INTERVAL_SECONDS):
+    result_seen = False
+    while True:
+        event, done, code = _BROKER.wait_update(entry, result_seen=result_seen)
+        try:
+            if event is not None:
+                _send(conn, {"event": event})
+                result_seen = True
+        except OSError:
+            return None
+        if done:
+            return code
         try:
             if conn.recv(0.0) == b"":
                 return None
@@ -189,7 +199,6 @@ def _wait_for_inflight_consumer(conn: transport.Channel, entry: dict) -> int | N
             # Simple in-process test channels have no receive side. A real
             # transport.Channel normalizes peer loss to b"".
             pass
-    return entry["exit"] if entry["exit"] is not None else 1
 
 
 def _status_payload() -> dict:
@@ -293,7 +302,7 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
     )
     inflight = None
     if subject and closure and request.get("coalesce"):
-        owns_work, inflight = _BROKER.claim_entry(subject, closure)
+        owns_work, inflight = _BROKER.claim_entry(subject, closure, store_root=str(request.get("store_root") or ""))
         if not owns_work:
             # Identical source is already building: attach, relay its exit, run nothing.
             _log(f"{tool} {model}: coalesced onto the job in flight")
@@ -357,6 +366,9 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
             if frame.get("stream") == "stderr":
                 stderr_tail.append(str(frame.get("data") or ""))
             _JOBS.observe(frame)
+            event = frame.get("event")
+            if inflight is not None and isinstance(event, dict) and event.get("job") == job["id"]:
+                _BROKER.publish_result(inflight, event)
             if relay_connected:
                 try:
                     with send_lock:

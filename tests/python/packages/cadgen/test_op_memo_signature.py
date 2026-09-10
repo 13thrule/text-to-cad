@@ -158,6 +158,7 @@ class OpMemoSignatureTest(unittest.TestCase):
                 actual = op_memo._signature(child)
                 self.assertEqual(actual, expected)
                 self.assertEqual(hash(actual), hash(expected))
+                self.assertEqual(op_memo._signature_hash(child), hash((expected[0], expected[2])))
 
     def test_all_topology_ranks_match_original_tuple(self):
         for label, shape in self.cases.items():
@@ -216,6 +217,77 @@ class OpMemoSignatureTest(unittest.TestCase):
         self.assertIs(edge.TShape(), tshape)
         self.assertNotEqual(op_memo._signature(edge), before)
         self.assertEqual(op_memo._signature(edge), _reference_signature(edge))
+
+    def test_hash_collision_does_not_merge_an_arc_and_its_chord(self):
+        import os
+        from unittest import mock
+        from build123d import Edge
+
+        op_memo.install()
+        with mock.patch.dict(os.environ, {"CADGEN_OP_MEMO": "1"}):
+            line = Edge.make_line((0, 0, 0), (10, 0, 0))
+            arc = Edge.make_three_point_arc((0, 0, 0), (5, 3, 0), (10, 0, 0))
+            self.assertEqual(hash(line), hash(arc))
+            self.assertNotEqual(line, arc)
+            self.assertEqual(len({line, arc}), 2)
+            self.assertEqual({line: "line", arc: "arc"}[arc], "arc")
+
+    def test_hash_does_not_evaluate_full_surface_or_curve_signature(self):
+        import os
+        from unittest import mock
+        from build123d import Edge
+
+        op_memo.install()
+        with mock.patch.dict(os.environ, {"CADGEN_OP_MEMO": "1"}):
+            edge = Edge.make_three_point_arc((0, 0, 0), (5, 3, 0), (10, 0, 0))
+            with mock.patch.object(op_memo, "_signature", side_effect=AssertionError("hash evaluated full geometry")):
+                self.assertIsInstance(hash(edge), int)
+
+
+class NumericRoundingCacheTest(unittest.TestCase):
+    def tearDown(self):
+        op_memo.clear()
+
+    def test_exact_rounding_preserves_signed_zero_nonfinite_and_boundary_values(self):
+        import math
+        import struct
+
+        values = [0.0, -0.0, 1.0, -1.0, 1e-300, -1e-300,
+                  math.inf, -math.inf, math.nan, 0.0000005, -0.0000005,
+                  math.nextafter(0.0000005, 0), math.nextafter(0.0000005, math.inf)]
+        for x in values:
+            for y in values:
+                coordinates = (x, y, -0.0)
+                expected = tuple(round(value, op_memo._SIGNATURE_DECIMALS) for value in coordinates)
+                for _ in range(2):
+                    actual = op_memo._rounded_coordinates(coordinates)
+                    self.assertEqual(struct.pack("<ddd", *actual), struct.pack("<ddd", *expected))
+        # A cached NaN tuple would compare equal to itself by object identity.
+        first = op_memo._rounded_coordinates((math.nan, 1.0, 2.0))
+        second = op_memo._rounded_coordinates((math.nan, 1.0, 2.0))
+        self.assertNotEqual(first, second)
+
+    def test_numeric_retention_is_bounded_and_clear_releases_it(self):
+        op_memo.clear()
+        capacity = op_memo._rounded_coordinate_bytes.cache_info().maxsize
+        for i in range(capacity + 100):
+            op_memo._rounded_coordinates((float(i), 1.25, -0.0))
+        self.assertEqual(op_memo._rounded_coordinate_bytes.cache_info().currsize, capacity)
+        op_memo.clear()
+        self.assertEqual(op_memo._rounded_coordinate_bytes.cache_info().currsize, 0)
+
+    def test_numeric_subclasses_retain_their_rounding_callbacks(self):
+        calls = []
+
+        class Number(float):
+            def __round__(self, digits=None):
+                calls.append(digits)
+                return 42.0
+
+        coordinates = (Number(1.25), 2.0, 3.0)
+        for _ in range(2):
+            self.assertEqual(op_memo._rounded_coordinates(coordinates), (42.0, 2.0, 3.0))
+        self.assertEqual(calls, [op_memo._SIGNATURE_DECIMALS] * 2)
 
 
 class SignatureCacheStateParityTest(unittest.TestCase):

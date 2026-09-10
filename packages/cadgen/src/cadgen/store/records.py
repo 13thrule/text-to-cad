@@ -52,8 +52,8 @@ from cadgen.store.index import (
 
 RECORD_KIND = "record"
 # Payload cutovers, not directory/name salts. Legacy mappings are misses.
-RECORD_SCHEMA_VERSION = 2
-DOCUMENT_SCHEMA_VERSION = 2
+RECORD_SCHEMA_VERSION = 3
+DOCUMENT_SCHEMA_VERSION = 3
 
 
 def read_record(model: Path | str) -> dict[str, Any] | None:

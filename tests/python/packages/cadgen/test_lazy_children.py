@@ -24,6 +24,14 @@ from cadgen.store.lazy import ChildBuildError, LazyCompound  # noqa: E402
 class _Job:
     def __init__(self, code: int = 0, text: str = "") -> None:
         self.code, self.text, self.waited = code, text, 0
+        self.result_ready = self.done = True
+        self.tree = "t-child"
+
+    def wait_result(self, timeout=None):
+        self.waited += 1
+        if self.code or not self.tree:
+            raise RuntimeError(self.text or "no source result")
+        return self.tree
 
     def wait(self, timeout=None):
         self.waited += 1
@@ -60,12 +68,12 @@ class LazyFixture(unittest.TestCase):
         patcher = mock.patch.object(lazy_mod, "_materialize_tree", materialize)
         patcher.start()
         self.addCleanup(patcher.stop)
-        record = mock.patch.object(lazy_mod, "_read_record", lambda model: {"tree": "t-child"})
+        record = mock.patch("cadgen.store.trees.tree_complete", return_value=True)
         record.start()
         self.addCleanup(record.stop)
 
     def lazy(self, job=None, label="child") -> LazyCompound:
-        return LazyCompound(self.model, job, frame=self.frame, label=label)
+        return LazyCompound(self.model, job, frame=self.frame, label=label, tree="t-child" if job is None else None)
 
 
 class Deferral(LazyFixture):
@@ -122,7 +130,7 @@ class Deferral(LazyFixture):
     def test_the_first_tree_seen_is_pinned_for_the_build(self):
         first = self.lazy(None)
         self.assertEqual(first.tree_hash(), "t-child")
-        with mock.patch.object(lazy_mod, "_read_record", lambda model: {"tree": "t-newer"}):
+        with mock.patch("cadgen.store.records.read_record", side_effect=AssertionError("latest record read")):
             second = self.lazy(None)
             self.assertEqual(second.tree_hash(), "t-child", "the pin did not isolate the build")
 
@@ -132,7 +140,7 @@ class Deferral(LazyFixture):
         # it: the parent still composes the tree it pinned at the call.
         child = LazyCompound(self.model, None, frame=self.frame, label="child", tree="t-at-call")
         self.assertEqual(self.frame.pins[str(self.model)], "t-at-call")
-        with mock.patch.object(lazy_mod, "_read_record", lambda model: {"tree": "t-rebuilt"}):
+        with mock.patch("cadgen.store.records.read_record", side_effect=AssertionError("latest record read")):
             child.solids()  # forces
         self.assertEqual(self.materialized, [("t-at-call", "child")])
         self.assertEqual(child.tree_hash(), "t-at-call")
@@ -183,10 +191,11 @@ class Errors(LazyFixture):
         self.assertIn("boom", message)
         self.assertIn(__file__.rsplit("/", 1)[-1], message, "the call site in the parent is missing")
 
-    def test_a_child_with_no_record_after_a_successful_job_is_an_error(self):
-        with mock.patch.object(lazy_mod, "_read_record", lambda model: None):
-            with self.assertRaises(ChildBuildError):
-                self.lazy(_Job()).tree_hash()
+    def test_a_child_with_no_source_result_after_a_successful_job_is_an_error(self):
+        job = _Job()
+        job.tree = None
+        with self.assertRaises(ChildBuildError):
+            self.lazy(job).tree_hash()
 
 
 if __name__ == "__main__":

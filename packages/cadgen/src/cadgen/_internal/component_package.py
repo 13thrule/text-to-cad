@@ -220,27 +220,34 @@ def _bbox_from_shape(shape: Any) -> dict[str, list[float]] | None:
     inspect summary does not have to re-mesh + extract full topology.
 
     Measured PER LEAF and merged, not once over the whole compound, because a
-    leaf's box is a pure function of (its location-stripped content, its world
-    placement) and so can be memoized: ``op_memo.memoized_value`` keeps it in
-    the warm worker and on disk, and a rebuild that moved one occurrence pays
-    for that one box. Tight bounds cost ~0.08 ms per face, which a whole
+    leaf's box is a pure function of its geometry and rotation. Translation
+    shifts the six bounds without repeating the surface-extrema calculation.
+    ``op_memo.memoized_value`` keeps the untranslated box in the warm worker
+    and on disk, so translated instances share that calculation. Tight bounds
+    cost ~0.08 ms per face, which a whole
     150k-face assembly could not absorb on every finalize but an unchanged
     occurrence never pays twice.
     """
     try:
         from cadgen._internal import op_memo
+        from OCP.TopLoc import TopLoc_Location
+        from OCP.gp import gp_Vec
 
         boxes = []
         for leaf in _world_leaves(shape.wrapped):
+            transform = leaf.Location().Transformation()
+            translation = tuple(transform.TranslationPart().Coord())
+            transform.SetTranslationPart(gp_Vec(0.0, 0.0, 0.0))
+            untranslated = leaf.Located(TopLoc_Location(transform))
             box = op_memo.memoized_value(
                 # The op_name names the FUNCTION: change what this computes and
                 # change the name (or _OP_MEMO_VERSION) with it.
-                "occurrence_bbox.optimal",
-                op_memo.placed_shape_key(leaf),
-                lambda leaf=leaf: optimal_box(leaf),
+                "occurrence_bbox.optimal.untranslated.v1",
+                op_memo.placed_shape_key(untranslated),
+                lambda untranslated=untranslated: optimal_box(untranslated),
             )
             if box is not None:
-                boxes.append(box)
+                boxes.append([value + translation[index % 3] for index, value in enumerate(box)])
         if not boxes:
             return None
         return {

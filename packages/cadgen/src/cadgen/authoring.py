@@ -114,8 +114,56 @@ class BuildFrame:
         return self.pins.setdefault(str(child), tree)
 
     def child_trees(self) -> list[tuple[str, str]]:
-        """Every child call with the tree it resolved to; waits for pending jobs."""
+        """Every child call with its final source result; saves may still be pending."""
         return [(child, lazy.tree_hash()) for child, lazy in self.children]
+
+    def wait_children(self) -> None:
+        failure = None
+        seen = set()
+        for child, lazy in self.children:
+            if child in seen:
+                continue
+            seen.add(child)
+            try:
+                lazy.wait_outputs()
+                # Discarded calls are dependencies too: absent pinned objects
+                # cannot be admitted merely because their output files exist.
+                lazy.tree_hash()
+            except Exception as exc:
+                if failure is None:
+                    failure = exc
+        if failure is not None:
+            raise failure
+
+
+@contextlib.contextmanager
+def settle_child_builds(*, only_if_unowned: bool = False):
+    """A run retains and drains all child jobs, including after its own failure."""
+    frames = []
+    previous = getattr(_BUILD_STATE, "completion_frames", None)
+    if only_if_unowned and previous is not None:
+        yield
+        return
+    _BUILD_STATE.completion_frames = frames
+    error = None
+    try:
+        yield
+    except BaseException as exc:
+        error = exc
+        raise
+    finally:
+        _BUILD_STATE.completion_frames = previous
+        failure = None
+        for frame in frames:
+            try:
+                frame.wait_children()
+            except Exception as exc:
+                if failure is None:
+                    failure = exc
+        if failure is not None:
+            if error is None:
+                raise failure
+            error.add_note(str(failure))
 
 
 def _same_file(left: Path, right: Path) -> bool:
@@ -142,6 +190,9 @@ def building(script_path: Path | None = None, function: str | None = None) -> It
     if frames is None:
         frames = _BUILD_STATE.frames = []
     frame = BuildFrame(script_path, function)
+    completion = getattr(_BUILD_STATE, "completion_frames", None)
+    if completion is not None:
+        completion.append(frame)
     frames.append(frame)
     try:
         yield frame
@@ -437,13 +488,17 @@ def _decorator(
             # mesh decorator stacked ABOVE @step since `defn` was captured, so read it
             # back rather than closing over the original.
             current = _REGISTRY.get(defn.ref, defn)
-            code = _build(current)
+            from cadgen.daemon.executors import capture_source_result
+
+            with capture_source_result(current.ref) as built:
+                code = _build(current)
+                built._finish(code)
             if code != 0:
                 raise SystemExit(code)
             # ...and hands back the geometry it built (or found current), so a plain
             # script, a notebook or a REPL gets the shape a parent would: the model's
             # tree materialized. A drawing has no tree and returns None.
-            return _built_geometry(current)
+            return _built_geometry(current, tree=built.wait_result() if current.fmt == "step" else None)
 
         model.__cadgen_model__ = defn  # type: ignore[attr-defined]
         return model
@@ -676,9 +731,7 @@ def _compose_child(defn: ModelDef) -> Any:
         else:
             # Current: pin its tree NOW, at the call. A rebuild of this child between
             # here and the force must not change what this build composes.
-            from cadgen.store.records import read_record
-
-            tree = str((read_record(child) or {}).get("tree") or "") or None
+            tree = verdict.tree
             # No work: the tree summarizes current children on the parent's line.
             emit_event(model_event(child, "current", parent=parent))
     lazy = LazyCompound(child, job, frame=frame, label=defn.name, tree=tree)
@@ -734,16 +787,13 @@ def _build(defn: ModelDef) -> int:
         return run_model_argv([*target, *argv], prog=f"python {defn.script_path.name}")
 
 
-def _built_geometry(defn: ModelDef) -> Any:
+def _built_geometry(defn: ModelDef, *, tree: str | None) -> Any:
     """What a top-level call hands back after its build: the model's tree,
     materialized -- the geometry a parent composing this model would receive.
-    None for a drawing (no tree) or when no record was left."""
+    None for a drawing (no tree). Never resolves a mutable model record."""
     if defn.fmt != "step":
         return None
     from cadgen.store.lazy import materialize_model
-    from cadgen.store.records import read_record
-
-    tree = str((read_record(defn.ref) or {}).get("tree") or "")
     if not tree:
-        return None
+        raise RuntimeError(f"{defn.ref}: successful build supplied no source result")
     return materialize_model(tree, label=defn.name)

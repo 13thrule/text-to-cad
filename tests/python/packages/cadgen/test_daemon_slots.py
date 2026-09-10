@@ -19,7 +19,7 @@ import unittest
 from pathlib import Path
 
 from tests.python.support.paths import REPO_ROOT, add_repo_path
-from tests.python.support.tmp_root import temporary_directory
+from tests.python.support.tmp_root import generated_cad_directory
 
 add_repo_path("packages/cadgen/src")
 
@@ -160,7 +160,7 @@ class _Executor(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.work_tmp = temporary_directory(prefix=f"cadgen-slots-{cls.__name__}-")
+        cls.work_tmp = generated_cad_directory(prefix=f"cadgen-slots-{cls.__name__}-")
         cls.work = Path(cls.work_tmp.name)
         cls.src = cls.work / "src"
         _write_fixture(cls.src)

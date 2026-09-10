@@ -404,7 +404,11 @@ def run_script_generator(
     # and said nothing on any surface. So the generator run becomes the reporter when
     # nobody above us is one.
     owns_reporting = progress is None
-    with _generator_progress_line(spec, logger=logger, active=owns_reporting) as sink:
+    from cadgen.authoring import settle_child_builds
+
+    # The normal build owns these handles through source publication and save.
+    # A standalone generator caller still settles its children before returning.
+    with settle_child_builds(only_if_unowned=True), _generator_progress_line(spec, logger=logger, active=owns_reporting) as sink:
         with _track_spec_generation(
             spec, model_format, intent=intent, sink=sink
         ) as generator_run:
@@ -585,6 +589,9 @@ def _run_script_generator_body(
         generated_scene.store_children = [
             {"model": str(child), "tree": tree} for child, tree in child_trees
         ]
+        # Runtime handles never enter objects/records. Source-ready children may
+        # still owe their own files; the parent drains these after its preview.
+        generated_scene.wait_child_outputs = frame.wait_children
     elif model_format == "dxf":
         if spec.dxf_path is None:
             raise RuntimeError(f"{spec.source_ref} has no configured DXF output")
@@ -601,6 +608,7 @@ def _run_script_generator_body(
         # The product IS the .dxf: the run always writes it — the sibling by
         # default, `-o` renames — and the viewer parses that file directly.
         output_path = spec.dxf_path
+        frame.wait_children()
         _write_dxf_payload(
             raw_payload, output_path=output_path, script_path=spec.script_path, logger=logger
         )
@@ -707,5 +715,3 @@ def _track_spec_generation(
     # counts its own phases rather than a STEP package's.
     kind = DRAWING_PACKAGE if model_format == "dxf" else STEP_PACKAGE
     return generator_busy(kind, scope, sink=sink)
-
-

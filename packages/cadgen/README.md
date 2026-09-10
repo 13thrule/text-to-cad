@@ -46,6 +46,11 @@ allow artifact readers to inspect source or model records.
 Following edits keeps the authored preview after a successful STEP save, with
 the save status reported separately. Switching to the saved file resolves its
 actual bytes and corresponding topology and annotations.
+The authored tree is also the final result returned by decorated calls. A
+parent can consume a child's complete source result before that child's STEP
+save, but waits for every called child's declared outputs before saving itself.
+The child's job carries the exact immutable pin; asynchronous consumers never
+look up a newer model record to resolve it.
 
 - Nothing a renderer reads references the source tree: the sidecar's
   kinematics are resolved numbers and labels, and choreography is the
