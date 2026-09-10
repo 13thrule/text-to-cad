@@ -1,0 +1,676 @@
+{
+  "startedAt": "2026-09-10T08:06:15.165Z",
+  "viewerPort": 3267,
+  "requests": [
+    {
+      "at": 1789027575320,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/?file=finish_box.step"
+    },
+    {
+      "at": 1789027575327,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/index-BRecF5BP.js"
+    },
+    {
+      "at": 1789027575327,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/vendor-react-7jnMmQ9s.js"
+    },
+    {
+      "at": 1789027575327,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/vendor-three-gpkAaKBT.js"
+    },
+    {
+      "at": 1789027575327,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/vendor-ui-BsxuH3Zm.js"
+    },
+    {
+      "at": 1789027575327,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/vendor-icons-C2qOLVwp.js"
+    },
+    {
+      "at": 1789027575327,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/index-DxwPzKOq.css"
+    },
+    {
+      "at": 1789027575370,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/catalog?file=finish_box.step"
+    },
+    {
+      "at": 1789027575402,
+      "method": "GET",
+      "url": "https://api.github.com/repos/earthtojake/text-to-cad/releases/latest"
+    },
+    {
+      "at": 1789027575403,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/server?file=finish_box.step"
+    },
+    {
+      "at": 1789027575482,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/artifact?file=%2FUsers%2Fjakefitzgerald%2F.codex%2Fworktrees%2F3c6b%2Ftext-to-cad%2Fmodels%2Ftmp%2Fsaved-appearance-browser-20260910%2Ffinish_box.step"
+    },
+    {
+      "at": 1789027575482,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/store?file=%2Fb3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367%2Fassembly.json"
+    },
+    {
+      "at": 1789027575494,
+      "method": "HEAD",
+      "url": "http://127.0.0.1:3267/__cad/store?file=%2Fb3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367%2Fcomponents%2F72b53c962d933363.surf"
+    },
+    {
+      "at": 1789027575498,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/surfWorker-Bd1gktSL.js"
+    },
+    {
+      "at": 1789027575498,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/surfWorker-Bd1gktSL.js"
+    },
+    {
+      "at": 1789027575498,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/surfWorker-Bd1gktSL.js"
+    },
+    {
+      "at": 1789027575500,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__tess_cache/72b53c962d933363-t1-l1.500000e-3-a3.500000e-1.tess"
+    },
+    {
+      "at": 1789027575500,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/surfWorker-Bd1gktSL.js"
+    },
+    {
+      "at": 1789027575500,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/surfWorker-Bd1gktSL.js"
+    },
+    {
+      "at": 1789027575502,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/surfWorker-Bd1gktSL.js"
+    },
+    {
+      "at": 1789027575502,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/surfWorker-Bd1gktSL.js"
+    },
+    {
+      "at": 1789027575502,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/assets/surfWorker-Bd1gktSL.js"
+    },
+    {
+      "at": 1789027577371,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/catalog?file=finish_box.step"
+    },
+    {
+      "at": 1789027579371,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/catalog?file=finish_box.step"
+    },
+    {
+      "at": 1789027579377,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/artifact?file=%2FUsers%2Fjakefitzgerald%2F.codex%2Fworktrees%2F3c6b%2Ftext-to-cad%2Fmodels%2Ftmp%2Fsaved-appearance-browser-20260910%2Ffinish_box.step"
+    },
+    {
+      "at": 1789027579377,
+      "method": "HEAD",
+      "url": "http://127.0.0.1:3267/__cad/store?file=%2Fb3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367%2Fcomponents%2F72b53c962d933363.surf"
+    },
+    {
+      "at": 1789027581371,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/catalog?file=finish_box.step"
+    },
+    {
+      "at": 1789027583371,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/catalog?file=finish_box.step"
+    },
+    {
+      "at": 1789027583377,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/artifact?file=%2FUsers%2Fjakefitzgerald%2F.codex%2Fworktrees%2F3c6b%2Ftext-to-cad%2Fmodels%2Ftmp%2Fsaved-appearance-browser-20260910%2Ffinish_box.step"
+    },
+    {
+      "at": 1789027583377,
+      "method": "HEAD",
+      "url": "http://127.0.0.1:3267/__cad/store?file=%2Fb3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367%2Fcomponents%2F72b53c962d933363.surf"
+    },
+    {
+      "at": 1789027585371,
+      "method": "GET",
+      "url": "http://127.0.0.1:3267/__cad/catalog?file=finish_box.step"
+    }
+  ],
+  "pageErrors": [],
+  "stages": [
+    {
+      "name": "baseline",
+      "catalog": {
+        "file": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.step",
+        "kind": "part",
+        "url": "/__cad/store?file=b3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367",
+        "hash": "b3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367",
+        "documentHash": "ed45aa1b7302b23b6e0ff860fd2d0f0ab3c46033c4eae55a0776fe1de0b1ea32",
+        "bytes": 1799,
+        "sourceUrl": "/__cad/asset?file=%2FUsers%2Fjakefitzgerald%2F.codex%2Fworktrees%2F3c6b%2Ftext-to-cad%2Fmodels%2Ftmp%2Fsaved-appearance-browser-20260910%2Ffinish_box.step.json&v=6w-dlbhc72bfjc4",
+        "sourceSidecar": {
+          "appearance": {
+            "occurrences": {
+              "o1.1": {
+                "clearcoat": 0.65,
+                "clearcoatRoughness": 0.12,
+                "metalness": 0.82,
+                "opacity": 1,
+                "roughness": 0.18
+              }
+            }
+          },
+          "documentHash": "ed45aa1b7302b23b6e0ff860fd2d0f0ab3c46033c4eae55a0776fe1de0b1ea32",
+          "schemaVersion": 8
+        },
+        "appearanceHash": "6d5aeec3d71605cdceaf61929059a93e5cdbbc9752646926ef9f6d61a1037f4f",
+        "rootRelativeFile": "finish_box.step"
+      },
+      "observed": {
+        "meshCost": {
+          "composed": {
+            "triangleCount": 12,
+            "typedArrayBytes": 1104
+          },
+          "componentTotalBytes": 1104,
+          "componentTotalTriangles": 12,
+          "componentCount": 1,
+          "occurrenceCount": 1,
+          "totalComponents": 1,
+          "loadedComponents": 1,
+          "publishCount": 1,
+          "final": true,
+          "at": 190.09999990463257
+        },
+        "memory": {
+          "occurrences": 1,
+          "edgeObjects": 0,
+          "edgeInstanceSets": 1,
+          "edgeInstances": 1,
+          "surfaceInstanceSets": 0,
+          "surfaceInstances": 0,
+          "surfaceInstanceBytes": 0,
+          "geometries": 2,
+          "buffers": 5,
+          "materials": 3,
+          "surfaceBytes": 720,
+          "edgeBytes": 1468,
+          "bvhBytes": 96,
+          "bvhGeometries": 1,
+          "faceIdBytes": 0,
+          "faceIdArrays": 0,
+          "pickBytes": 0,
+          "pickGeometries": 0,
+          "deformationBytes": 0,
+          "displayCpuBytes": 2188,
+          "gpuEstimatedBytes": 2188,
+          "assetCaches": {
+            "surfPayload": {
+              "entries": 1,
+              "typedBytes": 1104,
+              "manifestRows": 0
+            },
+            "selector": {
+              "entries": 0,
+              "typedBytes": 0,
+              "manifestRows": 0
+            },
+            "displayEdge": {
+              "entries": 0,
+              "typedBytes": 0,
+              "manifestRows": 0
+            },
+            "glb": {
+              "entries": 1,
+              "typedBytes": 0,
+              "manifestRows": 0
+            },
+            "surfLeash": {
+              "entries": 2,
+              "limit": 24,
+              "bytes": 1104,
+              "maxBytes": 268435456,
+              "minEntries": 4
+            }
+          },
+          "memoryPolicy": {
+            "budgetBytes": 1610612736,
+            "gpuHeadroomBytes": 268435456,
+            "ownedLimitBytes": 1342177280,
+            "replacementHeadroomBytes": 134217728,
+            "retainedByCategory": {
+              "displayCpu": 2188,
+              "selectors": 0,
+              "bvh": 96,
+              "gpuEstimated": 2188,
+              "deformation": 0,
+              "assetCaches": 1104,
+              "workerResidentEstimated": 0,
+              "replacementPending": 0
+            },
+            "inFlightByCategory": {},
+            "retainedBytes": 5576,
+            "inFlightBytes": 0,
+            "estimatedOwnedBytes": 5576,
+            "availableBytes": 1342171704,
+            "reservationCount": 0,
+            "lastLimitation": null,
+            "hardRssCap": false
+          },
+          "at": 713.4000000953674
+        },
+        "uniforms": [
+          {
+            "at": 142.09999990463257,
+            "name": "opacity",
+            "value": 0.28
+          },
+          {
+            "at": 145.09999990463257,
+            "name": "opacity",
+            "value": 0.16
+          },
+          {
+            "at": 169.09999990463257,
+            "name": "opacity",
+            "value": 0.16
+          },
+          {
+            "at": 206.40000009536743,
+            "name": "opacity",
+            "value": 1
+          },
+          {
+            "at": 218.59999990463257,
+            "name": "roughness",
+            "value": 0.18
+          },
+          {
+            "at": 218.59999990463257,
+            "name": "metalness",
+            "value": 0.82
+          },
+          {
+            "at": 218.59999990463257,
+            "name": "opacity",
+            "value": 1
+          },
+          {
+            "at": 218.59999990463257,
+            "name": "clearcoat",
+            "value": 0.65
+          },
+          {
+            "at": 218.59999990463257,
+            "name": "clearcoatRoughness",
+            "value": 0.12
+          },
+          {
+            "at": 221.09999990463257,
+            "name": "opacity",
+            "value": 0.28
+          },
+          {
+            "at": 224,
+            "name": "opacity",
+            "value": 0.16
+          },
+          {
+            "at": 227.69999980926514,
+            "name": "opacity",
+            "value": 1
+          }
+        ],
+        "text": "Toggle Sidebar\nfinish_box.step\n0.5.1\nSaved file\nOpen theme settings\nCollapse STEP sheet\nTree\n\nNo assembly tree\n\nReference\nMeasure\nDisplay\n\nSelect geometry to inspect"
+      },
+      "stepHash": "ed45aa1b7302b23b6e0ff860fd2d0f0ab3c46033c4eae55a0776fe1de0b1ea32"
+    },
+    {
+      "name": "changed",
+      "catalog": {
+        "file": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.step",
+        "kind": "part",
+        "url": "/__cad/store?file=b3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367",
+        "hash": "b3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367",
+        "documentHash": "ed45aa1b7302b23b6e0ff860fd2d0f0ab3c46033c4eae55a0776fe1de0b1ea32",
+        "bytes": 1799,
+        "sourceUrl": "/__cad/asset?file=%2FUsers%2Fjakefitzgerald%2F.codex%2Fworktrees%2F3c6b%2Ftext-to-cad%2Fmodels%2Ftmp%2Fsaved-appearance-browser-20260910%2Ffinish_box.step.json&v=6w-dlbhcjij05q1",
+        "sourceSidecar": {
+          "appearance": {
+            "occurrences": {
+              "o1.1": {
+                "clearcoat": 0.05,
+                "clearcoatRoughness": 0.35,
+                "metalness": 0.06,
+                "opacity": 1,
+                "roughness": 0.86
+              }
+            }
+          },
+          "documentHash": "ed45aa1b7302b23b6e0ff860fd2d0f0ab3c46033c4eae55a0776fe1de0b1ea32",
+          "schemaVersion": 8
+        },
+        "appearanceHash": "583e6dddde6b7d06cab3a6dc63df9a63895626fb09507e3bc2e0a3ad50c2de04",
+        "rootRelativeFile": "finish_box.step"
+      },
+      "observed": {
+        "meshCost": {
+          "composed": {
+            "triangleCount": 12,
+            "typedArrayBytes": 1104
+          },
+          "componentTotalBytes": 1104,
+          "componentTotalTriangles": 12,
+          "componentCount": 1,
+          "occurrenceCount": 1,
+          "totalComponents": 1,
+          "loadedComponents": 1,
+          "publishCount": 1,
+          "final": true,
+          "at": 4060.199999809265
+        },
+        "memory": {
+          "occurrences": 1,
+          "edgeObjects": 0,
+          "edgeInstanceSets": 1,
+          "edgeInstances": 1,
+          "surfaceInstanceSets": 0,
+          "surfaceInstances": 0,
+          "surfaceInstanceBytes": 0,
+          "geometries": 2,
+          "buffers": 5,
+          "materials": 3,
+          "surfaceBytes": 720,
+          "edgeBytes": 1468,
+          "bvhBytes": 96,
+          "bvhGeometries": 1,
+          "faceIdBytes": 0,
+          "faceIdArrays": 0,
+          "pickBytes": 0,
+          "pickGeometries": 0,
+          "deformationBytes": 0,
+          "displayCpuBytes": 2188,
+          "gpuEstimatedBytes": 2188,
+          "assetCaches": {
+            "surfPayload": {
+              "entries": 1,
+              "typedBytes": 1104,
+              "manifestRows": 0
+            },
+            "selector": {
+              "entries": 0,
+              "typedBytes": 0,
+              "manifestRows": 0
+            },
+            "displayEdge": {
+              "entries": 0,
+              "typedBytes": 0,
+              "manifestRows": 0
+            },
+            "glb": {
+              "entries": 1,
+              "typedBytes": 0,
+              "manifestRows": 0
+            },
+            "surfLeash": {
+              "entries": 2,
+              "limit": 24,
+              "bytes": 1104,
+              "maxBytes": 268435456,
+              "minEntries": 4
+            }
+          },
+          "memoryPolicy": {
+            "budgetBytes": 1610612736,
+            "gpuHeadroomBytes": 268435456,
+            "ownedLimitBytes": 1342177280,
+            "replacementHeadroomBytes": 134217728,
+            "retainedByCategory": {
+              "displayCpu": 2188,
+              "selectors": 0,
+              "bvh": 96,
+              "gpuEstimated": 2188,
+              "deformation": 0,
+              "assetCaches": 1104,
+              "workerResidentEstimated": 0,
+              "replacementPending": 0
+            },
+            "inFlightByCategory": {},
+            "retainedBytes": 5576,
+            "inFlightBytes": 0,
+            "estimatedOwnedBytes": 5576,
+            "availableBytes": 1342171704,
+            "reservationCount": 0,
+            "lastLimitation": null,
+            "hardRssCap": false
+          },
+          "at": 4572.699999809265
+        },
+        "uniforms": [
+          {
+            "at": 4076.2999997138977,
+            "name": "roughness",
+            "value": 0.86
+          },
+          {
+            "at": 4076.2999997138977,
+            "name": "metalness",
+            "value": 0.06
+          },
+          {
+            "at": 4076.2999997138977,
+            "name": "opacity",
+            "value": 1
+          },
+          {
+            "at": 4076.2999997138977,
+            "name": "clearcoat",
+            "value": 0.05
+          },
+          {
+            "at": 4076.2999997138977,
+            "name": "clearcoatRoughness",
+            "value": 0.35
+          },
+          {
+            "at": 4078.9000000953674,
+            "name": "opacity",
+            "value": 1
+          }
+        ],
+        "text": "Toggle Sidebar\nfinish_box.step\n0.5.1\nSaved file\nOpen theme settings\nCollapse STEP sheet\nTree\n\nNo assembly tree\n\nReference\nMeasure\nDisplay\n\nSelect geometry to inspect"
+      },
+      "geometryRequests": [],
+      "metadataProbeRequests": [
+        {
+          "at": 1789027579377,
+          "method": "HEAD",
+          "url": "http://127.0.0.1:3267/__cad/store?file=%2Fb3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367%2Fcomponents%2F72b53c962d933363.surf"
+        }
+      ],
+      "stepHash": "ed45aa1b7302b23b6e0ff860fd2d0f0ab3c46033c4eae55a0776fe1de0b1ea32"
+    },
+    {
+      "name": "removed",
+      "catalog": {
+        "file": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.step",
+        "kind": "part",
+        "url": "/__cad/store?file=b3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367",
+        "hash": "b3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367",
+        "documentHash": "ed45aa1b7302b23b6e0ff860fd2d0f0ab3c46033c4eae55a0776fe1de0b1ea32",
+        "bytes": 1799,
+        "rootRelativeFile": "finish_box.step"
+      },
+      "observed": {
+        "meshCost": {
+          "composed": {
+            "triangleCount": 12,
+            "typedArrayBytes": 1104
+          },
+          "componentTotalBytes": 1104,
+          "componentTotalTriangles": 12,
+          "componentCount": 1,
+          "occurrenceCount": 1,
+          "totalComponents": 1,
+          "loadedComponents": 1,
+          "publishCount": 1,
+          "final": true,
+          "at": 8060
+        },
+        "memory": {
+          "occurrences": 1,
+          "edgeObjects": 0,
+          "edgeInstanceSets": 1,
+          "edgeInstances": 1,
+          "surfaceInstanceSets": 0,
+          "surfaceInstances": 0,
+          "surfaceInstanceBytes": 0,
+          "geometries": 2,
+          "buffers": 5,
+          "materials": 3,
+          "surfaceBytes": 720,
+          "edgeBytes": 1468,
+          "bvhBytes": 96,
+          "bvhGeometries": 1,
+          "faceIdBytes": 0,
+          "faceIdArrays": 0,
+          "pickBytes": 0,
+          "pickGeometries": 0,
+          "deformationBytes": 0,
+          "displayCpuBytes": 2188,
+          "gpuEstimatedBytes": 2188,
+          "assetCaches": {
+            "surfPayload": {
+              "entries": 1,
+              "typedBytes": 1104,
+              "manifestRows": 0
+            },
+            "selector": {
+              "entries": 0,
+              "typedBytes": 0,
+              "manifestRows": 0
+            },
+            "displayEdge": {
+              "entries": 0,
+              "typedBytes": 0,
+              "manifestRows": 0
+            },
+            "glb": {
+              "entries": 1,
+              "typedBytes": 0,
+              "manifestRows": 0
+            },
+            "surfLeash": {
+              "entries": 2,
+              "limit": 24,
+              "bytes": 1104,
+              "maxBytes": 268435456,
+              "minEntries": 4
+            }
+          },
+          "memoryPolicy": {
+            "budgetBytes": 1610612736,
+            "gpuHeadroomBytes": 268435456,
+            "ownedLimitBytes": 1342177280,
+            "replacementHeadroomBytes": 134217728,
+            "retainedByCategory": {
+              "displayCpu": 2188,
+              "selectors": 0,
+              "bvh": 96,
+              "gpuEstimated": 2188,
+              "deformation": 0,
+              "assetCaches": 1104,
+              "workerResidentEstimated": 0,
+              "replacementPending": 0
+            },
+            "inFlightByCategory": {},
+            "retainedBytes": 5576,
+            "inFlightBytes": 0,
+            "estimatedOwnedBytes": 5576,
+            "availableBytes": 1342171704,
+            "reservationCount": 0,
+            "lastLimitation": null,
+            "hardRssCap": false
+          },
+          "at": 8569.900000095367
+        },
+        "uniforms": [
+          {
+            "at": 8075.699999809265,
+            "name": "roughness",
+            "value": 0.58
+          },
+          {
+            "at": 8075.699999809265,
+            "name": "metalness",
+            "value": 0.02
+          },
+          {
+            "at": 8075.699999809265,
+            "name": "opacity",
+            "value": 1
+          },
+          {
+            "at": 8075.699999809265,
+            "name": "clearcoat",
+            "value": 0.12
+          },
+          {
+            "at": 8075.699999809265,
+            "name": "clearcoatRoughness",
+            "value": 0.42
+          },
+          {
+            "at": 8078.299999713898,
+            "name": "opacity",
+            "value": 1
+          }
+        ],
+        "text": "Toggle Sidebar\nfinish_box.step\n0.5.1\nSaved file\nOpen theme settings\nCollapse STEP sheet\nTree\n\nNo assembly tree\n\nReference\nMeasure\nDisplay\n\nSelect geometry to inspect"
+      },
+      "geometryRequests": [],
+      "metadataProbeRequests": [
+        {
+          "at": 1789027583377,
+          "method": "HEAD",
+          "url": "http://127.0.0.1:3267/__cad/store?file=%2Fb3bacb3326fe689bd8a4178c264d6851559c8634f0b52c1e83f408b2ef887367%2Fcomponents%2F72b53c962d933363.surf"
+        }
+      ],
+      "stepHash": "ed45aa1b7302b23b6e0ff860fd2d0f0ab3c46033c4eae55a0776fe1de0b1ea32"
+    }
+  ],
+  "harnessPid": 35634,
+  "browserPid": null,
+  "success": true,
+  "assertions": {
+    "sameStepHash": true,
+    "sameTreeHash": true,
+    "changedMaterialUniforms": true,
+    "noGeometryReload": true
+  },
+  "restoreBuild": "{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"generate\",\"progress\":null,\"elapsed\":0.0}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Building geometry\",\"progress\":null,\"elapsed\":0.001}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Collecting parts\",\"progress\":null,\"elapsed\":1.804}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":null,\"elapsed\":1.805}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Writing outputs\",\"progress\":null,\"elapsed\":1.805}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Saving STEP\",\"progress\":null,\"elapsed\":1.806}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":null,\"elapsed\":1.821}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Writing outputs\",\"progress\":null,\"elapsed\":1.821}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Collecting parts\",\"progress\":null,\"elapsed\":1.821}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":null,\"elapsed\":1.822}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Writing outputs\",\"progress\":null,\"elapsed\":1.822}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"STEP saved\",\"progress\":null,\"elapsed\":1.825}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/saved-appearance-browser-20260910/finish_box.py\",\"parent\":null,\"state\":\"done\",\"phase\":\"STEP saved\",\"progress\":null,\"elapsed\":1.826}\n[cadgen] wrote STEP: models/tmp/saved-appearance-browser-20260910/finish_box.step\n{\"ok\":true,\"kind\":\"part\",\"outcome\":\"built\",\"document\":\"models/tmp/saved-appearance-browser-20260910/finish_box.step\",\"tree\":\"d15d6046b4ad4a6715f734cd5faec2f4a13648e1784265975a7e47fea46d2454\"}\n",
+  "finishedAt": "2026-09-10T08:06:26.607Z",
+  "evidenceScope": "Functional WebGL appearance/reuse validation. Predates final Python canonical component and coherent-reader fixes; no subsequent JS change. Not performance or large-hand evidence."
+}

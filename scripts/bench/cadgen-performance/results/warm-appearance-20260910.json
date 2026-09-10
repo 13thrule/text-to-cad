@@ -1,0 +1,3861 @@
+{
+  "imports": {
+    "coldIncludesCompileProcessStartup": true,
+    "inputBytes": 2268663,
+    "inputSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+    "runs": [
+      {
+        "cache": "cold",
+        "compileForbidden": false,
+        "milliseconds": 5951.067624613643,
+        "volume": 100976.60270468247
+      },
+      {
+        "cache": "warm",
+        "compileForbidden": true,
+        "milliseconds": 26.889792177826166,
+        "volume": 100976.60270468247
+      },
+      {
+        "cache": "warm",
+        "compileForbidden": true,
+        "milliseconds": 25.856750085949898,
+        "volume": 100976.60270468247
+      },
+      {
+        "cache": "warm",
+        "compileForbidden": true,
+        "milliseconds": 25.87299980223179,
+        "volume": 100976.60270468247
+      }
+    ],
+    "warmSummary": {
+      "count": 3,
+      "maxMs": 26.889792177826166,
+      "medianMs": 25.87299980223179,
+      "minMs": 25.856750085949898
+    }
+  },
+  "metadata": {
+    "cpu": "Apple M1 Max",
+    "cpuCount": 10,
+    "environment": {
+      "CADGEN_CACHE_DIR": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/appearance-store",
+      "CADGEN_DAEMON": "0",
+      "CADGEN_EVENTS": "1"
+    },
+    "gitHead": "858f718fc7c9be6df140443daf767a9aa67f75fb",
+    "machine": "arm64",
+    "node": "v26.7.0",
+    "physicalMemoryBytes": "68719476736",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.13 (main, Jun  2 2026, 22:33:40) [Clang 22.1.3 ]",
+    "pythonExecutable": "/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python",
+    "sourceFingerprint": "f47265c3decbf8ed665984eb0bfd4f8228f304c6e070efa75f9371139c9d07fb",
+    "timeUtc": "2026-09-10T08:29:33.553076+00:00",
+    "versions": {
+      "build123d": "0.11.1",
+      "cadgen": "0.5.1",
+      "cadquery-ocp": "7.9.3.1.1",
+      "numpy": "2.5.2"
+    }
+  },
+  "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+  "runs": [
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 188.52183315902948,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 192.37420801073313,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 798.0617084540427,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "done": 0,
+          "elapsedMs": 853.5766671411693,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 1,
+          "elapsedMs": 3147.795167285949,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 2,
+          "elapsedMs": 3148.7575001083314,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 3,
+          "elapsedMs": 3183.429667260498,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 4,
+          "elapsedMs": 3184.8433753475547,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 5,
+          "elapsedMs": 3188.6556250974536,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 6,
+          "elapsedMs": 3190.0240830145776,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 7,
+          "elapsedMs": 3200.702333357185,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 8,
+          "elapsedMs": 3224.4448331184685,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 9,
+          "elapsedMs": 3339.2930002883077,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "elapsedMs": 3782.2456252761185,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 3793.273833114654,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f"
+          },
+          "state": "building"
+        },
+        {
+          "done": 0,
+          "elapsedMs": 4190.613667014986,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 1,
+          "elapsedMs": 6461.894458159804,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 2,
+          "elapsedMs": 6530.393458437175,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 3,
+          "elapsedMs": 6531.734167132527,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 4,
+          "elapsedMs": 6561.818167101592,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 5,
+          "elapsedMs": 6563.298167195171,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 6,
+          "elapsedMs": 6600.558708421886,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 7,
+          "elapsedMs": 6602.049917448312,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 8,
+          "elapsedMs": 6631.569042336196,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "done": 9,
+          "elapsedMs": 6893.075917381793,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 9
+        },
+        {
+          "elapsedMs": 7300.352333113551,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 7308.525042142719,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 7316.753208171576,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 7316.9102082028985,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 7326.128208078444,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 7.138220957946032,
+          "elapsedMs": 7328.162167221308,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 3793.273833114654,
+      "measured": false,
+      "milliseconds": 7328.662458341569,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 31,
+        "errors": 5,
+        "evicted": 0,
+        "hits": 9,
+        "misses": 31,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 540688384,
+      "run": "prime-baseline",
+      "savedMs": 7326.128208078444,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 4.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 571.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 2970.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 55.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 38.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 118.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 238.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 6520.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 6530.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 7140.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 7140.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "b32809871f10a1a8",
+        "d57a4f31e80a006d",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+      "events": [
+        {
+          "elapsedMs": 27.90220780298114,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 35.442040767520666,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 443.4087499976158,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "done": 0,
+          "elapsedMs": 465.69295786321163,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 1
+        },
+        {
+          "done": 1,
+          "elapsedMs": 468.9461658708751,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 1
+        },
+        {
+          "elapsedMs": 470.1389577239752,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 477.5713328272104,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "14be3bb68352fd15a1f3a579e86cfbe21927aba9ed4827c4a94b72cda524dd05"
+          },
+          "state": "building"
+        },
+        {
+          "done": 0,
+          "elapsedMs": 838.3127078413963,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 1
+        },
+        {
+          "done": 1,
+          "elapsedMs": 841.8622496537864,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building",
+          "total": 1
+        },
+        {
+          "elapsedMs": 843.0619998835027,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 847.7742499671876,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 855.8077909983695,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 855.9779576025903,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 863.5413749143481,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "bce5ff06629bf7bdef3ae7dda797f17e41f550a9205c10949a7515971e75c6ff"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8424689592793584,
+          "elapsedMs": 867.9952076636255,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 477.5713328272104,
+      "measured": false,
+      "milliseconds": 868.800540920347,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 5,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 35,
+        "misses": 5,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 550715392,
+      "run": "prime-geometry",
+      "savedMs": 863.5413749143481,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 374.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 13.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 58.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 40.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 115.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 237.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 413.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 420.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 847.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 855.0
+        }
+      ],
+      "tree": "7583741d5fddbe4d36bc3b711aa5cfa56283ffd40fe0b427c4eb8b4712cc2355",
+      "variant": "geometry"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 21.686708088964224,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 29.703583102673292,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 410.2946249768138,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 432.3897077701986,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 432.5587498024106,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 439.4021248444915,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 792.8167497739196,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 792.9891250096262,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 797.2841658629477,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 805.4749579168856,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 805.6444581598043,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 813.3360831998289,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.7983670420944691,
+          "elapsedMs": 817.7424580790102,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 439.4021248444915,
+      "measured": false,
+      "milliseconds": 818.1652911007404,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 557203456,
+      "run": "prime-baseline",
+      "savedMs": 813.3360831998289,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 348.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 54.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 39.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 110.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 235.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 396.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 403.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 803.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 811.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+      "events": [
+        {
+          "elapsedMs": 23.46083289012313,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 31.0504580847919,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 409.26141710951924,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 432.138416916132,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 432.30354227125645,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 440.42433332651854,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "dad33de63b48513e37447190a871423c0594ea0821714d76cabbadfbc30e133a"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 810.6295829638839,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 810.8066669665277,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 815.6754169613123,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 823.8268750719726,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 823.9967920817435,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 831.9110833108425,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "a0621c17836463fb6c98aa8c38a9aa4508d527d6768e40cb1fcbba0d0bfd1ad5"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8151618330739439,
+          "elapsedMs": 836.4045000635087,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 440.42433332651854,
+      "measured": false,
+      "milliseconds": 837.2025000862777,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 2,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 38,
+        "misses": 2,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 565428224,
+      "run": "prime-placement",
+      "savedMs": 831.9110833108425,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 344.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 58.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 41.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 119.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 243.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 415.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 423.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 819.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 828.0
+        }
+      ],
+      "tree": "298b65a074b8b3245d86fb84d5ad293745a973cc21635a4790a0ac28052a7e80",
+      "variant": "placement"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 21.73154102638364,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 29.75429082289338,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 407.52933314070106,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 429.54316595569253,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 429.71641616895795,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 436.48504093289375,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 792.1999581158161,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 792.3671659082174,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 796.727207954973,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 804.7817908227444,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 804.9318748526275,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 812.6473329029977,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.7976620830595493,
+          "elapsedMs": 817.1267081052065,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 436.48504093289375,
+      "measured": false,
+      "milliseconds": 817.5667077302933,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 573112320,
+      "run": "prime-baseline",
+      "savedMs": 812.6473329029977,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 345.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 54.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 38.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 108.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 239.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 398.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 405.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 802.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 810.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 19.135749898850918,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "current"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": null,
+      "measured": true,
+      "milliseconds": 19.24516586586833,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 0,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 573259776,
+      "run": "unchanged-1",
+      "savedMs": null,
+      "stages": [
+        {
+          "label": "total",
+          "milliseconds": 10.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "b32809871f10a1a8",
+        "d57a4f31e80a006d",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+      "events": [
+        {
+          "elapsedMs": 22.870750166475773,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 31.267957761883736,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 421.2491661310196,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 444.96462494134903,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 445.1658329926431,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 452.35979091376066,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "14be3bb68352fd15a1f3a579e86cfbe21927aba9ed4827c4a94b72cda524dd05"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 815.6056660227478,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 815.7945410348475,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 820.1673747971654,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 828.5939581692219,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 828.7676661275327,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 836.7308750748634,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "bce5ff06629bf7bdef3ae7dda797f17e41f550a9205c10949a7515971e75c6ff"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8210401250980794,
+          "elapsedMs": 841.5537499822676,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 452.35979091376066,
+      "measured": true,
+      "milliseconds": 842.0345410704613,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 579354624,
+      "run": "geometry-1",
+      "savedMs": 836.7308750748634,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 4.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 355.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 57.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 38.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 112.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 243.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 408.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 416.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 826.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 835.0
+        }
+      ],
+      "tree": "7583741d5fddbe4d36bc3b711aa5cfa56283ffd40fe0b427c4eb8b4712cc2355",
+      "variant": "geometry"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 24.531790986657143,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 32.31541579589248,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 419.0645827911794,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 441.21670769527555,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 441.3914158940315,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 448.1547907926142,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 806.2165826559067,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 806.3880000263453,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 810.6021247804165,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 818.7107909470797,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 818.8752080313861,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 826.4485406689346,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8087395001202822,
+          "elapsedMs": 830.9284579008818,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 448.1547907926142,
+      "measured": false,
+      "milliseconds": 831.7269156686962,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 585170944,
+      "run": "restore-geometry-1",
+      "savedMs": 826.4485406689346,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 4.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 353.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 54.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 40.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 110.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 240.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 400.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 408.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 813.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 823.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+      "events": [
+        {
+          "elapsedMs": 21.991250105202198,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 30.204167123883963,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 418.27183309942484,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 440.60062523931265,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 440.7745422795415,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 447.58095825091004,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "dad33de63b48513e37447190a871423c0594ea0821714d76cabbadfbc30e133a"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 804.605667013675,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 804.7844171524048,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 809.0377920307219,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 817.1678329817951,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 817.3362920060754,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 825.1599171198905,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "a0621c17836463fb6c98aa8c38a9aa4508d527d6768e40cb1fcbba0d0bfd1ad5"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8099272921681404,
+          "elapsedMs": 829.6997081488371,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 447.58095825091004,
+      "measured": true,
+      "milliseconds": 830.1566671580076,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 591101952,
+      "run": "placement-1",
+      "savedMs": 825.1599171198905,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 355.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 54.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 38.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 109.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 240.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 399.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 407.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 814.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 823.0
+        }
+      ],
+      "tree": "298b65a074b8b3245d86fb84d5ad293745a973cc21635a4790a0ac28052a7e80",
+      "variant": "placement"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 24.049334228038788,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 31.634166836738586,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 423.14916709437966,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 445.849500130862,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 446.041916962713,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 452.94045889750123,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 815.6597502529621,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 815.8403751440346,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 820.0845001265407,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 829.3502498418093,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 829.5329590328038,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 837.1450840495527,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8201591251417994,
+          "elapsedMs": 841.9809588231146,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 452.94045889750123,
+      "measured": false,
+      "milliseconds": 842.7961249835789,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 597180416,
+      "run": "restore-placement-1",
+      "savedMs": 837.1450840495527,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 356.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 59.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 40.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 118.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 237.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 10.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 407.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 414.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 825.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 835.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 17.271250020712614,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "current"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": null,
+      "measured": true,
+      "milliseconds": 17.396375071257353,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 0,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 597180416,
+      "run": "unchanged-2",
+      "savedMs": null,
+      "stages": [
+        {
+          "label": "total",
+          "milliseconds": 10.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "b32809871f10a1a8",
+        "d57a4f31e80a006d",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+      "events": [
+        {
+          "elapsedMs": 21.465834230184555,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 29.08316720277071,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 407.8212920576334,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 430.87387504056096,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 431.0495420359075,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 438.3330000564456,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "14be3bb68352fd15a1f3a579e86cfbe21927aba9ed4827c4a94b72cda524dd05"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 798.7499171867967,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 798.9243753254414,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 803.327000234276,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 812.3602923005819,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 812.5309590250254,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 820.2882092446089,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "bce5ff06629bf7bdef3ae7dda797f17e41f550a9205c10949a7515971e75c6ff"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8056310419924557,
+          "elapsedMs": 824.8373754322529,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 438.3330000564456,
+      "measured": true,
+      "milliseconds": 825.7600842043757,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 603062272,
+      "run": "geometry-2",
+      "savedMs": 820.2882092446089,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 346.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 55.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 42.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 115.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 238.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 10.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 405.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 413.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 810.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 819.0
+        }
+      ],
+      "tree": "7583741d5fddbe4d36bc3b711aa5cfa56283ffd40fe0b427c4eb8b4712cc2355",
+      "variant": "geometry"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 22.52420922741294,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 30.312875285744667,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 411.870667245239,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 434.03074983507395,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 434.20854210853577,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 441.0608340986073,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 808.3759169094265,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 808.5556672886014,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 812.8033340908587,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 820.9736668504775,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 821.1447088979185,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 828.9513750933111,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8137960419990122,
+          "elapsedMs": 833.4978339262307,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 441.0608340986073,
+      "measured": false,
+      "milliseconds": 833.9743339456618,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 609796096,
+      "run": "restore-geometry-2",
+      "savedMs": 828.9513750933111,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 349.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 55.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 41.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 113.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 246.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 410.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 417.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 818.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 827.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+      "events": [
+        {
+          "elapsedMs": 24.10833304747939,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 32.18149999156594,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 422.15841729193926,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 444.3427501246333,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 444.5389583706856,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 451.2578332796693,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "dad33de63b48513e37447190a871423c0594ea0821714d76cabbadfbc30e133a"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 808.306333143264,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 808.5022922605276,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 812.924625352025,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 822.178625036031,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 822.3487921059132,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 830.0168332643807,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "a0621c17836463fb6c98aa8c38a9aa4508d527d6768e40cb1fcbba0d0bfd1ad5"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8130306671373546,
+          "elapsedMs": 834.5347084105015,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 451.2578332796693,
+      "measured": true,
+      "milliseconds": 835.3697923012078,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 615694336,
+      "run": "placement-2",
+      "savedMs": 830.0168332643807,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 4.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 356.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 54.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 38.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 109.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 240.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 10.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 401.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 408.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 817.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 827.0
+        }
+      ],
+      "tree": "298b65a074b8b3245d86fb84d5ad293745a973cc21635a4790a0ac28052a7e80",
+      "variant": "placement"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 22.57083309814334,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 30.3442501462996,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 490.7504580914974,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 513.4650003165007,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 513.642166275531,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 520.5534580163658,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 888.0635830573738,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 888.2491253316402,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 892.8022081963718,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 900.9134583175182,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 901.0917502455413,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 909.0936253778636,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8939298330806196,
+          "elapsedMs": 913.6877083219588,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 520.5534580163658,
+      "measured": false,
+      "milliseconds": 914.2848332412541,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 615956480,
+      "run": "restore-placement-2",
+      "savedMs": 909.0936253778636,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 427.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 56.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 40.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 112.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 246.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 411.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 419.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 898.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 907.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 18.673083279281855,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "current"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": null,
+      "measured": true,
+      "milliseconds": 18.809167202562094,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 0,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 615956480,
+      "run": "unchanged-3",
+      "savedMs": null,
+      "stages": [
+        {
+          "label": "total",
+          "milliseconds": 10.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "b32809871f10a1a8",
+        "d57a4f31e80a006d",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+      "events": [
+        {
+          "elapsedMs": 23.02150009199977,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 31.37508314102888,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 427.28325026109815,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 450.3274173475802,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 450.51420805975795,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 457.51129230484366,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "14be3bb68352fd15a1f3a579e86cfbe21927aba9ed4827c4a94b72cda524dd05"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 817.4235001206398,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 817.5982083193958,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 821.9752083532512,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 830.2232502028346,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 830.3854172118008,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 838.3479579351842,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "bce5ff06629bf7bdef3ae7dda797f17e41f550a9205c10949a7515971e75c6ff"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8223375002853572,
+          "elapsedMs": 842.7783329971135,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 457.51129230484366,
+      "measured": true,
+      "milliseconds": 843.2125002145767,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 616218624,
+      "run": "geometry-3",
+      "savedMs": 838.3479579351842,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 4.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 361.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 55.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 40.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 112.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 239.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 404.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 411.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 827.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 836.0
+        }
+      ],
+      "tree": "7583741d5fddbe4d36bc3b711aa5cfa56283ffd40fe0b427c4eb8b4712cc2355",
+      "variant": "geometry"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 23.677249904721975,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 31.359832733869553,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 417.28166583925486,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 440.2117501012981,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 440.41137490421534,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 447.2595830447972,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 806.1382910236716,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 806.313999928534,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 810.7119160704315,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 818.9917081035674,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 819.1680000163615,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 826.9441248849034,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8099694168195128,
+          "elapsedMs": 831.3231659121811,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 447.2595830447972,
+      "measured": false,
+      "milliseconds": 832.2137077338994,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 616693760,
+      "run": "restore-geometry-3",
+      "savedMs": 826.9441248849034,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 351.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 55.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 39.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 112.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 238.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 402.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 410.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 814.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 824.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+      "events": [
+        {
+          "elapsedMs": 22.30929210782051,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 30.570125207304955,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 428.38050005957484,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 452.33175018802285,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 452.5100002065301,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 459.7187922336161,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "dad33de63b48513e37447190a871423c0594ea0821714d76cabbadfbc30e133a"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 822.257500141859,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 822.430542204529,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 826.8291251733899,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 835.0579999387264,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 835.2298750542104,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 842.971249949187,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "a0621c17836463fb6c98aa8c38a9aa4508d527d6768e40cb1fcbba0d0bfd1ad5"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.82733204215765,
+          "elapsedMs": 847.4718751385808,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 459.7187922336161,
+      "measured": true,
+      "milliseconds": 848.0198751203716,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 620593152,
+      "run": "placement-3",
+      "savedMs": 842.971249949187,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 362.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 56.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 4.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 39.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 115.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 239.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 407.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 415.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 832.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 841.0
+        }
+      ],
+      "tree": "298b65a074b8b3245d86fb84d5ad293745a973cc21635a4790a0ac28052a7e80",
+      "variant": "placement"
+    },
+    {
+      "components": [
+        "135a73d9614490fb",
+        "4cf9e8d906793585",
+        "5fbbbeb5f2c47ca0",
+        "63e3b1b98b79e8dc",
+        "70a2ac46088fe2b9",
+        "9d09f8d6959b3039",
+        "d57a4f31e80a006d",
+        "e3b435921ef6a6de",
+        "e6e8d9f9c0a177dd"
+      ],
+      "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "events": [
+        {
+          "elapsedMs": 23.50620785728097,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "generate",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 31.070500146597624,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Building geometry",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 413.33454195410013,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 435.6196247972548,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 435.7942920178175,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 442.6352079026401,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Saving STEP",
+          "preview": {
+            "kinematics": null,
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f"
+          },
+          "state": "building"
+        },
+        {
+          "elapsedMs": 805.9314168058336,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 806.1069999821484,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 810.5144998989999,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Collecting parts",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 818.6492081731558,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Meshing components",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 818.8155828975141,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "Writing outputs",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 826.5683748759329,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "phase": "STEP saved",
+          "saved": {
+            "documentHash": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+            "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary.step",
+            "tree": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c"
+          },
+          "state": "building"
+        },
+        {
+          "elapsed": 0.8097722502425313,
+          "elapsedMs": 831.0988750308752,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/planetary_gear_assembly.py",
+          "state": "done"
+        },
+        {
+          "elapsedMs": 836.9131251238286,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/import-benchmark-qlhc_u6j/input.step",
+          "state": "submitted"
+        },
+        {
+          "elapsedMs": 848.8543750718236,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/import-benchmark-qlhc_u6j/input.step",
+          "phase": "compile",
+          "state": "building"
+        },
+        {
+          "elapsedMs": 6759.056292008609,
+          "model": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/import-benchmark-qlhc_u6j/input.step",
+          "state": "done"
+        }
+      ],
+      "exit": 0,
+      "firstPreviewMs": 442.6352079026401,
+      "measured": false,
+      "milliseconds": 832.0189579389989,
+      "occurrences": 9,
+      "ops": {
+        "disk_hits": 0,
+        "entries": 0,
+        "errors": 0,
+        "evicted": 0,
+        "hits": 40,
+        "misses": 0,
+        "unkeyable": 0,
+        "unstorable": 0
+      },
+      "processPeakRssBytes": 625360896,
+      "run": "restore-placement-3",
+      "savedMs": 826.5683748759329,
+      "stages": [
+        {
+          "label": "load generator models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "run step model models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 349.0
+        },
+        {
+          "label": "tree: sidecar payload",
+          "milliseconds": 0.0
+        },
+        {
+          "label": "tree: prepare document",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "tree: preview",
+          "milliseconds": 8.0
+        },
+        {
+          "label": "build XCAF document",
+          "milliseconds": 1.0
+        },
+        {
+          "label": "transfer XCAF to STEP model planetary.step",
+          "milliseconds": 58.0
+        },
+        {
+          "label": "renumber NAUO ids",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "plan style tail order",
+          "milliseconds": 2.0
+        },
+        {
+          "label": "write STEP file planetary.step",
+          "milliseconds": 43.0
+        },
+        {
+          "label": "canonicalize style tail (in file)",
+          "milliseconds": 3.0
+        },
+        {
+          "label": "tree: assemble STEP planetary.step",
+          "milliseconds": 118.0
+        },
+        {
+          "label": "tree: re-read STEP planetary.step",
+          "milliseconds": 237.0
+        },
+        {
+          "label": "tree: re-read components",
+          "milliseconds": 7.0
+        },
+        {
+          "label": "tree: canonical document",
+          "milliseconds": 9.0
+        },
+        {
+          "label": "tree: components",
+          "milliseconds": 406.0
+        },
+        {
+          "label": "write tree",
+          "milliseconds": 414.0
+        },
+        {
+          "label": "generated models/tmp/perf-audit/planetary_gear_assembly.py",
+          "milliseconds": 814.0
+        },
+        {
+          "label": "total",
+          "milliseconds": 824.0
+        }
+      ],
+      "tree": "77893c94ec555b971cb10681e4a8b50a2b08cda84abbf94ba7427e04b62c82ec",
+      "variant": "baseline"
+    }
+  ],
+  "runtimeUnchangedDuringStudy": true,
+  "sourceRestored": true,
+  "sourceSha256": "34b6ff6b337d8ee986e500b43a00102da421c868b61b39b678b4dc498554b64f",
+  "store": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/perf-audit/appearance-store",
+  "substitutions": {
+    "geometry": [
+      "CARRIER_DIAMETER = 105.0",
+      "CARRIER_DIAMETER = 106.0"
+    ],
+    "placement": [
+      "        _make_carrier_plate(),",
+      "        _make_carrier_plate().moved(bd.Location((0.0, 0.0, -0.5))),"
+    ]
+  },
+  "summary": {
+    "geometry": {
+      "count": 3,
+      "maxMs": 843.2125002145767,
+      "medianMs": 842.0345410704613,
+      "minMs": 825.7600842043757
+    },
+    "placement": {
+      "count": 3,
+      "maxMs": 848.0198751203716,
+      "medianMs": 835.3697923012078,
+      "minMs": 830.1566671580076
+    },
+    "unchanged": {
+      "count": 3,
+      "maxMs": 19.24516586586833,
+      "medianMs": 18.809167202562094,
+      "minMs": 17.396375071257353
+    }
+  },
+  "timingBoundary": "same interpreter, kernel imported; excludes startup, source writes and daemon IPC; no profiler",
+  "matchingCommittedRuntime": "858f718fc7c9be6df140443daf767a9aa67f75fb"
+}

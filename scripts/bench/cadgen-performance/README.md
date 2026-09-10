@@ -4,6 +4,11 @@ These repository commands reproduce two CPU studies: cached model edits with
 preview/save events, and native OCCT triangulation versus the current JavaScript
 SURF tessellator. They do not change the runtime or select a different production
 mesher. See [the recorded study](RESULTS-20260910.md) for results and limitations.
+The [saved-document repair](SAVED-IDENTITY-FOLLOWUP.md) has a separate
+[nine-part rerun](RESULTS-20260910.md#saved-document-repair-warm-check) and
+[validation record](VALIDATION-20260910.md#saved-document-identity-repair).
+Earlier hand measurements retain their original runtime fingerprint; the
+repair does not turn those coarse-load results into full-detail acceptance.
 
 Run from the repository root with a CAD development environment and Node
 available. In a lightweight worktree, `CAD_PYTHON` may name the existing CAD

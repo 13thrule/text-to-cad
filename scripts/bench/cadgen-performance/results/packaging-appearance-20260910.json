@@ -1,0 +1,138 @@
+{
+  "sourceFingerprint": "f47265c3decbf8ed665984eb0bfd4f8228f304c6e070efa75f9371139c9d07fb",
+  "wheelSha256": "5177dbf191979d5d79c1a0b60e701b6df4baf0539d21ea5fe36548042006c412",
+  "runtimeFiles": 28,
+  "exactRuntimePathsAndBytes": true,
+  "exactPythonSourceBytes": true,
+  "cleanSetuptoolsBuildStaging": true,
+  "runtimeHashes": {
+    "cadgen/_runtime/browser/THIRD_PARTY_LICENSES.txt": "f3f2e2341b55e27c390f37f08adb0e8ff7ddc1d9b499fdc18253f62270726407",
+    "cadgen/_runtime/browser/render.html": "159ca5781ae576a4a14e005391ab072d271c02a4424ef7adb4b22962c560eac4",
+    "cadgen/_runtime/browser/snapshot-render.js": "fa60c4372f1b81d994db5954c80a545a7acc1a23bef92d10201f49f9f2223f8f",
+    "cadgen/_runtime/node/THIRD_PARTY_LICENSES.txt": "f3f2e2341b55e27c390f37f08adb0e8ff7ddc1d9b499fdc18253f62270726407",
+    "cadgen/_runtime/node/dxf-mesh.mjs": "6ac632a9aea7ff6e9ecf126485e9bcb73ae3d73511dcbd8d7c8caabf8d1321bd",
+    "cadgen/_runtime/node/mesh-export.mjs": "4e02ded7850e8fdac88141208bbcafd43bc487e583f61d61d39c35f8c448c9fd",
+    "cadgen/_runtime/node/package.json": "5a065fe7d8eab2a582f428e11c2ea63aaf70607a54f69cfd5c711b5c53d91b32",
+    "cadgen/_runtime/viewer/index.html": "5b8360dddedde315ee87c442397a11aabb9cd29423a3be90e02ee857039d33c9",
+    "cadgen/_runtime/viewer/assets/BufferGeometryUtils-BFvqAzeR.js": "f058c2a3ed01011532fdfbb835d5955db7a649b0783dcc034aba83c180b8e1d3",
+    "cadgen/_runtime/viewer/assets/GLTFLoader-CFJOvYtb.js": "c29fa0dab5115fff5d9713ef712535a70de6dba944f2b1c9405818c934eb0895",
+    "cadgen/_runtime/viewer/assets/STLLoader-CPPzmiED.js": "b206cea7fa6942c461b9a63b12e5d07cc6bb0d6e1beacbde4f10ec026578e6f8",
+    "cadgen/_runtime/viewer/assets/favicon-C-31TkWB.ico": "9585f3b5c67ad0f4c202daea10046dd6aacfd3ef29a06cdb7be17b0839d9f472",
+    "cadgen/_runtime/viewer/assets/glbMeshWorker-BKAG73hs.js": "fe763ffd228d6cdc8ea2784f8726b14e816d87ef4b5677b4d6be8ea5d6f04c0f",
+    "cadgen/_runtime/viewer/assets/index-BRecF5BP.js": "9fd5185e96ee718f314bf11329c4fadf37a3eb5df5bec354e11a94b3a3082ace",
+    "cadgen/_runtime/viewer/assets/index-DxwPzKOq.css": "eca786b93de07badfde365fb134b5500c3684b6cad309c270fa1215b6cde9c08",
+    "cadgen/_runtime/viewer/assets/meshopt_decoder-BYaRp5mS.js": "c1ef051ab5639fbd2532f542af5dd4f0b885f6564dea2f118887d076d0dd0a3a",
+    "cadgen/_runtime/viewer/assets/parseSdf-D5NdEh-f.js": "a977bcef7bb2f7fcdc2ffbe29aa9e69d50d003099e295944a297777c7900da2e",
+    "cadgen/_runtime/viewer/assets/parseSrdf-Bbt1IWYI.js": "6b5b9a0d6dc38d9674346f0145a3790ab2ab549607951f0c84e5beab0a46c09a",
+    "cadgen/_runtime/viewer/assets/parseUrdf-5ofI744_.js": "fbfbf8210391879c3ff5404e651cf4a468bc67908715b2e2aaa5df7e64f7bc81",
+    "cadgen/_runtime/viewer/assets/stlMeshWorker-k-Bj4GhT.js": "39dead3f3c1dd36a37fbeaca3cee4c33ecbd56dec066d862d9d060ad9b98281a",
+    "cadgen/_runtime/viewer/assets/surfMeshData-Dl6zXbqE.js": "4434f2df2257cf6d38b4e41c1754a17342ca5e8a60efd1e2a05922484c5f436c",
+    "cadgen/_runtime/viewer/assets/surfSelectorBundle-BsoomSA7.js": "3f9470436a471da59ebfeb6c4d890ee1cab28c41c99759e0b59c18d516590c85",
+    "cadgen/_runtime/viewer/assets/surfWorker-Bd1gktSL.js": "468897abe830ddd98809830bca54b720d4044a9e4ea88caf787b04e3aa11eb66",
+    "cadgen/_runtime/viewer/assets/three.module-CGr_ue6n.js": "299194e31d7859e9d28513346a10056a30b4e102abd8e1a8b949ea92d7fca9c7",
+    "cadgen/_runtime/viewer/assets/vendor-icons-C2qOLVwp.js": "e5f861b39c79eb7432d68c282116deea64e4f327a6745ca80801940a21c2fbbc",
+    "cadgen/_runtime/viewer/assets/vendor-react-7jnMmQ9s.js": "fa6a12da3a2e9600412b2b725f82fb41d18298624fbe6f2c4a5723bab3427e13",
+    "cadgen/_runtime/viewer/assets/vendor-three-gpkAaKBT.js": "0129e7429839db0995880be7082680433756d0120a72461ce6967dc9058274a7",
+    "cadgen/_runtime/viewer/assets/vendor-ui-BsxuH3Zm.js": "4f11950564551be03bf0fcc9b2042c987ca4418537360009b1ea94b3f4dc0efd"
+  },
+  "installedPackage": "/private/tmp/cadgen-performance-20260910/installed-appearance/venv/lib/python3.13/site-packages/cadgen/__init__.py",
+  "coldBuildThenWarmHit": true,
+  "installedCommandsPassed": 6,
+  "stepSidecarSchema": 8,
+  "installedCommands": [
+    {
+      "args": [
+        "-c",
+        "import pathlib,cadgen;from cadgen.assets import browser_runtime_dir,node_builders_dir; p=pathlib.Path(cadgen.__file__); assert \"site-packages\" in p.parts,p; assert \"site-packages\" in browser_runtime_dir().parts; assert \"site-packages\" in node_builders_dir().parts; print(p)"
+      ],
+      "exit": 0,
+      "stdout": "/private/tmp/cadgen-performance-20260910/installed-appearance/venv/lib/python3.13/site-packages/cadgen/__init__.py\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py"
+      ],
+      "exit": 0,
+      "stdout": "built /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.step\n",
+      "stderr": "{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"generate\",\"progress\":null,\"elapsed\":0.0}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Building geometry\",\"progress\":null,\"elapsed\":0.001}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Collecting parts\",\"progress\":null,\"elapsed\":2.249}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":[0,2],\"elapsed\":2.253}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":[1,2],\"elapsed\":2.256}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":[2,2],\"elapsed\":2.259}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Writing outputs\",\"progress\":null,\"elapsed\":2.262}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Saving STEP\",\"progress\":null,\"elapsed\":2.272}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":[0,2],\"elapsed\":2.291}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":[1,2],\"elapsed\":2.294}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":[2,2],\"elapsed\":2.297}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Writing outputs\",\"progress\":null,\"elapsed\":2.299}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Collecting parts\",\"progress\":null,\"elapsed\":2.301}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Meshing components\",\"progress\":null,\"elapsed\":2.301}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"Writing outputs\",\"progress\":null,\"elapsed\":2.301}\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"building\",\"phase\":\"STEP saved\",\"progress\":null,\"elapsed\":2.309}\n[cadgen] wrote STL: /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.stl\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"done\",\"phase\":\"STEP saved\",\"progress\":null,\"elapsed\":2.38}\n[cadgen] wrote STEP: /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.step\n"
+    },
+    {
+      "args": [
+        "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py"
+      ],
+      "exit": 0,
+      "stdout": "current /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.step\n",
+      "stderr": "[cadgen] /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge is current; not rebuilt\n{\"model\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.py\",\"parent\":null,\"state\":\"current\",\"phase\":null,\"progress\":null,\"elapsed\":0.0}\n"
+    },
+    {
+      "args": [
+        "-m",
+        "cadgen.cli",
+        "step",
+        "inspect",
+        "refs",
+        "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.step",
+        "--facts"
+      ],
+      "exit": 0,
+      "stdout": "{\"ok\":true,\"tokens\":[{\"line\":1,\"token\":\"hinge#\",\"document\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.step\",\"summary\":{\"kind\":\"assembly\",\"occurrenceCount\":2,\"leafOccurrenceCount\":2,\"shapeCount\":2,\"faceCount\":12,\"edgeCount\":24,\"vertexCount\":0,\"bounds\":{\"max\":[18.0,10.0,8.0],\"min\":[-10.0,-10.0,-2.0]}},\"selections\":[],\"warnings\":[],\"entryFacts\":{\"size\":[28.0,20.0,10.0],\"extentAxis\":\"x\",\"center\":[4.0,0.0,3.0],\"diag\":35.832945734337834,\"kind\":\"assembly\"}}],\"errors\":[]}\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "-m",
+        "cadgen.cli",
+        "step",
+        "build",
+        "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.step",
+        "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/reemit.step"
+      ],
+      "exit": 0,
+      "stdout": "built /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/reemit.step\n",
+      "stderr": ""
+    },
+    {
+      "args": [
+        "-m",
+        "cadgen.cli",
+        "glb",
+        "build",
+        "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.step",
+        "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.glb"
+      ],
+      "exit": 0,
+      "stdout": "wrote GLB: /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.glb\n",
+      "stderr": ""
+    }
+  ],
+  "snapshot": {
+    "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.png",
+    "exitCode": 0,
+    "kinematics": "open",
+    "width": 640,
+    "height": 480,
+    "visuallyInspected": true,
+    "sha256": "956a86b58536a78e2a0830cf2f65040b6245d9eb9f65346c8e7691604280c9ee"
+  },
+  "video": {
+    "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-appearance/hinge.mp4",
+    "exitCode": 0,
+    "animation": "move",
+    "probe": {
+      "programs": [],
+      "stream_groups": [],
+      "streams": [
+        {
+          "width": 640,
+          "height": 480,
+          "r_frame_rate": "10/1",
+          "duration": "0.300000",
+          "nb_read_frames": "3"
+        }
+      ]
+    },
+    "sha256": "78dc3ecdbf1a6445c52b3a387b17336d192c7aee928a94092564e6fd80adad87"
+  },
+  "matchingCommittedRuntime": "858f718fc7c9be6df140443daf767a9aa67f75fb"
+}

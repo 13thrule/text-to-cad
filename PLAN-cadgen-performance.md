@@ -41,32 +41,38 @@ checkout. No release version change is part of this work.
   rejected save, failed read-back, competing edits, determinism and cache loss.
   A real warm edit retains all nine parts until the complete replacement is
   ready; a failed build retains both the visible model and previous STEP bytes.
-- Schema-7 sidecars: implemented; kinematics bind to saved STEP SHA-256, stale
-  pairs report annotation errors, imported authored sidecars are preserved.
+- Schema-8 sidecars: implemented; kinematics and PBR appearance bind to saved
+  STEP SHA-256, stale pairs report annotation errors, and imported authored
+  sidecars are preserved. Authored model results and canonical document trees
+  are separate. Exact node mapping, owned material/face-color metadata and
+  appearance-sensitive export identity are covered by regression tests.
 - Durable build benchmark: added under `scripts/bench/cadgen-performance`.
   Native OCCT meshing is evaluated; the current JS mesher is retained.
   See [the measured study](scripts/bench/cadgen-performance/RESULTS-20260910.md).
   Integrated packaging and browser lifecycle validation pass. See the
   [validation record](scripts/bench/cadgen-performance/VALIDATION-20260910.md).
 
-The final frozen-runtime study on M1 Max / 64 GiB measures unchanged builds
-at 18.46 ms, geometry edits at 917.47 ms and placement edits at 829.11 ms
-(medians of three). Backend preview publication is 528.78 / 440.32 ms;
-**the 250 ms target is not met**. Repeated 2.27 MB imports take 25.94–26.21 ms
-with compilation forbidden. These small samples have visible variance,
-including one 71.76 ms unchanged call. See [the final measurements](scripts/bench/cadgen-performance/RESULTS-20260910.md#final-integration-warm-check).
+The current nine-part study on M1 Max / 64 GiB measures unchanged builds at
+18.81 ms, geometry edits at 842.03 ms and placement edits at 835.37 ms
+(medians of three). Backend preview publication is 452.36 / 451.26 ms;
+**the 250 ms target is not met**. Repeated 2.27 MB imports take 25.86–26.89 ms
+with compilation forbidden. Source restoration and runtime fingerprint checks
+pass. These samples do not establish a complete warm-build speedup over the
+previous small studies. See [the current measurements](scripts/bench/cadgen-performance/RESULTS-20260910.md#saved-document-repair-warm-check).
 
-Current integration checks pass: 1,872 package/skill Python tests, 945 shared
-JavaScript tests, 398 viewer tests, 126 policy tests (one skipped), docs build,
-production runtime bundle and freshness check. A real two-edit browser check
-requests only the one changed component in each nine-part revision; switching
-to Saved file resolves the separate saved tree. These validate the implemented
-behavior, not completion of every performance target. The complete large hand
-now renders in 67.86 seconds cold and 18.77 seconds cached at initial coarse
-detail with refinement disabled. Peak largest-renderer RSS is 1,965 / 1,890 MiB;
-memory headroom and full-resolution interaction remain unproven. The plan
-remains **in progress**, including the unmet warm-preview target and confirmed
-saved-document identity defects described below.
+Current integration and installed-package results are recorded in the
+[saved-document repair validation](scripts/bench/cadgen-performance/VALIDATION-20260910.md#saved-document-identity-repair).
+The additional repair closes the confirmed saved-identity defects, including a
+per-face color collision and several document/annotation selection races.
+Passing correctness checks do not complete every performance target.
+
+The earlier large-hand check completed at initial coarse detail with refinement
+disabled: 67.86 seconds cold and 18.77 seconds cached, with peak largest-renderer
+RSS of 1,965 / 1,890 MiB. Those runs predate the document-tree/component-input
+cutovers. They do not validate this runtime on the hand, full-resolution
+interaction, matched-quality improvement or comfortable memory headroom.
+The plan remains **in progress**. See the remaining work below and the
+[current nine-part measurements](scripts/bench/cadgen-performance/RESULTS-20260910.md#saved-document-repair-warm-check).
 Checked items below reflect implementation and available regression evidence.
 An unchecked item can be partially implemented; it remains open where the
 full stated behavior or validation matrix has not been demonstrated.
@@ -79,10 +85,12 @@ Runtime commits: `9d6afe240` (imports), `1405be434` (kernel ownership),
 Resumed runtime commits: `619d7afcd` (mutation/pin/publication integrity),
 `bd096f0ce` (shared consumers and dependency boundaries), `b3a4df3d0` (component
 lookup), and `ddd5817ec` (retained previews, coarse loading and worker ownership).
-The hand and warm reports match `ddd5817ec` by runtime fingerprint. The final
+The earlier hand and warm reports match `ddd5817ec` by runtime fingerprint. The final
 dependency guard in `d14d7f992` conservatively tracks escaped module aliases;
-its package is separately validated by the updated wheel report. No browser
-or kernel-performance code changed after those measurements.
+its package was separately validated by the resumed wheel report. The later
+saved-document repair changes canonical packaging, component identity and saved
+readers. The old reports retain their original fingerprints and are not final
+branch acceptance results.
 
 The final browser checks on `947f1dade` use copied STEP files without source or
 model/output indexes. The nine-part model's first-geometry frame proxy is
@@ -91,13 +99,18 @@ renderer RSS is 279 and 168 MiB. These are one cold/cached pair, not a statistic
 comparison. Six file switches retain the GPU plateau; a five-second active
 orbit of the 24-occurrence fixture records p95 browser frame interval 9.9 ms
 at 1400×900 with Metal. Those browser measurements predate the resumed work.
-The current warm-build measurements above use the separately fingerprinted
-resumed Python runtime.
+The resumed measurements use their separately fingerprinted Python runtime;
+the saved-document repair has its own small-fixture report.
 
 
 Original target: `codex/tendon-hand-preview`; implementation branch: `codex/tendon-hand-performance`.
 
 Reviewed baseline: `7aa3e85be76f305437abd3d7aba26e38b28e43cb`, fetched September 9, 2026.
+
+Saved-document repair: `858f718fc` (canonical document/result separation,
+bound appearance, per-face component identity, exact reader selection and
+material ownership). Its installed wheel and new nine-part study match the
+committed runtime by fingerprint.
 
 ## Remaining implementation and acceptance work
 
@@ -129,12 +142,11 @@ The following items are explicit limits of this implementation:
   failed load, pressure recovery that did not rearm after real progress, and
   worker accounting that charged the largest job to every slot. Removing full
   assembly composition from every component request enabled complete loading.
-- A tiny probe confirms existing saved-identity defects: source-only PBR can
-  change the cached tree for identical STEP bytes, and cold import can change
-  names/grouping. These contradict the byte-derived document contract; passing
-  tests do not excuse them. The [concrete repair design](scripts/bench/cadgen-performance/SAVED-IDENTITY-FOLLOWUP.md)
-  is **not implemented** and preserves finishes through bound annotations while
-  separating canonical document trees from authored results.
+- The [saved-document identity repair](scripts/bench/cadgen-performance/SAVED-IDENTITY-FOLLOWUP.md)
+  is implemented. Schema-8 annotations preserve PBR independently of canonical
+  STEP geometry; component input v2 prevents per-face color collisions. Rebuild
+  old authored outputs to persist finishes that previously existed only in the
+  cache. Lost legacy source/cache metadata cannot be recovered retroactively.
 - Preview handles are ephemeral and not manual-GC roots. Source and saved STEP
   remain durable; worker/restart/cache-loss behavior is stated in STORE.md.
 - Saves remain explicit builds. There is no automatic-save queue, cancellation
@@ -510,7 +522,7 @@ These are proposed targets to confirm on fixed reference hardware, not claims ab
 - [x] Exercise existing decorated model scripts unchanged. Verify the new caching, dependency, preview and persistence behavior requires no added utility imports or author-managed cache/session state.
 - [x] Validate each added index namespace's input identity, atomic publication, complete object references, GC reachability and recovery; assert no parallel persistent-cache layout is introduced.
 - [x] Extend the existing store-invariant tests to forbid model/output-record reads in saved readers; remove those records and verify rendering/export still work; move/copy documents and verify byte-based reuse.
-- [ ] Repair the confirmed identical-STEP/different-PBR document-index collision and generated/cold-import names/grouping mismatch. Follow the saved-identity repair design; preserve appearance durably and validate appearance-sensitive export keys.
+- [x] Repair the confirmed identical-STEP/different-PBR document-index collision and generated/cold-import names/grouping mismatch. Follow the saved-identity repair design; preserve appearance durably and validate appearance-sensitive export keys.
 - [x] Test whole-store deletion, missing transitive objects, worker eviction and GC during retained revisions. Prove no authored data loss, pin substitution or cache-dependent geometry.
 - [x] Inject failures after each save publication boundary and race older/newer revisions, concurrent child updates and competing writers. Assert only the concurrency guarantees actually specified by the accepted design.
 - [x] Verify source paths, timestamps and session metadata never enter geometry objects, and that camera/LOD/memory decisions do not change exact tree hashes or canonical export bytes.
@@ -519,7 +531,7 @@ These are proposed targets to confirm on fixed reference hardware, not claims ab
 - [x] Build the viewer production client and run affected documentation checks.
 - [x] Regenerate consumed runtime outputs with `scripts/bundle/bundle.sh` and verify with `scripts/bundle/bundle.sh --check`.
 - [x] Include generated runtime changes in the relevant commits; keep `VERSION` unchanged.
-- [x] Update the performance handoff with final-commit measurements and remaining limitations.
+- [x] Record frozen-runtime measurements, identify later correctness changes, and retain explicit unvalidated targets. Repeat the nine-part study after the saved-document repair; the earlier hand result is historical evidence.
 
 Relevant repository commands:
 

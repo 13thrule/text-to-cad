@@ -1,0 +1,77 @@
+{
+  "matchingCommittedRuntime": "858f718fc7c9be6df140443daf767a9aa67f75fb",
+  "sourceFingerprint": "f47265c3decbf8ed665984eb0bfd4f8228f304c6e070efa75f9371139c9d07fb",
+  "packageSkillTotal": 1915,
+  "suitesCompletedSeparately": true,
+  "checks": [
+    {
+      "scope": "packagePython",
+      "tests": 1481,
+      "note": "Package phase passed; the later CAD mock failures were fixed and rerun separately.",
+      "logPath": "/private/tmp/cadgen-performance-20260910/appearance-python-final-approved.log",
+      "logSha256": "9d2ad0b32b4ed2126dcf5d8d9a66d71ccd8aa99e20e386c828601dc76b8561bb"
+    },
+    {
+      "scope": "cadSkillPython",
+      "tests": 290,
+      "note": "Complete corrected CAD skill suite passed.",
+      "logPath": "/private/tmp/cadgen-performance-20260910/appearance-cad-skill-final.log",
+      "logSha256": "22e70950d74295e908e1d81317cc367fc938958d34443dcad837dc45860c9624"
+    },
+    {
+      "scope": "otherSkillPython",
+      "tests": 107,
+      "note": "All six remaining skill suites passed.",
+      "logPath": "/private/tmp/cadgen-performance-20260910/appearance-other-skills.log",
+      "logSha256": "515ba083a4fa39c9434d2e1701c985ac940a519632aededd516e434d193dc4db"
+    },
+    {
+      "scope": "bambuSkillPython",
+      "tests": 37,
+      "note": "Bambu phase passed.",
+      "logPath": "/private/tmp/cadgen-performance-20260910/appearance-python-final-approved.log",
+      "logSha256": "9d2ad0b32b4ed2126dcf5d8d9a66d71ccd8aa99e20e386c828601dc76b8561bb"
+    },
+    {
+      "scope": "sharedJavaScript",
+      "tests": 951,
+      "note": "Complete suite passed.",
+      "logPath": "/private/tmp/cadgen-performance-20260910/appearance-js-final.log",
+      "logSha256": "7f35195d44bf52f3d13d73002f70c79ec60e37c811b8372ee461898da789561a"
+    },
+    {
+      "scope": "viewerJavaScript",
+      "tests": 398,
+      "note": "Complete suite passed.",
+      "logPath": "/private/tmp/cadgen-performance-20260910/appearance-viewer-final.log",
+      "logSha256": "3d4ac4d59f99cb0adbcfbd4b2ca2d2eba02fa4274022a5384e121e736ab74e46"
+    },
+    {
+      "scope": "globalPolicy",
+      "tests": 126,
+      "note": "Passed; one skipped.",
+      "logPath": "/private/tmp/cadgen-performance-20260910/appearance-global-final-approved.log",
+      "logSha256": "3e156e29f7442a977762be9f9e803bf3942a40f5b0a5d4722c78b44533ba4cfb"
+    },
+    {
+      "scope": "finalFocusedPolicy",
+      "tests": 7,
+      "note": "Final encoding/package-boundary checks passed.",
+      "logPath": "/private/tmp/cadgen-performance-20260910/appearance-policy-last.log",
+      "logSha256": "2c3e7fdba377761e1942acc151561282bc1e1c4d756ca05f5b96163da62a00f4"
+    }
+  ],
+  "packagingReport": "packaging-appearance-20260910.json",
+  "browserReport": "saved-appearance-browser-20260910.json",
+  "warmStudy": "warm-appearance-20260910.json",
+  "version": "0.5.1",
+  "remaining": [
+    "warm preview under 250 ms",
+    "full-detail large-hand load and interaction",
+    "comfortable largest-renderer RSS headroom",
+    "animation and repeated-edit memory measurements",
+    "safe unchanged backend shape retention",
+    "superseded automatic export coalescing",
+    "native mesher matched-quality and browser integration study"
+  ]
+}

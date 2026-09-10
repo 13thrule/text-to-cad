@@ -190,10 +190,10 @@ environment. The task-owned viewer has been stopped.
 
 The passing suites do **not** prove every store invariant. A new tiny diagnostic
 confirms a pre-existing source-PBR/document-key collision and generated versus
-cold-import naming/grouping mismatch. These remain unresolved. See the
-[evidence](results/material-document-identity-20260910.json) and
-[unimplemented repair design](SAVED-IDENTITY-FOLLOWUP.md); no material stripping
-or publication redesign was hidden inside the performance changes.
+cold-import naming/grouping mismatch. These were unresolved at that checkpoint. See the original
+[evidence](results/material-document-identity-20260910.json) and the subsequent
+[implemented repair](SAVED-IDENTITY-FOLLOWUP.md). The new phase is documented
+separately below; the earlier test totals and wheel used schema 7.
 
 The hand and warm-build reports match committed runtime `ddd5817ec` by a
 post-commit fingerprint check. A later conservative module-alias guard,
@@ -202,3 +202,72 @@ kernel-performance change. The wheel was rebuilt and its installed checks
 repeated on that commit. The warm study retains source bytes/timestamps and
 still misses the preview target. No release version change or push is part of
 this integration.
+
+## Saved-document identity repair
+
+This phase implements the [saved identity repair](SAVED-IDENTITY-FOLLOWUP.md).
+It uses one canonical parsed-scene path for generated and imported documents,
+separate authored result and document trees, schema-8 bound PBR annotations,
+complete face-color component identity, private material/topology ownership,
+and coherent document-hash/tree selection across readers. It closes the
+original defect; it does not close the remaining performance targets.
+
+The [suite record](results/validation-appearance-20260910.json) identifies each
+completed check. The final runtime fingerprint is
+`f47265c3decbf8ed665984eb0bfd4f8228f304c6e070efa75f9371139c9d07fb`.
+The older hand and warm reports above retain their original fingerprints.
+The hand was not rebuilt for this repair, following the request to keep ongoing
+work on modest assemblies.
+
+- Package Python: **1,481 tests pass**, including the viewer backend.
+- CAD skill: **290 tests pass**. Other skill suites: **144 tests pass**.
+  The aggregate is **1,915 package/skill tests**; suites were completed through
+  targeted reruns, not one uninterrupted green wrapper invocation.
+- Shared JavaScript: **951 tests pass**. Viewer client: **398 tests pass**.
+- Global policy suite: **126 tests, one skipped**, no failures. The final
+  encoding/package-boundary check passes another seven focused cases.
+- Runtime bundle generation, viewer production build, final bundle freshness,
+  docs check, canonical version and skill pins pass. `VERSION` remains 0.5.1.
+- The final [wheel record](results/packaging-appearance-20260910.json) verifies
+  all **28** runtime files and **181** Python files against this checkout's
+  exact bytes, from clean setuptools staging. Six installed commands pass:
+  installed-path assertion, cold build, warm hit, inspection, STEP reemit and
+  bare GLB export. Cadgen comes from the wheel; heavy dependencies are reused
+  through a later site-packages entry without loading the editable install.
+- That same wheel renders an `open`-pose PNG, visually inspected, and a
+  three-frame 640×480 MP4. ffprobe confirms 10 fps and 0.3 seconds. These are
+  functional packaging checks, not performance comparisons.
+
+The full run exposed two test-maintenance issues after the production repair:
+robot-description tests assumed temporary files always lived outside the repo,
+and two imported-scene tests still mocked the old packaging function. Fixtures
+now live under `models/tmp`, path assertions check the actual referenced file,
+and mocks assert the exact canonical scene/preload contract. No production
+fallback was added to satisfy these tests. Earlier sandbox-only socket failures
+were rerun with local IPC enabled. The logs retain those failed attempts.
+
+The [real saved-appearance browser check](results/saved-appearance-browser-20260910.json)
+changes a one-part fixture's bound sidecar, then removes it. Actual WebGL
+roughness/metalness/clearcoat change from 0.18/0.82/0.65 to 0.86/0.06/0.05,
+then to defaults 0.58/0.02/0.12. STEP and canonical tree identities stay fixed;
+no new SURF or tessellation response body is requested on either change. The
+viewer performs a metadata HEAD probe, renders the one occurrence throughout,
+and reports no page errors. This browser check predates the last Python-only
+component identity and coherent-reader fixes; its JavaScript is unchanged.
+It is evidence of material composition and reuse, not final-runtime latency.
+
+Regression coverage additionally verifies identical STEP files with different
+PBR sidecars, source/store deletion with real GLB export, exact nested group
+mapping, red/blue face-color variants through moved pins and cold imports,
+metadata deletion/overrides, reemit output-pair recovery, and file replacement
+between geometry selection and annotation/export setup. An independent final
+contract review found no critical issue in the integrated publication/read paths.
+Known bounds remain: explicit-GC loss can invalidate a retained view, STEP and
+sidecar replacements are separate atomic operations, and the existing file-hash
+memo assumes a byte change also changes mtime or size.
+
+The plan remains **in progress**: the warm-preview target, full-detail hand
+loading/interaction, comfortable memory headroom, complete animation/edit-memory
+measurements, safe backend live-shape retention, and superseded automatic-export
+coalescing are not completed. The native study supports retaining JS; it does
+not establish native visual or interactive parity.
