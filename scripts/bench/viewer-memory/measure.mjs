@@ -26,7 +26,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { isCompletePublication } from "./completion.mjs";
+import { isRequestedDetailComplete } from "./completion.mjs";
+import { viewerRuntimeFingerprint, verifyServedViewerClient } from "./fingerprint.mjs";
+import { installWorkerProbe } from "./worker-probe.mjs";
+import { collectHeapDiagnostics, installCacheWriteProbe } from "./heap-diagnostics.mjs";
 
 const PLAYWRIGHT_FROM = process.env.PLAYWRIGHT_FROM
   || "/Users/jakefitzgerald/robots/text-to-cad/apps/viewer/node_modules/playwright";
@@ -42,6 +45,9 @@ function parseArgs(argv) {
     timeoutMs: 900000,
     out: "",
     lod: true,
+    minLod: 0,
+    maxRendererMiB: 0,
+    heapDiagnostics: false,
     sampleMs: 500
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -54,14 +60,23 @@ function parseArgs(argv) {
     else if (flag === "--out") args.out = argv[++i];
     else if (flag === "--sample-ms") args.sampleMs = Number(argv[++i]);
     else if (flag === "--no-lod") args.lod = false;
+    else if (flag === "--min-lod") args.minLod = Number(argv[++i]);
+    else if (flag === "--max-renderer-mib") args.maxRendererMiB = Number(argv[++i]);
+    else if (flag === "--heap-diagnostics") args.heapDiagnostics = true;
     else throw new Error(`unknown flag ${flag}`);
   }
   if (!args.file) throw new Error("--file <root-relative path> is required");
+  if (!Number.isFinite(args.maxRendererMiB) || args.maxRendererMiB < 0) throw new Error('--max-renderer-mib must be nonnegative');
+  if (!Number.isInteger(args.minLod) || args.minLod < 0 || args.minLod > 3 || (!args.lod && args.minLod > 0)) {
+    throw new Error("--min-lod must be 0–3 and requires LOD enabled");
+  }
   if (!args.label) args.label = path.basename(args.file);
   return args;
 }
 
 const args = parseArgs(process.argv.slice(2));
+const runtimeFingerprintAtStart = viewerRuntimeFingerprint();
+const servedClientProof = await verifyServedViewerClient(args.url);
 const mib = (bytes) => (Number(bytes) || 0) / (1024 * 1024);
 const fmt = (bytes) => `${mib(bytes).toFixed(1)} MiB`;
 
@@ -330,6 +345,7 @@ function mergePeak(peak, sample) {
 
 // ------------------------------------------------------------------------- run
 async function runOnce(runIndex) {
+  const startedAt = new Date().toISOString();
   const targetUrl = `${args.url.replace(/\/+$/, "")}/?file=${encodeURIComponent(args.file)}`;
   // A persistent context with OUR OWN profile directory: the directory is the
   // discriminator that ties `ps` rows to this browser (playwright's Browser
@@ -351,7 +367,9 @@ async function runOnce(runIndex) {
     ]
   });
   const record = {
+    startedAt,
     run: runIndex,
+    browserVersion: browser.browser()?.version() || null,
     label: args.label,
     file: args.file,
     url: targetUrl,
@@ -381,9 +399,13 @@ async function runOnce(runIndex) {
   };
   const peakRss = record.peakRss;
   let sampler = null;
+  let heapSession = null;
   try {
     const page = await browser.newPage();
     await page.addInitScript(initProbe);
+    await page.addInitScript(installWorkerProbe);
+    await page.addInitScript(installCacheWriteProbe);
+    await page.addInitScript((level) => { window.__CAD_VIEWER_MIN_LOD__ = level; }, args.minLod);
     if (!args.lod) await page.addInitScript(() => { window.__CAD_VIEWER_LOD__ = false; });
     page.on("crash", () => { record.crashed = true; record.crashMessage = "page crash (renderer gone)"; });
     page.on("pageerror", (error) => { record.pageErrors.push(String(error?.message || error)); });
@@ -397,8 +419,13 @@ async function runOnce(runIndex) {
     });
 
     sampler = setInterval(() => { mergePeak(peakRss, sampleProcesses(profileDir)); }, args.sampleMs);
+    if (args.heapDiagnostics) {
+      heapSession = await page.context().newCDPSession(page);
+      await boundedProbe(heapSession.send("HeapProfiler.startSampling", { samplingInterval: 32768 }), 2000);
+    }
 
     const started = Date.now();
+    record.navigationStartedAt = new Date().toISOString();
     await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: Math.min(120000, args.timeoutMs) });
 
     // Poll the current complete publication rather than just visible geometry:
@@ -407,6 +434,10 @@ async function runOnce(runIndex) {
     let stage = "";
     let lastProgress = "";
     while (Date.now() < deadline && !record.crashed) {
+      if (args.maxRendererMiB > 0 && (peakRss.renderer?.largestPidBytes || 0) > args.maxRendererMiB * 1024 * 1024) {
+        record.rssLimitExceeded = true;
+        break;
+      }
       let probe = null;
       try {
         probe = await boundedProbe(page.evaluate(() => ({
@@ -428,10 +459,13 @@ async function runOnce(runIndex) {
           })(),
           memoryPolicy: typeof window.__cadViewerMemoryPolicySnapshot === "function"
             ? window.__cadViewerMemoryPolicySnapshot() : null,
+          viewportLod: window.__cadViewportLod?.() || null,
+          workers: window.__cadWorkerProbe ? { ...window.__cadWorkerProbe } : null,
+          cacheWrites: window.__cadCacheWriteProbe ? { ...window.__cadCacheWriteProbe } : null,
           draw: window.__drawStats ? { ...window.__drawStats } : null,
           firstGeometry: window.__firstGeometry ? { ...window.__firstGeometry } : null,
           paint: performance.getEntriesByType("paint").map((entry) => [entry.name, entry.startTime])
-        })), deadline - Date.now());
+        })), Math.min(10000, deadline - Date.now()));
       } catch (error) {
         if (error?.code === "RENDERER_PROBE_TIMEOUT") {
           record.probeTimedOut = true;
@@ -463,6 +497,9 @@ async function runOnce(runIndex) {
       record.renderMemoryProbe = probe.renderMemoryProbe;
       record.sceneSync = probe.sceneSync;
       record.memoryPolicy = probe.memoryPolicy;
+      record.viewportLod = probe.viewportLod;
+      record.workers = probe.workers;
+      record.cacheWrites = probe.cacheWrites;
       if (probe.firstGeometry) {
         record.firstGeometryPublishMs = probe.firstGeometry.firstGeometryPublishMs;
         record.firstGeometryFrameMs = probe.firstGeometry.firstGeometryFrameMs;
@@ -474,14 +511,14 @@ async function runOnce(runIndex) {
           || (probe.paint || [])[0];
         if (first) record.timeToFirstPaintMs = Math.round(first[1]);
       }
-      if (isCompletePublication(probe)) {
+      if (isRequestedDetailComplete(probe, args.minLod)) {
         record.loaded = true;
         record.timeToLoadedMs = Date.now() - started;
         break;
       }
       // Initial-load limitations are published only after admission/recovery
       // fails. Once admitted work drains, waiting cannot complete this model.
-      if (probe.memoryPolicy?.lastLimitation && probe.memoryPolicy.reservationCount === 0) {
+      if (probe.memoryPolicy?.lastLimitation && probe.memoryPolicy.reservationCount === 0 && !probe.viewportLod?.busy) {
         record.loadFailure = probe.memoryPolicy.lastLimitation;
         break;
       }
@@ -490,6 +527,8 @@ async function runOnce(runIndex) {
     if (!record.loaded && !record.crashed) {
       record.crashMessage = record.loadFailure
         ? `memory admission failed for ${record.loadFailure.cid || record.loadFailure.label || "component"}`
+        : record.rssLimitExceeded
+        ? `largest renderer exceeded ${args.maxRendererMiB} MiB bounded-run limit`
         : record.probeTimedOut
         ? `renderer probe stopped responding (stage: ${stage || "unknown"})`
         : `timeout after ${args.timeoutMs} ms (stage: ${stage || "unknown"})`;
@@ -537,26 +576,29 @@ async function runOnce(runIndex) {
       // fixed by holding less — different work. A forced collection, then a
       // settle for the worker isolates and the allocator to give memory back,
       // reads the second number.
-      if (record.loaded) try {
-        const cdp = await page.context().newCDPSession(page);
-        await cdp.send("HeapProfiler.enable").catch(() => {});
-        await cdp.send("HeapProfiler.collectGarbage");
-        await cdp.detach().catch(() => {});
-        await new Promise((resolve) => setTimeout(resolve, 5000));
+      try {
+        heapSession ||= await page.context().newCDPSession(page);
+        record.heapDiagnostics = await collectHeapDiagnostics({
+          page, cdp: heapSession, bounded: boundedProbe,
+          sampleRss: () => sampleProcesses(profileDir),
+          failed: !record.loaded, sampling: args.heapDiagnostics,
+        });
         record.afterGc = {
-          rss: sampleProcesses(profileDir),
-          heapUsed: await page.evaluate(
-            () => (performance.memory ? performance.memory.usedJSHeapSize : 0)
-          ).catch(() => 0)
+          rss: record.heapDiagnostics.after.rss,
+          heapUsed: record.heapDiagnostics.after.state.heapUsed,
         };
-      } catch { /* no CDP: the after-GC reading is simply absent */ }
+      } catch (error) {
+        record.heapDiagnosticsError = String(error.message || error);
+      }
     }
     mergePeak(peakRss, sampleProcesses(profileDir));
   } finally {
     if (sampler) clearInterval(sampler);
+    await heapSession?.detach().catch(() => {});
     await browser.close().catch(() => {});
     fs.rmSync(profileDir, { recursive: true, force: true });
   }
+  record.finishedAt = new Date().toISOString();
   return record;
 }
 
@@ -594,7 +636,11 @@ for (let run = 1; run <= args.runs; run += 1) {
   ].filter(Boolean).join("\n") + "\n");
 }
 
-const payload = { args, results, generatedAt: new Date().toISOString() };
+const payload = {
+  args, results, generatedAt: new Date().toISOString(), servedClientProof,
+  environment: { node: process.version, platform: os.platform(), release: os.release(), arch: os.arch(), cpu: os.cpus()[0]?.model, logicalCpus: os.cpus().length, totalMemoryBytes: os.totalmem() },
+  runtimeFingerprintAtStart, runtimeFingerprintAtEnd: viewerRuntimeFingerprint(),
+};
 if (args.out) {
   fs.writeFileSync(args.out, `${JSON.stringify(payload, null, 2)}\n`);
   process.stderr.write(`\nwrote ${args.out}\n`);

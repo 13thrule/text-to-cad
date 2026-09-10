@@ -20,6 +20,7 @@ import tempfile
 import time
 
 from common import REPO, metadata, model_path, peak_rss_bytes, sha256, source_fingerprint, write_json
+from mesh_audit import decode_candidate, sample_surface_deviation
 
 
 def milliseconds(start):
@@ -51,7 +52,7 @@ def encode(mesh: dict, index: dict) -> bytes:
     return bytes(output)
 
 
-def native_worker(plan: Path, report: Path, view: Path, cache: Path, iterations: int):
+def native_worker(plan: Path, report: Path, view: Path, cache: Path, iterations: int, chord_scale: float):
     from OCP.BinTools import BinTools
     from OCP.TopoDS import TopoDS, TopoDS_Shape
     from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE, TopAbs_REVERSED
@@ -107,7 +108,7 @@ def native_worker(plan: Path, report: Path, view: Path, cache: Path, iterations:
                 truth["faceAreas"][ordinal] = face_props.Mass()
             identity_before_mesh = sha256(_shape_brep_bytes(shape))
             start = time.perf_counter()
-            mesher = BRepMesh_IncrementalMesh(shape, reference["absoluteChordMm"], False,
+            mesher = BRepMesh_IncrementalMesh(shape, reference["absoluteChordMm"] * chord_scale, False,
                                            reference["options"]["angleTolerance"], False)
             mesh_ms = milliseconds(start)
             if not mesher.IsDone():
@@ -118,6 +119,7 @@ def native_worker(plan: Path, report: Path, view: Path, cache: Path, iterations:
             triangles, side_ords = array("I"), array("I")
             ranges, polylines = [], {}
             missing_normals = 0
+            collapsed_triangles = 0
             for ordinal in range(1, faces.Extent() + 1):
                 face = TopoDS.Face_s(faces.FindKey(ordinal))
                 location = TopLoc_Location()
@@ -161,6 +163,16 @@ def native_worker(plan: Path, report: Path, view: Path, cache: Path, iterations:
                 for triangle in range(1, tri.NbTriangles() + 1):
                     a, b, c = tri.Triangle(triangle).Get()
                     ids = [base + a - 1, base + c - 1, base + b - 1] if reversed_face else [base + a - 1, base + b - 1, base + c - 1]
+                    pa, pb, pc = [positions[node * 3:node * 3 + 3] for node in ids]
+                    u, v = [pb[d] - pa[d] for d in range(3)], [pc[d] - pa[d] for d in range(3)]
+                    area_squared = sum(value * value for value in (u[1] * v[2] - u[2] * v[1],
+                        u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]))
+                    # OCCT emits repeated pole/apex triangles that collapse
+                    # in the shared Float32 transport. This extraction step
+                    # is timed and reported, not credited to kernel meshing.
+                    if area_squared < reference["scale"] ** 4 * 1e-24:
+                        collapsed_triangles += 1
+                        continue
                     triangles.extend(ids)
                     # The renderer associates side i with the edge opposite
                     # barycentric vertex i: (b,c), (c,a), (a,b).
@@ -184,15 +196,21 @@ def native_worker(plan: Path, report: Path, view: Path, cache: Path, iterations:
                             "extractMs": extract_ms, "encodeMs": encode_ms})
         cache_path = cache / f"native-experiment-{cid}-{chord}.tess"
         cache_path.write_bytes(encoded)
+        native_deviation = sample_surface_deviation(mesh, faces)
+        js_deviation = sample_surface_deviation(decode_candidate(Path(reference["cachePath"])), faces)
         rows.append({"cid": cid, "name": reference["name"], "chordTolerance": chord,
-                     "absoluteChordMm": reference["absoluteChordMm"], "angleTolerance": reference["options"]["angleTolerance"],
+                     "absoluteChordMm": reference["absoluteChordMm"] * chord_scale,
+                     "referenceChordMm": reference["absoluteChordMm"], "chordScale": chord_scale,
+                     "angleTolerance": reference["options"]["angleTolerance"],
                      "relative": False, "parallel": False, "vertices": len(positions) // 3,
                      "triangles": len(triangles) // 3, "encodedBytes": len(encoded), "gzipBytes": len(gzip.compress(encoded, mtime=0)),
                      "meshHash": hashes[0], "repeatDeterministic": len(set(hashes)) == 1,
                      "inputBrepUnchanged": True, "privateBrepIdentityUnchanged": all(item["beforeMesh"] == item["afterMesh"] for item in identities),
                      "privateBrepIdentities": identities, "inputSha256": sha256(source), "surfSha256": sha256(surf),
                      "faceCount": faces.Extent(), "edgeCount": edges.Extent(), "edgePolylines": len(polylines),
-                     "undefinedNormalNodes": missing_normals, "truth": truth, "samples": samples, "cachePath": str(cache_path)})
+                     "undefinedNormalNodes": missing_normals, "droppedCollapsedTriangles": collapsed_triangles,
+                     "truth": truth, "samples": samples, "cachePath": str(cache_path),
+                     "sampledDeviation": native_deviation, "jsSampledDeviation": js_deviation})
     write_json(report, {"timingBoundary": "fresh private BREP per sample; OCCT meshing excludes reconstruction, Python array/normal extraction and codec",
                         "processPeakRssBytes": peak_rss_bytes(), "rows": rows})
 
@@ -203,19 +221,24 @@ def main():
     parser.add_argument("--report", required=True, type=Path)
     parser.add_argument("--iterations", type=int, default=3)
     parser.add_argument("--chords", default="0.003,0.0015")
+    parser.add_argument("--native-chord-scale", type=float, default=1.0,
+                        help="multiply OCCT's physical chord input while keeping the JS reference settings")
     parser.add_argument("--native-worker", type=Path)
     parser.add_argument("--cache-dir", type=Path)
     args = parser.parse_args()
     view = model_path(args.view)
     if args.iterations < 1:
         parser.error("--iterations must be positive")
+    if not 0 < args.native_chord_scale <= 1:
+        parser.error("--native-chord-scale must be positive and at most 1")
     if args.native_worker:
-        native_worker(args.native_worker, args.report, view, model_path(args.cache_dir), args.iterations)
+        native_worker(args.native_worker, args.report, view, model_path(args.cache_dir), args.iterations, args.native_chord_scale)
         return
     script = Path(__file__).resolve()
     args.report.parent.mkdir(parents=True, exist_ok=True)
     result = {"metadata": metadata(), "view": str(view), "iterations": args.iterations,
-              "qualityScope": "same BREP/SURF and absolute component-scale chord/angular inputs; algorithms have different refinement criteria, so equal tolerances do not establish equal visual quality",
+              "qualityScope": "same BREP/SURF and angular input; native chord scale is explicit; all vertices, triangle-edge midpoints and centroids are projected onto exact OCCT face surfaces outside timed work; sampled deviation is not a continuous bound or visual-quality proof",
+              "nativeChordScale": args.native_chord_scale,
               "processes": []}
     with tempfile.TemporaryDirectory(prefix="native-meshing-", dir=view.parent) as scratch:
         for process in range(2):
@@ -227,7 +250,8 @@ def main():
             subprocess.run(["node", str(script.with_name("js_mesh.mjs")), "--view", str(view), "--report", str(js_report),
                             "--cache-dir", str(cache), "--iterations", str(args.iterations), "--chords", args.chords], check=True, cwd=REPO)
             subprocess.run([sys.executable, str(script), "--view", str(view), "--report", str(native_report), "--native-worker", str(js_report),
-                            "--cache-dir", str(cache), "--iterations", str(args.iterations)], check=True, cwd=REPO)
+                            "--cache-dir", str(cache), "--iterations", str(args.iterations),
+                            "--native-chord-scale", str(args.native_chord_scale)], check=True, cwd=REPO)
             subprocess.run(["node", str(script.with_name("js_mesh.mjs")), "--decode-native", str(native_report), "--report", str(decode_report),
                             "--cache-dir", str(cache), "--iterations", str(args.iterations)], check=True, cwd=REPO)
             js, native, decoded = [json.loads(path.read_text()) for path in (js_report, native_report, decode_report)]
@@ -235,6 +259,7 @@ def main():
             for current, candidate, audit in zip(js["rows"], native["rows"], decoded["rows"], strict=True):
                 candidate["quality"] = audit["quality"]
                 candidate["cachedSamples"] = audit["samples"]
+                current["sampledDeviation"] = candidate.pop("jsSampledDeviation")
                 for mesh in (current, candidate):
                     truth = candidate["truth"]
                     mesh["quality"]["volumeRelativeError"] = abs(abs(mesh["quality"]["signedVolume"]) - truth["volume"]) / max(truth["volume"], 1e-12)

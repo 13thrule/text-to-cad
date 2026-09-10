@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 from pathlib import Path
 
 from common import REPO, model_path, sha256, write_json
@@ -53,11 +54,22 @@ def view(model: Path, store: Path, directory: Path) -> None:
     print(directory)
 
 
+def split_fixture(directory: Path) -> None:
+    """Copy only the authored split fixture; generated files stay in the copy."""
+    source = REPO / "models/examples/performance/planetary_split"
+    directory.mkdir(parents=True, exist_ok=False)
+    shutil.copytree(source / "src", directory / "src", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copyfile(source / "README.md", directory / "README.md")
+    print(directory / "src/planetary_gear_assembly.py")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="action", required=True)
     setup = subcommands.add_parser("fixture", help="Copy the repository fixture with only a local STEP output")
     setup.add_argument("--directory", required=True, type=model_path)
+    split = subcommands.add_parser("split-fixture", help="Copy the same geometry as a root and nine decorated children")
+    split.add_argument("--directory", required=True, type=model_path)
     export = subcommands.add_parser("view", help="Copy BREP/SURF inputs from a completed store tree")
     export.add_argument("--directory", required=True, type=model_path)
     export.add_argument("--model", required=True, type=model_path)
@@ -65,6 +77,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.action == "fixture":
         fixture(args.directory)
+    elif args.action == "split-fixture":
+        split_fixture(args.directory)
     else:
         view(args.model, args.store, args.directory)
 
