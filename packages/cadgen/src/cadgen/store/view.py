@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from cadgen.store.objects import is_object_hash, object_path
-from cadgen.store.trees import flatten
+from cadgen.store.trees import flatten, get_tree
 
 DESCRIPTOR_NAME = "assembly.json"
 COMPONENT_DIRNAME = "components"
@@ -37,7 +37,13 @@ def descriptor_for_view(tree_hash: str) -> dict[str, Any] | None:
     (``components/<cid>.surf``, the file name every reader derives from an
     occurrence's component id) and the object hashes beside them
     (``surfObject``/``brepObject``)."""
-    descriptor = flatten(tree_hash)
+    try:
+        descriptor = flatten(tree_hash)
+    except FileNotFoundError:
+        # A linked object disappearing makes the whole virtual view unavailable.
+        # Raw flattening still raises for build/materialization integrity paths;
+        # this read adapter's public unavailable result is None (HTTP 404).
+        return None
     if descriptor is None:
         return None
     components = descriptor.get("components") or {}
@@ -68,6 +74,82 @@ def component_object_for_ref(ref: str, descriptor: dict[str, Any] | None = None)
     if is_object_hash(stem):
         return stem, suffix
     return None
+
+
+def component_object_for_tree(tree_hash: str, ref: str) -> tuple[str, str] | None:
+    """Resolve one component without flattening occurrence geometry.
+
+    The component map is already content-addressed in each tree. Walk the full
+    linked-tree graph to validate that the named root still has a coherent
+    closure, while reading no occurrence transforms. A cid is authoritative;
+    a bare object hash remains a compatibility spelling only when that exact
+    object is referenced by this tree. Conflicting duplicate cid mappings and
+    cycles are corrupt rather than candidates for a partial view.
+    """
+    root = str(tree_hash or "").strip().lower()
+    name = str(ref or "").replace("\\", "/").rsplit("/", 1)[-1]
+    if not is_object_hash(root) or "." not in name:
+        return None
+    stem, suffix = name.rsplit(".", 1)
+    if suffix not in ("surf", "brep", "glb"):
+        return None
+    object_stem = stem.strip().lower() if is_object_hash(stem) else None
+
+    cid_matches: list[str | None] = []
+    object_is_referenced = False
+    active: set[str] = set()
+    complete: set[str] = set()
+    stack: list[tuple[str, bool]] = [(root, False)]
+    while stack:
+        current, leaving = stack.pop()
+        if leaving:
+            active.remove(current)
+            complete.add(current)
+            continue
+        if current in complete:
+            continue
+        if current in active or not is_object_hash(current):
+            return None
+        tree = get_tree(current)
+        if tree is None:
+            return None
+        components = tree.get("components") or {}
+        links = tree.get("links") or []
+        if not isinstance(components, dict) or not isinstance(links, list):
+            return None
+        for cid, entry in components.items():
+            if not isinstance(entry, dict):
+                return None
+            digest = str(entry.get(suffix) or "").strip().lower()
+            if str(cid) == stem:
+                cid_matches.append(digest if is_object_hash(digest) else None)
+            if object_stem is not None and digest == object_stem:
+                object_is_referenced = True
+        children: list[str] = []
+        for link in links:
+            if not isinstance(link, dict):
+                return None
+            child = str(link.get("tree") or "").strip().lower()
+            if not is_object_hash(child):
+                return None
+            children.append(child)
+        active.add(current)
+        stack.append((current, True))
+        stack.extend((child, False) for child in reversed(children))
+
+    if cid_matches:
+        if any(digest is None for digest in cid_matches):
+            return None
+        unique = set(cid_matches)
+        if len(unique) != 1:
+            return None
+        digest = next(iter(unique))
+    elif object_stem is not None and object_is_referenced:
+        digest = object_stem
+    else:
+        return None
+    path = object_path(digest)
+    return (digest, suffix) if path.is_file() else None
 
 
 def views_root() -> Path:
@@ -142,7 +224,7 @@ def virtual_path(rel: str) -> tuple[bytes | Path | None, str]:
             return None, ""
         return json.dumps(descriptor).encode("utf-8"), "application/json"
     if len(parts) == 3 and parts[1] == COMPONENT_DIRNAME:
-        resolved = component_object_for_ref(parts[2], descriptor_for_view(tree_hash))
+        resolved = component_object_for_tree(tree_hash, parts[2])
         if resolved is None:
             return None, ""
         digest, suffix = resolved
