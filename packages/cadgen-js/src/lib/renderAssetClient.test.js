@@ -19,6 +19,7 @@ import {
   peekRenderJson,
   peekRenderSdf,
   renderAssetCacheStats,
+  releaseSurfWorkers,
   releaseRenderSurfLevel,
   configureSurfLeash
 } from "./renderAssetClient.js";
@@ -717,4 +718,34 @@ test("obsolete concrete surf levels release browser cache references only", asyn
   assert.equal(after.selector.entries, before.selector.entries - 1);
   assert.ok(meshData.indices.length > 0, "the displayed owner remains valid");
   assert.ok(bundle.manifest.faces.length > 0, "the exact selector owner remains valid");
+});
+
+test("a failed surf worker job is not retried synchronously on the main thread", async (t) => {
+  class FailingWorker {
+    constructor() { this.listeners = {}; }
+    addEventListener(type, handler) { this.listeners[type] = handler; }
+    postMessage(message) {
+      setTimeout(() => this.listeners.message?.({
+        data: { id: message.id, ok: false, error: { name: "Error", message: "heavy worker failed" } },
+      }), 0);
+    }
+    terminate() {}
+  }
+  const savedWorker = globalThis.Worker;
+  const savedFetch = globalThis.fetch;
+  let mainThreadFetches = 0;
+  globalThis.Worker = FailingWorker;
+  globalThis.fetch = async () => {
+    mainThreadFetches += 1;
+    throw new Error("main-thread fallback must not fetch");
+  };
+  t.after(async () => {
+    await releaseSurfWorkers();
+    globalThis.Worker = savedWorker;
+    globalThis.fetch = savedFetch;
+  });
+
+  const url = `https://failure.test/components/heavy-${Date.now()}.surf`;
+  await assert.rejects(loadRenderSurf(url), /heavy worker failed/);
+  assert.equal(mainThreadFetches, 0);
 });

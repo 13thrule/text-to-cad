@@ -826,14 +826,10 @@ async function loadSurfPayload(url, {
     const { loadSurfComponentInWorker } = await import("./surf/surfWorkerClient.js");
     const workerPayload = loadSurfComponentInWorker(url, { signal, tessellation, capabilities });
     if (workerPayload) {
-      try {
-        return await workerPayload;
-      } catch (error) {
-        if (signal?.aborted || isAbortError(error)) {
-          throw error;
-        }
-        // Worker failure degrades to inline tessellation, never to no model.
-      }
+      // Once a worker accepts the job, keep expensive tessellation off the UI
+      // thread even when that job fails. Propagate the failure; inline is only
+      // the compatibility path for environments where Workers never started.
+      return workerPayload;
     }
     return loadSurfPayloadInline(url, { signal, tessellation, capabilities });
   }, { cachePending: !signal });

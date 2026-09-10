@@ -20,6 +20,8 @@ let nextWorkerIndex = 0;
 let nextRequestId = 1;
 const pendingRequests = new Map();
 const idleReleaseWaiters = new Map();
+let dispatching = false;
+let dispatchRequested = false;
 
 // A component surf under a package's components/ dir is CONTENT-ADDRESSED —
 // its stem is the cid the shared tessellation cache keys on. Anything else
@@ -121,8 +123,8 @@ function releaseIdlePool(generation = poolGeneration) {
   }
   if (pendingRequests.size > 0) return false;
   if (pool) {
-    for (const worker of pool) {
-      worker.terminate?.();
+    for (const slot of pool) {
+      slot?.worker.terminate?.();
     }
     pool = null;
     nextWorkerIndex = 0;
@@ -135,6 +137,127 @@ function releaseDeferredPoolIfIdle(generation = poolGeneration) {
   if (idleReleaseWaiters.has(generation)) releaseIdlePool(generation);
 }
 
+function nextReadyRequest(generation) {
+  for (const [id, request] of pendingRequests) {
+    if (request.poolGeneration === generation && request.ready && !request.slot) {
+      return [id, request];
+    }
+  }
+  return null;
+}
+
+function dispatchQueuedRequests() {
+  if (dispatching) {
+    dispatchRequested = true;
+    return;
+  }
+  dispatching = true;
+  try {
+    do {
+      dispatchRequested = false;
+      const currentPool = pool;
+      const generation = poolGeneration;
+      if (!currentPool) break;
+      const startIndex = nextWorkerIndex;
+      for (let offset = 0; offset < currentPool.length; offset += 1) {
+        if (pool !== currentPool || poolGeneration !== generation) break;
+        const index = (startIndex + offset) % currentPool.length;
+        const slot = currentPool[index];
+        if (!slot || slot.requestId != null) continue;
+        const queued = nextReadyRequest(generation);
+        if (!queued) break;
+        const [id, request] = queued;
+        slot.requestId = id;
+        request.slot = slot;
+        nextWorkerIndex = (index + 1) % currentPool.length;
+        try {
+          slot.worker.postMessage(request.message, request.transfer);
+        } catch (error) {
+          handleWorkerError(slot, error);
+        }
+      }
+    } while (dispatchRequested);
+  } finally {
+    dispatching = false;
+    // A callback can request another pass as the final loop condition is
+    // checked. Drain it iteratively from a fresh call after unwinding.
+    if (dispatchRequested) {
+      dispatchRequested = false;
+      queueMicrotask(dispatchQueuedRequests);
+    }
+  }
+}
+
+function finishRequest(slot, id) {
+  const request = pendingRequests.get(id);
+  if (!request || request.slot !== slot) return null;
+  pendingRequests.delete(id);
+  request.slot = null;
+  slot.requestId = null;
+  request.cleanup();
+  return request;
+}
+
+function replaceWorkerSlot(slot) {
+  if (!pool || slot.poolGeneration !== poolGeneration || pool[slot.index] !== slot) return;
+  slot.worker.terminate?.();
+  pool[slot.index] = null;
+  releaseDeferredPoolIfIdle(slot.poolGeneration);
+  if (!pool || slot.poolGeneration !== poolGeneration) return;
+  try {
+    pool[slot.index] = createWorkerSlot(slot.index, slot.poolGeneration);
+  } catch (error) {
+    // Losing one replacement slot does not invalidate work already owned by
+    // the remaining isolates. They keep draining the queue; only a pool with
+    // no surviving slot is terminal.
+    pool[slot.index] = null;
+    if (!pool.some(Boolean)) {
+      pool = null;
+      rejectAllPending(error instanceof Error ? error : new Error(String(error)));
+      resolveIdleReleaseWaiters(slot.poolGeneration, true);
+    }
+  }
+}
+
+function handleWorkerMessage(slot, event) {
+  const message = event.data || {};
+  const request = finishRequest(slot, message.id);
+  if (!request) return;
+  dispatchQueuedRequests();
+  releaseDeferredPoolIfIdle(request.poolGeneration);
+  if (message.ok) {
+    if (message.entryBytes && request.writeBack) {
+      request.writeBack(message.entryBytes); // fire-and-forget
+    }
+    request.resolve({
+      ...(message.meshData ? { meshData: message.meshData } : {}),
+      ...(message.bundle ? { bundle: message.bundle } : {}),
+    });
+    return;
+  }
+  const error = new Error(message.error?.message || "Failed to load surf component in worker.");
+  error.name = message.error?.name || "Error";
+  request.reject(error);
+}
+
+function handleWorkerError(slot, event) {
+  if (!pool || slot.poolGeneration !== poolGeneration || pool[slot.index] !== slot) return;
+  const request = slot.requestId == null ? null : finishRequest(slot, slot.requestId);
+  if (request) {
+    request.reject(new Error(event?.message || "surf worker failed."));
+  }
+  replaceWorkerSlot(slot);
+  dispatchQueuedRequests();
+}
+
+function createWorkerSlot(index, generation) {
+  const worker = new Worker(new URL("./surfWorker.js", import.meta.url), { type: "module" });
+  const slot = { worker, index, poolGeneration: generation, requestId: null };
+  worker.addEventListener("message", (event) => handleWorkerMessage(slot, event));
+  worker.addEventListener("error", (event) => handleWorkerError(slot, event));
+  return slot;
+}
+
 function ensurePool() {
   if (!workersSupported()) {
     return null;
@@ -142,45 +265,16 @@ function ensurePool() {
   if (pool) {
     return pool;
   }
+  const slots = [];
   try {
     poolGeneration += 1;
-    pool = Array.from({ length: poolSize() }, () => {
-      const worker = new Worker(new URL("./surfWorker.js", import.meta.url), { type: "module" });
-      worker.addEventListener("message", (event) => {
-        const message = event.data || {};
-        const request = pendingRequests.get(message.id);
-        if (!request) {
-          return;
-        }
-        pendingRequests.delete(message.id);
-        request.cleanup();
-        releaseDeferredPoolIfIdle(request.poolGeneration);
-        if (message.ok) {
-          if (message.entryBytes && request.writeBack) {
-            request.writeBack(message.entryBytes); // fire-and-forget
-          }
-          request.resolve({
-            ...(message.meshData ? { meshData: message.meshData } : {}),
-            ...(message.bundle ? { bundle: message.bundle } : {}),
-          });
-          return;
-        }
-        const error = new Error(message.error?.message || "Failed to load surf component in worker.");
-        error.name = message.error?.name || "Error";
-        request.reject(error);
-      });
-      worker.addEventListener("error", (event) => {
-        // One broken worker poisons in-flight requests; tear the pool down
-        // so the next load falls back (or rebuilds a fresh pool).
-        const failedGeneration = poolGeneration;
-        rejectAllPending(new Error(event?.message || "surf worker failed."));
-        for (const w of pool || []) w.terminate?.();
-        pool = null;
-        resolveIdleReleaseWaiters(failedGeneration, true);
-      });
-      return worker;
-    });
+    const generation = poolGeneration;
+    for (let index = 0; index < poolSize(); index += 1) {
+      slots.push(createWorkerSlot(index, generation));
+    }
+    pool = slots;
   } catch {
+    for (const slot of slots) slot.worker.terminate?.();
     pool = null;
     return null;
   }
@@ -234,8 +328,6 @@ export function loadSurfComponentInWorker(url, { signal, tessellation, capabilit
   }
   const id = nextRequestId;
   nextRequestId += 1;
-  const worker = workers[nextWorkerIndex % workers.length];
-  nextWorkerIndex += 1;
   // The shared tessellation cache lives on THIS thread's provider (a fetch
   // against the host's /__tess_cache/ routes); the worker cannot reach it, so
   // the entry bytes ride the request in (transferred, hit = tessellation
@@ -252,9 +344,16 @@ export function loadSurfComponentInWorker(url, { signal, tessellation, capabilit
     };
     const abort = () => {
       const request = pendingRequests.get(id);
+      if (!request) return;
       pendingRequests.delete(id);
       cleanup();
-      worker.postMessage({ type: "cancel", id });
+      const slot = request.slot;
+      request.slot = null;
+      if (slot) {
+        slot.requestId = null;
+        replaceWorkerSlot(slot);
+      }
+      dispatchQueuedRequests();
       releaseDeferredPoolIfIdle(request?.poolGeneration);
       reject(makeAbortError());
     };
@@ -263,27 +362,34 @@ export function loadSurfComponentInWorker(url, { signal, tessellation, capabilit
       reject,
       cleanup,
       poolGeneration,
+      ready: false,
+      slot: null,
+      message: null,
+      transfer: null,
       writeBack: cacheable
         ? (entryBytes) => { writeBackEntryBytes(cid, tessellation || {}, entryBytes); }
         : null,
     });
     signal?.addEventListener?.("abort", abort, { once: true });
     const post = (cachedEntry) => {
-      if (!pendingRequests.has(id)) {
+      const request = pendingRequests.get(id);
+      if (!request) {
         return; // aborted while the cache lookup was in flight
       }
-      worker.postMessage(
-        {
-          type: "loadSurf",
-          id,
-          url,
-          capabilities,
-          ...(tessellation ? { tessellation } : {}),
-          ...(cachedEntry ? { cachedEntry } : {}),
-          ...(cacheable ? { wantEntry: !cachedEntry } : {}),
-        },
-        cachedEntry && cachedEntry.buffer.byteLength === cachedEntry.byteLength ? [cachedEntry.buffer] : [],
-      );
+      request.message = {
+        type: "loadSurf",
+        id,
+        url,
+        capabilities,
+        ...(tessellation ? { tessellation } : {}),
+        ...(cachedEntry ? { cachedEntry } : {}),
+        ...(cacheable ? { wantEntry: !cachedEntry } : {}),
+      };
+      request.transfer = cachedEntry && cachedEntry.buffer.byteLength === cachedEntry.byteLength
+        ? [cachedEntry.buffer]
+        : [];
+      request.ready = true;
+      dispatchQueuedRequests();
     };
     if (cacheable) {
       getCachedEntryBytes(cid, tessellation || {}).then(post, () => post(null));

@@ -37,6 +37,11 @@ snapshot renderer and the node builders in `bin/`).
   occurrence identity; mirrors, transparency and deformation use explicit
   fallback paths. Disposable resource admission never changes exact geometry
   or persistent cache identity.
+- **Worker isolation**: each tessellation worker runs one request at a time;
+  excess requests wait on the client. Aborting synchronous work replaces only
+  its worker, preserving other callers. A failed worker request reports an
+  error instead of retrying expensive tessellation on the UI thread. Inline
+  execution is reserved for environments where workers cannot start.
 - **Kinematics is data, choreography is JS, independently**: the FK
   evaluator (`kinematicsRuntime.js`) folds sidecar mate data into
   transforms and is the operation-for-operation twin of the Python
