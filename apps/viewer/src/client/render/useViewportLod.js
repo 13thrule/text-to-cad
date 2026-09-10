@@ -10,12 +10,12 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { loadRenderSurfPayloadAtLevel, releaseSurfWorkers } from "cadgen-js/lib/renderAssetClient";
 import { estimateMeshRenderCost } from "cadgen-js/lib/render/meshCost.js";
-import { LOD_CHORD_LEVELS } from "cadgen-js/lib/surf/lodPolicy.js";
+import { lodTessellationForLevel } from "cadgen-js/lib/surf/lodPolicy.js";
 
 import { createLodScheduler } from "./lodScheduler.js";
+import { syncSurfWorkerMemory } from "./surfWorkerMemoryPolicy.js";
 import { viewerMemoryPolicy } from "./viewerMemoryPolicy.js";
-
-const LOD_SELECTOR_AND_GPU_ESTIMATE_MULTIPLIER = 2.5;
+import { estimateViewportLodMemory } from "./viewportLodMemory.js";
 
 function publishLodMemoryLimitation(detail) {
   if (typeof window === "undefined") return;
@@ -38,12 +38,14 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
     const scheduler = createLodScheduler({
       reserveLevel: ({ cid, currentLevel, level, direction }) => {
         const component = componentsRef.current.get(cid);
-        const currentBytes = Math.max(1, Number(component?.meshBytes) || 0);
-        const toleranceRatio = LOD_CHORD_LEVELS[currentLevel] / LOD_CHORD_LEVELS[level];
-        const nextMeshBytes = Math.ceil(currentBytes * Math.max(0.2, toleranceRatio));
+        const { currentBytes, nextMeshBytes, replacementBytes } = estimateViewportLodMemory({
+          meshBytes: component?.meshBytes,
+          currentLevel,
+          level,
+        });
         return viewerMemoryPolicy.reserve({
           category: "replacement",
-          bytes: nextMeshBytes * LOD_SELECTOR_AND_GPU_ESTIMATE_MULTIPLIER,
+          bytes: replacementBytes,
           label: `${cid}@L${level}`,
           kind: direction,
           replacingBytes: currentBytes,
@@ -61,14 +63,23 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
         if (!component) {
           return Promise.reject(new Error(`unknown LOD component ${cid}`));
         }
+        const { workerTemporaryBytes } = estimateViewportLodMemory({
+          meshBytes: component.meshBytes,
+          currentLevel: component.level,
+          level,
+        });
         return loadRenderSurfPayloadAtLevel(component.surfUrl, {
           signal,
-          // Level 0 is the plain-URL cache entry the initial load shares.
-          tessellation: level > 0 ? { chordTolerance: LOD_CHORD_LEVELS[level] } : undefined
+          tessellation: lodTessellationForLevel(level),
+          identity: component.identity,
+          memoryEstimateBytes: workerTemporaryBytes,
         }).finally(() => {
-          releaseSurfWorkers().then((released) => {
-            if (released) viewerMemoryPolicy.setRetained("workerResidentEstimated", 0);
-          }).catch(() => {});
+          syncSurfWorkerMemory();
+          releaseSurfWorkers().then(() => {
+            syncSurfWorkerMemory();
+          }).catch(() => {
+            syncSurfWorkerMemory();
+          });
         });
       },
       applyLevel: (cid, level, payload) => {

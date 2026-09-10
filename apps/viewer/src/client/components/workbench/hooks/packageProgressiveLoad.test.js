@@ -85,6 +85,16 @@ function makeLoader(descriptor, { componentFloats = () => 9 } = {}) {
   return { loadComponent, all };
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 test("policy constants: a batch publishes at either ceiling, and the ceilings double", () => {
   assert.equal(PROGRESSIVE_PUBLISH_FIRST_COMPONENTS, 8);
   assert.equal(PROGRESSIVE_PUBLISH_FIRST_BYTES, 8 * 1024 * 1024);
@@ -120,7 +130,8 @@ test("batches publish in order with monotonically increasing component counts; t
       loaded, total, final,
       cids: Object.keys(componentMeshDataByCid).length,
       parts: meshData.parts.length,
-      missing: meshData.missingComponentIds.length
+      missing: meshData.missingComponentIds.length,
+      treeChildren: meshData.assemblyRoot.children.length,
     })
   });
   const result = await loader.run();
@@ -136,6 +147,10 @@ test("batches publish in order with monotonically increasing component counts; t
   // Partial compositions: occurrences whose component has not arrived are
   // absent (listed in missingComponentIds), never composed from another cid.
   assert.equal(publishes[0].parts + publishes[0].missing, 25);
+  assert.ok(
+    publishes.every((publish) => publish.treeChildren === 25),
+    "the canonical assembly tree retains every occurrence during partial display",
+  );
   assert.equal(publishes.at(-1).missing, 0);
   assert.equal(publishes.at(-1).parts, 25);
 });
@@ -243,6 +258,28 @@ test("an atomic revision cancel publishes nothing and releases pending replaceme
   assert.equal(retained.at(-1), 0, "cancel drops all pending replacement ownership");
 });
 
+test("retained exact components bypass decode admission and pending-byte ownership", async () => {
+  const descriptor = makeDescriptor({ componentCount: 3, occurrenceCount: 3 });
+  const retained = fakeComponent("c0");
+  const decoded = [];
+  const pending = [];
+  await createProgressivePackageLoader({
+    descriptor,
+    concurrency: 1,
+    retainedComponent: (cid) => cid === "c0" ? retained : null,
+    sizeHint: async () => 1,
+    loadComponent: async (cid) => {
+      decoded.push(cid);
+      return fakeComponent(cid);
+    },
+    onRetainedChange: (state) => pending.push({ ...state }),
+    onPublish: () => {},
+  }).run();
+  assert.deepEqual(decoded.sort(), ["c1", "c2"]);
+  assert.equal(pending[0].retainedBytes, 0, "the current view already owns the reused arrays");
+  assert.equal(pending.at(-1).retainedBytes, 168, "only two newly decoded meshes are replacement overlap");
+});
+
 test("a superseded request publishes nothing further and releases what it loaded", async () => {
   const descriptor = makeDescriptor({ componentCount: 12, occurrenceCount: 12 });
   const { loadComponent } = makeLoader(descriptor);
@@ -303,6 +340,100 @@ test("an aborted load (loader rejects) publishes nothing further and releases", 
   assert.equal(loader.retainedComponentCount(), 0);
 });
 
+test("a failed lane fences sibling publishes, wakes queued admission, and preserves the original error", async () => {
+  const descriptor = makeDescriptor({ componentCount: 5, occurrenceCount: 5 });
+  const fourStarted = deferred();
+  const finishSiblings = deferred();
+  const originalFailure = new Error("c0 decode failed");
+  const started = [];
+  const reserved = [];
+  const released = [];
+  const publishes = [];
+  const releaseCounts = new Map();
+  const loader = createProgressivePackageLoader({
+    descriptor,
+    concurrency: 5,
+    maxInFlightBytes: 100,
+    reserveLoad: ({ cid }) => {
+      reserved.push(cid);
+      return { ok: true, token: cid };
+    },
+    releaseLoad: (token) => {
+      released.push(token);
+      releaseCounts.set(token, (releaseCounts.get(token) || 0) + 1);
+    },
+    loadComponent: async (cid) => {
+      started.push(cid);
+      if (started.length === 4) fourStarted.resolve();
+      if (cid === "c0") {
+        await fourStarted.promise;
+        throw originalFailure;
+      }
+      await finishSiblings.promise;
+      return fakeComponent(cid);
+    },
+    firstComponents: 1,
+    maxComponents: 1,
+    onPublish: (publish) => publishes.push(publish.loaded),
+  });
+
+  let settled = false;
+  const run = loader.run();
+  run.then(() => { settled = true; }, () => { settled = true; });
+  await fourStarted.promise;
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(settled, false, "run waits for every already-admitted sibling to release");
+  assert.deepEqual(started.sort(), ["c0", "c1", "c2", "c3"], "c4 remains queued at admission");
+  assert.deepEqual(publishes, [], "no sibling publishes after the first failure");
+
+  finishSiblings.resolve();
+  await assert.rejects(run, (error) => error === originalFailure);
+  assert.equal(settled, true);
+  assert.deepEqual(publishes, [], "settling siblings cannot publish or erase the failure");
+  assert.deepEqual(reserved.sort(), ["c0", "c1", "c2", "c3"]);
+  assert.deepEqual(released.sort(), reserved);
+  assert.ok([...releaseCounts.values()].every((count) => count === 1), "each reservation releases once");
+  assert.equal(loader.retainedComponentCount(), 0);
+});
+
+test("cancellation fences a queued admission before an active slot releases", async () => {
+  const descriptor = makeDescriptor({ componentCount: 5, occurrenceCount: 5 });
+  const fourStarted = deferred();
+  const finishActive = deferred();
+  const started = [];
+  const released = [];
+  const publishes = [];
+  let current = true;
+  const loader = createProgressivePackageLoader({
+    descriptor,
+    concurrency: 5,
+    maxInFlightBytes: 100,
+    isCurrent: () => current,
+    reserveLoad: ({ cid }) => ({ ok: true, token: cid }),
+    releaseLoad: (token) => released.push(token),
+    loadComponent: async (cid) => {
+      started.push(cid);
+      if (started.length === 4) fourStarted.resolve();
+      await finishActive.promise;
+      return fakeComponent(cid);
+    },
+    firstComponents: 1,
+    maxComponents: 1,
+    onPublish: (publish) => publishes.push(publish.loaded),
+  });
+
+  const run = loader.run();
+  await fourStarted.promise;
+  current = false;
+  finishActive.resolve();
+  await assert.rejects(run, (error) => error.name === "AbortError");
+  assert.deepEqual(started.sort(), ["c0", "c1", "c2", "c3"], "queued c4 never starts");
+  assert.deepEqual(released.sort(), started, "every admitted cancellation releases once");
+  assert.deepEqual(publishes, []);
+  assert.equal(loader.retainedComponentCount(), 0);
+});
+
 test("a viewport-LOD swap that lands mid-load is kept by the next batch", async () => {
   const descriptor = makeDescriptor({ componentCount: 6, occurrenceCount: 6 });
   const { loadComponent } = makeLoader(descriptor);
@@ -328,6 +459,20 @@ test("a viewport-LOD swap that lands mid-load is kept by the next batch", async 
   assert.equal(publishes.length, 3);
   const swappedKeys = publishes.at(-1).keys.filter((key) => key.endsWith(":l2"));
   assert.equal(swappedKeys.length, 1, "the level-2 swap survives later batches");
+});
+
+test("an explicit coarse L0 remains part of the composed source identity", async () => {
+  const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 2 });
+  const coarse = { ...fakeComponent("c0"), lodLevel: 0 };
+  let final = null;
+  await createProgressivePackageLoader({
+    descriptor,
+    loadComponent: async () => coarse,
+    onPublish: (publish) => { final = publish; },
+  }).run();
+  assert.equal(final.meshData.parts.length, 2);
+  assert.ok(final.meshData.parts.every((part) => part.sourceMesh === coarse));
+  assert.ok(final.meshData.parts.every((part) => part.sourceMeshKey.endsWith(":l0")));
 });
 
 test("load order puts the extreme-placed components first so the first frame spans the model", () => {
@@ -413,6 +558,7 @@ test("window.__cadMeshCost updates on every publish and clears on cancel", async
     }).run();
     assert.deepEqual(seen.map((cost) => cost.publishCount), [1, 2, 3]);
     assert.deepEqual(seen.map((cost) => cost.componentCount), [2, 4, 6]);
+    assert.deepEqual(seen.map((cost) => cost.occurrenceCount), [4, 8, 12]);
     assert.deepEqual(seen.map((cost) => cost.final), [false, false, true]);
     assert.equal(seen.at(-1).totalComponents, 6);
     // 12 floats * 4 B + 36 B normals + 12 B indices = 96 B per component; one triangle each.
@@ -528,6 +674,179 @@ test("byte-aware admission: decodes in flight stay under the byte budget, and un
   estimator.observe(10, 300);
   assert.equal(estimator.estimate(20), 600, "hint scaled by the measured ratio");
   assert.equal(estimator.estimate(null), 300, "no hint: running mean");
+  const conservative = createDecodeSizeEstimator({
+    maxInFlightBytes: 400,
+    sourceExpansionRatio: 32,
+  });
+  assert.equal(conservative.estimate(10), 320, "source expansion applies before observations");
+  conservative.observe(10, 50);
+  assert.equal(conservative.estimate(10), 320, "a low observation cannot weaken the configured floor");
+  assert.equal(conservative.estimate(10, 64), 640, "a concrete component can override the floor");
+});
+
+test("mixed component tiers use their own admission estimate floors", async () => {
+  const descriptor = makeDescriptor({ componentCount: 2, occurrenceCount: 2 });
+  const reserved = [];
+  await createProgressivePackageLoader({
+    descriptor,
+    concurrency: 1,
+    maxInFlightBytes: 1000,
+    sizeHint: async (cid) => cid === "c0" ? 5 : 20,
+    sourceExpansionRatio: (cid) => cid === "c0" ? 64 : 32,
+    reserveLoad: ({ cid, estimatedBytes }) => {
+      reserved.push([cid, estimatedBytes]);
+      return { ok: true, token: cid };
+    },
+    releaseLoad: () => {},
+    loadComponent: async (cid) => fakeComponent(cid, { floats: cid === "c0" ? 200 : 9 }),
+    onPublish: () => {},
+  }).run();
+  assert.deepEqual(reserved, [["c0", 320], ["c1", 640]]);
+});
+
+test("a drained medium package reclaims idle worker memory once and retries unchanged admission", async () => {
+  const descriptor = makeDescriptor({ componentCount: 9, occurrenceCount: 9 });
+  let completed = 0;
+  let pressureRetained = true;
+  let recoveries = 0;
+  const decodedEstimates = [];
+  const limitations = [];
+  const result = await createProgressivePackageLoader({
+    descriptor,
+    concurrency: 1,
+    maxInFlightBytes: 400,
+    sizeHint: async () => 1,
+    reserveLoad: ({ estimatedBytes }) => {
+      if (completed === 2 && pressureRetained) {
+        return {
+          ok: false,
+          detail: {
+            category: "workerInFlight",
+            requestedBytes: estimatedBytes * 2,
+            estimatedOwnedBytes: 1000,
+            availableBytes: 0,
+          },
+        };
+      }
+      return { ok: true, token: `r${completed}` };
+    },
+    releaseLoad: () => { completed += 1; },
+    recoverMemoryPressure: async ({ decodedEstimateBytes, reservationDetail }) => {
+      recoveries += 1;
+      decodedEstimates.push([decodedEstimateBytes, reservationDetail.requestedBytes]);
+      pressureRetained = false;
+      return true;
+    },
+    onMemoryLimitation: (detail) => limitations.push(detail),
+    loadComponent: async (cid) => fakeComponent(cid),
+    onPublish: () => {},
+  }).run();
+  assert.equal(result.loaded, 9);
+  assert.equal(recoveries, 1);
+  assert.deepEqual(decodedEstimates, [[100, 200]], "decoded and worker-temporary estimates stay distinct");
+  assert.deepEqual(limitations, [], "successful recovery does not leave a permanent limitation");
+});
+
+test("a denied waiter may reclaim again after an admitted sibling repopulates worker memory", async () => {
+  const descriptor = makeDescriptor({ componentCount: 2, occurrenceCount: 2 });
+  let residentPressure = true;
+  let smallInFlight = false;
+  let recoveries = 0;
+  let finishSmall;
+  let reportSmallStarted;
+  let reportSmallReleased;
+  const smallMayFinish = new Promise((resolve) => { finishSmall = resolve; });
+  const smallStarted = new Promise((resolve) => { reportSmallStarted = resolve; });
+  const smallReleased = new Promise((resolve) => { reportSmallReleased = resolve; });
+  const loads = [];
+  const limitations = [];
+
+  const run = createProgressivePackageLoader({
+    descriptor,
+    concurrency: 2,
+    maxInFlightBytes: 400,
+    sizeHint: async () => 1,
+    reserveLoad: ({ cid }) => {
+      if (cid === "c0" && (residentPressure || smallInFlight)) {
+        return {
+          ok: false,
+          detail: {
+            category: "workerInFlight",
+            requestedBytes: 200,
+            estimatedOwnedBytes: 1000,
+            availableBytes: 0,
+          },
+        };
+      }
+      return { ok: true, token: cid };
+    },
+    releaseLoad: (token) => {
+      if (token === "c1") {
+        residentPressure = true;
+        reportSmallReleased();
+      }
+    },
+    recoverMemoryPressure: async () => {
+      recoveries += 1;
+      residentPressure = false;
+      // Reproduce the browser race: another admitted component finishes and
+      // repopulates worker-resident memory while this recovery awaits. The big
+      // admission resumes with inFlight already zero, so no waiter branch runs.
+      if (recoveries === 1) await smallReleased;
+      return true;
+    },
+    loadComponent: async (cid) => {
+      loads.push(cid);
+      if (cid === "c1") {
+        smallInFlight = true;
+        reportSmallStarted();
+        await smallMayFinish;
+        smallInFlight = false;
+      }
+      return fakeComponent(cid);
+    },
+    onMemoryLimitation: (detail) => limitations.push(detail),
+    onPublish: () => {},
+  }).run();
+
+  await smallStarted;
+  finishSmall();
+  const result = await run;
+
+  assert.equal(result.loaded, 2);
+  assert.deepEqual(loads, ["c1", "c0"]);
+  assert.equal(recoveries, 2, "the sibling's completed work re-arms one recovery attempt");
+  assert.deepEqual(limitations, []);
+});
+
+test("a no-progress recovery is attempted once and reports worker-temporary bytes separately", async () => {
+  const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
+  const limitations = [];
+  let recoveries = 0;
+  const loader = createProgressivePackageLoader({
+    descriptor,
+    maxInFlightBytes: 400,
+    sizeHint: async () => 1,
+    reserveLoad: ({ estimatedBytes }) => ({
+      ok: false,
+      detail: { category: "workerInFlight", requestedBytes: estimatedBytes * 2 },
+    }),
+    recoverMemoryPressure: async () => {
+      recoveries += 1;
+      return true;
+    },
+    onMemoryLimitation: (detail) => limitations.push(detail),
+    loadComponent: async () => fakeComponent("c0"),
+    onPublish: () => {},
+  });
+  await assert.rejects(loader.run(), (error) => {
+    assert.equal(error.detail.requestedBytes, 200);
+    assert.equal(error.detail.decodedEstimateBytes, 100);
+    return error.code === "VIEWER_MEMORY_LIMIT";
+  });
+  assert.equal(limitations[0].requestedBytes, 200);
+  assert.equal(limitations[0].decodedEstimateBytes, 100);
+  assert.equal(recoveries, 1, "no release progress means no repeated recovery loop");
 });
 
 test("an oversized component is rejected explicitly instead of running alone", async () => {
@@ -555,6 +874,25 @@ test("an oversized component is rejected explicitly instead of running alone", a
   assert.equal(limitations.length, 1);
 });
 
+test("an underestimated component that actually exceeds the cap is never published", async () => {
+  const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
+  const limitations = [];
+  const publishes = [];
+  const loader = createProgressivePackageLoader({
+    descriptor,
+    maxInFlightBytes: 100,
+    sizeHint: async () => 1,
+    loadComponent: async () => fakeComponent("c0", { floats: 40 }),
+    onMemoryLimitation: (detail) => limitations.push(detail),
+    onPublish: (publish) => publishes.push(publish),
+  });
+  await assert.rejects(loader.run(), (error) => error.code === "VIEWER_MEMORY_LIMIT");
+  assert.deepEqual(publishes, []);
+  assert.equal(limitations.length, 1);
+  assert.ok(limitations[0].actualDecodedBytes > 100);
+  assert.equal(loader.retainedComponentCount(), 0);
+});
+
 test("worker reservation spans decode and is released after success", async () => {
   const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
   const policy = createViewerMemoryPolicy({ budgetBytes: 1000, gpuHeadroomBytes: 100 });
@@ -574,6 +912,23 @@ test("worker reservation spans decode and is released after success", async () =
   }).run();
   assert.deepEqual(seen, [100], "unmeasured decode reserves one quarter of the local cap");
   assert.equal(policy.snapshot().inFlightBytes, 0);
+});
+
+test("the admitted decoded estimate is passed to the component load", async () => {
+  const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
+  const estimates = [];
+  await createProgressivePackageLoader({
+    descriptor,
+    maxInFlightBytes: 400,
+    sizeHint: async () => 5,
+    sourceExpansionRatio: 30,
+    loadComponent: async (_cid, _component, { estimatedBytes }) => {
+      estimates.push(estimatedBytes);
+      return fakeComponent("c0");
+    },
+    onPublish: () => {},
+  }).run();
+  assert.deepEqual(estimates, [150], "worker ownership receives the exact admitted estimate");
 });
 
 test("a transient global miss waits for admitted work and leaves no stale limitation", async () => {

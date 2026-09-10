@@ -12,7 +12,10 @@ import {
   loadRenderSurfPayloadAtLevel,
   surfTessellationCacheKey,
 } from "./renderAssetClient.js";
-import { LOD_CHORD_LEVELS } from "./surf/lodPolicy.js";
+import {
+  LOD_DEFAULT_LEVEL,
+  lodTessellationForLevel,
+} from "./surf/lodPolicy.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUN_GEAR = fs.readFileSync(path.join(HERE, "surf", "fixtures", "sun_gear.surf"));
@@ -39,6 +42,11 @@ test("mesh identity includes component, effective tolerances, algorithm and payl
     /#mesh=abc123-t\d+-/,
     "content-addressed component identity participates in the key",
   );
+  assert.notEqual(
+    surfTessellationCacheKey("u.surf", lodTessellationForLevel(0)),
+    surfTessellationCacheKey("u.surf", lodTessellationForLevel(LOD_DEFAULT_LEVEL)),
+    "coarse L0 and canonical L1 have different concrete selector/mesh identities",
+  );
 });
 
 test("levels tessellate once each, differ in density, and stay consistent", async (t) => {
@@ -55,7 +63,7 @@ test("levels tessellate once each, differ in density, and stay consistent", asyn
   const url = "https://cad.test/components/sun_gear.surf";
   const l0 = await loadRenderSurfPayloadAtLevel(url, {});
   const l2 = await loadRenderSurfPayloadAtLevel(url, {
-    tessellation: { chordTolerance: LOD_CHORD_LEVELS[2] },
+    tessellation: lodTessellationForLevel(2),
   });
   assert.ok(
     l2.meshData.indices.length > l0.meshData.indices.length,
@@ -68,11 +76,47 @@ test("levels tessellate once each, differ in density, and stay consistent", asyn
   const before = fetches;
   const l0Again = await loadRenderSurfPayloadAtLevel(url, {});
   const l2Again = await loadRenderSurfPayloadAtLevel(url, {
-    tessellation: { chordTolerance: LOD_CHORD_LEVELS[2] },
+    tessellation: lodTessellationForLevel(2),
   });
   assert.equal(fetches, before, "cached levels must not refetch");
   assert.equal(l0Again, l0);
   assert.equal(l2Again, l2);
+});
+
+test("explicit coarse tessellation is cheaper on curved and trimmed representative surfaces", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const fixtures = ["cam_follower_roller.surf", "mixed.surf"];
+  const bytesByName = Object.fromEntries(fixtures.map((name) => [
+    name,
+    fs.readFileSync(path.join(HERE, "surf", "fixtures", name)),
+  ]));
+  globalThis.fetch = async (url) => {
+    const name = String(url).split("/").at(-1);
+    const bytes = bytesByName[name];
+    return bytes
+      ? new Response(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { status: 200 })
+      : new Response(null, { status: 404 });
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  for (const name of fixtures) {
+    const url = `https://cad.test/coarse-sample/${name}`;
+    const coarse = await loadRenderSurfPayloadAtLevel(url, {
+      tessellation: lodTessellationForLevel(0),
+    });
+    const canonical = await loadRenderSurfPayloadAtLevel(url, {});
+    assert.ok(
+      coarse.meshData.indices.length < canonical.meshData.indices.length,
+      `${name}: coarse triangles ${coarse.meshData.indices.length / 3} < canonical ${canonical.meshData.indices.length / 3}`,
+    );
+    const coarseBytes = coarse.meshData.vertices.byteLength
+      + coarse.meshData.normals.byteLength
+      + coarse.meshData.indices.byteLength;
+    const canonicalBytes = canonical.meshData.vertices.byteLength
+      + canonical.meshData.normals.byteLength
+      + canonical.meshData.indices.byteLength;
+    assert.ok(coarseBytes < canonicalBytes, `${name}: coarse typed geometry is smaller`);
+  }
 });
 
 test("every surf entry — any level — rides one bounded leash; consumers own what they keep", async (t) => {
@@ -87,7 +131,7 @@ test("every surf entry — any level — rides one bounded leash; consumers own 
   });
 
   const urlFor = (n) => `https://cad.test/lru/component-${n}.surf`;
-  const level = { chordTolerance: LOD_CHORD_LEVELS[1] };
+  const level = lodTessellationForLevel(2);
   const first = await loadRenderSurfPayloadAtLevel(urlFor(0), { tessellation: level });
   const firstDefault = await loadRenderSurfPayloadAtLevel(urlFor(0), {});
   // Within the leash both stay put.

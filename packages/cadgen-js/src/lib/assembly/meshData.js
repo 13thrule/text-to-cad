@@ -457,7 +457,9 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid)
       // uploads fresh buffers and flips every occurrence of the cid at once.
       sourceMesh: componentMeshData,
       sourceMeshKey: `${cid}:${useComponentVertexColors ? "src" : "flat"}${
-        componentMeshData?.lodLevel ? `:l${componentMeshData.lodLevel}` : ""
+        componentMeshData?.lodLevel != null && Number.isFinite(Number(componentMeshData.lodLevel))
+          ? `:l${Number(componentMeshData.lodLevel)}`
+          : ""
       }`,
       vertexCount: Math.floor(sourceVertices.length / 3),
       triangleCount: Math.floor((componentMeshData?.indices?.length || 0) / 3),

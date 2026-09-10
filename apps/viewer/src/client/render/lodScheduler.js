@@ -7,7 +7,12 @@
 // plan. It knows nothing about three.js or React: the host feeds camera
 // samples and receives level swaps through a callback.
 
-import { LOD_CHORD_LEVELS, planLodWork, projectedChordErrorPx } from "cadgen-js/lib/surf/lodPolicy.js";
+import {
+  LOD_CHORD_LEVELS,
+  normalizeLodLevel,
+  planLodWork,
+  projectedChordErrorPx
+} from "cadgen-js/lib/surf/lodPolicy.js";
 
 export const LOD_DEBOUNCE_MS = 200;
 
@@ -59,7 +64,10 @@ export function createLodScheduler({
     components.clear();
     for (const { cid, diagonal, level } of list || []) {
       if (cid && Number.isFinite(diagonal) && diagonal > 0) {
-        components.set(cid, { diagonal, level: previous?.get(cid)?.level ?? (Number(level) || 0) });
+        components.set(cid, {
+          diagonal,
+          level: previous?.get(cid)?.level ?? normalizeLodLevel(level),
+        });
       }
     }
     // A model switch cancels stale work; a growing model keeps a load whose

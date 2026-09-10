@@ -43,6 +43,9 @@ An explicit editing session can instead follow a build's immutable preview
 tree before STEP persistence ([`STORE.md`](STORE.md) §9b). This is a separate
 runtime input: it does not change what opening a saved file means and does not
 allow artifact readers to inspect source or model records.
+Following edits keeps the authored preview after a successful STEP save, with
+the save status reported separately. Switching to the saved file resolves its
+actual bytes and corresponding topology and annotations.
 
 - Nothing a renderer reads references the source tree: the sidecar's
   kinematics are resolved numbers and labels, and choreography is the

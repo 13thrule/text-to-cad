@@ -40,8 +40,8 @@ export const PROGRESSIVE_PUBLISH_MAX_BYTES = 128 * 1024 * 1024;
 // surf worker whose intermediates count against the renderer process, and a
 // hand component reaches ~90 MB of meshData. A count cap alone (8 wide) admits
 // 8 of those at once. Admission is therefore ALSO byte-aware: the estimated
-// decoded bytes of everything in flight stay under this budget (a single
-// component larger than the budget runs alone).
+// decoded bytes of everything in flight stay under this budget. A component
+// estimated above the budget is refused explicitly before decode.
 export const PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES = 256 * 1024 * 1024;
 // Estimated decoded size of a component before anything is known about the
 // model — a quarter of the budget, so at most four unmeasured components are
@@ -53,21 +53,29 @@ export const PROGRESSIVE_LOAD_UNMEASURED_SHARE = 4;
 // supplies as a hint) is scaled by the decoded/fetched ratio measured on the
 // components already decoded; without a hint, the running mean decoded size;
 // before any decode, the unmeasured share of the budget.
-export function createDecodeSizeEstimator({ maxInFlightBytes = PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES } = {}) {
+export function createDecodeSizeEstimator({
+  maxInFlightBytes = PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
+  sourceExpansionRatio = 0,
+} = {}) {
   let ratioSum = 0;
   let ratioCount = 0;
   let decodedSum = 0;
   let decodedCount = 0;
   return {
-    estimate(hintBytes) {
+    estimate(hintBytes, expansionRatio = sourceExpansionRatio) {
       const hint = Number(hintBytes);
+      const unmeasuredFloor = maxInFlightBytes / PROGRESSIVE_LOAD_UNMEASURED_SHARE;
+      const ratio = Number(expansionRatio) || 0;
+      const sourceFloor = Number.isFinite(hint) && hint > 0 && ratio > 0
+        ? hint * ratio
+        : 0;
       if (Number.isFinite(hint) && hint > 0 && ratioCount > 0) {
-        return hint * (ratioSum / ratioCount);
+        return Math.max(unmeasuredFloor, sourceFloor, hint * (ratioSum / ratioCount));
       }
       if (decodedCount > 0) {
-        return decodedSum / decodedCount;
+        return Math.max(unmeasuredFloor, sourceFloor, decodedSum / decodedCount);
       }
-      return maxInFlightBytes / PROGRESSIVE_LOAD_UNMEASURED_SHARE;
+      return Math.max(unmeasuredFloor, sourceFloor);
     },
     observe(hintBytes, decodedBytes) {
       const decoded = Number(decodedBytes) || 0;
@@ -162,6 +170,7 @@ export function meshCostAccounting({ meshData, componentMeshDataByCid, loaded, t
     componentTotalBytes,
     componentTotalTriangles,
     componentCount: components.length,
+    occurrenceCount: Array.isArray(meshData?.parts) ? meshData.parts.length : 0,
     totalComponents: total,
     loadedComponents: loaded,
     publishCount,
@@ -262,13 +271,16 @@ export function orderComponentsForProgressiveLoad(descriptor) {
 /**
  * createProgressivePackageLoader({
  *   descriptor,                        // the assembly.json package descriptor
- *   loadComponent(cid, component),     // -> Promise<meshData> (loadRenderSurf)
+ *   loadComponent(cid, component, { estimatedBytes }), // -> Promise<meshData> (loadRenderSurf)
  *   concurrency,
  *   isCurrent(),                       // false once the request is superseded or aborted
  *   sizeHint?(cid, component),         // -> Promise<fetched byte length | null> before admission
  *   maxInFlightBytes?,                 // estimated decoded bytes in flight (PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES)
+ *   sourceExpansionRatio?,             // conservative decoded/source estimate floor for this concrete tier
+ *   retainedComponent?(cid, component),// already-owned exact meshData, bypassing decode admission
  *   reserveLoad?({ cid, estimatedBytes }) -> { ok, token?, detail? },
  *   releaseLoad?(token), onMemoryLimitation?(detail),
+ *   recoverMemoryPressure?(detail),    // one bounded reclaim attempt after admitted work drains
  *   onRetainedChange?({ loaded, total, retainedBytes }),
  *   swappedComponents?(),              // the live LOD working set (cid -> meshData) or null
  *   onPublish({ meshData, componentMeshDataByCid, loaded, total, final, composeMs, publishCount }),
@@ -283,7 +295,7 @@ export function orderComponentsForProgressiveLoad(descriptor) {
  * loaded (retainedComponentCount() -> 0) and rejects with an AbortError.
  * Composition is `{ ...loadedSoFar, ...swappedComponents() }`, so a viewport
  * LOD swap that lands mid-load is kept by the next batch rather than reverted
- * to level 0. The final publish (`final: true`) carries every component and is
+ * to its initially requested level. The final publish (`final: true`) carries every component and is
  * the same composition the single post-load publish produced.
  */
 export function createProgressivePackageLoader({
@@ -293,8 +305,11 @@ export function createProgressivePackageLoader({
   isCurrent = () => true,
   sizeHint = null,
   maxInFlightBytes = PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
+  sourceExpansionRatio = 0,
+  retainedComponent = null,
   reserveLoad = null,
   releaseLoad = null,
+  recoverMemoryPressure = null,
   onMemoryLimitation = null,
   onRetainedChange = null,
   swappedComponents = () => null,
@@ -328,12 +343,15 @@ export function createProgressivePackageLoader({
   }
 
   function stop() {
-    release();
     throw abortError();
   }
 
+  function active() {
+    return !cancelled && isCurrent();
+  }
+
   function publish(final) {
-    if (!isCurrent()) {
+    if (!active()) {
       stop();
     }
     const swapped = swappedComponents?.();
@@ -350,12 +368,27 @@ export function createProgressivePackageLoader({
     onPublish?.({ meshData, componentMeshDataByCid, loaded, total, final, composeMs, publishCount: publishes });
   }
 
-  const estimator = createDecodeSizeEstimator({ maxInFlightBytes });
+  // Coarse and canonical tessellations have different expansion curves. Keep
+  // their observations separate so a dense L1 leaf cannot make a valid L0
+  // estimate appear unfit (or vice versa) in a mixed small assembly.
+  const estimatorsByExpansionRatio = new Map();
+  function estimatorFor(expansionRatio) {
+    const numeric = Number(expansionRatio) || 0;
+    if (!estimatorsByExpansionRatio.has(numeric)) {
+      estimatorsByExpansionRatio.set(numeric, createDecodeSizeEstimator({
+        maxInFlightBytes,
+        sourceExpansionRatio: numeric,
+      }));
+    }
+    return estimatorsByExpansionRatio.get(numeric);
+  }
   let inFlight = 0;
   let inFlightBytes = 0;
   let cancelled = false;
+  let firstFailure = null;
   let waiters = [];
   let peakInFlight = 0;
+  let releaseProgressEpoch = 0;
 
   function wakeWaiters() {
     const pending = waiters;
@@ -365,6 +398,12 @@ export function createProgressivePackageLoader({
     }
   }
 
+  function markFailed(error) {
+    if (!firstFailure) firstFailure = error;
+    cancelled = true;
+    wakeWaiters();
+  }
+
   function canAdmit(estimate) {
     return inFlight < concurrency && inFlightBytes + estimate <= maxInFlightBytes;
   }
@@ -372,66 +411,105 @@ export function createProgressivePackageLoader({
   // Re-estimates on every wake: a decode finishing while this one waited has
   // calibrated the estimator, and the size it should be admitted at is the
   // current one, not the one it computed before waiting.
-  async function admit(hint, cid) {
-    let estimate = estimator.estimate(hint);
-    while (!canAdmit(estimate)) {
-      if (cancelled) {
-        throw abortError();
-      }
-      if (inFlight === 0) {
-        const detail = {
-          cid,
-          requestedBytes: estimate,
-          availableBytes: maxInFlightBytes,
-          category: "workerInFlight",
-          preservingCurrentView: true,
-        };
-        onMemoryLimitation?.(detail);
-        throw new ViewerMemoryLimitError(
-          `Component ${cid} needs an estimated ${Math.ceil(estimate / (1024 * 1024))} MiB decode, above the viewer's ${Math.floor(maxInFlightBytes / (1024 * 1024))} MiB in-flight limit. The current view was kept.`,
-          detail
-        );
-      }
-      await new Promise((resolve) => waiters.push(resolve));
-      estimate = estimator.estimate(hint);
-    }
-    let reservation = { ok: true, token: null };
-    if (typeof reserveLoad === "function") {
-      reservation = reserveLoad({ cid, estimatedBytes: estimate }) || { ok: false };
-      if (reservation.ok === false) {
-        if (inFlight > 0) {
-          await new Promise((resolve) => waiters.push(resolve));
-          return admit(hint, cid);
+  async function admit(hint, cid, component) {
+    let lastRecoveryEpoch = -1;
+    while (true) {
+      if (!active()) throw abortError();
+      const configuredRatio = typeof sourceExpansionRatio === "function"
+        ? sourceExpansionRatio(cid, component, hint)
+        : sourceExpansionRatio;
+      const estimator = estimatorFor(configuredRatio);
+      const estimate = estimator.estimate(hint);
+      if (!canAdmit(estimate)) {
+        if (cancelled) throw abortError();
+        if (inFlight === 0) {
+          const detail = {
+            cid,
+            requestedBytes: estimate,
+            decodedEstimateBytes: estimate,
+            availableBytes: maxInFlightBytes,
+            category: "workerInFlight",
+            preservingCurrentView: true,
+          };
+          onMemoryLimitation?.(detail);
+          throw new ViewerMemoryLimitError(
+            `Component ${cid} needs an estimated ${Math.ceil(estimate / (1024 * 1024))} MiB decode, above the viewer's ${Math.floor(maxInFlightBytes / (1024 * 1024))} MiB in-flight limit. The current view was kept.`,
+            detail
+          );
         }
-        const detail = {
-          ...(reservation.detail || {}),
-          cid,
-          requestedBytes: estimate,
-          preservingCurrentView: true,
-        };
-        onMemoryLimitation?.(detail);
-        throw new ViewerMemoryLimitError(
-          `Loading component ${cid} would exceed the viewer memory envelope. The current view was kept.`,
-          detail
-        );
+        await new Promise((resolve) => waiters.push(resolve));
+        continue;
       }
+      let reservation = { ok: true, token: null };
+      if (typeof reserveLoad === "function") {
+        reservation = reserveLoad({ cid, estimatedBytes: estimate }) || { ok: false };
+      }
+      if (reservation.ok !== false) {
+        inFlight += 1;
+        inFlightBytes += estimate;
+        peakInFlight = Math.max(peakInFlight, inFlight);
+        return { estimate, estimator, reservation: reservation.token };
+      }
+      if (inFlight > 0) {
+        await new Promise((resolve) => waiters.push(resolve));
+        continue;
+      }
+      const reservationDetail = reservation.detail || {};
+      if (lastRecoveryEpoch !== releaseProgressEpoch && typeof recoverMemoryPressure === "function") {
+        const attemptedAtEpoch = releaseProgressEpoch;
+        lastRecoveryEpoch = attemptedAtEpoch;
+        const recovered = await recoverMemoryPressure({
+          cid,
+          decodedEstimateBytes: estimate,
+          reservationDetail,
+        });
+        // A sibling can finish while recovery itself awaits worker retirement.
+        // Retry against that new state even when the callback could not reclaim
+        // anything. With no intervening release, one unsuccessful retry remains
+        // the bound and an impossible request fails predictably.
+        if (recovered || releaseProgressEpoch !== attemptedAtEpoch) continue;
+      }
+      const detail = {
+        ...reservationDetail,
+        cid,
+        decodedEstimateBytes: estimate,
+        requestedBytes: Number(reservationDetail.requestedBytes) || estimate,
+        preservingCurrentView: true,
+      };
+      onMemoryLimitation?.(detail);
+      throw new ViewerMemoryLimitError(
+        `Loading component ${cid} would exceed the viewer memory envelope. The current view was kept.`,
+        detail
+      );
     }
-    inFlight += 1;
-    inFlightBytes += estimate;
-    peakInFlight = Math.max(peakInFlight, inFlight);
-    return { estimate, reservation: reservation.token };
   }
 
   function releaseSlot({ estimate, reservation }) {
     inFlight -= 1;
     inFlightBytes -= estimate;
     releaseLoad?.(reservation, { estimatedBytes: estimate });
+    releaseProgressEpoch += 1;
     wakeWaiters();
   }
 
   async function loadOne([cid, component]) {
-    if (!isCurrent()) {
+    if (!active()) {
       stop();
+    }
+    const retainedMeshData = retainedComponent?.(cid, component) || null;
+    if (retainedMeshData) {
+      loadedByCid[cid] = retainedMeshData;
+      loaded += 1;
+      notifyRetained();
+      pendingComponents += 1;
+      const final = loaded === total;
+      if (final || (publishIntermediate && progressivePublishDue(
+        { pendingComponents, pendingBytes, publishCount: publishes },
+        { firstComponents, firstBytes, maxComponents, maxBytes }
+      ))) {
+        publish(final);
+      }
+      return;
     }
     let hint = null;
     if (typeof sizeHint === "function") {
@@ -441,24 +519,45 @@ export function createProgressivePackageLoader({
         hint = null;
       }
     }
-    if (!isCurrent()) {
+    if (!active()) {
       stop();
     }
-    const admission = await admit(hint, cid);
+    const admission = await admit(hint, cid, component);
     let meshData;
     try {
-      if (!isCurrent()) {
+      if (!active()) {
         stop();
       }
-      meshData = await loadComponent(cid, component);
+      meshData = await loadComponent(cid, component, { estimatedBytes: admission.estimate });
+      if (!active()) {
+        stop();
+      }
+    } catch (error) {
+      // Fence queued admission before releasing this slot. Otherwise that
+      // release wakes a waiter one microtask before the consumer loop sees the
+      // rejection, allowing one more component to start after the failure.
+      markFailed(error);
+      throw error;
     } finally {
       releaseSlot(admission);
     }
-    if (!isCurrent()) {
-      stop();
-    }
     const decodedBytes = estimateMeshRenderCost(meshData).typedArrayBytes;
-    estimator.observe(hint, decodedBytes);
+    if (decodedBytes > maxInFlightBytes) {
+      const detail = {
+        cid,
+        requestedBytes: decodedBytes,
+        availableBytes: maxInFlightBytes,
+        category: "workerInFlight",
+        preservingCurrentView: true,
+        actualDecodedBytes: decodedBytes,
+      };
+      onMemoryLimitation?.(detail);
+      throw new ViewerMemoryLimitError(
+        `Component ${cid} decoded to ${Math.ceil(decodedBytes / (1024 * 1024))} MiB, above the viewer's ${Math.floor(maxInFlightBytes / (1024 * 1024))} MiB component limit. The current view was kept.`,
+        detail,
+      );
+    }
+    admission.estimator.observe(hint, decodedBytes);
     loadedByCid[cid] = meshData;
     loaded += 1;
     retainedBytes += decodedBytes;
@@ -479,11 +578,24 @@ export function createProgressivePackageLoader({
     const workerCount = Math.max(1, Math.min(queue.length || 1, Math.floor(Number(concurrency) || 1)));
     try {
       await Promise.all(Array.from({ length: workerCount }, async () => {
-        while (queue.length) {
-          await loadOne(queue.shift());
+        try {
+          while (!cancelled && queue.length) {
+            await loadOne(queue.shift());
+          }
+        } catch (error) {
+          // Promise.all rejects as soon as one lane fails, but its sibling
+          // lanes keep running. Returning to the hook at that point lets a
+          // late sibling publish after the hook has attached its terminal
+          // error, erasing the failure and starting the package again. Fence
+          // every lane immediately, wake queued admissions, then let already
+          // admitted work settle so each reservation releases exactly once.
+          markFailed(error);
         }
       }));
-      if (!isCurrent()) {
+      if (firstFailure) {
+        throw firstFailure;
+      }
+      if (!active()) {
         stop();
       }
       if (!publishedFinal) {
@@ -492,10 +604,8 @@ export function createProgressivePackageLoader({
         publish(true);
       }
     } catch (error) {
-      // An aborted fetch rejects out of loadComponent before any isCurrent()
-      // check runs, and a failed component fails the load: neither may keep
-      // the components already loaded alive, nor leave a worker parked in
-      // admit() forever.
+      // All consumer lanes are settled here. No sibling can publish after
+      // this cleanup or mutate the hook after it handles the original error.
       cancelled = true;
       wakeWaiters();
       release();

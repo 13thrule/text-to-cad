@@ -1,6 +1,15 @@
 // Ephemeral per-tab editing state. Saved-file catalog entries remain immutable.
 export function initialEditingPreview() {
-  return { epoch: "", revision: 0, preview: null, saved: null, retainedSaved: null, state: "disconnected", error: "" };
+  return {
+    epoch: "",
+    revision: 0,
+    preview: null,
+    previewUnavailable: false,
+    saved: null,
+    retainedSaved: null,
+    state: "disconnected",
+    error: "",
+  };
 }
 
 export function previewGeometryChanged(previous, next) {
@@ -21,10 +30,18 @@ export function reduceEditingPreview(current, next) {
   let preview = candidate && (!same || !previous.preview || previous.preview.revision !== revision || candidate.sequence >= previous.preview.sequence)
     ? { ...candidate, revision } : previous.preview;
   if (JSON.stringify(preview) === JSON.stringify(previous.preview)) preview = previous.preview;
+  const previewUnavailable = candidate
+    ? false
+    : next.previewUnavailable === true
+      ? true
+      : same
+        ? previous.previewUnavailable === true
+        : false;
   return {
     epoch: next.epoch,
     revision,
     preview,
+    previewUnavailable,
     saved: next.saved || null,
     retainedSaved: next.saved || previous.saved || previous.retainedSaved || null,
     state: next.state || "building",
@@ -36,11 +53,17 @@ export function reduceEditingPreview(current, next) {
 
 export function editingPreviewEntry(state, catalogEntry) {
   if (!state.preview) return null;
-  // Only the saved-byte resolver can restore the saved-file representation and
-  // its bound sidecar. Until the catalog catches up, keep the usable preview.
-  const saved = state.saved || (state.preview.revision < state.revision ? state.retainedSaved : null);
-  if (saved && catalogEntry?.hash === saved.tree &&
-      catalogEntry?.documentHash === saved.documentHash) return null;
+  // Follow edits remains on the authored tree after this revision's STEP save.
+  // The saved catalog is selected only for a completed revision which had no
+  // matching preview (a no-op), or when the server says that preview's object
+  // graph is gone. In both cases the catalog must first prove the exact saved
+  // tree and document-byte identities; otherwise the last usable view stays.
+  const savedMatchesCatalog = state.saved &&
+    catalogEntry?.hash === state.saved.tree &&
+    catalogEntry?.documentHash === state.saved.documentHash;
+  if (savedMatchesCatalog && (
+    state.previewUnavailable === true || state.preview.revision !== state.revision
+  )) return null;
   return {
     ...catalogEntry,
     file: catalogEntry?.file || state.file || state.output,
@@ -58,9 +81,10 @@ export function editingPreviewEntry(state, catalogEntry) {
 }
 
 export function editingPreviewLabel(state, showingPreview) {
+  if (state.previewUnavailable && state.saved && !showingPreview) return "STEP saved · preview unavailable";
   if (state.error || state.state === "failed") return state.error || "Save failed";
   if (state.state === "disconnected") return showingPreview ? "Preview disconnected" : "Waiting for edits";
-  if (state.saved) return "Saved";
+  if (state.saved) return showingPreview ? "Preview · STEP saved" : "Saved";
   if (showingPreview) return "Preview · saving STEP";
   if (["submitted", "queued", "building"].includes(state.state)) return "Building preview";
   return "Saved file";

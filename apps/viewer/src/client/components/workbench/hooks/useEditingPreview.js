@@ -40,6 +40,7 @@ export function useEditingPreview(file, { enabled, catalogEntry } = {}) {
     ? snapshot.state : initialEditingPreview(), [enabled, file, snapshot]);
   const entry = useMemo(() => editingPreviewEntry(state, catalogEntry), [
     state.preview, state.revision, state.output, state.file,
+    state.previewUnavailable,
     state.saved?.tree, state.saved?.documentHash,
     state.retainedSaved?.tree, state.retainedSaved?.documentHash, catalogEntry,
   ]);

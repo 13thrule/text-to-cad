@@ -95,3 +95,18 @@ test("a transient admission miss does not become a stale completed-load limitati
   policy.clearLimitation();
   assert.equal(policy.snapshot().lastLimitation, null);
 });
+
+test("live retained providers refresh diagnostics and admission", () => {
+  const policy = createViewerMemoryPolicy({ budgetBytes: 300, gpuHeadroomBytes: 50 });
+  let workerBytes = 80;
+  policy.setRetainedProvider("workerResidentEstimated", () => workerBytes);
+  assert.equal(policy.snapshot().retainedByCategory.workerResidentEstimated, 80);
+
+  workerBytes = 240;
+  const denied = policy.reserve({ category: "workerInFlight", bytes: 20 });
+  assert.equal(denied.ok, false, "admission samples current foreign worker ownership");
+  assert.equal(denied.detail.estimatedOwnedBytes, 240);
+
+  workerBytes = 40;
+  assert.equal(policy.snapshot().retainedByCategory.workerResidentEstimated, 40);
+});

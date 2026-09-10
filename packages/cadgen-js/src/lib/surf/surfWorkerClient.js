@@ -22,6 +22,7 @@ const pendingRequests = new Map();
 const idleReleaseWaiters = new Map();
 let dispatching = false;
 let dispatchRequested = false;
+const UNKNOWN_WORKER_MEMORY_ESTIMATE_BYTES = 128 * 1024 * 1024;
 
 // A component surf under a package's components/ dir is CONTENT-ADDRESSED —
 // its stem is the cid the shared tessellation cache keys on. Anything else
@@ -77,6 +78,13 @@ function makeAbortError() {
 
 function workersSupported() {
   return typeof Worker === "function" && typeof URL === "function";
+}
+
+function normalizedMemoryEstimateBytes(value) {
+  const bytes = Number(value);
+  return Number.isFinite(bytes) && bytes > 0
+    ? Math.ceil(bytes)
+    : UNKNOWN_WORKER_MEMORY_ESTIMATE_BYTES;
 }
 
 function normalizeCapabilities(value) {
@@ -223,6 +231,14 @@ function handleWorkerMessage(slot, event) {
   const message = event.data || {};
   const request = finishRequest(slot, message.id);
   if (!request) return;
+  // An ok:false reply can arrive after tessellation grew the isolate's heap.
+  // The worker remains reusable, so it owns that high-water estimate until its
+  // exact slot is terminated. A stale reply has no request and cannot charge a
+  // replacement slot.
+  slot.residentEstimateBytes = Math.max(
+    slot.residentEstimateBytes,
+    request.memoryEstimateBytes,
+  );
   dispatchQueuedRequests();
   releaseDeferredPoolIfIdle(request.poolGeneration);
   if (message.ok) {
@@ -252,7 +268,13 @@ function handleWorkerError(slot, event) {
 
 function createWorkerSlot(index, generation) {
   const worker = new Worker(new URL("./surfWorker.js", import.meta.url), { type: "module" });
-  const slot = { worker, index, poolGeneration: generation, requestId: null };
+  const slot = {
+    worker,
+    index,
+    poolGeneration: generation,
+    requestId: null,
+    residentEstimateBytes: 0,
+  };
   worker.addEventListener("message", (event) => handleWorkerMessage(slot, event));
   worker.addEventListener("error", (event) => handleWorkerError(slot, event));
   return slot;
@@ -297,6 +319,64 @@ export function releaseSurfWorkerPool() {
   return releaseIdlePool();
 }
 
+// Shed only isolates that own no request. Memory admission can fail while a
+// progressive package load is still alive because completed tessellations
+// leave their workers' high-water heaps resident. The caller may retry the
+// same allocation after this synchronous reclamation without canceling work:
+// active slots remain, requests waiting for a cache read remain queued, and at
+// least one idle slot remains when queued work has no active slot to inherit.
+// The counts describe live isolates after the call, so the viewer can reduce
+// its conservative worker-resident estimate by exactly the capacity returned.
+export function reclaimIdleSurfWorkers() {
+  const currentPool = pool;
+  const generation = poolGeneration;
+  if (!currentPool) {
+    return { reclaimedSlots: 0, residentSlots: 0, fullyReleased: true };
+  }
+
+  const before = currentPool.filter(Boolean).length;
+  if (pendingRequests.size === 0) {
+    const fullyReleased = releaseIdlePool(generation);
+    return {
+      reclaimedSlots: fullyReleased ? before : 0,
+      residentSlots: fullyReleased ? 0 : before,
+      fullyReleased,
+    };
+  }
+
+  const activeSlots = currentPool.filter((slot) => slot?.requestId != null).length;
+  const idleSlots = currentPool.filter((slot) => slot && slot.requestId == null);
+  const keepIdle = activeSlots === 0 ? 1 : 0;
+  for (const slot of idleSlots.slice(keepIdle)) {
+    slot.worker.terminate?.();
+    if (pool === currentPool && poolGeneration === generation && currentPool[slot.index] === slot) {
+      currentPool[slot.index] = null;
+    }
+  }
+  const residentSlots = currentPool.filter(Boolean).length;
+  return {
+    reclaimedSlots: before - residentSlots,
+    residentSlots,
+    fullyReleased: residentSlots === 0,
+  };
+}
+
+// Process-local ownership only. Estimates describe the live worker slots that
+// actually completed a request in this generation; they are not geometry or
+// cache identity and never cross the worker protocol boundary.
+export function surfWorkerMemoryStats() {
+  const slots = pool ? pool.filter(Boolean) : [];
+  return Object.freeze({
+    generation: poolGeneration,
+    residentSlots: slots.length,
+    usedSlots: slots.filter((slot) => slot.residentEstimateBytes > 0).length,
+    residentEstimateBytes: slots.reduce(
+      (total, slot) => total + slot.residentEstimateBytes,
+      0,
+    ),
+  });
+}
+
 // A package load and a viewport refinement can briefly overlap. The immediate
 // release above must leave in-flight work alone, but its caller still needs to
 // know when the isolates are actually gone so retained-memory accounting can
@@ -317,7 +397,12 @@ export function releaseSurfWorkerPoolWhenIdle() {
   });
 }
 
-export function loadSurfComponentInWorker(url, { signal, tessellation, capabilities: rawCapabilities } = {}) {
+export function loadSurfComponentInWorker(url, {
+  signal,
+  tessellation,
+  capabilities: rawCapabilities,
+  memoryEstimateBytes,
+} = {}) {
   const capabilities = normalizeCapabilities(rawCapabilities);
   const workers = ensurePool();
   if (!workers) {
@@ -362,6 +447,7 @@ export function loadSurfComponentInWorker(url, { signal, tessellation, capabilit
       reject,
       cleanup,
       poolGeneration,
+      memoryEstimateBytes: normalizedMemoryEstimateBytes(memoryEstimateBytes),
       ready: false,
       slot: null,
       message: null,

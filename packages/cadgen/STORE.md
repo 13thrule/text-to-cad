@@ -150,6 +150,14 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   parent's frame.
 - `assembly.root` is the grouping the author's compound expressed; a link
   appears in it as a node of type `link`.
+
+  **Known implementation defect:** retaining source-only PBR material and
+  grouping in a saved tree does not satisfy the document-byte identity rule.
+  Identical STEP bytes can currently resolve different finishes after another
+  build publishes, and cold import can produce different names/grouping.
+  These are unresolved defects, not exceptions to the rule. Repair requires
+  separating authored results from byte-derived document trees and durably
+  binding any appearance the STEP bytes do not carry.
 - Consumers that speak the older flat shape (the viewer client, the Node
   exporters) read a **flattened** tree: `cadgen.store.trees.flatten` expands
   links recursively (ids rebased — a child's `o1.2` under link `o1.3` becomes
@@ -198,7 +206,8 @@ A real one (`link_robot`: a base, two placements of `link_arm`, one of
   reads it, so editing it never makes a model stale. The
   boundary is decided statically by what the importer TAKES from a model
   file: only model functions (`from arm import arm`) → a result edge, file
-  excluded, the child tracked by its pin; a module-level literal (`from plate
+  excluded, the child tracked by its pin (also when that file declares several
+  models); a module-level literal (`from plate
   import WIDTH` where `WIDTH = 40.0` — numbers, str, bool, None, tuples/
   lists/dicts of those) → a value edge, file excluded, the value tracked in
   `constants`; anything else (a helper function, a `bd.` object, an
@@ -333,25 +342,35 @@ Each with the failure it prevents.
 
 ## 6. Link or component
 
-Decided mechanically; there is no error path.
+Decided mechanically from the returned geometry and occurrence metadata.
 
 - `cadgen.store.materialize.materialize(tree)` rebuilds a child's geometry as
   a build123d `Compound` and TAGS it with the tree hash and a handle to the
-  shape it was built from. The tag is metadata for the build, not part of any
-  contract a model author sees.
+  shape it was built from, together with a private immutable baseline of its
+  geometry and descendant metadata. The tag is internal; model authors need
+  no additional imports or ownership helpers.
 - Its process cache retains at most 64 MiB of immutable canonical BREP bytes.
   Each independent materialization reconstructs fresh kernel shapes; repeated
   occurrences within that materialization share their prototype. A byte-cache
   hit still requires the object to exist on disk. Clearing the memo releases
   only retained bytes, leaving active consumers' shapes valid.
-- When the parent's result is written, every tagged compound found in it whose
-  shape is still the one it was materialized with (`IsPartner`: same
-  underlying shape, any rigid placement, relabelled or recolored or not)
+- When the parent's result is written, every tagged child whose native
+  partner, geometry and descendant metadata still match its original baseline
   becomes a **link**. Everything else — geometry the parent made, a sub-shape
   it extracted, a child it modified (`housing() - holes`), a mirrored child —
   becomes the parent's own **components**. Modifying a child is legitimate and
   fully tracked (the child is still in `children` because it was called); it
   simply makes the parent own that geometry instead of linking.
+  Native identity alone is insufficient: OCCT can mutate an existing TShape,
+  and a nested label, color or placement can change independently. Verification
+  reads private topology without altering caller geometry or meshing flags.
+  Copying a modified child cannot establish a clean baseline for the old tree.
+  Root placement, label and color remain link overrides. A part's root color
+  replaces its previous color; an assembly's root color inherits into otherwise
+  uncolored descendants, preserving explicit descendant colors.
+  Native additions/removals are reconciled with surviving wrapper metadata.
+  Conflicting native/wrapper hierarchy edits or ambiguous removal of identical
+  occurrences fail explicitly instead of discarding geometry or guessing labels.
 - Placement that keeps the link: `child.moved(loc)` and `Location * child`
   (the same shape, re-placed). build123d's `child.located(loc)` deep-copies
   the geometry (`BRepBuilderAPI_Copy`), which serializes to different bytes —
@@ -364,6 +383,8 @@ Decided mechanically; there is no error path.
   content (kinematics, animation, export declarations) never rides up.
 - A `link` in a tree is resolved by hash, so two placements of one child are
   two links to one object, and a child shared by many parents is stored once.
+  Materialization requires the complete transitive object graph. A missing pin
+  is an error, never an empty subtree or a request for the child's newer record.
 
 ## 7. Concurrency
 
@@ -386,6 +407,10 @@ are not cancelled merely because a newer editing request exists.
 - **Dependency waits** release the parent's CPU slot but retain its geometry
   and memory reservation. A coalesced child may have been started by another
   consumer; it must remain alive while any required consumer uses it.
+  The daemon tracks the producer and attached consumers separately. A lost
+  producer connection does not cancel work an attached caller still needs.
+  The last disconnect retires that particular in-flight entry before its
+  worker is stopped; late completion cannot finish a replacement request.
 - **No locks.** There is no lock layer: every store write is atomic
   (temp + rename) and idempotent, the document is written to a temp file and
   moved into place, the record cross-validates the outputs by sha (gate
@@ -519,10 +544,16 @@ CPU scheduling and reuse remain independent of memory admission:
 **Memory admission.** The daemon sums worker RSS including extraction
 descendants, pending spawn reservations, and retiring workers until they exit.
 Idle workers are reclaimed oldest first. Busy/suspended workers retain at
-least a worker reservation. Root requests cannot spend dependency headroom;
-nested requests can. If another dependency cannot fit, the build receives an
+least a worker reservation. Ordinary root requests preserve dependency
+headroom; nested requests can spend it. A known oversized root reservation or
+retained worker may use that headroom only as the sole worker charge, and
+only within the total allowance. A later child that cannot fit fails
+explicitly while the parent's geometry remains owned. If another dependency cannot fit, the build receives an
 explicit error rather than waiting indefinitely with parent geometry held.
 Reclamation drops process state only; it never runs persistent-store GC.
+Reservations and sampled RSS form a soft operating budget. Arbitrary future
+native allocations cannot be predicted or stopped by this admission check;
+active shared work is not killed merely to recover budget.
 
 | Setting | Default |
 |---|---|
@@ -541,7 +572,10 @@ bounds, and extraction concurrency also fits the parent worker allowance.
 textures and worker work may have byte budgets and be reclaimed when unused.
 Admission includes replacement overlap and temporary allocations; active
 owners must not be invalidated by another scene's release. GPU and worker heap
-figures are estimates where browser APIs expose no measurement. Such budgets
+figures are estimates where browser APIs expose no measurement. Each live
+tessellation worker owns its highest completed-request estimate; terminating
+that slot releases its charge. Queued temporary reservations and live-slot
+ownership are process state, never persistent geometry or cache identity. Such budgets
 do not change exact objects, canonical tree hashes or export tolerances, do
 not delete the disk cache, and must preserve a usable view on denied work.
 
@@ -618,8 +652,24 @@ measurement state.
 Preview roots never replace `record.tree`, canonical child pins or a document
 mapping. A child still finishes its canonical STEP save before its parent can
 materialize that pin. Successful explicit saves require all declared outputs;
-publishing a preview alone is not success. The session changes back to the
-saved representation only after byte-based resolution verifies it.
+publishing a preview alone is not success. In **Follow
+edits**, a successful save keeps that revision's authored preview on screen:
+the status confirms the STEP save, while the viewport remains explicitly a
+preview with its own topology and kinematics. This avoids replacing every
+component just because STEP translation changed its canonical encoding.
+Choosing **Saved file** displays the validated saved representation instead.
+A successful no-op request without a new preview, or an expired preview with
+a separately validated saved result, also falls back to that saved input.
+No saved byte hash is mapped to a preview tree to obtain this reuse.
+
+An interactive viewer can retain a complete displayed component across a
+replacement when its full SURF object hash, component identity, origin and
+effective tessellation agree. Tree-specific placements and appearance are
+recomposed. This is disposable browser ownership, not a new persistent cache
+or source of geometry identity. Superseded or failed staging does not release
+the last complete view's ownership. No automatic-save producer exists in this
+runtime: all decorated runs have explicit completion obligations, so display
+supersession does not cancel their exports.
 
 ## 10. Debugging
 

@@ -54,6 +54,17 @@ const tick = async () => {
   await Promise.resolve();
 };
 
+test("an omitted level means the canonical default while explicit L0 stays coarse", () => {
+  const scheduler = createLodScheduler({ loadLevel: async () => ({}), applyLevel: () => {} });
+  scheduler.setComponents([
+    { cid: "default", diagonal: 100 },
+    { cid: "coarse", diagonal: 100, level: 0 },
+  ]);
+  assert.equal(scheduler.levelOf("default"), 1);
+  assert.equal(scheduler.levelOf("coarse"), 0);
+  scheduler.dispose();
+});
+
 test("debounce: rapid samples collapse to one evaluation; worst error loads first", async () => {
   const clock = makeClock();
   const loads = [];
@@ -71,9 +82,9 @@ test("debounce: rapid samples collapse to one evaluation; worst error loads firs
     clearTimeoutFn: clock.clearTimeoutFn,
   });
   scheduler.setComponents([
-    { cid: "near", diagonal: 100 },
-    { cid: "mid", diagonal: 100 },
-    { cid: "far", diagonal: 100 },
+    { cid: "near", diagonal: 100, level: 0 },
+    { cid: "mid", diagonal: 100, level: 0 },
+    { cid: "far", diagonal: 100, level: 0 },
   ]);
   const sample = sampleWith({ near: 60, mid: 150, far: 5000 });
   scheduler.onCameraSample(sample);
@@ -107,14 +118,14 @@ test("drain climbs the ladder to settle, then goes quiet", async () => {
     setTimeoutFn: clock.setTimeoutFn,
     clearTimeoutFn: clock.clearTimeoutFn,
   });
-  scheduler.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
   scheduler.onCameraSample(sampleWith({ part: 52 }));
   clock.fire();
   for (let i = 0; i < 6; i += 1) {
     await tick();
   }
-  assert.deepEqual(loads, [1, 2], "one rung at a time, stops at the finest");
-  assert.equal(scheduler.levelOf("part"), 2);
+  assert.deepEqual(loads, [1, 2, 3], "one rung at a time, stops at the finest");
+  assert.equal(scheduler.levelOf("part"), 3);
   assert.equal(scheduler.busy(), false, "settled: no further work");
   scheduler.dispose();
 });
@@ -138,7 +149,7 @@ test("dispose aborts in-flight work and a late resolve applies nothing", async (
     setTimeoutFn: clock.setTimeoutFn,
     clearTimeoutFn: clock.clearTimeoutFn,
   });
-  scheduler.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
   scheduler.onCameraSample(sampleWith({ part: 60 }));
   clock.fire();
   assert.ok(scheduler.busy());
@@ -164,7 +175,7 @@ test("a failed level load leaves the current level standing and does not wedge",
     setTimeoutFn: clock.setTimeoutFn,
     clearTimeoutFn: clock.clearTimeoutFn,
   });
-  scheduler.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
   scheduler.onCameraSample(sampleWith({ part: 60 }));
   clock.fire();
   await tick();
@@ -193,7 +204,7 @@ test("a denied refinement keeps the usable level and reports the limitation", as
     setTimeoutFn: clock.setTimeoutFn,
     clearTimeoutFn: clock.clearTimeoutFn,
   });
-  scheduler.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
   scheduler.onCameraSample(sampleWith({ part: 60 }));
   clock.fire();
   await tick();
@@ -222,7 +233,7 @@ test("LOD reservation spans replacement load and apply, then releases", async ()
     setTimeoutFn: clock.setTimeoutFn,
     clearTimeoutFn: clock.clearTimeoutFn,
   });
-  scheduler.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
   scheduler.onCameraSample(sampleWith({ part: 60 }));
   clock.fire();
   assert.deepEqual(events, ["reserve:refine", "load"]);
@@ -273,11 +284,11 @@ test("setComponents resets levels and cancels stale work (model switch)", async 
     setTimeoutFn: clock.setTimeoutFn,
     clearTimeoutFn: clock.clearTimeoutFn,
   });
-  scheduler.setComponents([{ cid: "old", diagonal: 100 }]);
+  scheduler.setComponents([{ cid: "old", diagonal: 100, level: 0 }]);
   scheduler.onCameraSample(sampleWith({ old: 60 }));
   clock.fire();
   assert.ok(scheduler.busy());
-  scheduler.setComponents([{ cid: "new", diagonal: 50 }]);
+  scheduler.setComponents([{ cid: "new", diagonal: 50, level: 0 }]);
   assert.equal(aborted, true, "model switch cancels the stale load");
   assert.equal(scheduler.levelOf("old"), null);
   assert.equal(scheduler.levelOf("new"), 0);
@@ -300,16 +311,16 @@ test("setComponents({ preserveLevels }) keeps levels and in-flight work while th
     clearTimeoutFn: clock.clearTimeoutFn,
   });
   // First progressive batch: "part" loads to a finer level.
-  scheduler.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
   scheduler.onCameraSample(sampleWith({ part: 60 }));
   clock.fire();
   assert.ok(scheduler.busy());
   gate.resolve({});
   await tick();
-  // The drain steps the near component to the finest rung (as the drain test above).
+  // The drain has already moved the near component to a finer rung.
   assert.equal(scheduler.levelOf("part"), 2);
   // A later batch adds a component: the applied level survives.
-  scheduler.setComponents([{ cid: "part", diagonal: 100 }, { cid: "later", diagonal: 50 }], { preserveLevels: true });
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }, { cid: "later", diagonal: 50, level: 0 }], { preserveLevels: true });
   assert.equal(scheduler.levelOf("part"), 2);
   assert.equal(scheduler.levelOf("later"), 0);
   // An in-flight load for a retained cid keeps running across a grow...
@@ -325,15 +336,15 @@ test("setComponents({ preserveLevels }) keeps levels and in-flight work while th
     setTimeoutFn: clock.setTimeoutFn,
     clearTimeoutFn: clock.clearTimeoutFn,
   });
-  scheduler2.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler2.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
   scheduler2.onCameraSample(sampleWith({ part: 60 }));
   clock.fire();
   assert.ok(scheduler2.busy());
-  scheduler2.setComponents([{ cid: "part", diagonal: 100 }, { cid: "later", diagonal: 50 }], { preserveLevels: true });
+  scheduler2.setComponents([{ cid: "part", diagonal: 100, level: 0 }, { cid: "later", diagonal: 50, level: 0 }], { preserveLevels: true });
   assert.equal(aborted, false, "growing the model keeps the in-flight load");
   assert.ok(scheduler2.busy());
   // ...but the default (model switch) still resets everything.
-  scheduler2.setComponents([{ cid: "part", diagonal: 100 }]);
+  scheduler2.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
   assert.equal(aborted, true);
   assert.equal(scheduler2.levelOf("part"), 0);
   scheduler.dispose();

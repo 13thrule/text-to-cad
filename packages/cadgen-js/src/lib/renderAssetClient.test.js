@@ -19,7 +19,9 @@ import {
   peekRenderJson,
   peekRenderSdf,
   renderAssetCacheStats,
+  reclaimIdleSurfWorkers,
   releaseSurfWorkers,
+  surfWorkerMemoryStats,
   releaseRenderSurfLevel,
   configureSurfLeash
 } from "./renderAssetClient.js";
@@ -748,4 +750,53 @@ test("a failed surf worker job is not retried synchronously on the main thread",
   const url = `https://failure.test/components/heavy-${Date.now()}.surf`;
   await assert.rejects(loadRenderSurf(url), /heavy worker failed/);
   assert.equal(mainThreadFetches, 0);
+});
+
+test("surf RAM hits do not create worker memory ownership", async (t) => {
+  const created = [];
+  class FakeWorker {
+    constructor() { this.listeners = {}; this.messages = []; created.push(this); }
+    addEventListener(type, handler) { this.listeners[type] = handler; }
+    postMessage(message) {
+      this.messages.push(message);
+      setTimeout(() => this.listeners.message?.({
+        data: { id: message.id, ok: true, meshData: { parts: [] } },
+      }), 0);
+    }
+    terminate() {}
+  }
+  const savedWorker = globalThis.Worker;
+  globalThis.Worker = FakeWorker;
+  t.after(async () => {
+    await releaseSurfWorkers();
+    globalThis.Worker = savedWorker;
+  });
+
+  const url = `https://ram-hit.test/not-components/resident-${Date.now()}.surf`;
+  const first = await loadRenderSurf(url, { memoryEstimateBytes: 321 });
+  assert.ok(first);
+  assert.equal(surfWorkerMemoryStats().residentEstimateBytes, 321);
+  const posts = created.reduce((total, worker) => total + worker.messages.length, 0);
+
+  assert.equal(
+    await loadRenderSurf(url, { memoryEstimateBytes: 999 }),
+    first,
+    "the second load is the exact main-thread cache owner",
+  );
+  assert.equal(surfWorkerMemoryStats().residentEstimateBytes, 321);
+  assert.equal(
+    created.reduce((total, worker) => total + worker.messages.length, 0),
+    posts,
+    "a RAM hit never reaches a worker",
+  );
+});
+
+test("render asset clients can reclaim an idle surf pool without reaching into worker internals", async () => {
+  await releaseSurfWorkers();
+  assert.deepEqual(reclaimIdleSurfWorkers(), {
+    reclaimedSlots: 0,
+    residentSlots: 0,
+    fullyReleased: true,
+  });
+  assert.equal(surfWorkerMemoryStats().residentEstimateBytes, 0);
 });

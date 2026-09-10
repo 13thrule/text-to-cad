@@ -42,6 +42,18 @@ snapshot renderer and the node builders in `bin/`).
   its worker, preserving other callers. A failed worker request reports an
   error instead of retrying expensive tessellation on the UI thread. Inline
   execution is reserved for environments where workers cannot start.
+  Pressure reclamation may release idle worker slots while active and queued
+  consumers keep their work. Each live slot retains its own highest completed
+  request estimate, including handled failures. Reclamation or replacement
+  removes that slot's charge. Memory estimates stay on the client; they do not
+  enter worker messages or cache keys, and RAM hits add no worker charge.
+- **Revision reuse**: canonical store descriptors carry a full immutable SURF
+  object digest. Interactive caches may share that object across tree URLs
+  only with the same origin, component ID, effective tessellation and payload
+  version. Other URL inputs and snapshot source scopes remain isolated.
+  Placement and appearance belong to each tree's occurrence composition.
+  Viewport L0 is explicitly coarse; L1 preserves the canonical default mesh
+  options and key. Changing viewport detail never changes export defaults.
 - **Kinematics is data, choreography is JS, independently**: the FK
   evaluator (`kinematicsRuntime.js`) folds sidecar mate data into
   transforms and is the operation-for-operation twin of the Python

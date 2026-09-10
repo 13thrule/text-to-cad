@@ -6,12 +6,27 @@ import test from "node:test";
 
 import {
   LOD_CHORD_LEVELS,
+  LOD_DEFAULT_LEVEL,
+  LOD_TESSELLATION_LEVELS,
   desiredLevel,
+  lodTessellationForLevel,
   nextLevel,
+  normalizeLodLevel,
   pixelsPerUnit,
   planLodWork,
   projectedChordErrorPx,
 } from "./lodPolicy.js";
+
+test("LOD tiers make coarse inputs explicit while preserving the default cache request", () => {
+  assert.equal(LOD_DEFAULT_LEVEL, 1);
+  assert.deepEqual(lodTessellationForLevel(0), { chordTolerance: 2e-3, angleTolerance: 1.4 });
+  assert.equal(lodTessellationForLevel(LOD_DEFAULT_LEVEL), undefined);
+  assert.deepEqual(lodTessellationForLevel(2), { chordTolerance: 5e-4, angleTolerance: 0.35 });
+  assert.deepEqual(LOD_CHORD_LEVELS, LOD_TESSELLATION_LEVELS.map((level) => level.chordTolerance));
+  assert.equal(normalizeLodLevel(undefined), LOD_DEFAULT_LEVEL);
+  assert.equal(normalizeLodLevel(-10), 0);
+  assert.equal(normalizeLodLevel(99), LOD_TESSELLATION_LEVELS.length - 1);
+});
 
 // A 100mm-diagonal part in a 1000px-tall, 45deg viewport.
 function sample(cameraDistance) {

@@ -97,6 +97,25 @@ the build — detection only; it keeps serving.
   Restarting the daemon expires the ephemeral session, and rerunning the model
   reconnects it. Source files hold authored changes; there is no hidden durable
   preview document. Every explicit model run still waits for declared outputs.
+  A successful save leaves that revision's authored preview displayed, labelled
+  **Preview · STEP saved**. Choose **Saved file** to inspect the STEP read-back
+  and its bound sidecar. A later successful no-op run without a new preview, or
+  an expired preview with a validated saved result, uses the saved file instead.
+  Complete displayed component arrays remain available while a replacement
+  stages or fails. An unchanged immutable surface at the same tessellation
+  reuses those arrays across revisions; placements and appearance come from
+  the new tree. Snapshot source isolation is unchanged.
+- Assemblies with at least 64 unique components start at a coarser display
+  tessellation. Smaller assemblies keep the standard level, except an
+  individually oversized component may start coarse if its estimate fits.
+  Refinement uses the camera and disposable memory budget; exact geometry,
+  measurements and explicit mesh-export tolerances remain unchanged.
+  Admission can reclaim idle tessellation workers and retry while preserving
+  active consumers. Its ledger samples each live worker's own retained estimate
+  before admission; a large component does not inflate every worker's charge.
+  A component that cannot fit even at the coarse level
+  reports a limitation and preserves the current view. Estimates and sampled
+  resource totals are a soft budget, not a hard browser RSS limit.
 - A schema-7 STEP sidecar includes the STEP byte digest. A mismatch displays
   **Annotations unavailable** while permitting saved geometry to render.
   Rebuild or re-annotate the pair to repair it; importing a file never rewrites

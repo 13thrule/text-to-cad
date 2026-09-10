@@ -299,6 +299,7 @@ import {
   normalizeStepModuleParameterValues
 } from "cadgen-js/common/stepModule";
 import { meshStateIsComplete, tolerantAnimationClip } from "./workbench/hooks/packageProgressiveLoad.js";
+import { meshLoadErrorForViewer, shouldStartMeshLoad } from "./workbench/hooks/meshLoadTarget.js";
 import { loadKinematicsModuleDefinition, previewKinematicsModuleDefinition } from "cadgen-js/common/kinematicsModule";
 import { loadRenderModule, validateRenderModuleClips } from "cadgen-js/common/renderModule";
 import {
@@ -1272,6 +1273,7 @@ export default function CadWorkspace({
     applyComponentLodPayload,
     meshLoadInProgress,
     meshLoadTargetFile,
+    meshLoadTargetHash,
     meshLoadStage,
     status,
     setStatus,
@@ -2616,13 +2618,19 @@ export default function CadWorkspace({
     const meshAlert = buildViewerMeshAlert(
       selectedEntry,
       !!selectedMeshData,
-      status === ASSET_STATUS.ERROR ? error : "",
+      meshLoadErrorForViewer({
+        fatalError: status === ASSET_STATUS.ERROR ? error : "",
+        hydrationFailed: selectedAssemblyHydrationFailed,
+        backgroundError: meshState?.assemblyBackgroundError,
+      }),
       selectedArtifact
     );
     return meshAlert || viewerRuntimeAlert;
   }, [
     effectiveRenderFormat,
     error,
+    meshState?.assemblyBackgroundError,
+    selectedAssemblyHydrationFailed,
     selectedEntry,
     selectedArtifact,
     selectedArtifactGenerating,
@@ -3974,17 +3982,17 @@ export default function CadWorkspace({
       cancelMeshLoad();
       return;
     }
-    if (meshLoadInProgress && meshLoadTargetFile === fileKey(selectedEntry)) {
-      return;
-    }
-    if (
-      selectedMeshMatches &&
-      (
-        !isAssemblyView ||
-        selectedAssemblyInteractionReady ||
-        selectedAssemblyHydrationFailed
-      )
-    ) {
+    if (!shouldStartMeshLoad({
+      inProgress: meshLoadInProgress,
+      targetFile: meshLoadTargetFile,
+      targetHash: meshLoadTargetHash,
+      entryFile: fileKey(selectedEntry),
+      entryHash: selectedMeshHash,
+      selectedMeshMatches,
+      isAssembly: isAssemblyView,
+      interactionReady: selectedAssemblyInteractionReady,
+      hydrationFailed: selectedAssemblyHydrationFailed,
+    })) {
       return;
     }
     loadMeshForEntry(selectedEntry).catch((err) => {
@@ -3998,6 +4006,7 @@ export default function CadWorkspace({
     loadMeshForEntry,
     meshLoadInProgress,
     meshLoadTargetFile,
+    meshLoadTargetHash,
     selectedAssemblyHydrationFailed,
     selectedAssemblyInteractionReady,
     selectedEntry,

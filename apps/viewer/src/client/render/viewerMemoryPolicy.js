@@ -40,6 +40,7 @@ export function createViewerMemoryPolicy({
   onLimitation = null,
 } = {}) {
   const retained = new Map(VIEWER_MEMORY_CATEGORIES.map((category) => [category, 0]));
+  const retainedProviders = new Map();
   const reservations = new Map();
   let nextToken = 1;
   let lastLimitation = null;
@@ -48,6 +49,17 @@ export function createViewerMemoryPolicy({
   const gpuHeadroom = Math.min(budget, bytes(gpuHeadroomBytes));
   const replacementHeadroom = bytes(replacementHeadroomBytes);
   const ownedLimit = Math.max(0, budget - gpuHeadroom);
+
+  function refreshRetainedProviders() {
+    for (const [category, provider] of retainedProviders) {
+      try {
+        retained.set(category, bytes(provider()));
+      } catch {
+        // Memory diagnostics must not make rendering fail. Keep the last
+        // coherent value until the provider can be sampled again.
+      }
+    }
+  }
 
   function retainedBytes() {
     let total = 0;
@@ -62,6 +74,7 @@ export function createViewerMemoryPolicy({
   }
 
   function snapshot() {
+    refreshRetainedProviders();
     const retainedByCategory = Object.fromEntries(retained);
     const inFlightByCategory = {};
     for (const reservation of reservations.values()) {
@@ -94,6 +107,15 @@ export function createViewerMemoryPolicy({
     return snapshot();
   }
 
+  function setRetainedProvider(category, provider) {
+    if (!retained.has(category)) {
+      throw new Error(`Unknown viewer memory category: ${category}`);
+    }
+    if (typeof provider === "function") retainedProviders.set(category, provider);
+    else retainedProviders.delete(category);
+    return snapshot();
+  }
+
   function reserve({
     category = "workerInFlight",
     bytes: requested,
@@ -103,6 +125,7 @@ export function createViewerMemoryPolicy({
     finalBytes = null,
     recordLimitation = true,
   } = {}) {
+    refreshRetainedProviders();
     const amount = bytes(requested);
     const before = retainedBytes() + reservedBytes();
     const isReducingReplacement = kind === "coarsen" &&
@@ -156,7 +179,16 @@ export function createViewerMemoryPolicy({
     lastLimitation = null;
   }
 
-  return { setRetained, reserve, release, snapshot, noteLimitation, clearLimitation, reset };
+  return {
+    setRetained,
+    setRetainedProvider,
+    reserve,
+    release,
+    snapshot,
+    noteLimitation,
+    clearLimitation,
+    reset,
+  };
 }
 
 // One ledger spans the asset hook, viewport LOD, renderer diagnostics and idle

@@ -13,7 +13,9 @@ import { loadGlbMeshDataInWorker } from "./render/glbMeshWorkerClient.js";
 import { loadStlMeshDataInWorker } from "./render/stlMeshWorkerClient.js";
 import {
   cidFromSurfUrl,
+  reclaimIdleSurfWorkers as reclaimIdleSurfWorkerPool,
   releaseSurfWorkerPoolWhenIdle,
+  surfWorkerMemoryStats as surfWorkerMemoryStatsFromPool,
 } from "./surf/surfWorkerClient.js";
 import {
   TESS_CACHE_VERSION,
@@ -22,6 +24,7 @@ import {
 import {
   assertAssetSourceScope,
   assetSourceScopeMatches,
+  renderAssetSourceScope,
   releaseAssetSourceScope
 } from "./renderAssetSourceScope.js";
 
@@ -285,16 +288,23 @@ export function peekRenderGlb(url) {
   return peekCached(glbCache, url);
 }
 
-export async function loadRenderSurf(url, { signal, tessellation } = {}) {
+export async function loadRenderSurf(url, {
+  signal,
+  tessellation,
+  identity,
+  memoryEstimateBytes,
+} = {}) {
   // Exact-surface component artifact (design/surface-rendering.md): the
   // worker builds only the display payload. A compatible shared-cache entry
   // contains geometry, display edges, bounds and appearance, so this path can
   // skip both selector construction and the .surf request.
-  const cacheKey = surfTessellationCacheKey(url, tessellation);
+  const cacheKey = surfTessellationCacheKey(url, tessellation, identity);
   const meshData = await loadCached(glbCache, cacheKey, async () => {
     return (await loadSurfPayload(url, {
       signal,
       tessellation,
+      identity,
+      memoryEstimateBytes,
       capabilities: { render: true, selectors: false },
     })).meshData;
   }, { cachePending: !signal });
@@ -311,6 +321,14 @@ export async function loadRenderSurf(url, { signal, tessellation } = {}) {
 // leaving its conservative retained-memory estimate charged after it drains.
 export async function releaseSurfWorkers() {
   return releaseSurfWorkerPoolWhenIdle();
+}
+
+export function reclaimIdleSurfWorkers() {
+  return reclaimIdleSurfWorkerPool();
+}
+
+export function surfWorkerMemoryStats() {
+  return surfWorkerMemoryStatsFromPool();
 }
 
 export async function loadRenderStl(url, { signal } = {}) {
@@ -731,9 +749,34 @@ export function renderAssetCacheStats() {
   return stats;
 }
 
-export function surfTessellationCacheKey(url, tessellation) {
+function immutableSurfAssetKey(url, identity) {
+  // Only a canonical store view carries this immutable-object guarantee.
+  // Other hosts/formats and scoped snapshot jobs retain their URL identity.
+  // A tree revision changes placements/appearance without changing a SURF
+  // object; its full digest lets those revisions share the same decoded mesh.
+  const digest = String(identity?.surfObject || "").toLowerCase();
+  if (renderAssetSourceScope() || !/^[0-9a-f]{64}$/.test(digest)) return url;
+  try {
+    const base = typeof location !== "undefined" ? location.href : "http://cadgen-relative.invalid/";
+    const parsed = new URL(url, base);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.pathname !== "/__cad/store") return url;
+    if (parsed.searchParams.getAll("file").length !== 1) return url;
+    const match = (parsed.searchParams.get("file") || "")
+      .match(/^\/?[0-9a-f]{64}\/components\/([0-9a-f]{16}|[0-9a-f]{64})\.surf$/i);
+    if (!match) return url;
+    parsed.searchParams.delete("file");
+    parsed.searchParams.delete("v"); // the full object digest supersedes tree revision hints
+    parsed.searchParams.sort();
+    const origin = parsed.origin === "http://cadgen-relative.invalid" ? "" : parsed.origin;
+    return `${origin}${parsed.pathname}?${parsed.searchParams}#surf=${digest}&cid=${match[1].toLowerCase()}`;
+  } catch {
+    return url;
+  }
+}
+
+export function surfTessellationCacheKey(url, tessellation, identity) {
   const cid = cidFromSurfUrl(url) || "anonymous";
-  return `${url}#mesh=${tessellationCacheKey(cid, tessellation || {})}-p${TESS_CACHE_VERSION}`;
+  return `${immutableSurfAssetKey(url, identity)}#mesh=${tessellationCacheKey(cid, tessellation || {})}-p${TESS_CACHE_VERSION}`;
 }
 
 // Drop browser-cache references for an obsolete concrete surf level after its
@@ -741,8 +784,8 @@ export function surfTessellationCacheKey(url, tessellation) {
 // values they still use, so deleting these Map entries cannot blank a view or
 // invalidate an exact measurement. Persistent tessellation-store records are
 // intentionally untouched.
-export function releaseRenderSurfLevel(url, { tessellation } = {}) {
-  const baseKey = surfTessellationCacheKey(url, tessellation);
+export function releaseRenderSurfLevel(url, { tessellation, identity } = {}) {
+  const baseKey = surfTessellationCacheKey(url, tessellation, identity);
   const targets = [
     ...[...surfPayloadCache.keys()]
       .filter((key) => key.startsWith(`${baseKey}#cap=`))
@@ -819,12 +862,19 @@ async function loadSurfPayloadInline(url, { signal, tessellation, capabilities }
 async function loadSurfPayload(url, {
   signal,
   tessellation,
+  identity,
+  memoryEstimateBytes,
   capabilities = { render: true, selectors: true },
 } = {}) {
-  const cacheKey = `${surfTessellationCacheKey(url, tessellation)}#cap=${capabilityCacheKey(capabilities)}`;
+  const cacheKey = `${surfTessellationCacheKey(url, tessellation, identity)}#cap=${capabilityCacheKey(capabilities)}`;
   const payload = await loadCached(surfPayloadCache, cacheKey, async () => {
     const { loadSurfComponentInWorker } = await import("./surf/surfWorkerClient.js");
-    const workerPayload = loadSurfComponentInWorker(url, { signal, tessellation, capabilities });
+    const workerPayload = loadSurfComponentInWorker(url, {
+      signal,
+      tessellation,
+      capabilities,
+      memoryEstimateBytes,
+    });
     if (workerPayload) {
       // Once a worker accepts the job, keep expensive tessellation off the UI
       // thread even when that job fails. Propagate the failure; inline is only
@@ -844,20 +894,34 @@ async function loadSurfPayload(url, {
  * entrypoint: one tessellation feeds rendering, picking, and edges, so a level
  * swap can never leave them disagreeing.
  */
-export async function loadRenderSurfPayloadAtLevel(url, { signal, tessellation } = {}) {
+export async function loadRenderSurfPayloadAtLevel(url, {
+  signal,
+  tessellation,
+  identity,
+  memoryEstimateBytes,
+} = {}) {
   return loadSurfPayload(url, {
     signal,
     tessellation,
+    identity,
+    memoryEstimateBytes,
     capabilities: { render: true, selectors: true },
   });
 }
 
-export async function loadRenderSurfSelectorBundle(surfUrl, { signal, tessellation } = {}) {
-  const cacheKey = surfTessellationCacheKey(surfUrl, tessellation);
+export async function loadRenderSurfSelectorBundle(surfUrl, {
+  signal,
+  tessellation,
+  identity,
+  memoryEstimateBytes,
+} = {}) {
+  const cacheKey = surfTessellationCacheKey(surfUrl, tessellation, identity);
   const bundle = await loadCached(selectorCache, cacheKey, async () => {
     return (await loadSurfPayload(surfUrl, {
       signal,
       tessellation,
+      identity,
+      memoryEstimateBytes,
       capabilities: { render: false, selectors: true },
     })).bundle;
   }, { cachePending: !signal });
@@ -866,13 +930,23 @@ export async function loadRenderSurfSelectorBundle(surfUrl, { signal, tessellati
   return bundle;
 }
 
-export async function loadRenderSurfDisplayEdgeBundle(surfUrl, { signal, tessellation } = {}) {
+export async function loadRenderSurfDisplayEdgeBundle(surfUrl, {
+  signal,
+  tessellation,
+  identity,
+  memoryEstimateBytes,
+} = {}) {
   // The render records draw the CAD edges from the meshData's line segments;
   // the display-edge bundle for surf components is metadata only (profile
   // "surface-edges").
-  const cacheKey = surfTessellationCacheKey(surfUrl, tessellation);
+  const cacheKey = surfTessellationCacheKey(surfUrl, tessellation, identity);
   const bundle = await loadCached(displayEdgeCache, cacheKey, async () => {
-    const selector = await loadRenderSurfSelectorBundle(surfUrl, { signal, tessellation });
+    const selector = await loadRenderSurfSelectorBundle(surfUrl, {
+      signal,
+      tessellation,
+      identity,
+      memoryEstimateBytes,
+    });
     return {
       manifest: {
         schemaVersion: selector.manifest.schemaVersion,

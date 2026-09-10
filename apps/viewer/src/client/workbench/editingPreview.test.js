@@ -29,7 +29,7 @@ test("a daemon epoch change expires preview ordering and failed saves retain the
   const restarted = reduceEditingPreview(failed, { ...update(1), epoch: "b" });
   assert.equal(restarted.preview, null);
 });
-test("preview leaves the saved catalog immutable and waits for saved byte identity before switching back", () => {
+test("a successful save keeps the current authored preview in Follow edits", () => {
   const saved = { tree: "saved-tree", documentHash: "bytes" };
   const state = reduceEditingPreview(initialEditingPreview(), update(1, "preview", { saved }));
   const entry = { file: "/part.step", kind: "assembly", hash: "old", sourceUrl: "/old.json", poseUrl: "/old.json" };
@@ -38,11 +38,60 @@ test("preview leaves the saved catalog immutable and waits for saved byte identi
   assert.equal(render.poseUrl, "");
   assert.equal(entry.hash, "old");
   assert.ok(editingPreviewEntry(state, { ...entry, hash: "saved-tree", documentHash: "other-bytes" }));
-  assert.equal(editingPreviewEntry(state, { ...entry, hash: "saved-tree", documentHash: "bytes" }), null);
+  assert.equal(editingPreviewEntry(state, { ...entry, hash: "saved-tree", documentHash: "bytes" }).hash, "preview");
+  assert.equal(editingPreviewLabel(state, true), "Preview · STEP saved");
   const pending = reduceEditingPreview(state, update(2));
-  assert.equal(editingPreviewEntry(pending, { ...entry, hash: "saved-tree", documentHash: "bytes" }), null,
-    "starting the next edit must not revert the last visible saved geometry to an old preview");
+  assert.equal(editingPreviewEntry(pending, { ...entry, hash: "saved-tree", documentHash: "bytes" }).hash, "preview",
+    "the prior visible preview stays while the next revision builds");
   const newPreview = reduceEditingPreview(pending, update(2, "new-preview"));
   assert.equal(editingPreviewEntry(newPreview, { ...entry, hash: "saved-tree", documentHash: "bytes" }).hash, "new-preview");
   assert.equal(editingPreviewEntry(state, { ...entry, file: "relative/part.step" }).file, "relative/part.step");
+});
+
+test("a successful no-op without a matching current preview falls back to validated saved bytes", () => {
+  const entry = { file: "/part.step", kind: "assembly", hash: "saved-1", documentHash: "bytes-1" };
+  const first = reduceEditingPreview(initialEditingPreview(), update(1, "preview-1", {
+    saved: { tree: "saved-1", documentHash: "bytes-1" },
+  }));
+  const pending = reduceEditingPreview(first, update(2));
+  assert.equal(editingPreviewEntry(pending, entry).hash, "preview-1");
+  const noOp = reduceEditingPreview(pending, update(2, null, {
+    state: "done",
+    saved: { tree: "saved-2", documentHash: "bytes-2" },
+  }));
+  assert.ok(editingPreviewEntry(noOp, entry), "old catalog cannot replace the visible preview");
+  assert.equal(editingPreviewEntry(noOp, { ...entry, hash: "saved-2", documentHash: "bytes-2" }), null);
+  assert.equal(editingPreviewLabel(noOp, false), "Saved");
+});
+
+test("missing preview objects fall back only after the current saved catalog is validated", () => {
+  const saved = { tree: "saved-tree", documentHash: "bytes" };
+  const ready = reduceEditingPreview(initialEditingPreview(), update(3, "preview", { saved }));
+  const unavailable = reduceEditingPreview(ready, update(3, null, {
+    state: "done",
+    saved,
+    previewUnavailable: true,
+    error: "Preview geometry is no longer available in the cache",
+  }));
+  assert.equal(unavailable.preview.tree, "preview", "the last loaded preview remains available as a fallback");
+  assert.equal(unavailable.previewUnavailable, true);
+  assert.ok(editingPreviewEntry(unavailable, { hash: "old", documentHash: "old" }));
+  assert.equal(editingPreviewEntry(unavailable, { hash: "saved-tree", documentHash: "bytes" }), null);
+  assert.equal(editingPreviewLabel(unavailable, false), "STEP saved · preview unavailable");
+
+  const nextRevision = reduceEditingPreview(unavailable, update(4));
+  assert.equal(nextRevision.previewUnavailable, false, "a new revision gets a fresh preview opportunity");
+  const restored = reduceEditingPreview(nextRevision, update(4, "preview-4"));
+  assert.equal(restored.previewUnavailable, false);
+  assert.equal(editingPreviewEntry(restored, { hash: "saved-tree", documentHash: "bytes" }).hash, "preview-4");
+});
+
+test("failed saves and stale missing-preview events cannot displace the visible preview", () => {
+  const ready = reduceEditingPreview(initialEditingPreview(), update(5, "preview-5"));
+  const failed = reduceEditingPreview(ready, update(5, null, { state: "failed", error: "Disk full" }));
+  assert.equal(editingPreviewEntry(failed, { hash: "saved", documentHash: "bytes" }).hash, "preview-5");
+  assert.equal(editingPreviewLabel(failed, true), "Disk full");
+  const stale = reduceEditingPreview(failed, update(4, null, { previewUnavailable: true }));
+  assert.equal(stale, failed);
+  assert.equal(stale.previewUnavailable, false);
 });
