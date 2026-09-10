@@ -95,8 +95,8 @@ function componentMeshBytes(componentMeshDataByCid) {
   );
 }
 
-function syncAssetCacheMemory() {
-  const caches = renderAssetCacheStats();
+function syncAssetCacheMemory(excludeBuffers = []) {
+  const caches = renderAssetCacheStats({ excludeBuffers });
   viewerMemoryPolicy.setRetained("selectors", Number(caches.selector?.typedBytes) || 0);
   const assetCaches = Object.entries(caches).reduce((sum, [name, stats]) => (
     name === "surfLeash" || name === "selector" ? sum : sum + (Number(stats?.typedBytes) || 0)
@@ -108,7 +108,13 @@ function syncDisplayedMemory(componentMeshDataByCid) {
   const displayCpu = componentMeshBytes(componentMeshDataByCid);
   viewerMemoryPolicy.setRetained("displayCpu", displayCpu);
   viewerMemoryPolicy.setRetained("gpuEstimated", Math.ceil(displayCpu * GPU_BUFFER_ESTIMATE_MULTIPLIER));
-  syncAssetCacheMemory();
+  const buffers = new Set();
+  for (const mesh of Object.values(componentMeshDataByCid || {})) {
+    for (const value of Object.values(mesh)) {
+      if (ArrayBuffer.isView(value)) buffers.add(value.buffer);
+    }
+  }
+  syncAssetCacheMemory(buffers);
   if (typeof window !== "undefined") {
     window.__cadViewerMemory = viewerMemoryPolicy.snapshot();
   }
@@ -326,6 +332,11 @@ export function useCadAssets({
   // face highlights and picks that resolve through the surface.
   const referenceCompositionRef = useRef(null);
   const displayedReferenceCompositionRef = useRef(null);
+  const componentLodNeedsSelectors = useCallback((cid) => {
+    const ctx = lodPackageRef.current;
+    const composition = referenceCompositionRef.current;
+    return Boolean(ctx && composition?.file === ctx.file && compositionUsesComponent(composition, cid));
+  }, []);
 
   const buildLodPackageSummary = useCallback((entry, meshUrl, descriptor, componentMeshDataByCid) => {
     const transformPoint = (m, p) => (Array.isArray(m) && m.length >= 12
@@ -382,25 +393,36 @@ export function useCadAssets({
   // buildComposedPackageMeshData), re-compose (reference composition, cheap),
   // and publish. The old state keeps rendering until this one commits, and a
   // stale apply (entry changed underneath) is a no-op.
-  const applyComponentLodPayload = useCallback((cid, level, payload) => {
+  const applyComponentLodPayload = useCallback(async (cid, level, payload, { signal } = {}) => {
     const ctx = lodPackageRef.current;
     const meshData = payload?.meshData;
-    if (!ctx || !meshData) {
+    if (!ctx || !meshData || signal?.aborted) {
       return false;
     }
     const previousLevel = normalizeLodLevel(ctx.componentLodLevelByCid?.[cid]);
     const normalizedLevel = normalizeLodLevel(level);
+    const component = ctx.descriptor?.components?.[cid];
+    const packageUrl = entryAssetUrl(ctx.entry, "glb");
+    const surfUrl = component?.surf && packageUrl
+      ? resolvePackageAssetUrl(packageUrl, component.surf)
+      : "";
+    // Topology can become demanded while this render-only worker is running.
+    // Finish that concrete level's selectors before swapping its displayed
+    // triangles, so an already-visible selection never uses stale face runs.
+    if (!payload.bundle && componentLodNeedsSelectors(cid)) {
+      payload = { ...payload, bundle: await loadRenderSurfSelectorBundle(surfUrl, {
+        signal,
+        tessellation: lodTessellationForLevel(normalizedLevel),
+        identity: component,
+      }).finally(() => { releaseSurfWorkers().then(syncSurfWorkerMemory, syncSurfWorkerMemory); }) };
+      if (lodPackageRef.current !== ctx || signal?.aborted) return false;
+    }
     meshData.lodLevel = normalizedLevel;
     ctx.componentMeshDataByCid = { ...ctx.componentMeshDataByCid, [cid]: meshData };
     syncDisplayedMemory(ctx.componentMeshDataByCid);
     // Remember the level's selector bundle: picking re-composes from it below,
     // and a topology load that lands AFTER this swap must prefer it over the
     // level-0 bundle cache (loadReferencesForEntry consults this map).
-    const component = ctx.descriptor?.components?.[cid];
-    const packageUrl = entryAssetUrl(ctx.entry, "glb");
-    const surfUrl = component?.surf && packageUrl
-      ? resolvePackageAssetUrl(packageUrl, component.surf)
-      : "";
     const bundleByCid = { ...(ctx.componentLodBundleByCid || {}) };
     const bundleKeyByCid = { ...(ctx.componentLodBundleKeyByCid || {}) };
     if (payload.bundle && surfUrl) {
@@ -421,13 +443,20 @@ export function useCadAssets({
     ctx.componentLodBundleKeyByCid = bundleKeyByCid;
     ctx.componentLodLevelByCid = { ...(ctx.componentLodLevelByCid || {}), [cid]: normalizedLevel };
     const composed = buildComposedPackageMeshData(ctx.descriptor, ctx.componentMeshDataByCid);
+    publishMeshCostAccounting({
+      meshData: composed,
+      componentMeshDataByCid: ctx.componentMeshDataByCid,
+      loaded: Object.keys(ctx.componentMeshDataByCid).length,
+      total: Object.keys(ctx.descriptor.components || {}).length,
+      publishCount: ctx.publishCount,
+      meshRevision: ctx.meshHash,
+      final: ctx.complete,
+    });
     const nextState = buildComposedPackageMeshStateRef.current(ctx.entry, ctx.descriptor, composed);
-    let applied = false;
     setMeshState((current) => {
       if (!current || current.file !== ctx.file) {
         return current;
       }
-      applied = true;
       return nextState;
     });
     // Re-compose the reference state to the SAME tessellation, in the same
@@ -446,8 +475,8 @@ export function useCadAssets({
         });
       }
     }
-    return applied;
-  }, []);
+    return true;
+  }, [componentLodNeedsSelectors]);
 
   // Rebuild the composed selector runtime with one component's bundle swapped
   // to the level the display mesh just moved to. Scoped to the composition's
@@ -855,7 +884,7 @@ export function useCadAssets({
               if (final) viewerMemoryPolicy.clearLimitation();
               syncDisplayedMemory(componentMeshDataByCid);
               // window.__cadMeshCost for the headless memory harness; not React state.
-              publishMeshCostAccounting({ meshData, componentMeshDataByCid, loaded, total, publishCount, final });
+              publishMeshCostAccounting({ meshData, componentMeshDataByCid, loaded, total, publishCount, final, meshRevision: getAssemblyMeshHash(entry) });
               const nextState = buildComposedPackageMeshState(entry, packageDescriptor, meshData);
               // A partial model is structure-ready (the tree can show) but not
               // interaction-ready: the workspace keeps the "loading" overlay
@@ -885,6 +914,7 @@ export function useCadAssets({
                 };
               }
               const publishedCtx = lodPackageRef.current;
+              publishedCtx.publishCount = publishCount;
               publishedCtx.meshHash = nextState.meshHash;
               if (final) {
                 displayedLodPackageRef.current = publishedCtx;
@@ -1225,6 +1255,10 @@ export function useCadAssets({
       if (referenceAbortControllerRef.current === controller) {
         referenceAbortControllerRef.current = null;
       }
+      // A first pick can be the last consumer of the tessellation pool.
+      // Reclaim its isolates after all sibling loads drain, just like initial
+      // display and LOD; a topology-only interaction must not pin eight heaps.
+      releaseSurfWorkers().then(syncSurfWorkerMemory, syncSurfWorkerMemory);
       if (requestId === referenceRequestIdRef.current) {
         setReferenceLoadStage("");
       }
@@ -1412,6 +1446,7 @@ export function useCadAssets({
     setMeshState,
     lodPackage,
     applyComponentLodPayload,
+    componentLodNeedsSelectors,
     meshLoadInProgress,
     meshLoadTargetFile,
     meshLoadTargetHash,

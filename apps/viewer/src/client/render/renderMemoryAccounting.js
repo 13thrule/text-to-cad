@@ -219,15 +219,18 @@ export function renderMemoryAccounting(runtime) {
   const gpuEstimatedBytes = totals.surfaceBytes + totals.edgeBytes + totals.pickBytes;
   const displayCpuBytes = totals.surfaceBytes + totals.edgeBytes;
   const assetCaches = renderAssetCacheStats();
+  // Geometry BufferAttributes wrap the component arrays held in these caches.
+  // Their GPU mirrors are separate allocations; their CPU references are not.
+  const additionalAssetCaches = renderAssetCacheStats({ excludeBuffers: seenArrayBuffers });
   viewerMemoryPolicy.setRetained("displayCpu", displayCpuBytes);
   viewerMemoryPolicy.setRetained("gpuEstimated", gpuEstimatedBytes);
   viewerMemoryPolicy.setRetained("bvh", totals.bvhBytes);
   viewerMemoryPolicy.setRetained("deformation", totals.deformationBytes);
   viewerMemoryPolicy.setRetained(
     "selectors",
-    (Number(assetCaches.selector?.typedBytes) || 0) + totals.faceIdBytes + totals.pickBytes
+    (Number(additionalAssetCaches.selector?.typedBytes) || 0) + totals.faceIdBytes + totals.pickBytes
   );
-  viewerMemoryPolicy.setRetained("assetCaches", Object.entries(assetCaches).reduce(
+  viewerMemoryPolicy.setRetained("assetCaches", Object.entries(additionalAssetCaches).reduce(
     (sum, [name, stats]) => name === "surfLeash" || name === "selector"
       ? sum
       : sum + (Number(stats?.typedBytes) || 0),
@@ -238,6 +241,7 @@ export function renderMemoryAccounting(runtime) {
     displayCpuBytes,
     gpuEstimatedBytes,
     assetCaches,
+    additionalAssetCaches,
     memoryPolicy: viewerMemoryPolicy.snapshot(),
     at: typeof performance !== "undefined" ? performance.now() : Date.now()
   };

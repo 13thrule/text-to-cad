@@ -8,7 +8,7 @@
 // debugging: `window.__CAD_VIEWER_LOD__ = false` before loading a model.
 import { useCallback, useEffect, useRef } from "react";
 
-import { loadRenderSurfPayloadAtLevel, releaseSurfWorkers } from "cadgen-js/lib/renderAssetClient";
+import { loadRenderSurfPayloadAtLevel, reclaimIdleSurfWorkers, releaseSurfWorkers } from "cadgen-js/lib/renderAssetClient";
 import { estimateMeshRenderCost } from "cadgen-js/lib/render/meshCost.js";
 import { lodTessellationForLevel } from "cadgen-js/lib/surf/lodPolicy.js";
 
@@ -28,29 +28,39 @@ function lodEnabled() {
   return typeof window === "undefined" || window.__CAD_VIEWER_LOD__ !== false;
 }
 
-export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload }) {
+export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload, componentLodNeedsSelectors }) {
   const componentsRef = useRef(new Map());
   const applyRef = useRef(applyComponentLodPayload);
   applyRef.current = applyComponentLodPayload;
+  const selectorsRef = useRef(componentLodNeedsSelectors);
+  selectorsRef.current = componentLodNeedsSelectors;
   const schedulerRef = useRef(null);
 
   useEffect(() => {
     const scheduler = createLodScheduler({
+      // Harness-only quality floor: exact tessellation options still name
+      // every mesh and export defaults are untouched.
+      minimumLevel: typeof window !== "undefined" ? Number(window.__CAD_VIEWER_MIN_LOD__ || 0) : 0,
       reserveLevel: ({ cid, currentLevel, level, direction }) => {
         const component = componentsRef.current.get(cid);
-        const { currentBytes, nextMeshBytes, replacementBytes } = estimateViewportLodMemory({
+        const { currentBytes, nextMeshBytes, admissionBytes } = estimateViewportLodMemory({
           meshBytes: component?.meshBytes,
           currentLevel,
           level,
         });
-        return viewerMemoryPolicy.reserve({
+        const request = {
           category: "replacement",
-          bytes: replacementBytes,
+          bytes: admissionBytes,
           label: `${cid}@L${level}`,
           kind: direction,
           replacingBytes: currentBytes,
           finalBytes: nextMeshBytes,
-        });
+        };
+        const reservation = viewerMemoryPolicy.reserve({ ...request, recordLimitation: false });
+        if (reservation.ok) return reservation;
+        reclaimIdleSurfWorkers();
+        syncSurfWorkerMemory();
+        return viewerMemoryPolicy.reserve(request);
       },
       releaseLevel: (token) => viewerMemoryPolicy.release(token),
       memoryPressure: () => {
@@ -58,6 +68,7 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
         return memory.availableBytes < memory.ownedLimitBytes * 0.15;
       },
       onLimitation: publishLodMemoryLimitation,
+      onIdle: () => { releaseSurfWorkers().then(syncSurfWorkerMemory, syncSurfWorkerMemory); },
       loadLevel: (cid, level, { signal }) => {
         const component = componentsRef.current.get(cid);
         if (!component) {
@@ -72,18 +83,14 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
           signal,
           tessellation: lodTessellationForLevel(level),
           identity: component.identity,
+          selectors: selectorsRef.current?.(cid) === true,
           memoryEstimateBytes: workerTemporaryBytes,
         }).finally(() => {
           syncSurfWorkerMemory();
-          releaseSurfWorkers().then(() => {
-            syncSurfWorkerMemory();
-          }).catch(() => {
-            syncSurfWorkerMemory();
-          });
         });
       },
-      applyLevel: (cid, level, payload) => {
-        applyRef.current?.(cid, level, payload);
+      applyLevel: async (cid, level, payload, { signal }) => {
+        if (await applyRef.current?.(cid, level, payload, { signal }) === false || signal.aborted) return false;
         viewerMemoryPolicy.clearLimitation();
         const component = componentsRef.current.get(cid);
         if (component && payload?.meshData) {
@@ -95,12 +102,16 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("cad:lod-level", { detail: { cid, level } }));
         }
+        return true;
       }
     });
     schedulerRef.current = scheduler;
+    const snapshot = () => scheduler.snapshot();
+    if (typeof window !== "undefined") window.__cadViewportLod = snapshot;
     return () => {
       scheduler.dispose();
       schedulerRef.current = null;
+      if (typeof window !== "undefined" && window.__cadViewportLod === snapshot) delete window.__cadViewportLod;
     };
   }, []);
 
@@ -149,6 +160,11 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
       }
     });
   }, [viewerRef]);
+
+  // Initial framing can notify before the package summary reaches this hook.
+  // Sample once after installing the summary too: otherwise a stationary
+  // camera leaves a newly published model coarse until the user moves it.
+  useEffect(() => { onCameraMoved(); }, [lodPackage, onCameraMoved]);
 
   return { onCameraMoved };
 }

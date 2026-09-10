@@ -113,6 +113,10 @@ the build — detection only; it keeps serving.
   Admission can reclaim idle tessellation workers and retry while preserving
   active consumers. Its ledger samples each live worker's own retained estimate
   before admission; a large component does not inflate every worker's charge.
+  Refinement reserves both replacement arrays and worker scratch space, and
+  includes the coarse tier's relaxed angular tolerance in its estimate.
+  Display arrays shared with asset caches have one CPU charge. Topology-only
+  interactions also release idle workers after their sibling requests drain.
   A component that cannot fit even at the coarse level
   reports a limitation and preserves the current view. Estimates and sampled
   resource totals are a soft budget, not a hard browser RSS limit.

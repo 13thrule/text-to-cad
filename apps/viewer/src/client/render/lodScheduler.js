@@ -44,8 +44,10 @@ export function createLodScheduler({
   releaseLevel = null,
   memoryPressure = () => false,
   onLimitation = null,
+  onIdle = null,
   debounceMs = LOD_DEBOUNCE_MS,
   levels = LOD_CHORD_LEVELS,
+  minimumLevel = 0,
   setTimeoutFn = (...args) => setTimeout(...args),
   clearTimeoutFn = (handle) => clearTimeout(handle),
 } = {}) {
@@ -58,6 +60,7 @@ export function createLodScheduler({
   let timer = null;
   let inFlight = null; // { cid, level, controller, reservation }
   let disposed = false;
+  const floorLevel = normalizeLodLevel(minimumLevel);
 
   function setComponents(list, { preserveLevels = false } = {}) {
     const previous = preserveLevels ? new Map(components) : null;
@@ -75,6 +78,9 @@ export function createLodScheduler({
     // or a finer displayed level re-stepped through a coarser one).
     if (!preserveLevels || !inFlight || !components.has(inFlight.cid)) {
       cancelInFlight();
+    }
+    if (preserveLevels && lastSample && timer === null && !inFlight) {
+      timer = setTimeoutFn(() => { timer = null; evaluate(); }, debounceMs);
     }
   }
 
@@ -137,8 +143,18 @@ export function createLodScheduler({
     const entries = entriesForPlan();
     const pressure = memoryPressure?.() === true;
     const plan = planLodWork(entries, levels)
+      .map((item) => ({ ...item, level: Math.max(floorLevel, item.level) }))
+      .filter((item) => item.level !== components.get(item.cid)?.level)
       .filter((item) => !failed.has(`${item.cid}:${item.level}`))
       .filter((item) => !pressure || item.level < (components.get(item.cid)?.level ?? 0));
+    if (!pressure && floorLevel > 0) {
+      const planned = new Set(plan.map((item) => item.cid));
+      for (const [cid, state] of components) {
+        const level = state.level + 1;
+        if (state.level >= floorLevel || planned.has(cid) || failed.has(`${cid}:${level}`)) continue;
+        plan.push({ cid, level, errorPx: 0 });
+      }
+    }
     if (pressure) {
       const planned = new Set(plan.map((item) => `${item.cid}:${item.level}`));
       for (const entry of entries) {
@@ -158,6 +174,7 @@ export function createLodScheduler({
       }
     }
     if (!plan.length) {
+      onIdle?.();
       return;
     }
     if (pressure) {
@@ -194,8 +211,14 @@ export function createLodScheduler({
         }
         const state = components.get(cid);
         if (state) {
-          state.level = level;
-          applyLevel(cid, level, payload);
+          const commitLevel = (applied) => {
+            if (applied === false || disposed || controller.signal.aborted) return;
+            const current = components.get(cid);
+            if (current) current.level = level;
+          };
+          const applied = applyLevel(cid, level, payload, { signal: controller.signal });
+          if (typeof applied?.then === "function") return applied.then(commitLevel);
+          commitLevel(applied);
         }
       })
       .catch(() => {
@@ -224,6 +247,7 @@ export function createLodScheduler({
       timer = null;
     }
     cancelInFlight();
+    onIdle?.();
   }
 
   return {
@@ -233,5 +257,17 @@ export function createLodScheduler({
     // Introspection for tests and debugging overlays.
     levelOf: (cid) => components.get(cid)?.level ?? null,
     busy: () => inFlight !== null,
+    snapshot: () => ({
+      componentCount: components.size,
+      levelCounts: [...components.values()].reduce((counts, state) => {
+        counts[state.level] = (counts[state.level] || 0) + 1;
+        return counts;
+      }, {}),
+      minimumLevel: floorLevel,
+      belowMinimum: [...components.values()].filter((state) => state.level < floorLevel).length,
+      busy: inFlight !== null,
+      pendingEvaluation: timer !== null,
+      failedLevels: failed.size,
+    }),
   };
 }

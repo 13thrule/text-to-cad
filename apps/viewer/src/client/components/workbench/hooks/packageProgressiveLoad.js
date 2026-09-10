@@ -156,7 +156,7 @@ export function tolerantAnimationClip(clip) {
 // §7), following the window.__cadModelPlacement / __CAD_VIEWER_LOD__ precedent:
 // written on EVERY progressive publish, nulled on cancel, never React state.
 // Harmless without a window (Node tests).
-export function meshCostAccounting({ meshData, componentMeshDataByCid, loaded, total, publishCount, final }) {
+export function meshCostAccounting({ meshData, componentMeshDataByCid, loaded, total, publishCount, final, meshRevision = "" }) {
   let componentTotalBytes = 0;
   let componentTotalTriangles = 0;
   const components = Object.values(componentMeshDataByCid || {});
@@ -166,6 +166,7 @@ export function meshCostAccounting({ meshData, componentMeshDataByCid, loaded, t
     componentTotalTriangles += cost.triangleCount;
   }
   return {
+    meshRevision,
     composed: estimateMeshRenderCost(meshData),
     componentTotalBytes,
     componentTotalTriangles,

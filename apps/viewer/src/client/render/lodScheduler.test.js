@@ -65,6 +65,27 @@ test("an omitted level means the canonical default while explicit L0 stays coars
   scheduler.dispose();
 });
 
+test("a canonical quality floor refines distant coarse leaves and later progressive arrivals", async () => {
+  const clock = makeClock();
+  const loads = [];
+  const scheduler = createLodScheduler({
+    ...clock,
+    minimumLevel: 1,
+    loadLevel: async (cid, level) => { loads.push(`${cid}@${level}`); return {}; },
+    applyLevel: () => {},
+  });
+  scheduler.setComponents([{ cid: "first", diagonal: 10, level: 0 }]);
+  scheduler.onCameraSample(sampleWith({ first: 10000, later: 10000 }));
+  clock.fire(); await tick(); await tick();
+  assert.equal(scheduler.levelOf("first"), 1);
+  scheduler.setComponents([{ cid: "first", diagonal: 10, level: 0 }, { cid: "later", diagonal: 10, level: 0 }], { preserveLevels: true });
+  clock.fire(); await tick(); await tick();
+  assert.deepEqual(loads, ["first@1", "later@1"]);
+  assert.deepEqual(scheduler.snapshot().levelCounts, { 1: 2 });
+  assert.equal(scheduler.snapshot().belowMinimum, 0);
+  scheduler.dispose();
+});
+
 test("debounce: rapid samples collapse to one evaluation; worst error loads first", async () => {
   const clock = makeClock();
   const loads = [];
@@ -109,7 +130,9 @@ test("debounce: rapid samples collapse to one evaluation; worst error loads firs
 test("drain climbs the ladder to settle, then goes quiet", async () => {
   const clock = makeClock();
   const loads = [];
+  let idleCalls = 0;
   const scheduler = createLodScheduler({
+    onIdle: () => { idleCalls += 1; },
     loadLevel: (cid, level) => {
       loads.push(level);
       return Promise.resolve({});
@@ -127,6 +150,7 @@ test("drain climbs the ladder to settle, then goes quiet", async () => {
   assert.deepEqual(loads, [1, 2, 3], "one rung at a time, stops at the finest");
   assert.equal(scheduler.levelOf("part"), 3);
   assert.equal(scheduler.busy(), false, "settled: no further work");
+  assert.equal(idleCalls, 1, "worker ownership ends once after the whole drain, not after each component");
   scheduler.dispose();
 });
 
@@ -240,6 +264,51 @@ test("LOD reservation spans replacement load and apply, then releases", async ()
   gate.resolve({});
   await tick();
   assert.deepEqual(events.slice(0, 4), ["reserve:refine", "load", "apply", "release:r1"]);
+  scheduler.dispose();
+});
+
+test("async selector reconciliation retains admission and delays the committed level", async () => {
+  const clock = makeClock();
+  const apply = deferred();
+  const released = [];
+  const scheduler = createLodScheduler({
+    ...clock,
+    loadLevel: async () => ({}),
+    applyLevel: () => apply.promise,
+    reserveLevel: () => ({ ok: true, token: "held" }),
+    releaseLevel: (token) => released.push(token),
+  });
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
+  scheduler.onCameraSample(sampleWith({ part: 60 }));
+  clock.fire();
+  await tick();
+  assert.equal(scheduler.levelOf("part"), 0);
+  assert.equal(scheduler.busy(), true);
+  assert.deepEqual(released, []);
+  scheduler.onCameraSample(sampleWith({ part: 10000 }));
+  apply.resolve(true);
+  await tick(); await tick();
+  assert.ok(released.includes("held"));
+  scheduler.dispose();
+});
+
+test("a model switch aborts pending selector reconciliation and ignores its late apply", async () => {
+  const clock = makeClock();
+  const gate = deferred();
+  let applySignal;
+  const scheduler = createLodScheduler({
+    ...clock,
+    loadLevel: async () => ({}),
+    applyLevel: (_cid, _level, _payload, { signal }) => { applySignal = signal; return gate.promise; },
+  });
+  scheduler.setComponents([{ cid: "old", diagonal: 100, level: 0 }]);
+  scheduler.onCameraSample(sampleWith({ old: 60 }));
+  clock.fire(); await tick();
+  scheduler.setComponents([{ cid: "new", diagonal: 100, level: 0 }]);
+  assert.equal(applySignal.aborted, true);
+  gate.resolve(false); await tick(); await tick();
+  assert.equal(scheduler.levelOf("new"), 0);
+  assert.equal(scheduler.levelOf("old"), null);
   scheduler.dispose();
 });
 

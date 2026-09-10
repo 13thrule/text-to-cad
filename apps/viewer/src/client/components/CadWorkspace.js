@@ -1276,6 +1276,7 @@ export default function CadWorkspace({
     setMeshState,
     lodPackage,
     applyComponentLodPayload,
+    componentLodNeedsSelectors,
     meshLoadInProgress,
     meshLoadTargetFile,
     meshLoadTargetHash,
@@ -2696,7 +2697,8 @@ export default function CadWorkspace({
   const { onCameraMoved: onLodCameraMoved } = useViewportLod({
     viewerRef,
     lodPackage,
-    applyComponentLodPayload
+    applyComponentLodPayload,
+    componentLodNeedsSelectors
   });
   const previewUiStateRef = useRef(null);
   const panelResizeStateRef = useRef(null);

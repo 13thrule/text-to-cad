@@ -10,5 +10,12 @@ test("LOD admission and worker ownership share one concrete mesh estimate", () =
     nextMeshBytes: 3000,
     replacementBytes: 7500,
     workerTemporaryBytes: 6000,
+    admissionBytes: 13500,
   });
+});
+
+test("canonical refinement includes the coarse tier's relaxed angular criterion", () => {
+  const estimate = estimateViewportLodMemory({ meshBytes: 1000, currentLevel: 0, level: 1 });
+  assert.equal(estimate.nextMeshBytes, 4000);
+  assert.equal(estimate.admissionBytes, 18000);
 });
