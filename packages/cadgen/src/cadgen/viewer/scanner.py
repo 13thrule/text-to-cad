@@ -51,7 +51,7 @@ from .store_paths import (
     SOURCE_SIDECAR_NAMES,
     artifact_path_key,
     result_descriptor,
-    result_tree,
+    result_snapshot,
     source_sidecar_path,
 )
 
@@ -529,27 +529,34 @@ def read_step_catalog_metadata(descriptor, source_path=None, *, document_hash=No
     annotation_error = None
     if source_path:
         from cadgen._internal.source_sidecar import (
+            SidecarAppearanceError,
             SidecarBindingError,
             SidecarSchemaError,
+            validate_appearance_targets,
             read_source_sidecar,
         )
 
         try:
             sidecar = read_source_sidecar(source_path, document_hash=document_hash)
-        except (SidecarBindingError, SidecarSchemaError) as error:
+            if isinstance(sidecar, dict) and sidecar.get("appearance") is not None:
+                validate_appearance_targets(descriptor, sidecar["appearance"])
+        except (SidecarAppearanceError, SidecarBindingError, SidecarSchemaError) as error:
+            sidecar = None
             annotation_error = str(error)
     entry_kind = descriptor.get("entryKind")
     kinematics = sidecar.get("kinematics") if isinstance(sidecar, dict) else None
+    appearance = sidecar.get("appearance") if isinstance(sidecar, dict) else None
     result = {
         "topology": {
             "index": descriptor,
             "entryKind": str(entry_kind if entry_kind is not None else "").strip().lower(),
         },
-        # Whether a sidecar EXISTS is the only thing the catalog asks of it: its
-        # declarations are fetched by the client, so the entry has to name the
-        # URL. What produced the document is not a catalog fact.
+        # Publish the validated artifact annotations with this geometry snapshot.
+        # What produced the document is not a catalog fact.
         "hasSourceSidecar": sidecar is not None,
+        "sourceSidecar": sidecar,
         "kinematics": kinematics if _is_js_object(kinematics) else None,
+        "appearance": appearance if isinstance(appearance, dict) else None,
     }
     if annotation_error:
         result["annotationError"] = annotation_error
@@ -557,9 +564,14 @@ def read_step_catalog_metadata(descriptor, source_path=None, *, document_hash=No
 
 
 def _create_step_entry(repo_root, root_path, source_path, extension) -> dict:
-    tree = result_tree(source_path)
+    snapshot = result_snapshot(source_path)
+    if snapshot:
+        document_hash, tree = snapshot
+    else:
+        # An unbuilt document still needs a digest for status/sidecar binding,
+        # but there is no geometry selection it could be mixed with.
+        document_hash, tree = _sha256_file(source_path), None
     descriptor = result_descriptor(tree) if tree else None
-    document_hash = _sha256_file(source_path)
     metadata = read_step_catalog_metadata(
         descriptor, source_path, document_hash=document_hash
     )
@@ -581,9 +593,23 @@ def _create_step_entry(repo_root, root_path, source_path, extension) -> dict:
     if metadata.get("annotationError"):
         entry["annotationError"] = metadata["annotationError"]
     if metadata.get("hasSourceSidecar"):
-        # The model-side sidecar lives in the root and is served by the ordinary
-        # asset route; the client fetches and merges it. No ?v= token here.
-        entry["sourceUrl"] = _asset_url_for_path(repo_root, source_sidecar_path(source_path))
+        # The model-side sidecar is mutable independently of the STEP bytes.
+        # Its URL therefore carries the ordinary asset version while the STEP
+        # tree URL remains content-addressed.
+        sidecar_asset = asset_for_path(repo_root, source_sidecar_path(source_path))
+        if sidecar_asset:
+            entry["sourceUrl"] = sidecar_asset["url"]
+        # The URL is a mutable file route. Publish the exact validated snapshot
+        # read above so appearance and kinematics cannot observe a later write
+        # under the same path/version token.
+        entry["sourceSidecar"] = metadata["sourceSidecar"]
+    appearance = metadata.get("appearance")
+    if appearance is not None:
+        from cadgen._internal.source_sidecar import appearance_digest
+
+        # Appearance participates in the composed scene identity only. The
+        # immutable STEP tree/hash and component tessellation keys stay pure.
+        entry["appearanceHash"] = appearance_digest(appearance)
     if pose_block is not None:
         # Typed mates, the articulation mechanism the sidecar carries.
         entry["poseUrl"] = entry.get("sourceUrl") or _asset_url_for_path(

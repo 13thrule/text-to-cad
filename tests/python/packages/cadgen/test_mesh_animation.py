@@ -207,9 +207,11 @@ class TheFreshnessVariant(unittest.TestCase):
             base, animation_variant_token(parse_animation_option({"clip": "showcase", "fps": 24}), MODULE_SOURCE)
         )
 
-    def test_a_static_variant_key_is_unchanged_and_an_animated_one_cannot_collide(self):
+    def test_a_static_variant_binds_absent_appearance_and_an_animated_one_cannot_collide(self):
+        from cadgen._internal.source_sidecar import appearance_digest
+
         static = mesh_variant_key("glb", None, None)
-        self.assertEqual("glb|default|default", static)
+        self.assertEqual(f"glb|default|default|appearance:{appearance_digest(None)}", static)
         animated = mesh_variant_key("glb", None, None, "deadbeef")
         self.assertNotEqual(static, animated)
         self.assertTrue(animated.startswith(static))

@@ -108,11 +108,15 @@ export function entryUrdfAssetHash(entry) {
 }
 
 export function entryMeshAssetSignature(entry) {
-  return String(
+  const mesh = String(
     entry?.kind === "assembly"
       ? entryAssetHash(entry, "glb")
       : entryMeshAssetHash(entry)
   );
+  const appearance = entrySourceFormat(entry) === RENDER_FORMAT.STEP && !entry?.editingPreview
+    ? normalizeString(entry?.appearanceHash)
+    : "";
+  return appearance ? `${mesh}:${appearance}` : mesh;
 }
 
 export function entryReferenceAssetSignature(entry) {
@@ -164,6 +168,12 @@ export function entryPoseUrl(entry) {
   // in the sidecar.
   return entrySourceFormat(entry) === RENDER_FORMAT.STEP
     ? normalizeString(entry?.poseUrl)
+    : "";
+}
+
+export function entrySourceSidecarUrl(entry) {
+  return entrySourceFormat(entry) === RENDER_FORMAT.STEP
+    ? normalizeString(entry?.sourceUrl)
     : "";
 }
 

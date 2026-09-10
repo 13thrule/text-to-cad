@@ -13,6 +13,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import math
 import os
 import time
 from pathlib import Path
@@ -84,39 +85,69 @@ def _component_id(source_hash: str) -> str:
     return source_hash[:16]
 
 
-def _content_hash_and_bytes(shape: Any) -> tuple[str, bytes]:
-    """The content hash AND the location-stripped BREP bytes it digests, from a
-    single serialization.
+def _normalized_face_colors(value: object) -> dict[int, tuple[float, float, float, float]]:
+    """Canonical extraction input: positive face ordinals and finite RGBA.
 
-    The digest is salted with :data:`CACHE_SCHEMA_VERSION` because the cid
-    addresses a BUILT component GLB, not the geometry alone. Each GLB embeds the
-    topology tables the extractor produced, so a change to what the extractor
-    emits makes every cached component wrong while its geometry — and therefore
-    an unsalted digest — is unchanged. The build reuses any ``<cid>.glb`` already
-    on disk, so without the salt an extractor fix would leave every existing
-    tree serving the old tables behind an assembly.json that claims to be current.
+    Channels are clamped just as the STEP color writer clamps them. Converting
+    keys must never silently merge two different finishes for one face.
+    """
+    if value is None:
+        return {}
+    if not isinstance(value, Mapping):
+        raise ValueError("cad_face_ordinal_colors must map face ordinals to RGBA")
+    normalized: dict[int, tuple[float, float, float, float]] = {}
+    for raw_ordinal, raw_color in value.items():
+        try:
+            ordinal = int(raw_ordinal)
+        except (TypeError, ValueError, OverflowError) as error:
+            raise ValueError(f"invalid face color ordinal {raw_ordinal!r}") from error
+        if ordinal <= 0 or isinstance(raw_ordinal, bool) or (
+            not isinstance(raw_ordinal, str) and raw_ordinal != ordinal
+        ):
+            raise ValueError(f"invalid face color ordinal {raw_ordinal!r}")
+        try:
+            channels = tuple(float(channel) for channel in raw_color)
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"face {ordinal} color must be finite RGBA") from error
+        if len(channels) != 4 or not all(math.isfinite(channel) for channel in channels):
+            raise ValueError(f"face {ordinal} color must be finite RGBA")
+        color = tuple(min(1.0, max(0.0, channel)) for channel in channels)
+        if ordinal in normalized and normalized[ordinal] != color:
+            raise ValueError(f"conflicting colors for face ordinal {ordinal}")
+        normalized[ordinal] = color
+    return dict(sorted(normalized.items()))
 
-    Two occurrences of the same part share an underlying ``TShape`` (``.moved()``
-    only swaps the location), so stripping the location and serializing yields an
-    identical digest for every repeat — the content-addressing that dedups the
-    components. Stable across builds/processes (unlike Python ``hash``).
 
-    Triangulation and normals are excluded so the digest is geometry-only:
-    meshing a part attaches a triangulation to its shared ``TShape``, and a
-    triangulation-sensitive hash would change after the first component is built,
-    breaking the content-addressed cache on re-hash. The same bytes are the
-    worker-build payload, so returning both avoids serializing each missing
-    component's BREP twice (once to hash, once for the payload)."""
+def _content_hash_and_bytes(shape: Any, *, face_colors: object = None) -> tuple[str, bytes]:
+    """Extraction-input hash and its unchanged location-stripped BREP payload.
+
+    A SURF contains per-face colors, so its input identity includes the sorted
+    ordinal/RGBA map as well as geometry and CACHE_SCHEMA_VERSION. The explicit
+    v2 domain also invalidates legacy colorless CIDs: their geometry-only index
+    may already point at a differently colored SURF. Uniform occurrence color
+    and PBR material remain composition metadata, outside this identity.
+
+    Triangulation and normals stay excluded. Equal geometry shares identical
+    immutable BREP object bytes even when different face colors require distinct
+    component/SURF identities. Raw STEP prototypes pass their face-color map
+    explicitly; wrappers otherwise supply ``cad_face_ordinal_colors``.
+    """
+    colors = _normalized_face_colors(
+        getattr(shape, "cad_face_ordinal_colors", None) if face_colors is None else face_colors
+    )
     brep = _shape_brep_bytes(shape)
     digest = hashlib.sha256()
+    digest.update(b"cadgen-component-input-v2\x00")
     digest.update(str(CACHE_SCHEMA_VERSION).encode("utf-8"))
     digest.update(b"\x00")
+    digest.update(len(brep).to_bytes(8, "big"))
     digest.update(brep)
+    digest.update(json.dumps(colors, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8"))
     return digest.hexdigest(), brep
 
 
 def _content_hash_shape(shape: Any) -> str:
-    """sha256 of a shape's location-stripped BREP bytes (see
+    """Hash a shape's complete component extraction input (see
     :func:`_content_hash_and_bytes`)."""
     return _content_hash_and_bytes(shape)[0]
 
@@ -285,7 +316,7 @@ def _unlocated_shape(shape: Any) -> Any:
     color = getattr(shape, "color", None)
     if color is not None:
         local.color = color
-    face_colors = getattr(shape, "cad_face_ordinal_colors", None)
+    face_colors = _normalized_face_colors(getattr(shape, "cad_face_ordinal_colors", None))
     if face_colors:
         local.cad_face_ordinal_colors = face_colors
     return local
@@ -510,10 +541,9 @@ def _write_component_artifacts_atomic(
     component object is a plain write when the hashing payload is already in hand.
     The surf goes in place LAST so its existence signals a complete set.
 
-    No colour goes into the surf: the cid is geometry-only, so a colour there
-    would let two occurrences of one part with different colours share one
-    file and one of them render wrong. The assembly.json's occurrence carries
-    colour (``_occurrence_color``) and the viewer applies it per record."""
+    Per-face colors go into SURF and participate in the component input hash.
+    Uniform occurrence color and PBR finish stay on the tree's occurrences and
+    are applied per placement; they do not alter this reusable component."""
     from cadgen._internal.surface_extract import extract_surface_component
 
     out_surf.parent.mkdir(parents=True, exist_ok=True)

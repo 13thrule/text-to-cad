@@ -37,7 +37,8 @@ from typing import Any
 import cadgen.cad_ref_syntax as cad_ref_syntax
 import cadgen.lookup as lookup
 from cadgen.assets import browser_runtime_dir
-from cadgen.catalog import result_tree_for, result_view_dir
+from cadgen._internal.doors import document_snapshot
+from cadgen.store.view import view_dir_for
 from cadgen.step_targets import ResolvedStepTarget, StepTopologyArtifact, StepTopologyArtifactError
 
 from cadgen.cli_logging import CliLogger
@@ -933,9 +934,11 @@ def resolve_step_render_job(
         selector_index=artifact_selector_index(artifact),
     )
 
-    # The document's tree is found by its bytes (index/document → tree) and laid
-    # out as a temporary view directory for the renderer (cadgen.catalog.result_view_dir).
-    package_dir = result_view_dir(source_path)
+    # Select the document digest and tree in one lookup. Materialising by that
+    # tree, rather than resolving the mutable path again, keeps every component
+    # URL and the sidecar binding on the same revision.
+    document_hash, selected_tree = document_snapshot(source_path)
+    package_dir = view_dir_for(selected_tree)
     if not package_dir.is_dir():
         raise SnapshotError(f"STEP/STP render input has no tree in the store: {package_dir}")
 
@@ -959,12 +962,20 @@ def resolve_step_render_job(
         "kind": kind,
         # The hash of the tree this job renders: the geometry's identity in the
         # result (cadgen.results.SnapshotFile.tree), never a directory.
-        "tree": result_tree_for(source_path) or "",
+        "tree": selected_tree,
     }
     # tree (the canonical render artifact for every STEP model): inline
     # the assembly.json and pre-resolve one asset URL per unique component GLB so the renderer
     # fetches and composes them in world space.
     descriptor = json.loads((package_dir / "assembly.json").read_text())
+    artifact_manifest = getattr(artifact, "manifest", None)
+    if isinstance(artifact_manifest, Mapping) and artifact_manifest != descriptor:
+        raise SnapshotError(
+            "STEP/STP render input changed while its topology was being resolved; retry the snapshot"
+        )
+    # This is the renderer's private descriptor loaded from the selected view,
+    # never the immutable tree object.
+    descriptor["documentHash"] = document_hash
     from cadgen.snapshot_core import asset_url_for_store_path
 
     component_urls = {
@@ -972,12 +983,23 @@ def resolve_step_render_job(
         for cid, entry in (descriptor.get("components") or {}).items()
     }
     resolved["package"] = {"descriptor": descriptor, "componentUrls": component_urls}
-    from cadgen._internal.source_sidecar import read_source_sidecar, source_sidecar_path
-    from cadgen._internal.step_hash import step_file_hash
+    from cadgen._internal.source_sidecar import (
+        read_source_sidecar,
+        source_sidecar_path,
+        validate_appearance_targets,
+    )
 
-    document_hash = step_file_hash(source_path)
     resolved["documentHash"] = document_hash
     sidecar = read_source_sidecar(source_path, document_hash=document_hash) or {}
+    if sidecar.get("appearance") is not None:
+        # Validate canonical occurrence targets here for a clean CLI error;
+        # the browser repeats the same check before it composes its own copy.
+        validate_appearance_targets(descriptor, sidecar["appearance"])
+    if sidecar:
+        # The shared JS source resolver validates the same document binding and
+        # composes appearance into its private descriptor. Inline data avoids a
+        # second browser fetch and leaves the store descriptor untouched.
+        resolved["sourceSidecar"] = sidecar
     kinematics_block = (
         sidecar.get("kinematics") if isinstance(sidecar.get("kinematics"), dict) else None
     )

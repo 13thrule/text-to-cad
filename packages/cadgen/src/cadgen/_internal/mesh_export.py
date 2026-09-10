@@ -62,6 +62,7 @@ def run_mesh_exporter(
     default_color: str | None,
     logger: Any,
     render_module: Path | None = None,
+    appearance: object = None,
 ) -> dict:
     """STL/3MF/GLB through the ONE tessellation path.
 
@@ -81,6 +82,15 @@ def run_mesh_exporter(
     import subprocess
 
     from cadgen._internal.node_runtime import cad_node_executable, node_builder_script
+
+    if appearance is not None:
+        from cadgen._internal.source_sidecar import apply_appearance
+
+        # export_view supplies a private projection; immutable store objects
+        # and component tessellation identities remain unchanged.
+        descriptor_path = package_dir / "assembly.json"
+        descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+        descriptor_path.write_text(json.dumps(apply_appearance(descriptor, appearance), sort_keys=True), encoding="utf-8")
 
     argv = [
         str(cad_node_executable()),
@@ -155,6 +165,7 @@ def record_mesh_export(
     mesh_tolerance: float | None,
     mesh_angular_tolerance: float | None,
     animation_key: str | None = None,
+    appearance_key: str | None = None,
 ) -> None:
     """Record a written mesh as one of the MODEL's outputs (STORE.md: mesh
     exports live in the model record, gated by clause 5). Best-effort."""
@@ -175,6 +186,7 @@ def record_mesh_export(
             "chord": _tolerance_token(mesh_tolerance),
             "angle": _tolerance_token(mesh_angular_tolerance),
             "anim": animation_key,
+            "appearance": _appearance_key(appearance_key),
         }
         record["outputs"] = outputs
         write_record(model, record)
@@ -188,7 +200,14 @@ def record_mesh_export(
         mesh_tolerance=mesh_tolerance,
         mesh_angular_tolerance=mesh_angular_tolerance,
         animation_key=animation_key,
+        appearance_key=appearance_key,
     )
+
+
+def _appearance_key(value: str | None) -> str:
+    from cadgen._internal.source_sidecar import appearance_digest
+
+    return value if value is not None else appearance_digest(None)
 
 
 def mesh_variant_key(
@@ -196,6 +215,7 @@ def mesh_variant_key(
     mesh_tolerance: float | None,
     mesh_angular_tolerance: float | None,
     animation_key: str | None = None,
+    appearance_key: str | None = None,
 ) -> str:
     """One mesh variant of a document — format × chord × angle × clip — the key
     of the ARTIFACT-side ledger (``index/document/<sha256(bytes)>.meshes``).
@@ -209,6 +229,7 @@ def mesh_variant_key(
             str(fmt),
             _tolerance_token(mesh_tolerance),
             _tolerance_token(mesh_angular_tolerance),
+            f"appearance:{_appearance_key(appearance_key)}",
         )
         + (() if animation_key is None else (f"anim:{animation_key}",))
     )
@@ -222,6 +243,7 @@ def record_document_mesh(
     mesh_tolerance: float | None,
     mesh_angular_tolerance: float | None,
     animation_key: str | None = None,
+    appearance_key: str | None = None,
 ) -> None:
     """A bare door's ledger: the mesh cut from THESE bytes at this variant has
     this sha. Artifact → artifact (STORE.md §2, the law) — no record is opened,
@@ -231,7 +253,7 @@ def record_document_mesh(
 
         digest = _sha256_of(Path(output_path))
         if digest:
-            key = mesh_variant_key(fmt, mesh_tolerance, mesh_angular_tolerance, animation_key)
+            key = mesh_variant_key(fmt, mesh_tolerance, mesh_angular_tolerance, animation_key, appearance_key)
             note_document_mesh(str(document_hash), key, digest)
     except Exception:  # noqa: BLE001 - a failed ledger only costs a re-export
         pass
@@ -245,6 +267,7 @@ def document_mesh_current(
     mesh_tolerance: float | None,
     mesh_angular_tolerance: float | None,
     animation_key: str | None = None,
+    appearance_key: str | None = None,
 ) -> bool:
     """Whether the mesh on disk is THE export of these document bytes at this
     variant: the document entry's ledger names its sha and the bytes verify."""
@@ -253,7 +276,7 @@ def document_mesh_current(
     path = Path(output_path)
     if not document_hash or not path.is_file():
         return False
-    key = mesh_variant_key(fmt, mesh_tolerance, mesh_angular_tolerance, animation_key)
+    key = mesh_variant_key(fmt, mesh_tolerance, mesh_angular_tolerance, animation_key, appearance_key)
     expected = document_mesh_sha(str(document_hash), key)
     return bool(expected) and _sha256_of(path) == expected
 
@@ -266,6 +289,7 @@ def mesh_export_current(
     mesh_tolerance: float | None,
     mesh_angular_tolerance: float | None,
     animation_key: str | None = None,
+    appearance_key: str | None = None,
 ) -> bool:
     """Whether the mesh on disk is the CURRENT export of this model's document
     at these tolerances: the model record lists it with matching document hash
@@ -286,5 +310,6 @@ def mesh_export_current(
         and entry.get("chord") == _tolerance_token(mesh_tolerance)
         and entry.get("angle") == _tolerance_token(mesh_angular_tolerance)
         and entry.get("anim") == animation_key
+        and entry.get("appearance") == _appearance_key(appearance_key)
         and _sha256_of(path) == entry.get("sha256")
     )

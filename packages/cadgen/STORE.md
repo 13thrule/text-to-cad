@@ -35,7 +35,7 @@ memo (bare), scope, blob. They do not appear in code or documentation.
 ```
 ~/.cache/cadgen/                      (CADGEN_CACHE_DIR overrides; else the platform cache dir)
   objects/ab/cdef…                    immutable, content-addressed, sharded like git
-  index/document/<sha256(file bytes)> ARTIFACT side: {tree, kind, meshes} for a file's bytes
+  index/document/<sha256(file bytes)> ARTIFACT side: {schemaVersion, tree, kind, meshes} for a file's bytes
   index/model/<sha256(script::function)>  records (input-addressed, mutable, atomic)
   index/output/<sha256(output path)>  {model}: which script wrote the file at this path
   index/component/<cid>               component entries → {surf, brep} object hashes
@@ -55,7 +55,7 @@ that ledger (§9b); there is no preview directory or persistent session index.
 side**: what source produced it, what it depended on, what may be reused.
 `index/document` is the one artifact-side index: `sha256(file bytes)` → the
 tree describing those bytes (plus a mesh ledger keyed by format × tolerances
-× pose — the bare mesh doors read and write it, and a script run notes its
+× pose × appearance — the bare mesh doors read and write it, and a script run notes its
 declared meshes there too, so the two front doors never redo each other's work). Three properties, each enforced by a
 test:
 
@@ -71,6 +71,10 @@ test:
    compiled / compiling / rendered / failed) and it never learns which model
    wrote a document. "Is this document behind its source" is `cadgen store
    why`'s and the build tree's question.
+   Once selected, the tree and its document digest travel together. A reader
+   must not select geometry, then hash a possibly replaced file to bind its
+   annotations or export ledger. A snapshot rejects a topology manifest from
+   a different selected document instead of combining revisions.
    An explicitly attached editing session has a different input: a complete
    preview tree announced by the build runtime (§9b). It still reads no
    model/output records and never runs source. This input is not a saved file.
@@ -98,7 +102,10 @@ the store makes:
   Entries are mutable and written temp + rename.
 
 No directories per result, no hardlinks, no staging directories, no version
-salts. The `.step` document, its sidecar and declared mesh files are
+salts in object addresses or document-byte keys. An input-addressed derivation
+includes its extraction algorithm/schema along with the inputs that affect its
+output; this does not change the content address of any object it produces.
+The `.step` document, its sidecar and declared mesh files are
 **outputs** in the project, not store contents; the record lists them with shas.
 
 ## 3. Tree and record
@@ -134,7 +141,7 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
 ```
 
 - `components` are geometry this model created itself, keyed by component id
-  (`cid`, a content hash of the exact shape); each names the `.surf` and
+  (`cid`, a hash of the component extraction inputs); each names the `.surf` and
   `.brep` objects. For a model that writes a `.step`, that exact shape is the
   one READ BACK from the document the build wrote, not the shape the script
   returned: the build assembles and writes the STEP first, re-reads it with
@@ -148,16 +155,35 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   trees. Two placements of one child are two links to one tree. Transforms
   are 16 numbers, row-major, translation in the fourth column, in the
   parent's frame.
+  Component input v2 includes the exact unlocated BREP, extraction schema and
+  normalized face-ordinal RGBA map, because SURF carries those face colors.
+  Every legacy component input misses, including uncolored entries that could
+  have reused a colored SURF. Different face-color variants still share the
+  same immutable BREP object; uniform occurrence color and PBR stay outside
+  the component input.
 - `assembly.root` is the grouping the author's compound expressed; a link
   appears in it as a node of type `link`.
 
-  **Known implementation defect:** retaining source-only PBR material and
-  grouping in a saved tree does not satisfy the document-byte identity rule.
-  Identical STEP bytes can currently resolve different finishes after another
-  build publishes, and cold import can produce different names/grouping.
-  These are unresolved defects, not exceptions to the rule. Repair requires
-  separating authored results from byte-derived document trees and durably
-  binding any appearance the STEP bytes do not carry.
+  The model result and saved document are separate trees. `record.tree` keeps
+  authored grouping and intrinsic appearance for exact child pins. A generated
+  save also records `documentTree`, built by the same canonical parsed-scene
+  path as a cold import, using only hierarchy, names, colors and geometry in
+  the STEP bytes. Only this tree is entered in `index/document`.
+
+  Finishes that STEP does not carry persist in the schema-8 sidecar's
+  `appearance.occurrences` map, keyed by verified canonical leaf IDs. Resolved
+  kinematics are remapped to exact written product nodes, with independent
+  descendant validation so nested single-child groups retain their identity.
+  Saved readers compose
+  appearance into private descriptors; files with identical STEP bytes share
+  geometry while retaining their own finishes. Appearance-sensitive exports
+  include the normalized appearance digest in their variant, including absence.
+
+  Model records and document mappings use payload schema 2. Old entries are
+  misses; no directory or document-byte key is salted. Rebuild authored outputs
+  to write schema-8 annotations. Legacy cache-only finishes cannot be recovered
+  after the cache and source are lost, and are never guessed from another
+  file's document entry. Old sidecar schemas fail with a regeneration message.
 - Consumers that speak the older flat shape (the viewer client, the Node
   exporters) read a **flattened** tree: `cadgen.store.trees.flatten` expands
   links recursively (ids rebased — a child's `o1.2` under link `o1.3` becomes
@@ -178,12 +204,14 @@ A real one (`link_robot`: a base, two placements of `link_arm`, one of
 ```json
 {
   "kind": "record",
+  "schemaVersion": 2,
   "model": "/abs/models/assemblies/src/link_robot/link_robot.py::link_robot",
   "script": "/abs/models/assemblies/src/link_robot/link_robot.py",
   "function": "link_robot",
   "entryKind": "assembly",
   "sourceKind": "python",
   "tree": "64429167…",
+  "documentTree": "b291420a…",
   "closure": {"hash": "e341ac84…", "files": ["/abs/models/assemblies/src/link_robot/link_robot.py"], "static": false},
   "children": [
     {"model": "/abs/models/assemblies/src/link_robot/link_arm.py::link_arm", "tree": "c161092b…"},
@@ -351,7 +379,10 @@ Decided mechanically from the returned geometry and occurrence metadata.
   no additional imports or ownership helpers.
 - Its process cache retains at most 64 MiB of immutable canonical BREP bytes.
   Each independent materialization reconstructs fresh kernel shapes; repeated
-  occurrences within that materialization share their prototype. A byte-cache
+  occurrences of one component within that materialization share their
+  prototype. Different face-color components sharing BREP bytes receive
+  private topology, preventing XCAF from overwriting another variant's styles.
+  Every occurrence owns its face-color and PBR maps. A byte-cache
   hit still requires the object to exist on disk. Clearing the memo releases
   only retained bytes, leaving active consumers' shapes valid.
 - When the parent's result is written, every tagged child whose native
@@ -378,7 +409,7 @@ Decided mechanically from the returned geometry and occurrence metadata.
   cost (the copy never shared a component id either); it is why the skill
   places with `moved()`.
 - **The materialize contract.** A parent may rely on: the child's exact
-  geometry, its labels, colors and placements, as a compound whose children
+  geometry, its labels, colors, owned intrinsic PBR values and placements, as a compound whose children
   mirror the child's grouping. It receives nothing else — a child's sidecar
   content (kinematics, animation, export declarations) never rides up.
 - A `link` in a tree is resolved by hash, so two placements of one child are
@@ -436,9 +467,11 @@ Each rename is atomic; the group is not a transaction or compare-and-swap.
 There is a check-to-rename race with independent CLI or external writers, and
 an external writer can replace a successfully saved document later. A failure
 before publication preserves the previous pair. A crash after the STEP rename
-can leave a missing or mismatched annotation: schema 7 binds kinematics to the
+can leave a missing or mismatched annotation: schema 8 binds annotations to the
 STEP's SHA-256, so readers reject that annotation instead of applying old
-mates to new geometry. A stale/missing record does not block saved-byte reads;
+mates or finishes to new geometry. Material-only saves can retain the same
+STEP digest, so refresh and output-pair conflict checks also observe sidecar
+content. A stale/missing record does not block saved-byte reads;
 missing derived objects are compiled from the bytes that actually exist.
 Explicit regeneration repairs the annotation pair. No reader consults locks
 or source to recover an artifact.
@@ -446,7 +479,8 @@ or source to recover an artifact.
 ## 8. GC
 
 `cadgen store gc [--dry-run] [--grace-hours H]` — mark and sweep. Reachable =
-every object referenced (transitively, through links) from a record, plus the
+every object referenced (transitively, through links) from a record's result
+and document trees, plus the
 objects component/op/mesh entries point at, plus anything modified within the
 grace period (default 1 h — the window in which a build may still hold a pin
 to a child's previous tree). No age sweeps, no per-tier rules. GC does not

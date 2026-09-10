@@ -127,55 +127,49 @@ class CadGenerationTests(unittest.TestCase):
         return self._write_step_at(self.temp_root, name, suffix=suffix)
 
     def _fake_scene(self, step_path: Path) -> types.SimpleNamespace:
-        """A minimal stand-in scene carrying a sentinel ``source_compound`` so the
-        unified tree emit skips its ``import_step`` fallback (the tree build
-        itself is patched by ``_patch_package_build``)."""
+        """A minimal stand-in for an already-parsed imported STEP scene.
+
+        ``source_compound`` avoids the intermediate mesh-compound fallback;
+        ``_patch_package_build`` replaces canonical document-tree packaging.
+        """
         return types.SimpleNamespace(
             step_path=step_path.expanduser().resolve(),
             source_compound=object(),
         )
 
     def _patch_package_build(self):
-        """Patch the component-package emit to materialize a minimal package
-        directory (``.{model}.step.glb/`` + ``assembly.json``), mirroring the real
-        unified emit without meshing. Returns ``(patcher, calls)`` where ``calls``
-        records each ``build_package_from_compound`` invocation's key arguments."""
+        """Patch canonical imported-document packaging without meshing.
+
+        Returns ``(patcher, calls)`` where ``calls`` records the parsed scene
+        that ``build_document_tree`` receives.
+        """
         calls: list[dict] = []
 
         def _fake(
-            shape,
+            scene,
             *,
-            root_name,
             force=False,
             progress=None,
-            extra=None,
         ):
-            from cadgen.store.build import compound_has_children
-
-            single_component = not compound_has_children(shape)
-            entry_kind = "part" if single_component else "assembly"
             from cadgen.store.objects import put_object
             from cadgen.store.trees import put_tree
 
             calls.append(
                 {
-                    "single_component": single_component,
+                    "scene": scene,
                     "force": force,
-                    "provenance": {"entryKind": entry_kind},
-                    "root_name": root_name,
                 }
             )
             surf = put_object(b"SURF\x00fake")
             tree = {
-                "label": root_name,
-                "entryKind": entry_kind,
+                "label": scene.step_path.stem,
+                "entryKind": "part",
                 "units": "mm",
                 "components": {"c0": {"surf": surf, "brep": surf, "contentHash": "c0"}},
-                "occurrences": [{"id": "o1", "name": root_name, "component": "c0", "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}],
+                "occurrences": [{"id": "o1", "name": scene.step_path.stem, "component": "c0", "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}],
                 "links": [],
                 "stats": {"occurrenceCount": 1, "linkCount": 0},
             }
-            tree.update(extra or {})
             stats = {
                 "occurrences": 1,
                 "unique_components": 1,
@@ -185,7 +179,7 @@ class CadGenerationTests(unittest.TestCase):
             return put_tree(tree), tree, stats
 
         return (
-            mock.patch("cadgen.store.build.build_tree_from_compound", side_effect=_fake),
+            mock.patch("cadgen.store.build.build_document_tree", side_effect=_fake),
             calls,
         )
 
@@ -1168,10 +1162,11 @@ class CadGenerationTests(unittest.TestCase):
             result = cad_generation._generate_part_outputs(spec, entries_by_step_path={spec.step_path.resolve(): spec})
 
         load_scene.assert_called_once_with(step_path)
-        # A part emits a single-component view directory; the build path returns no
+        # An imported STEP packages the parsed document itself; the build returns no
         # whole-model selector bundle (selectors are extracted on demand by inspect).
         self.assertEqual(1, len(package_calls))
-        self.assertTrue(package_calls[0]["single_component"])
+        self.assertIs(scene, package_calls[0]["scene"])
+        self.assertFalse(package_calls[0]["force"])
         self.assertTrue(cad_catalog.result_view_dir(step_path).is_dir())
         self.assertIsNone(result.selector_bundle)
 
@@ -1198,6 +1193,7 @@ class CadGenerationTests(unittest.TestCase):
 
         load_scene.assert_not_called()
         self.assertEqual(1, len(package_calls))
+        self.assertIs(scene, package_calls[0]["scene"])
         self.assertTrue(cad_catalog.result_view_dir(step_path).is_dir())
 
     # --- Incremental-regen freshness gate (D) --------------------------------

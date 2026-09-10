@@ -62,6 +62,7 @@ class DelegatesToCadgen(unittest.TestCase):
 
     def test_an_unbuilt_document_has_no_tree(self) -> None:
         self.assertIsNone(store_paths.result_tree(self.probes[0]))
+        self.assertIsNone(store_paths.result_snapshot(self.probes[0]))
         self.assertIsNone(store_paths.result_descriptor("f" * 64))
 
     def test_a_seeded_document_resolves_to_its_tree_through_the_alias_too(self) -> None:
@@ -69,6 +70,10 @@ class DelegatesToCadgen(unittest.TestCase):
         for probe in self.probes[:2]:
             with self.subTest(probe=probe):
                 self.assertEqual(store_paths.result_tree(probe), tree)
+                self.assertEqual(
+                    store_paths.result_snapshot(probe),
+                    (catalog.artifact_file_hash(Path(probe)), tree),
+                )
                 descriptor = store_paths.result_descriptor(tree)
                 self.assertEqual(descriptor["kind"], "assembly-package")
                 (component,) = descriptor["components"].values()

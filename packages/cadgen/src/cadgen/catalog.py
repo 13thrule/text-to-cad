@@ -319,6 +319,18 @@ def seed_artifact_hash(entry_path: Path, digest: str) -> None:
     _remember_artifact_hash(str(resolved), stat.st_mtime_ns, stat.st_size, digest)
 
 
+def result_snapshot_for(entry_path: Path) -> tuple[str, str] | None:
+    """One coherent (document digest, tree) lookup from the same consumed hash."""
+    from cadgen.store.objects import has_object
+    from cadgen.store.records import tree_for_document_hash
+
+    digest = artifact_file_hash(Path(entry_path))
+    if not digest:
+        return None
+    tree = tree_for_document_hash(digest)
+    return (digest, tree) if tree and has_object(tree) else None
+
+
 def result_tree_for(entry_path: Path) -> str | None:
     """The tree behind a CAD artifact on disk, or None — found by the file's BYTES.
 
@@ -329,14 +341,8 @@ def result_tree_for(entry_path: Path) -> str | None:
     hash is memoized by (path, mtime_ns, size), so a status poll does not
     re-read the file. The tree's flattened view (``cadgen.store.trees.flatten``)
     is what every reader that used to open a view directory reads now."""
-    from cadgen.store.objects import has_object
-    from cadgen.store.records import tree_for_document_hash
-
-    digest = artifact_file_hash(Path(entry_path))
-    if not digest:
-        return None
-    tree = tree_for_document_hash(digest)
-    return tree if tree and has_object(tree) else None
+    snapshot = result_snapshot_for(entry_path)
+    return snapshot[1] if snapshot else None
 
 
 def result_descriptor_for(entry_path: Path) -> dict | None:

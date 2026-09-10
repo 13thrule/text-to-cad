@@ -86,20 +86,22 @@ concurrent outcome, and no reader ever waits on a build.
 ### 3. One sidecar per artifact, and it belongs to that artifact alone
 
 `part.step` gets `part.step.json` — schema-versioned sections (kinematics,
-animation). New capability = new section + schema bump, never a second sidecar
+appearance). New capability = new section + schema bump, never a second sidecar
 file. Model-side, beside the artifact, so it travels with the file it
 describes — and it exists only when law 17 says it must.
 
 A sidecar describes the model that declared it — never its parent, never its
-children. A parent composing a child receives GEOMETRY (tree, labels, colors,
-placements, exact shape) and nothing else: the child's kinematics and
-animation are written by the child's own build into the child's own sidecar,
+children. A parent composing a child receives geometry and intrinsic appearance
+(tree, labels, colors, PBR values, placements, exact shape). The child's
+kinematics belong to the child's own sidecar,
 and an assembly that needs a relation declares it on the assembly. This is
 what lets a cached child stand in for its function: the cache carries
-geometry, and geometry is all a parent may read.
+geometry and intrinsic appearance; a parent never reads the child's sidecar.
 *Pressure-test*: build a child that declares `kinematics=`, then build a parent
-that composes it. The parent's sidecar must contain only the parent's own
-declarations, and the child's sidecar must be unchanged by the parent's build.
+that composes it. The parent's kinematics section contains only its own
+declarations, and the child's sidecar is unchanged by the parent's build.
+Intrinsic finishes travel with the pinned geometry and are rebound to the
+parent document's occurrences when it is saved.
 
 ### 4. Zero metadata in written artifacts
 
@@ -208,15 +210,19 @@ the tree hash must not change.
 ### 17. A sidecar only when strictly necessary
 
 Never write a JSON sidecar unless something beside the artifact has to read
-it. Today the only legitimate content is kinematics declared by the model;
-a model that declares none writes no sidecar, and a rebuild of a model that
-dropped its declaration deletes the stale file. Metadata with no reader
+it. Kinematics and intrinsic PBR finishes need durable artifact annotations;
+a model with neither writes no sidecar. A rebuild removes sections the model
+no longer declares and deletes an empty sidecar. Metadata with no reader
 beside the artifact — what a model declares about its own outputs, where a
 build came from, when it ran — belongs in the store record, never in a
 file next to the geometry.
 
-Schema 7 sidecars contain only `schemaVersion`, the saved STEP's `documentHash`
-and `kinematics`. The digest binds those declarations to the artifact; it is
+Schema 8 sidecars contain only `schemaVersion`, the saved STEP's `documentHash`,
+and optional `kinematics` and `appearance` sections. Appearance maps canonical
+document occurrence IDs to resolved PBR values; it is applied to an owned
+render/export descriptor, never to the byte-derived tree. Appearance-sensitive
+export variants include its digest, including the absence of overrides.
+The document digest binds those declarations to the artifact; it is
 not provenance. An old schema or a mismatched digest must be rebuilt or
 re-annotated, never silently applied. Compiling an imported STEP preserves
 its authored sidecar bytes.

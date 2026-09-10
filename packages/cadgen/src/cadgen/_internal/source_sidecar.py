@@ -3,8 +3,9 @@
 The tree (in the user-level store, keyed by the document's content
 hash) is a pure function of the STEP file's bytes plus schema versions — the
 cache engine's world, freely evictable. The model's DECLARATIONS live in ONE
-sidecar FILE BESIDE THE MODEL, ``<name>.step.json``: the KINEMATICS section
-(typed mates with axes resolved to world numbers, couplings, pose presets).
+sidecar FILE BESIDE THE MODEL, ``<name>.step.json``: KINEMATICS
+(typed mates with axes resolved to world numbers, couplings, pose presets)
+and APPEARANCE (intrinsic PBR values keyed by canonical document occurrence).
 Choreography and mesh-export declarations are not here. The render module
 beside the document (``<name>.step.js``) is authored, loaded by
 the viewer by name, and read by no build. The one hash here is
@@ -16,7 +17,7 @@ sidecar sits beside the model because declarations cannot be re-derived from
 the STEP bytes: evicting the store must never lose kinematics. New capability
 = new SECTION + schema bump, never a second sidecar file.
 
-A sidecar exists ONLY when the model NEEDS one: a kinematics section. A plain
+A sidecar exists ONLY when the model NEEDS kinematics or appearance. A plain
 model — geometry and nothing else — writes no sidecar at all; its provenance and freshness ride
 the PROVENANCE RECORD in the evictable records tier (bottom of this module),
 which every generated build writes and every gate reads — the ONE home of
@@ -35,7 +36,10 @@ loses its kinematics.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -53,13 +57,15 @@ SOURCE_SIDECAR_SUFFIX = ".json"
 #    by a build; a mesh door tessellates the document's tree and writes the file
 #    it was asked for, and what a model declares lives in its record. A sidecar
 #    is written for kinematics alone. 5 moved provenance OUT of the sidecar.
-SOURCE_SIDECAR_SCHEMA_VERSION = 7
+# 8: intrinsic PBR finishes are durable, document-bound occurrence annotations.
+SOURCE_SIDECAR_SCHEMA_VERSION = 8
 
 # What a sidecar may CONTAIN: declarations plus the exact-document binding.
 # Anything source-derived-as-provenance (paths, closure hashes, timestamps)
 # belongs to the provenance record; a sidecar sits beside the artifact and
 # ships with it.
-_SIDECAR_SECTIONS = ("schemaVersion", "documentHash", "kinematics")
+_SIDECAR_SECTIONS = ("schemaVersion", "documentHash", "kinematics", "appearance")
+MATERIAL_KEYS = ("roughness", "metalness", "clearcoat", "clearcoatRoughness", "opacity")
 
 
 def source_sidecar_path(step_path: Path | str) -> Path:
@@ -74,6 +80,65 @@ class SidecarSchemaError(ValueError):
 
 class SidecarBindingError(ValueError):
     """A sidecar bound to different STEP bytes than the adjacent document."""
+
+
+class SidecarAppearanceError(ValueError):
+    """An appearance annotation is invalid or targets a missing occurrence."""
+
+
+def normalize_appearance(block: object) -> dict[str, Any] | None:
+    """Validate resolved, source-free PBR values; return fresh canonical data."""
+    if block is None:
+        return None
+    if not isinstance(block, dict) or set(block) != {"occurrences"}:
+        raise SidecarAppearanceError("appearance must contain only an occurrences object")
+    occurrences = block["occurrences"]
+    if not isinstance(occurrences, dict):
+        raise SidecarAppearanceError("appearance.occurrences must be an object keyed by occurrence id")
+    if any(not isinstance(key, str) or not key.strip() for key in occurrences):
+        raise SidecarAppearanceError("appearance occurrence ids must be nonempty strings")
+    normalized = {}
+    for occurrence_id, material in sorted(occurrences.items()):
+        if not isinstance(material, dict) or not material or set(material) - set(MATERIAL_KEYS):
+            raise SidecarAppearanceError(f"appearance {occurrence_id}: expected supported PBR channels: {', '.join(MATERIAL_KEYS)}")
+        values = {}
+        for key, value in sorted(material.items()):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
+                raise SidecarAppearanceError(f"appearance {occurrence_id}.{key}: expected a finite number between 0 and 1")
+            values[key] = float(value)
+        normalized[occurrence_id] = values
+    return {"occurrences": normalized} if normalized else None
+
+
+def appearance_digest(block: object) -> str:
+    """A stable variant input, including the absence of appearance overrides."""
+    payload = json.dumps(normalize_appearance(block), sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def validate_appearance_targets(descriptor: Mapping[str, Any], block: object) -> dict[str, Any] | None:
+    """Validate annotation targets without copying an assembly for catalog scans."""
+    appearance = normalize_appearance(block)
+    if appearance is None:
+        return None
+    occurrences = {str(item.get("id") or ""): item for item in descriptor.get("occurrences") or []}
+    for occurrence_id in appearance["occurrences"]:
+        target = occurrences.get(occurrence_id)
+        if target is None or not target.get("component"):
+            raise SidecarAppearanceError(f"appearance targets missing document occurrence {occurrence_id}")
+    return appearance
+
+
+def apply_appearance(descriptor: Mapping[str, Any], block: object) -> dict[str, Any]:
+    """Compose artifact annotations into an owned descriptor, never a tree object."""
+    appearance = validate_appearance_targets(descriptor, block)
+    result = deepcopy(dict(descriptor))
+    if appearance:
+        materials = appearance["occurrences"]
+        for occurrence in result.get("occurrences") or []:
+            if occurrence.get("id") in materials:
+                occurrence["material"] = materials[occurrence["id"]]
+    return result
 
 
 def _raw_source_sidecar(step_path: Path | str) -> dict[str, Any] | None:
@@ -141,6 +206,8 @@ def read_source_sidecar(
     found = str(payload.get("documentHash") or "").strip().lower()
     if found != expected:
         raise _binding_error(step_path, found, expected)
+    if "appearance" in payload:
+        payload["appearance"] = normalize_appearance(payload["appearance"])
     return payload
 
 
@@ -174,13 +241,13 @@ def source_sidecar_matches_document(
 
 # The sections that WARRANT a sidecar. Provenance alone does not: it also
 # lives in the assembly.json, and a file per plain model is pure clutter.
-_WARRANTING_SECTIONS = ("kinematics",)
+_WARRANTING_SECTIONS = ("kinematics", "appearance")
 
 
 def sidecar_is_warranted(payload: Mapping[str, Any] | None) -> bool:
     """Whether this payload carries anything the model actually needs a
-    sidecar FOR. A sidecar is written only when strictly necessary — today,
-    kinematics: metadata with no reader beside the artifact belongs in the
+    sidecar FOR. Kinematics and PBR finishes have artifact consumers;
+    metadata with no reader beside the artifact belongs in the
     record, not in a file."""
     if not payload:
         return False
@@ -198,12 +265,16 @@ def write_source_sidecar(
     The written ``documentHash`` describes the adjacent STEP bytes, or the
     caller's already-verified digest for those bytes. Only the FILE: the
     build's provenance record stays."""
-    if not sidecar_is_warranted(payload):
+    body = {k: v for k, v in payload.items() if k in _SIDECAR_SECTIONS}
+    if "appearance" in body:
+        body["appearance"] = normalize_appearance(body["appearance"])
+        if body["appearance"] is None:
+            body.pop("appearance")
+    if not sidecar_is_warranted(body):
         source_sidecar_path(step_path).unlink(missing_ok=True)
         return
     target = source_sidecar_path(step_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    body = {k: v for k, v in payload.items() if k in _SIDECAR_SECTIONS}
     body["schemaVersion"] = SOURCE_SIDECAR_SCHEMA_VERSION
     body["documentHash"] = _verified_document_hash(step_path, document_hash)
     # A rewrite that changes nothing but the timestamp is pure churn — for

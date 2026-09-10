@@ -51,6 +51,9 @@ from cadgen.store.index import (
 )
 
 RECORD_KIND = "record"
+# Payload cutovers, not directory/name salts. Legacy mappings are misses.
+RECORD_SCHEMA_VERSION = 2
+DOCUMENT_SCHEMA_VERSION = 2
 
 
 def read_record(model: Path | str) -> dict[str, Any] | None:
@@ -62,7 +65,7 @@ def read_record(model: Path | str) -> dict[str, Any] | None:
         if function is None and script.suffix.lower() == ".py" and not script.is_file():
             found = records_for_script(script)
             data = found[0][1] if len(found) == 1 else None
-    if data is None or data.get("kind") != RECORD_KIND:
+    if data is None or data.get("kind") != RECORD_KIND or data.get("schemaVersion") != RECORD_SCHEMA_VERSION:
         return None
     return data
 
@@ -79,7 +82,7 @@ def records_for_script(script: Path | str) -> list[tuple[str, dict[str, Any]]]:
             data = json.loads(entry_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if isinstance(data, dict) and data.get("kind") == RECORD_KIND and data.get("script") == resolved:
+        if isinstance(data, dict) and data.get("kind") == RECORD_KIND and data.get("schemaVersion") == RECORD_SCHEMA_VERSION and data.get("script") == resolved:
             found.append((str(data.get("model") or resolved), data))
     return found
 
@@ -87,6 +90,7 @@ def records_for_script(script: Path | str) -> list[tuple[str, dict[str, Any]]]:
 def write_record(model: Path | str, payload: dict[str, Any]) -> None:
     body = dict(payload)
     body["kind"] = RECORD_KIND
+    body["schemaVersion"] = RECORD_SCHEMA_VERSION
     ref = resolve_model_ref(model)
     script, function = split_model_ref(ref)
     body["model"] = ref
@@ -127,9 +131,9 @@ def note_document_tree(document_hash: str, tree: str, *, kind: str = "step") -> 
     if not digest or not tree_hash:
         return
     existing = read_entry("document", digest) or {}
-    payload: dict[str, Any] = {"tree": tree_hash, "kind": str(kind or "step")}
+    payload: dict[str, Any] = {"schemaVersion": DOCUMENT_SCHEMA_VERSION, "tree": tree_hash, "kind": str(kind or "step")}
     meshes = existing.get("meshes")
-    if isinstance(meshes, dict) and str(existing.get("tree") or "") == tree_hash:
+    if existing.get("schemaVersion") == DOCUMENT_SCHEMA_VERSION and isinstance(meshes, dict) and str(existing.get("tree") or "") == tree_hash:
         payload["meshes"] = meshes
     write_entry("document", digest, payload)
 
@@ -140,6 +144,8 @@ def tree_for_document_hash(document_hash: str) -> str | None:
     if not digest:
         return None
     entry = read_entry("document", digest) or {}
+    if entry.get("schemaVersion") != DOCUMENT_SCHEMA_VERSION:
+        return None
     tree_hash = str(entry.get("tree") or "").strip()
     return tree_hash or None
 
@@ -152,7 +158,7 @@ def note_document_mesh(document_hash: str, variant_key: str, sha256: str) -> Non
     if not digest or not variant_key or not sha256:
         return
     entry = read_entry("document", digest)
-    if not entry or not entry.get("tree"):
+    if not entry or not entry.get("tree") or entry.get("schemaVersion") != DOCUMENT_SCHEMA_VERSION:
         return
     meshes = dict(entry.get("meshes") or {})
     meshes[str(variant_key)] = str(sha256)
@@ -165,6 +171,8 @@ def document_mesh_sha(document_hash: str, variant_key: str) -> str | None:
     if not digest:
         return None
     entry = read_entry("document", digest) or {}
+    if entry.get("schemaVersion") != DOCUMENT_SCHEMA_VERSION:
+        return None
     meshes = entry.get("meshes") or {}
     value = meshes.get(str(variant_key)) if isinstance(meshes, dict) else None
     return str(value) if value else None

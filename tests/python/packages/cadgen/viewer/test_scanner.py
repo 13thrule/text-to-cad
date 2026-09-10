@@ -16,6 +16,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from cadgen.viewer.scanner import (
     CAD_CATALOG_SCHEMA_VERSION,
@@ -28,7 +29,7 @@ from cadgen.viewer.scanner import (
     source_format_for_path,
     step_kind_from_topology,
 )
-from cadgen.viewer.store_paths import result_tree
+from cadgen.viewer.store_paths import result_snapshot, result_tree
 
 from tests.python.support.store_fixtures import seed_result
 
@@ -74,7 +75,7 @@ class ScannerTestCase(unittest.TestCase):
     def sidecar(self, rel: str, payload: dict) -> str:
         document = Path(self.root, rel)
         body = dict(payload)
-        body["schemaVersion"] = 7
+        body["schemaVersion"] = 8
         body["documentHash"] = hashlib.sha256(document.read_bytes()).hexdigest()
         return self.write(f"{rel}.json", json.dumps(body))
 
@@ -238,9 +239,8 @@ class DescriptorGate(ScannerTestCase):
 
     def test_a_valid_package_publishes_both_urls(self):
         entry = self._entry_with_sidecar({"kind": "assembly-package", "components": {}})
-        self.assertEqual(entry["sourceUrl"], "/g.step.json")
-        self.assertEqual(entry["poseUrl"], "/g.step.json")
-        self.assertNotIn("?v=", entry["sourceUrl"], "sidecar urls carry no version token")
+        self.assertTrue(entry["sourceUrl"].startswith("/g.step.json?v="))
+        self.assertEqual(entry["poseUrl"], entry["sourceUrl"])
 
 
     def test_no_package_suppresses_both(self):
@@ -271,6 +271,75 @@ class SidecarTruthiness(ScannerTestCase):
         self.assertIn("sourceUrl", entry)
         self.assertNotIn("poseUrl", entry)
 
+    def test_appearance_has_a_scene_identity_without_changing_the_tree_identity(self):
+        self.write("finish.step", "x\n")
+        self.sidecar("finish.step", {
+            "appearance": {"occurrences": {"o1.1": {"roughness": 0.25}}}
+        })
+        self.package("finish.step", {
+            "kind": "assembly-package",
+            "components": {"cid": {}},
+            "occurrences": [{"id": "o1.1", "component": "cid"}],
+        })
+        entry = self.entry("finish.step")
+        self.assertIn("appearanceHash", entry)
+        self.assertEqual(len(entry["appearanceHash"]), 64)
+        self.assertEqual(entry["sourceSidecar"]["appearance"], {
+            "occurrences": {"o1.1": {"roughness": 0.25}}
+        })
+        self.assertTrue(entry["sourceUrl"].startswith("/finish.step.json?v="))
+        self.assertEqual(entry["hash"], result_tree(Path(self.root, "finish.step")))
+        self.assertNotIn("poseUrl", entry)
+
+    def test_catalog_binds_inline_sidecar_and_scene_hash_to_one_read(self):
+        from cadgen._internal.source_sidecar import appearance_digest
+        import cadgen.viewer.scanner as scanner
+
+        self.write("race.step", "x\n")
+        first = {"occurrences": {"o1.1": {"roughness": 0.2}}}
+        second = {"occurrences": {"o1.1": {"roughness": 0.9}}}
+        self.sidecar("race.step", {"appearance": first})
+        self.package("race.step", {
+            "kind": "assembly-package",
+            "components": {"cid": {}},
+            "occurrences": [{"id": "o1.1", "component": "cid"}],
+        })
+        original_asset_for_path = scanner.asset_for_path
+
+        def mutate_after_version_read(repo_root, file_path):
+            asset = original_asset_for_path(repo_root, file_path)
+            self.sidecar("race.step", {"appearance": second})
+            return asset
+
+        with mock.patch.object(scanner, "asset_for_path", mutate_after_version_read):
+            entry = self.entry("race.step")
+
+        self.assertEqual(entry["sourceSidecar"]["appearance"], first)
+        self.assertEqual(entry["appearanceHash"], appearance_digest(first))
+        self.assertNotEqual(entry["appearanceHash"], appearance_digest(second))
+
+    def test_catalog_keeps_tree_and_document_hash_from_one_snapshot(self):
+        import cadgen.viewer.scanner as scanner
+
+        path = Path(self.write("document-race.step", "first\n"))
+        tree = self.package("document-race.step", {
+            "kind": "assembly-package",
+            "components": {"cid": {}},
+        })
+        selected = result_snapshot(path)
+        self.assertEqual(selected, (hashlib.sha256(b"first\n").hexdigest(), tree))
+
+        def replace_after_selection(_path):
+            path.write_bytes(b"second\n")
+            return selected
+
+        with mock.patch.object(scanner, "result_snapshot", replace_after_selection):
+            entry = self.entry("document-race.step")
+
+        self.assertEqual(entry["hash"], tree)
+        self.assertEqual(entry["documentHash"], hashlib.sha256(b"first\n").hexdigest())
+        self.assertNotEqual(entry["documentHash"], hashlib.sha256(path.read_bytes()).hexdigest())
+
 
     def test_a_render_module_beside_the_document_is_published_by_url(self):
         self.write("s.step.js", "export const clips = {};\n")
@@ -290,7 +359,7 @@ class SidecarTruthiness(ScannerTestCase):
         self.write("u.STP", "x\n")
         self.sidecar("u.STP", {"kinematics": {}})
         self.package("u.STP", {"kind": "assembly-package", "components": {}})
-        self.assertEqual(self.entry("u.STP")["sourceUrl"], "/u.STP.json")
+        self.assertTrue(self.entry("u.STP")["sourceUrl"].startswith("/u.STP.json?v="))
 
     def test_a_sidecar_for_different_step_bytes_reports_annotation_error(self):
         self.write("stale.step", "old\n")
@@ -314,9 +383,21 @@ class SidecarTruthiness(ScannerTestCase):
         self.package("old.step", {"kind": "assembly-package", "components": {}})
 
         entry = self.entry("old.step")
-        self.assertIn("unsupported sidecar schema 6 (expected 7)", entry["annotationError"])
+        self.assertIn("unsupported sidecar schema 6 (expected 8)", entry["annotationError"])
         self.assertNotIn("sourceUrl", entry)
         self.assertNotIn("poseUrl", entry)
+
+    def test_invalid_appearance_is_a_catalog_annotation_error(self):
+        self.write("bad-finish.step", "x\n")
+        self.sidecar("bad-finish.step", {
+            "appearance": {"occurrences": {"o1.1": {"roughness": "glossy"}}}
+        })
+        self.package("bad-finish.step", {"kind": "assembly-package", "components": {}})
+
+        entry = self.entry("bad-finish.step")
+        self.assertIn("expected a finite number between 0 and 1", entry["annotationError"])
+        self.assertNotIn("sourceUrl", entry)
+        self.assertNotIn("appearanceHash", entry)
 
 
 class SrdfPairing(ScannerTestCase):

@@ -290,18 +290,18 @@ def _current_store_package(spec: EntrySpec) -> Path | None:
     mesh exporter consumes, and extraction is pure waste. A stale or unbuilt
     model returns None and the caller builds from source, so exports can never
     serve stale geometry (the #308 class)."""
-    from cadgen.catalog import result_tree_for
+    from cadgen.catalog import result_snapshot_for
     from cadgen.step_artifact_cli import _current_artifact_for_spec
 
     if spec.entry_path is None:
         return None
     if _current_artifact_for_spec(spec) is None:
         return None
-    tree = result_tree_for(spec.entry_path)
-    return _view_for_tree(tree) if tree else None
+    snapshot = result_snapshot_for(spec.entry_path)
+    return _view_for_tree(snapshot[1], document_hash=snapshot[0]) if snapshot else None
 
 
-def _view_for_tree(tree_hash: str) -> Path:
+def _view_for_tree(tree_hash: str, *, document_hash: str) -> Path:
     """A view directory (assembly.json + components/) of a tree for the Node exporter (the store holds
     no result directories). Temporary; removed at interpreter exit."""
     import atexit
@@ -310,6 +310,15 @@ def _view_for_tree(tree_hash: str) -> Path:
     from cadgen.store.view import export_view
 
     view_dir = export_view(tree_hash)
+    # This is an owned, temporary export input, not a persistent tree. Carry
+    # the exact document selection with its view; a later path read may name
+    # a different revision and must not rekey this geometry's export ledger.
+    import json
+
+    manifest_path = view_dir / "assembly.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["documentHash"] = document_hash
+    manifest_path.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
     atexit.register(shutil.rmtree, view_dir, True)
     return view_dir
 
@@ -318,9 +327,10 @@ def _view_for_document(step_path: Path) -> Path:
     """A view of the tree behind a document's BYTES, compiled if the store has
     none (``cadgen._internal.doors.document_tree``: a job in the pool, the one
     door operation that is one; the door itself never runs kernel work)."""
-    from cadgen._internal.doors import document_tree
+    from cadgen._internal.doors import document_snapshot
 
-    return _view_for_tree(document_tree(step_path))
+    document_hash, tree = document_snapshot(step_path)
+    return _view_for_tree(tree, document_hash=document_hash)
 
 
 def _export_scene(
@@ -471,11 +481,17 @@ def _export_mesh_jobs(
     name = spec.step_path.stem
     default_color = _color_hex(spec.color)
     if package_dir is not None:
-        from cadgen.catalog import artifact_file_hash
+        import json
 
-        document_hash = (
-            artifact_file_hash(spec.entry_path) if spec.entry_path is not None else None
-        )
+        manifest = json.loads((package_dir / "assembly.json").read_text(encoding="utf-8"))
+        document_hash = str(manifest.get("documentHash") or "")
+        if len(document_hash) != 64 or any(c not in "0123456789abcdef" for c in document_hash):
+            raise RuntimeError("mesh export view is missing its selected STEP document digest")
+        from cadgen._internal.source_sidecar import appearance_digest, read_source_sidecar
+
+        sidecar = read_source_sidecar(spec.entry_path, document_hash=document_hash) if spec.entry_path is not None else None
+        appearance = (sidecar or {}).get("appearance")
+        appearance_key = appearance_digest(appearance)
         # A script run (`@stl` beside `@step`) ledgers on the MODEL's record; a
         # document at a bare door ledgers on the DOCUMENT's own index entry, by
         # its bytes — never by which script wrote it (STORE.md §2, the law: a
@@ -493,6 +509,7 @@ def _export_mesh_jobs(
                 # static file at the same path can never satisfy it, and an
                 # edited .step.js makes the ledgered one a miss.
                 animation_key=job.animation_key,
+                appearance_key=appearance_key,
             )
             by_document = document_mesh_current(job.out, document_hash=document_hash, fmt=job.fmt, **variant)
             if model is None:
@@ -511,6 +528,7 @@ def _export_mesh_jobs(
         payload = run_mesh_exporter(
             package_dir, pending, name=name, default_color=default_color, logger=logger,
             render_module=render_module,
+            appearance=appearance,
         )
         if document_hash:
             for job in pending:
@@ -519,6 +537,7 @@ def _export_mesh_jobs(
                     mesh_tolerance=job.mesh_tolerance,
                     mesh_angular_tolerance=job.mesh_angular_tolerance,
                     animation_key=job.animation_key,
+                    appearance_key=appearance_key,
                 )
                 # A script run ledgers on its record (which also notes the document
                 # entry); a bare door ledgers on the document entry alone.

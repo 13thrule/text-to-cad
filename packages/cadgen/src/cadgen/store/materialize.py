@@ -437,6 +437,25 @@ def _color_from_entry(entry: dict[str, Any]):
         return None
 
 
+def _material_from_entry(entry: dict[str, Any]) -> dict[str, float] | None:
+    """A private canonical copy of an occurrence's authored PBR finish."""
+    from cadgen._internal.component_package import _MATERIAL_KEYS
+
+    material = entry.get("material")
+    if not isinstance(material, dict):
+        return None
+    resolved: dict[str, float] = {}
+    for key in _MATERIAL_KEYS:
+        value = material.get(key)
+        if value is None:
+            continue
+        try:
+            resolved[key] = min(1.0, max(0.0, float(value)))
+        except (TypeError, ValueError):
+            continue
+    return resolved or None
+
+
 def tree_tag(shape: Any) -> str | None:
     """The tree hash a materialized compound carries, or None."""
     tag = getattr(shape, TREE_TAG, None)
@@ -468,15 +487,26 @@ def materialize_descriptor(
     ``shapes`` supplies unlocated build123d shapes by cid for components that
     are not in the store yet — the build's own, before it publishes them
     (``cadgen.store.build`` assembles the STEP it writes from exactly this);
-    every other component is read from its ``brep`` object. The result is
-    tagged as a materialized tree only when ``tree_hash`` names one."""
+    every other component is read from its ``brep`` object and its face colors
+    from ``surf``. Each occurrence owns its metadata even when two components
+    share identical BREP bytes. The result is tagged as a materialized tree
+    only when ``tree_hash`` names one."""
     from build123d import Compound
+
+    from cadgen._internal.component_package import _build123d_shape_from_topods, _normalized_face_colors
+    from cadgen._internal.surface_extract import read_surf
 
     components = descriptor.get("components") or {}
     shapes = dict(shapes or {})
     decoded_by_object: dict[str, Any] = {}
+    face_colors_by_cid: dict[str, dict[int, tuple[float, float, float, float]]] = {}
     for cid, entry in components.items():
         if cid in shapes:
+            # Unpublished own shapes have no SURF object yet. Their extraction
+            # input is authoritative, and normalization takes a private copy.
+            face_colors_by_cid[cid] = _normalized_face_colors(
+                getattr(shapes[cid], "cad_face_ordinal_colors", None)
+            )
             continue
         brep = str((entry or {}).get("brep") or "")
         if not brep:
@@ -485,7 +515,29 @@ def materialize_descriptor(
         if shape is None:
             shape = _shape_for_object(brep)
             decoded_by_object[brep] = shape
+        else:
+            # Distinct component inputs can share BREP bytes while owning
+            # different face colors. XCAF stores those styles on prototype
+            # faces: sharing their TShapes would let the last variant overwrite
+            # the first during STEP export. Decode once, then give each such
+            # component private topology (read-only curves/surfaces may share).
+            from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+
+            shape = _build123d_shape_from_topods(BRepBuilderAPI_Copy(shape.wrapped, False, False).Shape())
         shapes[cid] = shape
+        surf = str((entry or {}).get("surf") or "")
+        if not surf:
+            raise FileNotFoundError(f"tree {tree_hash}: component {cid} has no surf object")
+        index, _ = read_surf(read_object(surf))
+        colors: dict[int, tuple[float, float, float, float]] = {}
+        for face in index.get("faces") or []:
+            if face.get("color") is None:
+                continue
+            for ordinal, color in _normalized_face_colors({face.get("ord"): face["color"]}).items():
+                if ordinal in colors and colors[ordinal] != color:
+                    raise ValueError(f"component {cid}: conflicting colors for face ordinal {ordinal}")
+                colors[ordinal] = color
+        face_colors_by_cid[cid] = colors
 
     placed_by_id: dict[str, Any] = {}
     for occurrence in descriptor.get("occurrences") or []:
@@ -498,6 +550,18 @@ def materialize_descriptor(
         color = _color_from_entry(occurrence) or _color_from_entry(components.get(cid) or {})
         if color is not None:
             child.color = color
+        face_colors = face_colors_by_cid[cid]
+        if face_colors:
+            child.cad_face_ordinal_colors = dict(face_colors)
+        else:
+            child.__dict__.pop("cad_face_ordinal_colors", None)
+        material = _material_from_entry(occurrence)
+        if material is not None:
+            child.cad_material = material
+        else:
+            # ``shapes`` may supply a wrapper carrying process-local metadata.
+            # The descriptor is authoritative, including an absent finish.
+            child.__dict__.pop("cad_material", None)
         placed_by_id[str(occurrence.get("id") or "")] = child
 
     def build_node(node: dict[str, Any]):

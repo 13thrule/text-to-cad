@@ -95,6 +95,55 @@ class LazyCompound(Compound):
     def _forced(self) -> bool:
         return self.__dict__.get("_lazy_shape") is not None
 
+    @property
+    def cad_material(self):
+        """The pinned root finish, forcing only when no override was authored."""
+        if "cad_material" not in self.__dict__ and not self._forced:
+            self._force()
+        if "cad_material" not in self.__dict__:
+            raise AttributeError("cad_material")
+        return self.__dict__["cad_material"]
+
+    @cad_material.setter
+    def cad_material(self, value) -> None:
+        # A model may deliberately replace or clear its child's finish before
+        # geometry is needed. _force preserves this key; the immutable partner
+        # baseline then rejects the child as a link when the value changed.
+        self.__dict__["cad_material"] = value
+
+    @cad_material.deleter
+    def cad_material(self) -> None:
+        # Match an ordinary Shape's metadata semantics.  Force first so the
+        # immutable partner captures the pinned value; deleting it afterwards
+        # is then an authored metadata change and cannot be mistaken for an
+        # unchanged linked child.
+        if not self._forced:
+            self._force()
+        if "cad_material" not in self.__dict__:
+            raise AttributeError("cad_material")
+        del self.__dict__["cad_material"]
+
+    @property
+    def cad_face_ordinal_colors(self):
+        """The pinned root face colors, with the same ownership as material."""
+        if "cad_face_ordinal_colors" not in self.__dict__ and not self._forced:
+            self._force()
+        if "cad_face_ordinal_colors" not in self.__dict__:
+            raise AttributeError("cad_face_ordinal_colors")
+        return self.__dict__["cad_face_ordinal_colors"]
+
+    @cad_face_ordinal_colors.setter
+    def cad_face_ordinal_colors(self, value) -> None:
+        self.__dict__["cad_face_ordinal_colors"] = value
+
+    @cad_face_ordinal_colors.deleter
+    def cad_face_ordinal_colors(self) -> None:
+        if not self._forced:
+            self._force()
+        if "cad_face_ordinal_colors" not in self.__dict__:
+            raise AttributeError("cad_face_ordinal_colors")
+        del self.__dict__["cad_face_ordinal_colors"]
+
     # --- what the parent may do without waiting ------------------------------------
 
     def moved(self, loc):  # type: ignore[override]
@@ -112,6 +161,9 @@ class LazyCompound(Compound):
         Compound.__init__(clone, None, label=self.label)
         clone.__dict__.update({k: v for k, v in self.__dict__.items() if k.startswith("_lazy_")})
         clone.color = self.color
+        for key in ("cad_material", "cad_face_ordinal_colors"):
+            if key in self.__dict__:
+                clone.__dict__[key] = copy.deepcopy(self.__dict__[key])
         clone._lazy_placement = loc if self._lazy_placement is None else loc * self._lazy_placement
         return clone
 
@@ -204,6 +256,8 @@ class LazyCompound(Compound):
         self._lazy_forcing = True
         try:
             tree = self.tree_hash()
+            material_overridden = "cad_material" in self.__dict__
+            face_colors_overridden = "cad_face_ordinal_colors" in self.__dict__
             compound = _materialize_tree(tree, self._lazy_label)
             shape = compound.wrapped
             if self._lazy_placement is not None:
@@ -213,6 +267,18 @@ class LazyCompound(Compound):
                 self.label = compound.label
             if self.color is None and getattr(compound, "color", None) is not None:
                 self.color = compound.color
+            for key, overridden in (
+                ("cad_material", material_overridden),
+                ("cad_face_ordinal_colors", face_colors_overridden),
+            ):
+                if overridden:
+                    continue
+                if key in compound.__dict__:
+                    self.__dict__[key] = copy.deepcopy(compound.__dict__[key])
+                else:
+                    # No authored shell value exists, so an absent pinned value
+                    # is authoritative. Never clear a model-authored override.
+                    self.__dict__.pop(key, None)
             setattr(self, TREE_TAG, tree)
             # The child's own root placement rides along too: this shape is
             # ``placement * root`` and the packager divides the root back out of

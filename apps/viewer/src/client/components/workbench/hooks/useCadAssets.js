@@ -25,6 +25,10 @@ import {
   assemblyRootFromTopology,
   buildComposedPackageMeshData
 } from "cadgen-js/lib/assembly/meshData";
+import {
+  applySourceAppearance,
+  validateSourceSidecar
+} from "cadgen-js/common/sourceSidecar.js";
 import { mapWithConcurrency } from "cadgen-js/lib/async/concurrency";
 import {
   lodTessellationForLevel,
@@ -52,6 +56,7 @@ import {
   entryMeshAssetSignature,
   entryMeshAssetUrl,
   entrySelectorTopologyAssetUrl,
+  entrySourceSidecarUrl,
   entryTopologyAssetUrl,
   entryUrdfAssetHash,
   meshAssetKeyForEntry
@@ -724,7 +729,20 @@ export function useCadAssets({
         // Component-GLB package: the canonical STEP artifact is a directory. Probe for
         // its assembly.json, fetch each unique component GLB once, and compose them in
         // world space. A non-package descriptor is a stale/unbuilt artifact (throws below).
-        const packageDescriptor = await loadPackageDescriptor(meshUrl, { signal: controller.signal });
+        const sourceSidecarUrl = entrySourceSidecarUrl(entry);
+        const inlineSourceSidecar = !entry?.editingPreview && entry?.sourceSidecar && typeof entry.sourceSidecar === "object"
+          ? validateSourceSidecar(entry.sourceSidecar, {
+              url: sourceSidecarUrl || entry?.file,
+              documentHash: entry?.documentHash,
+            })
+          : null;
+        const storedPackageDescriptor = await loadPackageDescriptor(meshUrl, { signal: controller.signal });
+        if (controller.signal.aborted) {
+          throw abortError();
+        }
+        const packageDescriptor = storedPackageDescriptor
+          ? applySourceAppearance(storedPackageDescriptor, inlineSourceSidecar?.appearance)
+          : null;
         if (packageDescriptor && packageDescriptor.kind === "assembly-package") {
           // Progressive publish (design/viewer-memory.md §6): components are
           // fetched with bounded concurrency and the ones loaded so far are

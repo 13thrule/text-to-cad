@@ -130,34 +130,22 @@ class TreeLinkIntegrity(unittest.TestCase):
     def test_recolored_part_link_overrides_its_old_color_through_materialize_and_step(self) -> None:
         from build123d import Color, Compound
 
-        from cadgen._internal.component_package import _shape_brep_bytes
         from cadgen._internal.step_scene_loader import load_step_scene
         from cadgen.step_export import export_build123d_step_file
         from cadgen.store.build import build_tree_from_compound
         from cadgen.store.materialize import materialize
-        from cadgen.store.objects import put_object
-        from cadgen.store.trees import flatten, put_tree
+        from cadgen.store.trees import flatten
 
         red = [1.0, 0.0, 0.0, 1.0]
         blue = [0.0, 0.0, 1.0, 1.0]
         from build123d import Box
 
-        brep = put_object(_shape_brep_bytes(Box(1, 2, 3)))
-        surf = put_object(b"unused surf fixture")
-        child_tree = put_tree({
-            "label": "red-child",
-            "components": {
-                "part": {"surf": surf, "brep": brep, "contentHash": "part", "color": red},
-            },
-            "occurrences": [
-                {
-                    "id": "o1", "name": "red-child", "component": "part",
-                    "transform": IDENTITY, "color": red,
-                },
-            ],
-            "links": [],
-            "assembly": {"root": _part("o1", "red-child")},
-        })
+        source = Box(1, 2, 3)
+        source.label = "red-child"
+        source.color = Color(1.0, 0.0, 0.0)
+        child_tree, _child, _stats = build_tree_from_compound(
+            source, root_name="red-child"
+        )
         child = materialize(child_tree, label="recolored-child")
         child.color = Color(0.0, 0.0, 1.0)
 

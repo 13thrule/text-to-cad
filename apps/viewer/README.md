@@ -116,7 +116,7 @@ the build — detection only; it keeps serving.
   A component that cannot fit even at the coarse level
   reports a limitation and preserves the current view. Estimates and sampled
   resource totals are a soft budget, not a hard browser RSS limit.
-- A schema-7 STEP sidecar includes the STEP byte digest. A mismatch displays
+- A schema-8 STEP sidecar includes the STEP byte digest. A mismatch displays
   **Annotations unavailable** while permitting saved geometry to render.
   Rebuild or re-annotate the pair to repair it; importing a file never rewrites
   its authored sidecar.

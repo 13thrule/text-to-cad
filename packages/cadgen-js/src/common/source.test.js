@@ -123,6 +123,41 @@ test("macro tessellation changes the rendered surface and uses its own cache ent
   assert.equal(warm.meshData.indices.length, fine.meshData.indices.length);
 });
 
+test("snapshot package appearance composes through the shared source resolver", async (t) => {
+  const bytes = fs.readFileSync(new URL("../lib/surf/fixtures/cam_follower_roller.surf", import.meta.url));
+  const oldFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(bytes);
+  setTessellationCacheProvider({
+    get: async () => null,
+    getMany: async () => [],
+    put: async () => {}
+  });
+  t.after(() => { globalThis.fetch = oldFetch; setTessellationCacheProvider(null); });
+  const descriptor = {
+    kind: "assembly-package",
+    components: { "appearance-cid": {} },
+    occurrences: [{ id: "o1.1", name: "roller", component: "appearance-cid" }],
+    assembly: { root: { id: "o1", name: "appearance", nodeType: "assembly", children: [
+      { id: "o1.1", name: "roller", nodeType: "part", children: [] }
+    ] } }
+  };
+  const source = await loadSource({
+    kind: "step",
+    documentHash: "c".repeat(64),
+    sourceSidecar: {
+      schemaVersion: 8,
+      documentHash: "c".repeat(64),
+      appearance: { occurrences: { "o1.1": { clearcoat: 0.8, roughness: 0.15 } } }
+    },
+    package: {
+      descriptor,
+      componentUrls: { "appearance-cid": "/appearance/roller.surf" }
+    }
+  });
+  assert.deepEqual(source.meshData.parts[0].material, { clearcoat: 0.8, roughness: 0.15 });
+  assert.equal(descriptor.occurrences[0].material, undefined, "stored package descriptor stays immutable");
+});
+
 async function withTempModule(callback) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "render-source-test-"));
   try {
@@ -166,7 +201,7 @@ test("loadSource rejects STEP parameter options for non-STEP sources", async () 
 // CLI cannot tell one from the other — the declared names live in the model's
 // kinematics block — so a name arrives as a bare string and is resolved here.
 const HINGE_SIDECAR = {
-  schemaVersion: 7,
+  schemaVersion: 8,
   documentHash: "a".repeat(64),
   kinematics: {
     mates: [
@@ -242,7 +277,7 @@ test("pose VALUES still pass straight through", async (t) => {
 test("refuses a pose name against a model that declares no poses", async (t) => {
   const sidecarUrl = "/__cad/sidecar/hinge.step.json";
   stubSidecarFetch(t, sidecarUrl, {
-    schemaVersion: 7,
+    schemaVersion: 8,
     documentHash: HINGE_SIDECAR.documentHash,
     kinematics: { ...HINGE_SIDECAR.kinematics, poses: {} }
   });
@@ -372,7 +407,7 @@ test("loadSource leaves no source scope behind", async (t) => {
 test("loadSource accepts sidecar kinematics for STEP sources", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
-    schemaVersion: 7,
+    schemaVersion: 8,
     documentHash: HINGE_SIDECAR.documentHash,
     kinematics: {
       mates: [{ name: "drive", kind: "revolute", parent: "#base", child: "#rotor",

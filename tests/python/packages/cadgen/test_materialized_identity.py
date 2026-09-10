@@ -75,6 +75,114 @@ class MaterializedIdentityTest(unittest.TestCase):
         scene = load_step_scene(self.root / "parent.step", record_read=False)
         return sum(self.signed_volume(scene_occurrence_shape(scene, node)) for node in scene_leaf_occurrences(scene))
 
+    def material_child(self):
+        from build123d import Compound, Location, Solid
+        from cadgen.store.build import build_tree_from_compound
+        from cadgen.store.materialize import materialize
+
+        prototype = Solid.make_box(2, 3, 4)
+        first = prototype.moved(Location())
+        second = prototype.moved(Location((8, 0, 0)))
+        first.label, second.label = "matte", "polished"
+        first.cad_material = {
+            "roughness": 0.1,
+            "metalness": 0.2,
+            "clearcoat": 0.3,
+            "clearcoatRoughness": 0.4,
+            "opacity": 0.5,
+        }
+        second.cad_material = {"roughness": 0.9, "metalness": 0.8}
+        tree, descriptor, _ = build_tree_from_compound(
+            Compound(children=[first, second], label="finished"), root_name="finished"
+        )
+        return tree, descriptor, materialize(tree), prototype
+
+    def test_occurrence_material_is_owned_across_ram_disk_and_fresh_materialization(self):
+        from cadgen.store.materialize import materialize, materialize_descriptor, reset_memo
+
+        tree, descriptor, warm, prototype = self.material_child()
+        cached = materialize(tree)
+        reset_memo()
+        disk = materialize(tree)
+        cid = next(iter(descriptor["components"]))
+        fresh = materialize_descriptor(
+            descriptor, shapes={cid: prototype}, tree_hash="fresh-result"
+        )
+        expected = [
+            {
+                "roughness": 0.1,
+                "metalness": 0.2,
+                "clearcoat": 0.3,
+                "clearcoatRoughness": 0.4,
+                "opacity": 0.5,
+            },
+            {"roughness": 0.9, "metalness": 0.8},
+        ]
+        consumers = (warm, cached, disk, fresh)
+        for consumer in consumers:
+            self.assertEqual([child.cad_material for child in consumer.children], expected)
+            self.assertIsNot(consumer.children[0].cad_material, consumer.children[1].cad_material)
+        dictionaries = [child.cad_material for consumer in consumers for child in consumer.children]
+        self.assertEqual(len({id(material) for material in dictionaries}), len(dictionaries))
+        warm.children[0].cad_material["roughness"] = 0.77
+        self.assertEqual(cached.children[0].cad_material["roughness"], 0.1)
+        self.assertEqual(disk.children[0].cad_material["roughness"], 0.1)
+        self.assertEqual(fresh.children[0].cad_material["roughness"], 0.1)
+        self.assertNotIn("cad_material", prototype.__dict__)
+
+    def test_material_mutation_survives_moved_component_packaging(self):
+        from build123d import Location
+        from cadgen.store.build import _tagged_intact
+
+        tree, _descriptor, child, _prototype = self.material_child()
+        child.children[0].cad_material["roughness"] = 0.65
+        moved = child.moved(Location((20, 0, 0)))
+        self.assertIsNot(moved.children[0].cad_material, child.children[0].cad_material)
+        self.assertIsNone(_tagged_intact(child))
+        self.assertIsNone(_tagged_intact(moved), "moving a dirty finish blessed the old pin")
+        descriptor, again = self.parent(moved)
+        self.assertEqual(descriptor["links"], [])
+        materials = [node.cad_material for node in again.children[0].children]
+        self.assertEqual(materials[0]["roughness"], 0.65)
+        self.assertEqual(materials[1], {"roughness": 0.9, "metalness": 0.8})
+
+    def test_absent_occurrence_material_does_not_leak_from_a_supplied_shape(self):
+        from build123d import Solid
+        from cadgen.store.materialize import materialize_descriptor
+
+        prototype = Solid.make_box(2, 3, 4)
+        prototype.cad_material = {"roughness": 0.88}
+        descriptor = {
+            "components": {"box": {}},
+            "occurrences": [{
+                "id": "o1",
+                "component": "box",
+                "name": "plain",
+                "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            }],
+        }
+        plain = materialize_descriptor(
+            descriptor, shapes={"box": prototype}, tree_hash="plain-result"
+        )
+        self.assertNotIn("cad_material", plain.__dict__)
+        self.assertEqual(prototype.cad_material, {"roughness": 0.88})
+
+    def test_clean_moved_exact_pin_keeps_material_and_private_metadata(self):
+        from build123d import Location
+        from cadgen.store.build import _tagged_intact
+
+        tree, _descriptor, child, _prototype = self.material_child()
+        moved = child.moved(Location((20, 0, 0)))
+        self.assertEqual(_tagged_intact(child), tree)
+        self.assertEqual(_tagged_intact(moved), tree)
+        self.assertIsNot(moved.children[0].cad_material, child.children[0].cad_material)
+        descriptor, again = self.parent(moved)
+        self.assertEqual([link["tree"] for link in descriptor["links"]], [tree])
+        self.assertEqual(again.children[0].children[0].cad_material["roughness"], 0.1)
+        again.children[0].children[0].cad_material["roughness"] = 0.42
+        self.assertEqual(child.children[0].cad_material["roughness"], 0.1)
+        self.assertEqual(moved.children[0].cad_material["roughness"], 0.1)
+
     def test_root_placement_label_color_overrides_keep_the_link(self):
         from build123d import Location
         from cadgen.store.build import _tagged_intact

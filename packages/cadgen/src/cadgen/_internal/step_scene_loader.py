@@ -448,21 +448,26 @@ def _load_fallback_occurrence_tree(
     shape = reader.OneShape()
     if shape.IsNull():
         raise RuntimeError(f"STEP file produced no shape: {step_path}")
-    prototype_key = _shape_hash(shape)
+    # The fallback has no product names. Its representation must still depend
+    # only on the bytes, not on the current filename of a copied document.
+    location = _shape_location(shape)
+    transform = _location_transform_matrix(location)
+    prototype = _unlocated_shape(shape)
+    prototype_key = _shape_hash(prototype)
     return (
         [
             OccurrenceNode(
                 path=(1,),
-                name=step_path.stem,
-                source_name=step_path.stem,
-                transform=_identity_transform_matrix(),
+                name="model",
+                source_name="model",
+                transform=transform,
                 prototype_key=prototype_key,
-                local_transform=_identity_transform_matrix(),
-                location=None,
+                local_transform=transform,
+                location=location,
             )
         ],
-        {prototype_key: shape},
-        {prototype_key: step_path.stem},
+        {prototype_key: prototype},
+        {prototype_key: "model"},
         {},
         {},
     )
@@ -520,5 +525,4 @@ def _relative_path_from_directory(path: Path, base_dir: Path) -> str:
 
 def _step_hash(step_path: Path) -> str:
     return step_file_hash(step_path)
-
 

@@ -111,7 +111,7 @@ def _build_fixture(root: str, cache: str) -> None:
         write(f"{name}.step", f"{name}\n")
         if name in {"e_kin", "f_anim", "h_empty_kin", "i_nulls"}:
             payload = json.loads(sidecar)
-            payload["schemaVersion"] = 7
+            payload["schemaVersion"] = 8
             payload["documentHash"] = hashlib.sha256(f"{name}\n".encode()).hexdigest()
             sidecar = json.dumps(payload)
         write(f"{name}.step.json", sidecar)
@@ -126,7 +126,7 @@ def _build_fixture(root: str, cache: str) -> None:
         "p_upper.STP.json",
         json.dumps(
             {
-                "schemaVersion": 7,
+                "schemaVersion": 8,
                 "documentHash": hashlib.sha256(b"upper\n").hexdigest(),
                 "kinematics": {"j": 1},
             }

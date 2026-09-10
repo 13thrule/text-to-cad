@@ -509,14 +509,17 @@ def _generate_part_outputs(
                 )
         else:
             with logger.timed("tree: components"):
-                tree_hash, tree, stats = build_tree_from_compound(
-                    shape,
-                    root_name=spec.step_path.stem,
-                    force=force,
-                    progress=progress,
-                    extra=tree_extra,
-                )
+                if not generated:
+                    from cadgen.store.build import build_document_tree
+
+                    tree_hash, tree, stats = build_document_tree(scene, force=force, progress=progress)
+                else:
+                    tree_hash, tree, stats = build_tree_from_compound(
+                        shape, root_name=spec.step_path.stem, force=force,
+                        progress=progress, extra=tree_extra,
+                    )
         stats["tree"] = tree_hash
+        document_tree_hash = str(stats.get("documentTree") or tree_hash)
 
         model_path = _model_for_spec(spec)
         outputs: dict[str, object] = {}
@@ -525,8 +528,17 @@ def _generate_part_outputs(
             kinematics_block = getattr(scene, "kinematics", None)
             if kinematics_block:
                 sidecar_payload["kinematics"] = tree_kinematics(tree_hash)
+                if writes_step:
+                    from cadgen._internal.kinematics_resolve import remap_document_kinematics
+
+                    sidecar_payload["kinematics"] = remap_document_kinematics(
+                        sidecar_payload["kinematics"], stats["documentOccurrenceMap"],
+                        stats["documentNodeMap"], document_tree_hash,
+                    )
             if spec.step_output:
                 assert staged_step is not None
+                if stats.get("documentAppearance"):
+                    sidecar_payload["appearance"] = {"occurrences": stats["documentAppearance"]}
                 write_source_sidecar(staged_step, sidecar_payload, document_hash=exported_hash)
                 assert exported_hash is not None  # written by build_tree_through_step above
                 outputs[str(spec.step_path.expanduser().resolve())] = {"sha256": exported_hash}
@@ -584,6 +596,7 @@ def _generate_part_outputs(
             "entryKind": tree_kind(tree),
             "sourceKind": "step" if (not generated or reemit_source_hash) else "python",
             "tree": tree_hash,
+            "documentTree": document_tree_hash if spec.step_output else None,
             "closure": {"hash": closure_hash, "files": closure_files, "shas": closure_shas, "static": closure_static},
             # Literals imported from model files, tracked by VALUE (gate clause 2).
             "constants": dict(getattr(scene, "source_closure_constants", None) or {}) if generated else {},
@@ -605,13 +618,14 @@ def _generate_part_outputs(
         if reemit_source_hash:
             record["sourceHash"] = str(reemit_source_hash)
             record["annotationHash"] = str(getattr(scene, "reemit_annotation_hash", "") or "")
+            record["inputAppearance"] = str(getattr(scene, "reemit_appearance_hash", "") or "")
         if generated and sidecar_payload is not None and sidecar_payload.get("kinematics") is not None:
             record["kinematics"] = sidecar_payload.get("kinematics")
         if generated:
             from cadgen.store.publish import decide
             from cadgen.store.trees import tree_complete
 
-            if not tree_complete(tree_hash):
+            if not tree_complete(tree_hash) or (writes_step and not tree_complete(document_tree_hash)):
                 raise RuntimeError(f"{spec.cad_ref}: result was not saved: pinned geometry disappeared from the cache during the build")
             # A re-emitted STEP has an immutable byte/annotation input closure,
             # not a Python source closure that current_closure_hash can read.
@@ -631,8 +645,8 @@ def _generate_part_outputs(
         # Artifact side: the bytes of the document this tree describes → the tree
         # (a reader's one lookup; STORE.md §2). Code side: which model wrote each
         # output path (the badge's question, never a reader's).
-        if tree_hash and record.get("stepHash"):
-            note_document_tree(str(record["stepHash"]), str(tree_hash))
+        if document_tree_hash and record.get("stepHash"):
+            note_document_tree(str(record["stepHash"]), document_tree_hash)
         if generated:
             if staged_step is not None:
                 from cadgen.catalog import seed_artifact_hash
@@ -666,7 +680,7 @@ def _generate_part_outputs(
             executors.emit_event(executors.model_event(
                 model_path, "building", phase="STEP saved",
                 saved={"output": str(spec.step_path.expanduser().resolve()),
-                       "tree": tree_hash, "documentHash": exported_hash},
+                       "tree": document_tree_hash, "documentHash": exported_hash},
             ))
         stats["published"] = True
         return stats
@@ -803,7 +817,6 @@ def _produce_declared_mesh_exports(
     """
     if not spec.mesh_exports or spec.entry_path is None or spec.step_path is None:
         return ()
-    from cadgen.catalog import artifact_file_hash
     from cadgen._internal.mesh_export import (
         MeshExportJob,
         mesh_export_current,
@@ -811,13 +824,13 @@ def _produce_declared_mesh_exports(
         run_mesh_exporter,
     )
 
-    from cadgen.catalog import result_tree_for
     from cadgen.store.view import export_view
 
     model = _model_for_spec(spec)
     if spec.step_output:
-        document_hash = artifact_file_hash(spec.entry_path)
-        tree_hash = result_tree_for(spec.entry_path)
+        from cadgen._internal.doors import document_snapshot
+
+        document_hash, tree_hash = document_snapshot(spec.entry_path)
     else:
         # A mesh-only model writes no document: its tree IS the geometry the
         # meshes are cut from, so the ledger keys on that.
@@ -827,6 +840,11 @@ def _produce_declared_mesh_exports(
         document_hash = tree_hash
     if document_hash is None or tree_hash is None or model is None:
         return ()
+    from cadgen._internal.source_sidecar import appearance_digest, read_source_sidecar
+
+    sidecar = read_source_sidecar(spec.entry_path, document_hash=document_hash) if spec.step_output else None
+    appearance = (sidecar or {}).get("appearance")
+    appearance_key = appearance_digest(appearance)
     pending: list[MeshExportJob] = []
     for declared in spec.mesh_exports:
         chord = declared.mesh_tolerance if declared.mesh_tolerance is not None else spec.mesh_tolerance
@@ -841,6 +859,7 @@ def _produce_declared_mesh_exports(
             document_hash=document_hash,
             mesh_tolerance=chord,
             mesh_angular_tolerance=angle,
+            appearance_key=appearance_key,
         ):
             continue
         declared.path.parent.mkdir(parents=True, exist_ok=True)
@@ -867,6 +886,7 @@ def _produce_declared_mesh_exports(
             name=spec.step_path.stem,
             default_color=_color_hex(spec.color),
             logger=logger if logger is not None else CliLogger("cadgen", verbose=False),
+            appearance=appearance,
         )
     finally:
         shutil.rmtree(view_dir, ignore_errors=True)
@@ -878,6 +898,7 @@ def _produce_declared_mesh_exports(
             fmt=job.fmt,
             mesh_tolerance=job.mesh_tolerance,
             mesh_angular_tolerance=job.mesh_angular_tolerance,
+            appearance_key=appearance_key,
         )
         if announce:
             # stderr: stdout is the result channel (`outcome document`), and a

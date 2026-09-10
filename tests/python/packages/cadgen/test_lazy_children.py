@@ -145,6 +145,32 @@ class Deferral(LazyFixture):
         copy.copy(child)
         self.assertEqual(job.waited, 1)
 
+    def test_deleting_owned_metadata_forces_then_marks_the_pinned_child_changed(self):
+        def materialize(tree, label):
+            compound = _box(label)
+            compound.cad_material = {"roughness": 0.2}
+            compound.cad_face_ordinal_colors = {1: (1.0, 0.0, 0.0, 1.0)}
+            return compound
+
+        with mock.patch.object(lazy_mod, "_materialize_tree", materialize):
+            from cadgen.store.materialize import PARTNER_TAG
+
+            material_child = self.lazy()
+            material_child.cad_material = {"roughness": 0.8}
+            del material_child.cad_material
+            self.assertTrue(material_child._forced)
+            self.assertNotIn("cad_material", material_child.__dict__)
+            self.assertFalse(getattr(material_child, PARTNER_TAG).intact(material_child))
+
+            face_child = self.lazy()
+            del face_child.cad_face_ordinal_colors
+            self.assertTrue(face_child._forced)
+            self.assertNotIn("cad_face_ordinal_colors", face_child.__dict__)
+            self.assertFalse(getattr(face_child, PARTNER_TAG).intact(face_child))
+
+            with self.assertRaises(AttributeError):
+                del face_child.cad_face_ordinal_colors
+
 
 class Errors(LazyFixture):
     def test_a_failed_child_raises_at_the_forcing_site_with_call_site_and_output(self):

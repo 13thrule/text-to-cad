@@ -190,11 +190,17 @@ class TreeReflectsWrittenStep(unittest.TestCase):
         with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(self.store)}):
             descriptor = result_descriptor_for(step_path)
             by_name = {occ["name"]: occ for occ in descriptor["occurrences"]}
-            # Occurrence metadata is the build's.
-            self.assertEqual(by_name["bar"]["color"][:3], [0.2, 0.4, 0.8])
-            # The tree links the pin model rather than copying it.
+            # Saved colors are the STEP reader's native-precision values.
+            for actual, expected in zip(by_name["bar"]["color"][:3], [0.2, 0.4, 0.8], strict=True):
+                self.assertAlmostEqual(actual, expected, places=6)
+            # The document is independent of model links; exact child pins
+            # remain in the distinct authored result tree.
             tree = json.loads(object_path(descriptor["tree"]).read_text(encoding="utf-8"))
-            self.assertEqual({link["name"] for link in tree["links"]}, {"pin_left", "pin_right"})
+            self.assertEqual(tree["links"], [])
+            from cadgen.store.records import read_record
+
+            result = json.loads(object_path(read_record(self.project / "rig.py")["tree"]).read_text(encoding="utf-8"))
+            self.assertEqual({link["name"] for link in result["links"]}, {"pin_left", "pin_right"})
             # The vendor part's face colours came back through the document.
             vendor_cid = by_name["vendor"]["component"]
             index, _ = read_surf(object_path(descriptor["components"][vendor_cid]["surf"]).read_bytes())

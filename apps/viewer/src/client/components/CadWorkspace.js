@@ -300,7 +300,12 @@ import {
 } from "cadgen-js/common/stepModule";
 import { meshStateIsComplete, tolerantAnimationClip } from "./workbench/hooks/packageProgressiveLoad.js";
 import { meshLoadErrorForViewer, shouldStartMeshLoad } from "./workbench/hooks/meshLoadTarget.js";
-import { loadKinematicsModuleDefinition, previewKinematicsModuleDefinition } from "cadgen-js/common/kinematicsModule";
+import {
+  kinematicsModuleDefinitionFromSidecar,
+  loadKinematicsModuleDefinition,
+  previewKinematicsModuleDefinition
+} from "cadgen-js/common/kinematicsModule";
+import { validateSourceSidecar } from "cadgen-js/common/sourceSidecar.js";
 import { loadRenderModule, validateRenderModuleClips } from "cadgen-js/common/renderModule";
 import {
   normalizeParameterValue,
@@ -1683,6 +1688,14 @@ export default function CadWorkspace({
       ? Promise.resolve().then(() => previewKinematicsModuleDefinition(selectedEntry.previewKinematics, {
           cadPath: selectedStepModuleCadPath,
         }))
+      : selectedEntry?.sourceSidecar
+        ? Promise.resolve().then(() => kinematicsModuleDefinitionFromSidecar(
+            validateSourceSidecar(selectedEntry.sourceSidecar, {
+              url: selectedStepModuleUrl || selectedEntry.file,
+              documentHash: selectedEntry.documentHash,
+            }),
+            { cadPath: selectedStepModuleCadPath, url: selectedStepModuleUrl }
+          ))
       : loadKinematicsModuleDefinition(selectedStepModuleUrl, {
           cadPath: selectedStepModuleCadPath, documentHash: selectedEntry?.documentHash,
         });

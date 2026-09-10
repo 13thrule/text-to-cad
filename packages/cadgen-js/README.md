@@ -28,8 +28,10 @@ snapshot renderer and the node builders in `bin/`).
   code in this package must be writable against exactly those inputs.
   An explicitly attached editing session may provide an immutable preview
   tree and resolved kinematics instead; it must not alias that tree to saved
-  STEP bytes. Saved sidecar kinematics require a matching schema-7 document
-  digest. Session state and UI remain in the app.
+  STEP bytes. Saved schema-8 sidecars require a matching document digest.
+  Their appearance section supplies resolved PBR values for canonical leaf
+  occurrences. Composition owns its material overrides and never mutates the
+  stored tree or component tessellation. Session state and UI remain in the app.
 - **Resource ownership**: component geometry and edge textures can have more
   than one scene owner; only the last release disposes shared GPU/BVH state.
   Render-only loads do not construct selector topology until requested.

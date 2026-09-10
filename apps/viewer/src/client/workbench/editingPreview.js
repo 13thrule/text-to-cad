@@ -73,6 +73,8 @@ export function editingPreviewEntry(state, catalogEntry) {
     bytes: 0,
     documentHash: "",
     sourceUrl: "",
+    sourceSidecar: null,
+    appearanceHash: "",
     poseUrl: "",
     renderModuleUrl: catalogEntry?.renderModuleUrl || state.preview.renderModuleUrl || "",
     editingPreview: true,

@@ -38,9 +38,10 @@ def reachable_objects() -> set[str]:
         record = read_entry("model", path.name)
         if not record:
             continue
-        tree = str(record.get("tree") or "")
-        if tree:
-            tree_objects(tree, _seen=reachable)
+        for field_name in ("tree", "documentTree"):
+            tree = str(record.get(field_name) or "")
+            if tree:
+                tree_objects(tree, _seen=reachable)
     for _name, path in iter_entries("component"):
         entry = read_entry("component", path.name)
         if not entry:

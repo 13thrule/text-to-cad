@@ -19,6 +19,8 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 from tests.python.support.paths import add_repo_path
 from tests.python.support.cad_test_roots import IsolatedCadRoots
@@ -116,7 +118,7 @@ class StepReemitTests(unittest.TestCase):
         self.assertFalse(result.skipped)
 
         sidecar = self._sidecar()
-        self.assertEqual(7, sidecar["schemaVersion"])
+        self.assertEqual(8, sidecar["schemaVersion"])
         # Declarations only: no source tie of any kind in the file
         # beside the artifact. The freshness identity — sourceKind "step", the
         # INPUT's content hash — lives in the provenance RECORD.
@@ -166,6 +168,107 @@ class StepReemitTests(unittest.TestCase):
         sidecar = self._sidecar()
         self.assertEqual({"value": [0.0, 120.0]}, sidecar["kinematics"]["mates"][0]["limits"])
         self.assertIn("wide", sidecar["kinematics"]["poses"])
+        from cadgen.store.gate import stale
+
+        self.assertFalse(stale(self.out).stale, "the rewritten sidecar hash must land in the record")
+
+    def test_a_missing_or_corrupt_output_sidecar_is_rebuilt_not_reported_current(self) -> None:
+        from cadgen._internal.source_sidecar import source_sidecar_path
+        from cadgen.store.gate import stale
+
+        self._build(kinematics=json.dumps(KINEMATICS))
+        sidecar = source_sidecar_path(self.out)
+        for damage in ("missing", "corrupt"):
+            if damage == "missing":
+                sidecar.unlink()
+            else:
+                sidecar.write_text('{"schemaVersion": 8, "documentHash": "wrong"}', encoding="utf-8")
+            self.assertTrue(stale(self.out).stale)
+            result = self._build(kinematics=json.dumps(KINEMATICS))
+            self.assertFalse(result.skipped)
+            self.assertEqual("swing", self._sidecar()["kinematics"]["mates"][0]["name"])
+            self.assertFalse(stale(self.out).stale)
+
+    def test_removing_the_last_annotation_removes_its_recorded_output(self) -> None:
+        from cadgen._internal.source_sidecar import source_sidecar_path
+        from cadgen.store.gate import stale
+        from cadgen.store.records import read_record
+
+        self._build(kinematics=json.dumps(KINEMATICS))
+        result = self._build()
+        sidecar = source_sidecar_path(self.out).resolve()
+        self.assertTrue(result.sidecar_only)
+        self.assertFalse(sidecar.exists())
+        self.assertNotIn(str(sidecar), (read_record(self.out) or {}).get("outputs", {}))
+        self.assertFalse(stale(self.out).stale)
+
+    def test_an_unrecorded_output_sidecar_is_not_accepted_as_current(self) -> None:
+        from cadgen._internal.source_sidecar import source_sidecar_path, write_source_sidecar
+
+        self._build()
+        sidecar = source_sidecar_path(self.out)
+        write_source_sidecar(
+            self.out,
+            {"appearance": {"occurrences": {"unexpected": {"roughness": 0.2}}}},
+        )
+        self.assertTrue(sidecar.is_file())
+        result = self._build()
+        self.assertFalse(result.skipped)
+        self.assertFalse(sidecar.exists())
+
+    def test_a_kinematics_only_edit_preserves_output_mapped_appearance(self) -> None:
+        from cadgen.catalog import artifact_file_hash, result_descriptor_for
+        from cadgen._internal.source_sidecar import read_source_sidecar, source_sidecar_path, write_source_sidecar
+        from cadgen.store.records import read_record, write_record
+
+        input_leaf = (result_descriptor_for(self.vendor) or {})["occurrences"][0]["id"]
+        material = {"roughness": 0.2, "metalness": 0.7, "opacity": 0.8}
+        write_source_sidecar(
+            self.vendor,
+            {"appearance": {"occurrences": {input_leaf: material}}},
+        )
+        self._build(kinematics=json.dumps(KINEMATICS))
+
+        # Model the legitimate case where re-emission changed product paths:
+        # the output sidecar's appearance is already mapped to OUT's canonical
+        # IDs, while inputAppearance in the record still gates on IN's block.
+        output_leaves = [item["id"] for item in (result_descriptor_for(self.out) or {})["occurrences"]]
+        output_leaf = next(item for item in output_leaves if item != input_leaf)
+        current = read_source_sidecar(self.out) or {}
+        write_source_sidecar(
+            self.out,
+            {
+                "kinematics": current["kinematics"],
+                "appearance": {"occurrences": {output_leaf: material}},
+            },
+        )
+        record = read_record(self.out) or {}
+        outputs = dict(record["outputs"])
+        output_sidecar = source_sidecar_path(self.out).resolve()
+        outputs[str(output_sidecar)] = {"sha256": artifact_file_hash(output_sidecar)}
+        record["outputs"] = outputs
+        write_record(self.out, record)
+
+        widened = json.loads(json.dumps(KINEMATICS))
+        widened["mates"][0]["limits"] = [0, 120]
+        result = self._build(kinematics=json.dumps(widened))
+        self.assertTrue(result.sidecar_only)
+        self.assertEqual(
+            {output_leaf: material},
+            (read_source_sidecar(self.out) or {})["appearance"]["occurrences"],
+        )
+
+    def test_reemit_refuses_when_the_parsed_snapshot_is_not_the_hashed_input(self) -> None:
+        self._build(kinematics=json.dumps(KINEMATICS))
+        before = self.out.read_bytes()
+        replacement = SimpleNamespace(step_hash="0" * 64)
+        with mock.patch(
+            "cadgen._internal.step_scene_package.load_step_scene_exact",
+            return_value=replacement,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "changed while it was being read"):
+                self._build(kinematics=json.dumps(KINEMATICS), force=True)
+        self.assertEqual(before, self.out.read_bytes())
 
     def test_the_json_and_python_kinematics_spellings_agree(self) -> None:
         import cadgen

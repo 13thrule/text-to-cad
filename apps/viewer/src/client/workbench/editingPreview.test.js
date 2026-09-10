@@ -34,6 +34,8 @@ test("a successful save keeps the current authored preview in Follow edits", () 
   const state = reduceEditingPreview(initialEditingPreview(), update(1, "preview", { saved }));
   const entry = { file: "/part.step", kind: "assembly", hash: "old", sourceUrl: "/old.json", poseUrl: "/old.json" };
   const render = editingPreviewEntry(state, entry);
+  assert.equal(render.sourceSidecar, null);
+  assert.equal(render.appearanceHash, "");
   assert.equal(render.hash, "preview");
   assert.equal(render.poseUrl, "");
   assert.equal(entry.hash, "old");

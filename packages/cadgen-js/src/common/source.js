@@ -27,7 +27,15 @@ import {
   renderAssetSourceScopeForJob,
   setRenderAssetSourceScope
 } from "../lib/renderAssetSourceScope.js";
-import { loadKinematicsModuleDefinition } from "./kinematicsModule.js";
+import {
+  kinematicsModuleDefinitionFromSidecar,
+  loadKinematicsModuleDefinition
+} from "./kinematicsModule.js";
+import {
+  applySourceAppearance,
+  loadSourceSidecar,
+  validateSourceSidecar
+} from "./sourceSidecar.js";
 import {
   isRobotSourceKind,
   loadRobotMeshData,
@@ -218,11 +226,12 @@ export function normalizeRenderTessellation(value) {
   return result;
 }
 
-async function loadPackageMeshData(packageInfo, tessellation = {}) {
-  const descriptor = isObject(packageInfo.descriptor) ? packageInfo.descriptor : null;
-  if (!descriptor) {
+async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = null) {
+  const storedDescriptor = isObject(packageInfo.descriptor) ? packageInfo.descriptor : null;
+  if (!storedDescriptor) {
     throw new Error("Assembly render job is missing its tree (assembly.json)");
   }
+  const descriptor = applySourceAppearance(storedDescriptor, appearance);
   const componentUrls = isObject(packageInfo.componentUrls) ? packageInfo.componentUrls : {};
   const components = isObject(descriptor.components) ? descriptor.components : {};
   const componentMeshDataByCid = {};
@@ -345,13 +354,14 @@ async function loadStepParameters({
   stepParameterUrl,
   documentHash,
   cadPath,
-  selectorRuntime
+  selectorRuntime,
+  sourceSidecar = null
 }) {
   assertStepOnlyOption(kind, kinematics, "kinematics");
   assertStepOnlyOption(kind, stepParameterUrl, "stepParameterUrl");
   assertStepOnlyOption(kind, documentHash, "documentHash");
   const explicit = hasStepParameterRenderValues(kinematics);
-  if (!stepParameterUrl) {
+  if (!stepParameterUrl && !sourceSidecar) {
     if (!explicit) {
       return null;
     }
@@ -359,10 +369,9 @@ async function loadStepParameters({
   }
   // stepParameterUrl is the model SIDECAR url (the .step.json); its
   // kinematics section is the one articulation mechanism.
-  const definition = await loadKinematicsModuleDefinition(stepParameterUrl, {
-    cadPath,
-    documentHash
-  });
+  const definition = sourceSidecar
+    ? kinematicsModuleDefinitionFromSidecar(sourceSidecar, { cadPath, url: stepParameterUrl })
+    : await loadKinematicsModuleDefinition(stepParameterUrl, { cadPath, documentHash });
   if (!definition) {
     if (explicit) {
       throw new Error("model declares no kinematics, so the kinematics values have nothing to drive");
@@ -443,11 +452,17 @@ export async function loadSource(input, options = {}) {
   const documentHash = String(
     inputObject.documentHash || resolved.documentHash || options.documentHash || ""
   ).trim();
+  const inlineSourceSidecar = inputObject.sourceSidecar || resolved.sourceSidecar || options.sourceSidecar || null;
 
   const cadPath = String(inputObject.cadPath || resolved.inputPath || options.cadPath || "").trim();
   assertStepOnlyOption(kind, kinematics, "kinematics");
   assertStepOnlyOption(kind, stepParameterUrl, "stepParameterUrl");
   assertStepOnlyOption(kind, documentHash, "documentHash");
+  assertStepOnlyOption(kind, inlineSourceSidecar, "sourceSidecar");
+
+  const sourceSidecar = inlineSourceSidecar
+    ? validateSourceSidecar(inlineSourceSidecar, { url: stepParameterUrl || cadPath, documentHash })
+    : (stepParameterUrl ? await loadSourceSidecar(stepParameterUrl, { documentHash }) : null);
 
   let meshData = explicitMeshData;
   // Component-GLB package: the canonical assembly artifact is a directory, so there is
@@ -458,7 +473,7 @@ export async function loadSource(input, options = {}) {
     isObject(resolved.package) ? resolved.package : null
   );
   if (!meshData && packageInfo) {
-    meshData = await loadPackageMeshData(packageInfo, tessellation);
+    meshData = await loadPackageMeshData(packageInfo, tessellation, sourceSidecar?.appearance);
     const packageSelectorRuntime = inputObject.selectorRuntime || options.selectorRuntime || null;
     return {
       kind: "step",
@@ -474,7 +489,8 @@ export async function loadSource(input, options = {}) {
         stepParameterUrl,
         documentHash,
         cadPath,
-        selectorRuntime: packageSelectorRuntime
+        selectorRuntime: packageSelectorRuntime,
+        sourceSidecar
       }),
       resolved,
       url: "",
@@ -544,7 +560,8 @@ export async function loadSource(input, options = {}) {
       stepParameterUrl,
       documentHash,
       cadPath,
-      selectorRuntime
+      selectorRuntime,
+      sourceSidecar
     });
 
     return {

@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,25 @@ from urllib.parse import parse_qs, urlparse
 from tests.python.support.paths import add_repo_path, repo_path
 
 
+_MODULE_CACHE = None
+_PREVIOUS_CACHE_DIR = None
+
+
+def setUpModule():
+    global _MODULE_CACHE, _PREVIOUS_CACHE_DIR
+    _MODULE_CACHE = tempfile.TemporaryDirectory()
+    _PREVIOUS_CACHE_DIR = os.environ.get("CADGEN_CACHE_DIR")
+    os.environ["CADGEN_CACHE_DIR"] = _MODULE_CACHE.name
+
+
+def tearDownModule():
+    if _PREVIOUS_CACHE_DIR is None:
+        os.environ.pop("CADGEN_CACHE_DIR", None)
+    else:
+        os.environ["CADGEN_CACHE_DIR"] = _PREVIOUS_CACHE_DIR
+    _MODULE_CACHE.cleanup()
+
+
 def write_package(step_path, *, entry_kind="part", source_kind="step", kinematics=None, render_module=None):
     """Materialize the canonical render artifact for ``step_path``: a SELF-CONTAINED
     view directory (assembly.json + components/) inside the per-folder cache
@@ -25,40 +45,33 @@ def write_package(step_path, *, entry_kind="part", source_kind="step", kinematic
     GLBs live in the tree's own ``components/<hash>.glb`` dir. Returns the view directory
     path, mirroring ``cadgen.catalog.result_view_dir``."""
     from cadgen.catalog import result_view_dir
+    from tests.python.support.store_fixtures import seed_result
 
     step_path = Path(step_path)
     if not step_path.is_file():
         step_path.parent.mkdir(parents=True, exist_ok=True)
         step_path.write_text(f"ISO-10303-21;\n{step_path.name}\n", encoding="utf-8")
-    pkg_dir = result_view_dir(step_path)
-    comp_dir = pkg_dir / "components"
-    pkg_dir.mkdir(parents=True, exist_ok=True)
-    comp_dir.mkdir(parents=True, exist_ok=True)
     cid = hashlib.sha256(str(step_path).encode()).hexdigest()[:16]
-    (comp_dir / f"{cid}.surf").write_bytes(b"component-surf")
-    (pkg_dir / "assembly.json").write_text(
-        json.dumps(
+    seed_result(step_path, {
+        "kind": "assembly-package",
+        "entryKind": entry_kind,
+        "rootName": step_path.stem,
+        "units": "mm",
+        "sourceKind": source_kind,
+        "stepPath": step_path.name,
+        "bbox": {"min": [0, 0, 0], "max": [1, 1, 1]},
+        "stats": {"occurrenceCount": 1, "shapeCount": 1},
+        "components": {cid: {"contentHash": cid}},
+        "occurrences": [
             {
-                "kind": "assembly-package",
-                "entryKind": entry_kind,
-                "rootName": step_path.stem,
-                "units": "mm",
-                "sourceKind": source_kind,
-                "stepPath": step_path.name,
-                "bbox": {"min": [0, 0, 0], "max": [1, 1, 1]},
-                "stats": {"occurrenceCount": 1, "shapeCount": 1},
-                "components": {cid: {"surf": f"components/{cid}.surf", "contentHash": cid}},
-                "occurrences": [
-                    {
-                        "id": "o1.1",
-                        "name": "occ",
-                        "component": cid,
-                        "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-                    }
-                ],
+                "id": "o1.1",
+                "name": "occ",
+                "component": cid,
+                "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
             }
-        )
-    )
+        ],
+    }, surf=b"component-surf")
+    pkg_dir = result_view_dir(step_path)
     if kinematics:
         # Kinematics (source-derived) rides the MODEL-SIDE sidecar, never
         # assembly.json.
@@ -2019,13 +2032,61 @@ class StepPoseParameterTests(unittest.TestCase):
         packet = self._resolve(self._job(kinematics={"stroke": 1}))
         resolved = packet["jobs"][0]["resolved"]
         self.assertIn(".step.json", str(resolved["stepParameterUrl"]))
+        self.assertEqual(resolved["sourceSidecar"]["schemaVersion"], 8)
         self.assertNotIn("stepParameterPath", resolved)
+
+    def test_saved_appearance_is_inlined_for_the_shared_source_resolver(self) -> None:
+        from cadgen._internal.source_sidecar import write_source_sidecar
+
+        step_path = self._step(pose=False)
+        appearance = {"occurrences": {"o1.1": {"roughness": 0.2, "metalness": 0.7}}}
+        write_source_sidecar(step_path, {"appearance": appearance})
+
+        resolved = self._resolve(self._job())["jobs"][0]["resolved"]
+        self.assertEqual(resolved["sourceSidecar"]["appearance"], appearance)
+        self.assertNotIn("stepParameterUrl", resolved)
+        self.assertNotIn("material", resolved["package"]["descriptor"]["occurrences"][0],
+                         "snapshot resolution must not mutate the stored tree descriptor")
+
+    def test_document_replacement_after_selection_cannot_mix_tree_and_hash(self) -> None:
+        step_path = self._step(pose=False)
+        from cadgen._internal.doors import document_snapshot
+
+        selected = document_snapshot(step_path)
+
+        def replace_after_selection(_path):
+            step_path.write_text(
+                "ISO-10303-21;\nreplacement\nEND-ISO-10303-21;\n", encoding="utf-8"
+            )
+            return selected
+
+        with mock.patch.object(snapshot_main, "document_snapshot", replace_after_selection):
+            resolved = self._resolve(self._job())["jobs"][0]["resolved"]
+
+        self.assertEqual((resolved["documentHash"], resolved["tree"]), selected)
+        self.assertEqual(resolved["package"]["descriptor"]["documentHash"], selected[0])
+        self.assertNotEqual(
+            resolved["documentHash"], hashlib.sha256(step_path.read_bytes()).hexdigest()
+        )
+
+    def test_snapshot_refuses_a_topology_artifact_from_another_selected_tree(self) -> None:
+        self._step(pose=False)
+        artifact = SimpleNamespace(
+            manifest={"kind": "assembly-package", "components": {"other": {}}},
+            selector_bundle=None,
+        )
+        with mock.patch.object(
+            snapshot_main, "ensure_step_topology_artifact", lambda *args, **kwargs: artifact
+        ):
+            with self.assertRaisesRegex(SnapshotError, "changed while its topology"):
+                resolve_render_job_packet(self._job(), cwd=self.root)
 
     def test_pose_parameters_reject_a_sidecar_bound_to_previous_step_bytes(self) -> None:
         from cadgen._internal.source_sidecar import SidecarBindingError
 
         step_path = self._step()
         step_path.write_text("ISO-10303-21;\nchanged after annotation\nEND-ISO-10303-21;\n", encoding="utf-8")
+        write_package(step_path)
         with self.assertRaisesRegex(SidecarBindingError, "documentHash .* does not match"):
             self._resolve(self._job(kinematics={"stroke": 1}))
 

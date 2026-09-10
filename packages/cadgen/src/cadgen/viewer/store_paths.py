@@ -30,6 +30,7 @@ __all__ = [
     "component_object_present",
     "build_scope",
     "result_descriptor",
+    "result_snapshot",
     "result_tree",
     "source_sidecar_path",
     "virtual_store_asset",
@@ -71,6 +72,11 @@ def result_tree(file_path) -> str | None:
     """The tree for a document's BYTES (``index/document``), or ``None`` (never built, or
     the tree object is gone)."""
     return catalog.result_tree_for(Path(str(file_path)))
+
+
+def result_snapshot(file_path) -> tuple[str, str] | None:
+    """The coherent ``(documentHash, tree)`` selected from one file-hash lookup."""
+    return catalog.result_snapshot_for(Path(str(file_path)))
 
 
 def result_descriptor(tree_hash: str) -> dict | None:
