@@ -161,20 +161,15 @@ def import_step(step_path: Path, *, label: str | None = None) -> Any:
     prototypes (``build_tree_through_step``), never the shapes a script
     returned, so a warm load and a cold parse cannot disagree. Per-occurrence
     and prototype STEP colors are applied via ``scene_to_build123d_compound``,
-    so the returned shape is a colored drop-in. Falls back to a raw import if
-    the scene cannot be reconstructed.
+    so the returned shape is a colored drop-in. Cache misses compile and return
+    through the same canonical representation as hits.
     """
-    import build123d
-
     resolved = Path(step_path).expanduser().resolve()
-    try:
-        scene = load_step_scene_cached(resolved)
-        # No filename fallback for the label: build123d keeps the STEP's own root
-        # name, and deriving it from the path would make identical STEP content
-        # produce different trees depending on where the file happens to live.
-        return scene_to_build123d_compound(scene, label=label)
-    except Exception:  # noqa: BLE001 - if the topology-aware load fails for any reason, fall back to build123d's import
-        return build123d.import_step(resolved)
+    scene = load_step_scene_cached(resolved)
+    # No filename fallback for the label: build123d keeps the STEP's own root
+    # name, and deriving it from the path would make identical STEP content
+    # produce different trees depending on where the file happens to live.
+    return scene_to_build123d_compound(scene, label=label)
 
 
 def scene_occurrence_prototype_shape(scene: LoadedStepScene, node: OccurrenceNode) -> Any:
@@ -348,5 +343,4 @@ def adaptive_mesh_resolution_from_hints(hints: dict[str, Any]) -> AdaptiveMeshRe
 
 def adaptive_mesh_resolution_for_scene(scene: LoadedStepScene) -> AdaptiveMeshResolution:
     return adaptive_mesh_resolution_from_hints(_scene_mesh_resolution_hints(scene))
-
 

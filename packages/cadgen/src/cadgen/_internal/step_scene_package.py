@@ -16,15 +16,18 @@ and the parse it replaces return the same shapes.
 
 from __future__ import annotations
 
+import hashlib
 import io
+import os
+import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
-from cadgen._internal.step_hash import step_file_hash
 from cadgen._internal.step_scene_loader import (
     _location_from_transform_matrix,
     _shape_hash,
-    load_step_scene,
+    load_step_scene as _load_step_scene_text,
 )
 from cadgen._internal.step_scene_types import ColorRGBA, LoadedStepScene, OccurrenceNode
 
@@ -100,13 +103,17 @@ def _path_from_occurrence_id(occurrence_id: str) -> tuple[int, ...]:
 
 def scene_from_render_package(step_path: Path, *, step_hash: str) -> LoadedStepScene | None:
     """A LoadedStepScene rebuilt from the entry's tree, or None when
-    the tree is absent or unreadable — every miss falls back to the
-    text-STEP parse. Content keying answers schema and hash by construction:
-    a tree that resolves for these bytes is current-scheme and theirs."""
-    from cadgen.catalog import result_descriptor_for
+    the tree is absent or unreadable — a miss compiles it through the build
+    pool. Content keying answers schema and hash by construction: a tree that
+    resolves for these bytes is current-scheme and theirs."""
     from cadgen.store.objects import object_path
+    from cadgen.store.records import tree_for_document_hash
+    from cadgen.store.trees import flatten, tree_complete
 
-    descriptor = result_descriptor_for(step_path)
+    tree = tree_for_document_hash(step_hash)
+    if not tree or not tree_complete(tree):
+        return None
+    descriptor = flatten(tree)
     if not isinstance(descriptor, dict) or descriptor.get("kind") != "assembly-package":
         return None
     components = descriptor.get("components")
@@ -213,15 +220,108 @@ def scene_from_render_package(step_path: Path, *, step_hash: str) -> LoadedStepS
     return scene
 
 
-def load_step_scene_cached(step_path: Path) -> LoadedStepScene:
-    """Load a STEP scene, warm from its tree when one is current."""
+def load_step_scene_exact(step_path: Path) -> LoadedStepScene:
+    """Parse one immutable snapshot of ``step_path`` and bind its exact digest.
+
+    OCCT accepts a path rather than an in-memory byte buffer.  Read the authored
+    document once, parse a private temporary copy of those bytes, then restore
+    the authored path on the returned scene.  Replacing the authored file at
+    any point cannot make the scene's digest describe different bytes.
+    """
     resolved_step_path = step_path.expanduser().resolve()
-    if not resolved_step_path.exists():
+    if not resolved_step_path.is_file():
         raise FileNotFoundError(f"STEP file does not exist: {resolved_step_path}")
-    step_hash = step_file_hash(resolved_step_path)
-    from_package = scene_from_render_package(resolved_step_path, step_hash=step_hash)
-    if from_package is not None:
-        return from_package
-    scene = load_step_scene(resolved_step_path)
+    payload = resolved_step_path.read_bytes()
+    step_hash = hashlib.sha256(payload).hexdigest()
+    snapshot_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            prefix="cadgen-step-import-",
+            suffix=resolved_step_path.suffix,
+            delete=False,
+        ) as snapshot:
+            snapshot.write(payload)
+            snapshot_path = Path(snapshot.name)
+        scene = _load_step_scene_text(snapshot_path, record_read=False)
+    finally:
+        if snapshot_path is not None:
+            try:
+                os.unlink(snapshot_path)
+            except OSError:
+                pass
+    scene.step_path = resolved_step_path
     scene.step_hash = step_hash
     return scene
+
+
+def _record_consumed_hash(step_path: Path, step_hash: str) -> None:
+    from cadgen.store.closure import note_consumed_file_hash
+
+    note_consumed_file_hash(step_path, step_hash)
+
+
+def load_step_scene_cached(step_path: Path) -> LoadedStepScene:
+    """Load a STEP scene through its document-addressed canonical tree.
+
+    A hit reconstructs binary BREP objects.  A miss submits the ordinary
+    document compile job, yields any parent build slot while waiting, and then
+    reconstructs that same representation.  The caller never returns the
+    mutable scene used to publish the tree.
+    """
+    resolved_step_path = step_path.expanduser().resolve()
+    if not resolved_step_path.is_file():
+        raise FileNotFoundError(f"STEP file does not exist: {resolved_step_path}")
+    # Hash the same byte buffer used to select the artifact.  The compile worker
+    # takes its own immutable snapshot; if the authored path changed between
+    # these reads, its tree has a different digest and this loop selects again.
+    attempts_by_hash: dict[str, int] = {}
+    while True:
+        payload = resolved_step_path.read_bytes()
+        step_hash = hashlib.sha256(payload).hexdigest()
+        from_package = scene_from_render_package(resolved_step_path, step_hash=step_hash)
+        if from_package is not None:
+            _record_consumed_hash(resolved_step_path, step_hash)
+            return from_package
+
+        # A document entry whose tree or component closure is incomplete must
+        # not make the compile worker's current-artifact gate take its reuse
+        # path. Dropping this derived pointer is recovery, not invalidation of
+        # any authored input; the compile republishes it atomically.
+        from cadgen.store.index import remove_entry
+
+        remove_entry("document", step_hash)
+
+        from cadgen.daemon import broker
+        from cadgen.daemon.executors import submit_compile
+
+        job = submit_compile(resolved_step_path)
+        with broker.yielded():
+            code = job.wait()
+        if code != 0:
+            detail = job.output().rstrip()
+            if detail:
+                # The compile worker captures the CAD kernel's C-level output so
+                # it cannot corrupt a caller's structured stdout.  Preserve that
+                # diagnostic stream for people and put only the worker's concise
+                # failure reason in the caller's exception/JSON result.
+                print(detail, file=sys.stderr)
+            from cadgen.daemon.jobs import failure_message
+
+            reason, _error_type = failure_message(detail)
+            suffix = f": {reason}" if reason else ""
+            raise RuntimeError(f"Could not compile STEP cache for {resolved_step_path}{suffix}")
+        from_package = scene_from_render_package(resolved_step_path, step_hash=step_hash)
+        if from_package is not None:
+            _record_consumed_hash(resolved_step_path, step_hash)
+            return from_package
+        # A replacement raced the submit: the worker correctly published the
+        # bytes it snapshotted. A concurrent waiter can also remove an entry
+        # after the job it joined published but before that job reported done;
+        # retry the same digest in that case rather than turning legal duplicate
+        # work into a correctness failure.
+        current_hash = hashlib.sha256(resolved_step_path.read_bytes()).hexdigest()
+        attempts_by_hash[step_hash] = attempts_by_hash.get(step_hash, 0) + 1
+        if current_hash == step_hash and attempts_by_hash[step_hash] >= 3:
+            raise RuntimeError(
+                f"STEP compile completed without a complete canonical tree for {resolved_step_path}"
+            )

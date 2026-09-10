@@ -75,9 +75,16 @@ def load_step_scene(step_path: Path | str, **kwargs) -> Any:
     tree depends on that STEP's bytes exactly as much as one that takes its
     shape.
     """
-    from cadgen._internal.step_scene import load_step_scene as engine_load
+    from cadgen._internal.step_scene_package import load_step_scene_cached
 
-    return engine_load(_record_input(step_path, reader="load_step_scene"), **kwargs)
+    # ``record_read`` was the raw engine's internal scope-capture switch. Keep
+    # accepting it for source compatibility; this public reader always records
+    # its authored input through ``_record_input`` and the exact digest hook.
+    kwargs.pop("record_read", None)
+    if kwargs:
+        unexpected = ", ".join(sorted(str(key) for key in kwargs))
+        raise TypeError(f"load_step_scene() got unexpected keyword argument(s): {unexpected}")
+    return load_step_scene_cached(_record_input(step_path, reader="load_step_scene"))
 
 
 def read_step(step_path: Path | str, *, label: str | None = None) -> Any:

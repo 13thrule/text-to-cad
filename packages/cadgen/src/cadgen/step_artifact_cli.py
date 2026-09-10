@@ -22,7 +22,8 @@ from cadgen.coordination import PHASE_GENERATE, STEP_PACKAGE, ProgressEvent, art
 from cadgen.metadata import normalize_mesh_numeric
 from cadgen.catalog import build_scope, result_view_dir
 from cadgen.render import relative_to_cwd
-from cadgen._internal.step_scene import LoadedStepScene, load_step_scene, step_file_hash
+from cadgen._internal.step_scene import LoadedStepScene, step_file_hash
+from cadgen._internal.step_scene_package import load_step_scene_exact
 from cadgen.catalog import iter_cad_sources, source_from_path
 from cadgen.step_targets import (
     ResolvedStepTarget,
@@ -132,12 +133,13 @@ def _generated_result_payload(spec: EntrySpec, scene: LoadedStepScene, stats: di
 def _existing_result_payload(spec: EntrySpec, artifact: StepTopologyArtifact) -> dict[str, object]:
     from cadgen._internal.source_sidecar import read_source_sidecar
 
-    sidecar = read_source_sidecar(spec.entry_path) or {}
+    # Bind declarations to the bytes beside the sidecar, not the topology
+    # manifest's remembered digest. The document may have been replaced after
+    # that artifact was produced.
+    step_hash = step_file_hash(spec.step_path)
+    sidecar = read_source_sidecar(spec.step_path, document_hash=step_hash) or {}
     source_kind = "python" if sidecar else "step"
-    step_hash = str(artifact.manifest.get("stepHash") or "")
     source_hash = str(sidecar.get("sourceHash") or "")
-    if source_kind != "python" and not step_hash:
-        step_hash = step_file_hash(spec.step_path)
     stats = artifact.manifest.get("stats")
     return _result_payload(
         spec,
@@ -427,7 +429,7 @@ def build_step_artifact(
                 # here the scene is preloaded, so the parse would otherwise go unreported.
                 progress.phase(PHASE_GENERATE)
                 with logger.timed(f"load STEP {relative_to_cwd(step_path)}"):
-                    scene = load_step_scene(step_path)
+                    scene = load_step_scene_exact(step_path)
                 spec = _build_entry_spec(
                     repo_root,
                     step_path,

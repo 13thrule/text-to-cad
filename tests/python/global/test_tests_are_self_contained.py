@@ -35,9 +35,12 @@ REPO_MODELS = re.compile(r"""(?:REPO_ROOT|REPO|ROOT|repo_root\(\)|repo_path\()\s
 
 # This file names the corpus on purpose (in the regexes above), as does the
 # package-boundary guard, whose regex forbids package markdown from naming it.
+# The generated-CAD allocator names models/tmp solely to create a fresh,
+# isolated output directory; it never reads an existing corpus input.
 EXEMPT = {
     Path(__file__).resolve(),
     (TESTS / "python" / "global" / "test_package_boundaries.py").resolve(),
+    (TESTS / "python" / "support" / "tmp_root.py").resolve(),
 }
 
 

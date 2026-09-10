@@ -401,6 +401,26 @@ class ExecutionHashes:
                 return
 
 
+def note_consumed_file_hash(path: Path | str, digest: str) -> None:
+    """Record the exact bytes a data reader consumed in the active build.
+
+    A discovered input is normally hashed after the model body returns.  A
+    path can be atomically replaced between a C++ reader opening it and that
+    later hash, though, which would bind old geometry to new bytes.  Readers
+    that already own the byte digest use this hook; ``ExecutionHashes.note``
+    deliberately keeps the first value and therefore cannot overwrite it.
+    """
+    hashes = _ACTIVE_HASHES
+    value = str(digest or "").strip()
+    if hashes is None or not value:
+        return
+    try:
+        resolved = Path(path).expanduser().resolve()
+    except (OSError, ValueError):
+        return
+    hashes.setdefault(str(resolved), value)
+
+
 # --- assembling the closure ------------------------------------------------------
 
 
