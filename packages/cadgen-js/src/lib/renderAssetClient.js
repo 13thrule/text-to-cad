@@ -599,8 +599,8 @@ export function peekRenderDisplayEdgeBundle(glbUrl) {
 // The .surf carries the same topology the GLB's STEP_TOPOLOGY tables did.
 // Worker requests declare whether they need render data, selectors, or both.
 // Initial display uses render only; selection and measurement synthesize the
-// selector bundle on demand. LOD refinement still requests both from one
-// tessellation so triangle ranges and face mappings cannot disagree.
+// selector bundle on demand. LOD requests both only for already-used topology;
+// later demand must use the displayed level's concrete tessellation key.
 
 const surfPayloadCache = new Map();
 
@@ -714,8 +714,8 @@ function typedArrayBytesOf(value, seen, visited = new Set()) {
 // Byte attribution of what these caches retain, for the memory harness:
 // typed-array bytes (each buffer counted once) and manifest row counts per
 // cache. Pending entries count as zero.
-export function renderAssetCacheStats() {
-  const seen = new Set();
+export function renderAssetCacheStats({ excludeBuffers = [] } = {}) {
+  const seen = new Set(excludeBuffers);
   const stats = {};
   for (const [name, cache] of [
     ["surfPayload", surfPayloadCache],
@@ -792,6 +792,7 @@ export function releaseRenderSurfLevel(url, { tessellation, identity } = {}) {
       .map((key) => [surfPayloadCache, key]),
     [selectorCache, baseKey],
     [displayEdgeCache, baseKey],
+    [glbCache, baseKey],
   ];
   let released = 0;
   for (const [cache, key] of targets) {
@@ -889,23 +890,23 @@ async function loadSurfPayload(url, {
 }
 
 /**
- * Both consumers' payloads — render meshData + selector bundle — for one surf
- * component at an explicit tessellation level. The viewport LOD scheduler's
- * entrypoint: one tessellation feeds rendering, picking, and edges, so a level
- * swap can never leave them disagreeing.
+ * Render data and, when requested, selectors for one concrete tessellation.
+ * A render-only refinement passes selectors:false; the caller reconciles any
+ * topology demanded during that load before publishing new triangles.
  */
 export async function loadRenderSurfPayloadAtLevel(url, {
   signal,
   tessellation,
   identity,
   memoryEstimateBytes,
+  selectors = true,
 } = {}) {
   return loadSurfPayload(url, {
     signal,
     tessellation,
     identity,
     memoryEstimateBytes,
-    capabilities: { render: true, selectors: true },
+    capabilities: { render: true, selectors: selectors === true },
   });
 }
 

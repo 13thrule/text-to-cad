@@ -59,6 +59,7 @@ test("revisions reuse meshes and exact selector payloads without fetching unchan
   assert.equal(fetches, firstFetches);
 
   const tessellation = { chordTolerance: 0.002, angleTolerance: 1.4 };
+  const coarseMesh = await loadRenderSurf(first, { identity, tessellation });
   const payload = await loadRenderSurfPayloadAtLevel(first, { identity, tessellation });
   assert.equal(await loadRenderSurfPayloadAtLevel(second, { identity, tessellation }), payload);
   assert.notEqual(payload.bundle, selectors, "selectors must follow the concrete mesh parameters");
@@ -68,6 +69,8 @@ test("revisions reuse meshes and exact selector payloads without fetching unchan
   assert.ok(payload.meshData, "release drops cache ownership, not an active scene's payload");
   const replacement = await loadRenderSurfPayloadAtLevel(first, { identity, tessellation });
   assert.notEqual(replacement, payload);
+  assert.notEqual(await loadRenderSurf(first, { identity, tessellation }), coarseMesh,
+    "release also removes the initial display cache's obsolete arrays");
   assert.equal(await loadRenderSurf(second, { identity }), mesh, "another concrete level remains owned");
 });
 

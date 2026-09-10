@@ -514,7 +514,7 @@ function buildPartGeometryEntry(THREE, meshData, part, recomputeNormals = false)
       rawColors = part?.hasSourceColors &&
         isNumericArray(sourceMesh.colors, 3) &&
         sourceMesh.colors.length === localVertices.length
-        ? new Float32Array(sourceMesh.colors)
+        ? sourceMesh.colors
         : null;
       localNormals = isNumericArray(sourceMesh.normals, 3) ? sourceMesh.normals : null;
       localIndices = sourceMesh.indices || new Uint32Array(0);

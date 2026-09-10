@@ -81,10 +81,6 @@ function float32Changed(values, offset, source, count) {
   return false;
 }
 
-function storeFloat32(values, offset, source, count) {
-  for (let index = 0; index < count; index += 1) values[offset + index] = source[index];
-}
-
 // Collapse compatible occurrence meshes into one draw. Records retain their
 // private Mesh as a transform/picking metadata proxy. Its material is hidden,
 // so it issues no draw, while remaining in the scene graph for world-matrix
@@ -118,8 +114,10 @@ export function buildCadSurfaceInstanceSets(THREE, records, modelGroup) {
         object,
         records: group,
         disposed: false,
-        matrixValues: new Float32Array(group.length * 16),
-        colorValues: new Float32Array(group.length * 3),
+        // The upload attributes already retain the last Float32 values. Use
+        // those arrays for dirty checks instead of keeping duplicate mirrors.
+        matrixValues: object.instanceMatrix.array,
+        colorValues: null,
         materialKey: materialSyncKey(group[0].material),
         groupPassKey: recordPassKey(group[0]),
         activeSlots: new Uint8Array(group.length).fill(1),
@@ -132,8 +130,7 @@ export function buildCadSurfaceInstanceSets(THREE, records, modelGroup) {
         object.setMatrixAt(slot, record.mesh.matrix);
         const color = record.material.color || record.baseColor || new THREE.Color(0xffffff);
         object.setColorAt(slot, color);
-        storeFloat32(set.matrixValues, slot * 16, record.mesh.matrix.elements, 16);
-        storeFloat32(set.colorValues, slot * 3, [color.r, color.g, color.b], 3);
+        set.colorValues = object.instanceColor.array;
       });
       object.instanceMatrix.needsUpdate = true;
       if (object.instanceColor) object.instanceColor.needsUpdate = true;
@@ -176,7 +173,6 @@ function setSlotActive(set, record, active) {
   else delete record.mesh.userData.cadSurfaceInstanceProxy;
   const matrix = active ? record.mesh.matrix : set.zeroMatrix;
   set.object.setMatrixAt(slot, matrix);
-  storeFloat32(set.matrixValues, slot * 16, matrix.elements, 16);
   set.object.instanceMatrix.needsUpdate = true;
 }
 
@@ -235,7 +231,6 @@ export function syncCadSurfaceInstanceRecord(record) {
   const matrixOffset = slot * 16;
   if (float32Changed(set.matrixValues, matrixOffset, record.mesh.matrix.elements, 16)) {
     set.object.setMatrixAt(slot, record.mesh.matrix);
-    storeFloat32(set.matrixValues, matrixOffset, record.mesh.matrix.elements, 16);
     set.object.instanceMatrix.needsUpdate = true;
   }
   const color = record.material.color || record.baseColor;
@@ -243,7 +238,6 @@ export function syncCadSurfaceInstanceRecord(record) {
   const colorOffset = slot * 3;
   if (float32Changed(set.colorValues, colorOffset, colorValues, 3)) {
     set.object.setColorAt(slot, color);
-    storeFloat32(set.colorValues, colorOffset, colorValues, 3);
     if (set.object.instanceColor) set.object.instanceColor.needsUpdate = true;
   }
 }

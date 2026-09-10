@@ -10,6 +10,8 @@ import { fileURLToPath } from "node:url";
 
 import {
   loadRenderSurfPayloadAtLevel,
+  loadRenderSurfSelectorBundle,
+  renderAssetCacheStats,
   surfTessellationCacheKey,
 } from "./renderAssetClient.js";
 import {
@@ -81,6 +83,24 @@ test("levels tessellate once each, differ in density, and stay consistent", asyn
   assert.equal(fetches, before, "cached levels must not refetch");
   assert.equal(l0Again, l0);
   assert.equal(l2Again, l2);
+});
+
+test("render-only refinement leaves selectors lazy and its cached arrays are not an extra CPU allocation", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(surfArrayBuffer(), { status: 200 });
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const url = "https://cad.test/lazy-lod/components/sun_gear.surf";
+  const tessellation = lodTessellationForLevel(2);
+  const payload = await loadRenderSurfPayloadAtLevel(url, { tessellation, selectors: false });
+  assert.equal(payload.bundle, undefined);
+  const buffers = Object.values(payload.meshData).filter(ArrayBuffer.isView).map((array) => array.buffer);
+  const total = (stats) => Object.entries(stats).reduce((sum, [name, value]) => name === "surfLeash" ? sum : sum + value.typedBytes, 0);
+  assert.equal(total(renderAssetCacheStats()) - total(renderAssetCacheStats({ excludeBuffers: buffers })),
+    [...new Set(buffers)].reduce((sum, buffer) => sum + buffer.byteLength, 0));
+  const selector = await loadRenderSurfSelectorBundle(url, { tessellation });
+  const combined = await loadRenderSurfPayloadAtLevel(url, { tessellation });
+  assert.deepEqual(selector.manifest, combined.bundle.manifest, "later demand uses exactly the displayed level's triangle runs");
+  assert.deepEqual(payload.meshData.indices, combined.meshData.indices);
 });
 
 test("explicit coarse tessellation is cheaper on curved and trimmed representative surfaces", async (t) => {

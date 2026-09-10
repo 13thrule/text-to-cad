@@ -17,6 +17,7 @@ import {
 let pool = null;
 let poolGeneration = 0;
 let nextWorkerIndex = 0;
+let poolGrowthLimit = 0;
 let nextRequestId = 1;
 const pendingRequests = new Map();
 const idleReleaseWaiters = new Map();
@@ -184,6 +185,18 @@ function dispatchQueuedRequests() {
           handleWorkerError(slot, error);
         }
       }
+      // Sequential refinement needs one isolate. Grow only for ready work
+      // that existing slots cannot start, never merely for a cache waiter.
+      if (pool === currentPool && poolGeneration === generation && nextReadyRequest(generation) && currentPool.length < poolGrowthLimit) {
+        try {
+          currentPool.push(createWorkerSlot(currentPool.length, generation));
+          dispatchRequested = true;
+        } catch {
+          // Existing workers still own their requests and can drain the queue.
+          // Stop growth for this generation if another isolate cannot start.
+          poolGrowthLimit = currentPool.length;
+        }
+      }
     } while (dispatchRequested);
   } finally {
     dispatching = false;
@@ -291,9 +304,8 @@ function ensurePool() {
   try {
     poolGeneration += 1;
     const generation = poolGeneration;
-    for (let index = 0; index < poolSize(); index += 1) {
-      slots.push(createWorkerSlot(index, generation));
-    }
+    poolGrowthLimit = poolSize();
+    slots.push(createWorkerSlot(0, generation));
     pool = slots;
   } catch {
     for (const slot of slots) slot.worker.terminate?.();
@@ -335,6 +347,9 @@ export function reclaimIdleSurfWorkers() {
   }
 
   const before = currentPool.filter(Boolean).length;
+  // A pressure reclamation constrains this generation; a later cache-ready
+  // request must inherit a surviving slot rather than recreate one just shed.
+  poolGrowthLimit = currentPool.length;
   if (pendingRequests.size === 0) {
     const fullyReleased = releaseIdlePool(generation);
     return {

@@ -336,7 +336,7 @@ test("buildModel keeps source-mesh color buffers immutable across material refre
   const record = scene.displayRecords[0];
   const colorAttribute = record.geometry.getAttribute("color");
 
-  assert.notEqual(record.rawColors, sourceColors);
+  assert.equal(record.rawColors, sourceColors, "the immutable color baseline shares the component allocation");
   assert.notEqual(colorAttribute.array, sourceColors);
   assert.deepEqual(Array.from(sourceColors), originalColors);
 

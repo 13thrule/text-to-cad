@@ -2,7 +2,7 @@
 //
 // One request = one component URL and an explicit capability set. Ordinary
 // display asks only for render data; picking/measurement asks for selectors;
-// LOD refinement asks for both so its triangle ranges stay aligned. A current
+// Refinement of active topology asks for both so triangle ranges stay aligned. A current
 // cache entry can satisfy render-only requests without fetching or parsing the
 // .surf at all. Tessellation is the cost this migration moved from the build
 // to the client; running misses here keeps the page's main thread responsive.

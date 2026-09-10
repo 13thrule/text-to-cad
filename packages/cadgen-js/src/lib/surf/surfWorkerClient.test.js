@@ -349,6 +349,36 @@ test("releaseSurfWorkerPool terminates idle workers and the next request builds 
   }
 });
 
+test("sequential refinement creates one isolate and concurrent ready work grows the pool", async () => {
+  const created = [];
+  class FakeWorker {
+    constructor() { this.listeners = {}; this.messages = []; created.push(this); }
+    addEventListener(type, handler) { this.listeners[type] = handler; }
+    postMessage(message) { this.messages.push(message); }
+    terminate() {}
+  }
+  const savedWorker = globalThis.Worker;
+  globalThis.Worker = FakeWorker;
+  const finish = (worker) => {
+    const message = worker.messages.at(-1);
+    worker.listeners.message({ data: { id: message.id, ok: true, meshData: { parts: [] } } });
+  };
+  try {
+    for (let index = 0; index < 8; index += 1) {
+      const request = loadSurfComponentInWorker(`http://x/sequential-${index}.surf`);
+      assert.equal(created.length, 1);
+      finish(created[0]); await request;
+    }
+    const first = loadSurfComponentInWorker("http://x/concurrent-first.surf");
+    const second = loadSurfComponentInWorker("http://x/concurrent-second.surf");
+    assert.equal(created.length, 2);
+    finish(created[0]); finish(created[1]);
+    await Promise.all([first, second]);
+  } finally {
+    releaseSurfWorkerPool(); globalThis.Worker = savedWorker;
+  }
+});
+
 test("reclaimIdleSurfWorkers returns idle capacity without disturbing active or queued requests", async (t) => {
   const created = [];
   const terminated = [];
@@ -686,6 +716,7 @@ test("a worker runtime error replaces one slot without rejecting unrelated work"
     const kept = loadSurfComponentInWorker("http://x/components/keep.surf");
     const failedWorker = created.find((worker) => worker.messages[0]?.url.endsWith("fail.surf"));
     const keptWorker = created.find((worker) => worker.messages[0]?.url.endsWith("keep.surf"));
+    const initialWorkerCount = created.length;
     failedWorker.listeners.error({ message: "worker crashed" });
     await assert.rejects(failed, /worker crashed/);
     assert.ok(terminated.includes(failedWorker));
@@ -695,7 +726,7 @@ test("a worker runtime error replaces one slot without rejecting unrelated work"
       data: { id: keptMessage.id, ok: true, meshData: { parts: ["kept"] } },
     });
     assert.deepEqual((await kept).meshData.parts, ["kept"]);
-    assert.ok(created.length > 3, "the failed slot was replaced");
+    assert.equal(created.length, initialWorkerCount + 1, "only the failed slot was replaced");
   } finally {
     releaseSurfWorkerPool();
     globalThis.Worker = savedWorker;
@@ -727,12 +758,10 @@ test("a failed replacement constructor preserves surviving workers and their que
     const cancelled = loadSurfComponentInWorker("http://x/components/cancel-constructor.surf", {
       signal: controller.signal,
     });
+    const survivors = [loadSurfComponentInWorker("http://x/components/survivor-1.surf")];
     const initialWorkers = [...created];
     const poolCount = initialWorkers.length;
-    const survivors = [];
-    for (let index = 1; index < poolCount; index += 1) {
-      survivors.push(loadSurfComponentInWorker(`http://x/components/survivor-${index}.surf`));
-    }
+    reclaimIdleSurfWorkers(); // constrain this generation to the two live slots
     const queued = loadSurfComponentInWorker("http://x/components/after-constructor-failure.surf");
     failNextConstructor = true;
     controller.abort();

@@ -29,6 +29,8 @@ test("compatible surfaces share one draw and keep per-instance identity and tran
   set.object.addEventListener("dispose", () => { objectDisposes += 1; });
   assert.equal(group.children.length, 3, "two hidden pick proxies plus one rendered instance draw");
   assert.equal(set.object.isInstancedMesh, true);
+  assert.equal(set.matrixValues, set.object.instanceMatrix.array, "dirty checks reuse the upload array");
+  assert.equal(set.colorValues, set.object.instanceColor.array, "color dirty checks need no CPU mirror");
   assert.deepEqual(set.object.userData.partIds, ["a", "b"]);
   assert.equal(set.object.userData.faceIdsByInstance[1][0], 7);
   const matrix = new THREE.Matrix4();

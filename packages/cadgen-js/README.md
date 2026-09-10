@@ -35,6 +35,9 @@ snapshot renderer and the node builders in `bin/`).
 - **Resource ownership**: component geometry and edge textures can have more
   than one scene owner; only the last release disposes shared GPU/BVH state.
   Render-only loads do not construct selector topology until requested.
+  Viewport refinement keeps this demand boundary: unused components replace
+  only display arrays; a component with active topology replaces its selectors
+  at the same concrete tessellation before publishing new triangles.
   Repeated compatible opaque surfaces share instanced draws and retain
   occurrence identity; mirrors, transparency and deformation use explicit
   fallback paths. Disposable resource admission never changes exact geometry
@@ -49,6 +52,9 @@ snapshot renderer and the node builders in `bin/`).
   request estimate, including handled failures. Reclamation or replacement
   removes that slot's charge. Memory estimates stay on the client; they do not
   enter worker messages or cache keys, and RAM hits add no worker charge.
+  A pool starts with one isolate and grows only for ready concurrent requests.
+  Sequential viewport refinement reuses that isolate until the drain becomes
+  idle; it does not create a maximum-size pool for each component.
 - **Revision reuse**: canonical store descriptors carry a full immutable SURF
   object digest. Interactive caches may share that object across tree URLs
   only with the same origin, component ID, effective tessellation and payload
@@ -70,7 +76,11 @@ snapshot renderer and the node builders in `bin/`).
   [tube deformation](docs/tube-deformation.md), deforming the original STEP
   tessellation through analytic centerlines in that same shared effects pass.
 - **Byte determinism**: the tessellator and mesh serializers here produce
-  the shipped export bytes — same geometry in, same bytes out.
+  the shipped export bytes — same geometry in, same bytes out. Deterministic
+  algorithm changes advance `TESSELLATION_VERSION` and its Python mirror so
+  old cached meshes cannot masquerade as current output. Meshing preserves
+  shared trim references and treats Float32 transport precision explicitly,
+  including periodic seams and primitive poles/apices.
 - **Loud failure**: unresolved refs, unknown labels, and unknown presets
   throw with the known set listed; nothing renders a plausible wrong frame.
 
