@@ -1,0 +1,481 @@
+{
+  "args": {
+    "url": "http://127.0.0.1:3259",
+    "file": "planetary2.step",
+    "label": "nine-part-cold-then-cached-947f1dade",
+    "runs": 2,
+    "timeoutMs": 60000,
+    "out": "scripts/bench/cadgen-performance/results/viewer-cold-warm-20260910.json",
+    "lod": true,
+    "sampleMs": 500
+  },
+  "results": [
+    {
+      "run": 1,
+      "label": "nine-part-cold-then-cached-947f1dade",
+      "file": "planetary2.step",
+      "url": "http://127.0.0.1:3259/?file=planetary2.step",
+      "lod": true,
+      "crashed": false,
+      "crashMessage": "",
+      "loaded": true,
+      "timeToFirstPaintMs": 20,
+      "timeToLoadedMs": 659,
+      "heap": {
+        "samples": 23,
+        "peakUsed": 18042767,
+        "peakTotal": 25029658,
+        "lastUsed": 16852702,
+        "lastTotal": 24410266
+      },
+      "gpu": {
+        "liveBytes": 265500,
+        "peakBytes": 265500,
+        "uploadCount": 56,
+        "liveBufferCount": 48,
+        "peakBufferCount": 48,
+        "textureUploads": 28,
+        "contexts": 1
+      },
+      "peakRss": {
+        "all": {
+          "rssBytes": 615727104,
+          "largestPidBytes": 292782080,
+          "processCount": 5
+        },
+        "browser": {
+          "rssBytes": 96305152,
+          "largestPidBytes": 96305152,
+          "processCount": 1
+        },
+        "gpu-process": {
+          "rssBytes": 103481344,
+          "largestPidBytes": 103481344,
+          "processCount": 1
+        },
+        "utility": {
+          "rssBytes": 50331648,
+          "largestPidBytes": 50331648,
+          "processCount": 1
+        },
+        "renderer": {
+          "rssBytes": 365887488,
+          "largestPidBytes": 292782080,
+          "processCount": 2
+        }
+      },
+      "lastStageText": "LOADING",
+      "lodEventCount": 0,
+      "timeToFirstPublishMs": 659,
+      "firstGeometryPublishMs": 327,
+      "firstGeometryFrameMs": 367,
+      "renderMemoryProbe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 262152,
+        "edgeBytes": 84636,
+        "bvhBytes": 63200,
+        "bvhGeometries": 9,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 346788,
+        "gpuEstimatedBytes": 346788,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 329256,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 18,
+            "limit": 24,
+            "bytes": 329256,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 346788,
+            "selectors": 0,
+            "bvh": 63200,
+            "gpuEstimated": 346788,
+            "deformation": 0,
+            "assetCaches": 329256,
+            "workerResidentEstimated": 0,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 1086032,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 1086032,
+          "availableBytes": 1341091248,
+          "reservationCount": 0,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 5659.60000038147
+      },
+      "meshCost": {
+        "composed": {
+          "triangleCount": 6452,
+          "typedArrayBytes": 329256
+        },
+        "componentTotalBytes": 329256,
+        "componentTotalTriangles": 6452,
+        "componentCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 361.7000002861023
+      },
+      "meshCostRamp": [
+        {
+          "atMs": 360,
+          "cost": {
+            "composed": {
+              "triangleCount": 5100,
+              "typedArrayBytes": 243360
+            },
+            "componentTotalBytes": 243360,
+            "componentTotalTriangles": 5100,
+            "componentCount": 8,
+            "totalComponents": 9,
+            "loadedComponents": 8,
+            "publishCount": 1,
+            "final": false,
+            "at": 304.5
+          }
+        },
+        {
+          "atMs": 415,
+          "cost": {
+            "composed": {
+              "triangleCount": 6452,
+              "typedArrayBytes": 329256
+            },
+            "componentTotalBytes": 329256,
+            "componentTotalTriangles": 6452,
+            "componentCount": 9,
+            "totalComponents": 9,
+            "loadedComponents": 9,
+            "publishCount": 2,
+            "final": true,
+            "at": 361.7000002861023
+          }
+        }
+      ],
+      "draw": {
+        "total": 122,
+        "lastFrame": 0,
+        "peakFrame": 29,
+        "frames": 660,
+        "lastFrameMs": 8.400000095367432,
+        "medianFrameMs": 8.300000190734863
+      },
+      "pageErrors": [
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "console: Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "inPageErrors": [],
+      "afterGc": {
+        "rss": {
+          "all": {
+            "rssBytes": 602701824,
+            "largestPidBytes": 282230784,
+            "processCount": 5
+          },
+          "browser": {
+            "rssBytes": 96305152,
+            "largestPidBytes": 96305152,
+            "processCount": 1
+          },
+          "gpu-process": {
+            "rssBytes": 100810752,
+            "largestPidBytes": 100810752,
+            "processCount": 1
+          },
+          "utility": {
+            "rssBytes": 50315264,
+            "largestPidBytes": 50315264,
+            "processCount": 1
+          },
+          "renderer": {
+            "rssBytes": 355270656,
+            "largestPidBytes": 282230784,
+            "processCount": 2
+          }
+        },
+        "heapUsed": 14751273
+      }
+    },
+    {
+      "run": 2,
+      "label": "nine-part-cold-then-cached-947f1dade",
+      "file": "planetary2.step",
+      "url": "http://127.0.0.1:3259/?file=planetary2.step",
+      "lod": true,
+      "crashed": false,
+      "crashMessage": "",
+      "loaded": true,
+      "timeToFirstPaintMs": 24,
+      "timeToLoadedMs": 656,
+      "heap": {
+        "samples": 23,
+        "peakUsed": 17874584,
+        "peakTotal": 24767471,
+        "lastUsed": 14214743,
+        "lastTotal": 24148079
+      },
+      "gpu": {
+        "liveBytes": 265500,
+        "peakBytes": 265500,
+        "uploadCount": 53,
+        "liveBufferCount": 48,
+        "peakBufferCount": 48,
+        "textureUploads": 28,
+        "contexts": 1
+      },
+      "peakRss": {
+        "all": {
+          "rssBytes": 497614848,
+          "largestPidBytes": 175816704,
+          "processCount": 5
+        },
+        "browser": {
+          "rssBytes": 93798400,
+          "largestPidBytes": 93798400,
+          "processCount": 1
+        },
+        "gpu-process": {
+          "rssBytes": 105775104,
+          "largestPidBytes": 105775104,
+          "processCount": 1
+        },
+        "utility": {
+          "rssBytes": 49479680,
+          "largestPidBytes": 49479680,
+          "processCount": 1
+        },
+        "renderer": {
+          "rssBytes": 248823808,
+          "largestPidBytes": 175816704,
+          "processCount": 2
+        }
+      },
+      "lastStageText": "LOADING",
+      "lodEventCount": 0,
+      "timeToFirstPublishMs": 656,
+      "firstGeometryPublishMs": 229,
+      "firstGeometryFrameMs": 263,
+      "renderMemoryProbe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 262152,
+        "edgeBytes": 84636,
+        "bvhBytes": 63200,
+        "bvhGeometries": 9,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 346788,
+        "gpuEstimatedBytes": 346788,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 329256,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 18,
+            "limit": 24,
+            "bytes": 329256,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 346788,
+            "selectors": 0,
+            "bvh": 63200,
+            "gpuEstimated": 346788,
+            "deformation": 0,
+            "assetCaches": 329256,
+            "workerResidentEstimated": 0,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 1086032,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 1086032,
+          "availableBytes": 1341091248,
+          "reservationCount": 0,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 5657.799999713898
+      },
+      "meshCost": {
+        "composed": {
+          "triangleCount": 6452,
+          "typedArrayBytes": 329256
+        },
+        "componentTotalBytes": 329256,
+        "componentTotalTriangles": 6452,
+        "componentCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 208.2999997138977
+      },
+      "meshCostRamp": [
+        {
+          "atMs": 262,
+          "cost": {
+            "composed": {
+              "triangleCount": 6452,
+              "typedArrayBytes": 329256
+            },
+            "componentTotalBytes": 329256,
+            "componentTotalTriangles": 6452,
+            "componentCount": 9,
+            "totalComponents": 9,
+            "loadedComponents": 9,
+            "publishCount": 2,
+            "final": true,
+            "at": 208.2999997138977
+          }
+        }
+      ],
+      "draw": {
+        "total": 117,
+        "lastFrame": 0,
+        "peakFrame": 29,
+        "frames": 663,
+        "lastFrameMs": 8.399999618530273,
+        "medianFrameMs": 8.300000190734863
+      },
+      "pageErrors": [],
+      "inPageErrors": [],
+      "afterGc": {
+        "rss": {
+          "all": {
+            "rssBytes": 487604224,
+            "largestPidBytes": 168214528,
+            "processCount": 5
+          },
+          "browser": {
+            "rssBytes": 93798400,
+            "largestPidBytes": 93798400,
+            "processCount": 1
+          },
+          "gpu-process": {
+            "rssBytes": 103137280,
+            "largestPidBytes": 103137280,
+            "processCount": 1
+          },
+          "utility": {
+            "rssBytes": 49463296,
+            "largestPidBytes": 49463296,
+            "processCount": 1
+          },
+          "renderer": {
+            "rssBytes": 241205248,
+            "largestPidBytes": 168214528,
+            "processCount": 2
+          }
+        },
+        "heapUsed": 14665228
+      }
+    }
+  ],
+  "generatedAt": "2026-09-10T05:50:03.995Z",
+  "provenance": {
+    "runtimeCommit": "947f1daded11eab5f0a432cad32b486b88cd5962",
+    "hardware": "Apple M1 Max, 10 logical CPUs, 64 GiB RAM",
+    "os": "macOS-26.5.1-arm64-arm-64bit",
+    "copiedDocumentSha256": {
+      "repeated24.step": "ab104f441544b852390825f5c7589a0815a3448024bf88b1af27fd754786e370",
+      "planetary2.step": "6147bba14136cc25255b5d5c2c2d6e12c0c691fe3a6665a488e81faee7d1abeb"
+    },
+    "modelOutputIndexesAbsentBeforeAndAfter": true,
+    "sourceFilesAbsent": true,
+    "meshIndexInitiallyAbsent": true,
+    "browserCache": "new Chromium profile each run",
+    "runCacheStates": [
+      "empty mesh index, canonical document/component indexes retained",
+      "mesh index populated by preceding run"
+    ],
+    "loadedObservationPollingMs": 500,
+    "firstGeometryMetric": "First requestAnimationFrame after a component publication with more than ten WebGL draw calls; navigation-relative proxy, not a GPU fence"
+  }
+}

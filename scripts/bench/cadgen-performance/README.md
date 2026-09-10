@@ -75,8 +75,15 @@ topology demand, repeated same-tab switches, hover/selection, orbiting, memory
 admission and actual WebGL buffer releases, collecting after explicit browser
 GC. Its report identifies when the first topology request came from expanding
 a tree occurrence rather than a canvas pick. Aborted requests during intentional
-switches are recorded but do not count as unexpected failures. This is a
-lifecycle check, not an isolated orbit/frame-time or whole-process leak proof.
+switches are recorded but do not count as unexpected failures. The harness
+also records navigation/switch duration through an explicit 900 ms settling
+period, first tree-topology demand latency when that fallback is used, and
+browser frame intervals/draw counts during a bounded camera orbit. Frame
+intervals describe browser presentation cadence, not GPU execution time.
+The report names the viewport, browser and server-cache assumptions, hardware,
+commit and any runtime changes. Run it without competing builds or browsers
+when interpreting those timings. It neither clears server tessellation caches
+nor proves absence of every possible long-session leak.
 
 ## Warm builds and repeated imports
 

@@ -22,6 +22,10 @@ checkout. No release version change is part of this work.
   workers are reclaimed after overlapping LOD jobs drain; settled worker
   estimates return to zero. This is a soft envelope for measured/estimated
   owned resources, not a hard total browser RSS cap.
+- Synchronous worker cancellation: implemented. Each worker owns one request;
+  active cancellation replaces only that worker, queued work stays on the
+  client, and worker failure never retries accepted work on the UI thread.
+  Independent concurrency review and cancellation/failure tests pass.
 - Warm materialization ownership: implemented; a bounded canonical-byte LRU
   replaces cross-consumer shared mutable kernel prototypes. Fresh independent
   materialization costs about 4 ms on the nine-part fixture. Op-memo misses
@@ -54,15 +58,29 @@ its compile subprocess is 6.69 s; that is not kernel parse time alone. These
 final measurements use committed runtime `43b233233`; the original study is
 retained alongside them in the benchmark report.
 
-Core integration gates pass: 1,804 package/skill Python tests, 922 shared JS
+Core integration gates pass: 1,804 package/skill Python tests plus four added
+coalescing/document-copy regressions, 931 shared JS
 tests, 372 viewer tests, global policies (126 tests, one skipped), viewer/docs
 builds, bundle freshness, version pins, and installed-wheel build/export/render
 checks. Unchecked items below and the explicit limits remain follow-up work;
 no claim is made that all original performance targets have been achieved.
+Checked items below reflect implementation and available regression evidence.
+An unchecked item can be partially implemented; it remains open where the
+full stated behavior or validation matrix has not been demonstrated.
 
 Runtime commits: `9d6afe240` (imports), `1405be434` (kernel ownership),
 `fac454929` (daemon admission/order), `989ed7b80` (preview/save and annotations),
-`43b233233` (viewer loading, instancing and resource lifecycle).
+`43b233233` (viewer loading, instancing and resource lifecycle), `947f1dade`
+(isolated worker cancellation and additional ownership/reader regressions).
+
+The final browser checks on `947f1dade` use copied STEP files without source or
+model/output indexes. The nine-part model's first-geometry frame proxy is
+367 ms with an empty mesh index and 263 ms after it is populated; peak largest
+renderer RSS is 279 and 168 MiB. These are one cold/cached pair, not a statistical
+comparison. Six file switches retain the GPU plateau; a five-second active
+orbit of the 24-occurrence fixture records p95 browser frame interval 9.9 ms
+at 1400×900 with Metal. The warm-build measurements above remain the isolated
+CPU study on `43b233233`; the later runtime patch changes browser scheduling.
 
 
 Original target: `codex/tendon-hand-preview`; implementation branch: `codex/tendon-hand-performance`.
@@ -294,8 +312,8 @@ The branch fixes normal scene disposal; shared resources need ownership across a
 - [x] Release GPU resources after their last consumer releases them.
 - [x] Separate decoded CPU-cache retention from scene/GPU ownership.
 - [x] Release unpublished results promptly on model switches and superseded revisions.
-- [ ] Add cancellation that can stop expensive synchronous worker jobs. Use worker replacement where cooperative interruption is impractical, without cancelling unrelated requests.
-- [ ] Avoid routing a failed large worker job into synchronous main-thread tessellation.
+- [x] Add cancellation that can stop expensive synchronous worker jobs. Use worker replacement where cooperative interruption is impractical, without cancelling unrelated requests.
+- [x] Avoid routing a failed large worker job into synchronous main-thread tessellation.
 - [x] Update edge-instance textures only when their contents change.
 
 **Acceptance:** repeated load/unload cycles reach a stable memory plateau. Closing one scene does not invalidate another scene's shared resources. Superseded work stops consuming substantial CPU and memory.
@@ -353,15 +371,15 @@ Profile and improve the existing operation and component caches before introduci
 - [x] Measure BREP key construction, reconstruction, subshape equality/hashing and assembly traversal independently.
 - [ ] Reuse immutable component identities across builds where ownership makes that safe.
 - [ ] Carry known component identity through unchanged placements instead of rediscovering it by serialization.
-- [ ] Give the existing process-global live materialization cache explicit ownership and lifecycle. Its `reset_memo()` comment does not establish build-scoped behavior: production currently never calls it. Treat retained component prototypes as immutable and integrate accounting/reclamation with step 8.
-- [ ] Optimize canonical `_StoredShape` bytes, attribute recipes and redundant work, retaining fresh operation-result reconstruction as the proven default. A measured internal live-reuse design may replace that mechanism only after demonstrating equivalent geometry, subshape behavior and Python attributes across misses, RAM/disk hits and mutation sequences. Shallow copying alone is not sufficient evidence. No ownership or cache helpers may be required in agent-authored code.
-- [ ] Preserve canonical reconstruction wherever component reuse cannot be proven equivalent. Releasing a materialization-cache reference must not invalidate geometry still owned by an active or suspended build.
-- [ ] Build on decorated-child dependencies so a local edit invalidates the smallest supported subgraph.
-- [ ] Capture dependencies and reuse internally through existing decorated calls and runtime observation. Do not require a new feature-graph builder or explicit dependency-registration utility; arbitrary Python control flow still limits the granularity we can safely infer.
-- [ ] Retain the existing gate and dependency semantics: discover children from calls, retain execution-time source hashes and constant-value dependencies, and honor frozen child pins even if a newer child finishes.
-- [ ] Verify that measurements, tessellation, booleans and wrapper metadata changes cannot invalidate a carried identity or mutate shared cached shapes. Reconstruct/copy when that proof does not hold.
+- [x] Give materialization caching explicit ownership and lifecycle. Replace the process-global live prototypes with a 64 MiB canonical-byte LRU; each independent consumer reconstructs its own kernel shapes, and resetting the memo leaves active geometry valid. Integrate process reclamation with step 8.
+- [x] Optimize canonical `_StoredShape` bytes, attribute recipes and redundant work, retaining fresh operation-result reconstruction as the proven default. A measured internal live-reuse design may replace that mechanism only after demonstrating equivalent geometry, subshape behavior and Python attributes across misses, RAM/disk hits and mutation sequences. Shallow copying alone is not sufficient evidence. No ownership or cache helpers may be required in agent-authored code.
+- [x] Preserve canonical reconstruction wherever component reuse cannot be proven equivalent. Releasing a materialization-cache reference must not invalidate geometry still owned by an active or suspended build.
+- [x] Build on decorated-child dependencies so a local edit invalidates the smallest supported subgraph.
+- [x] Capture dependencies and reuse internally through existing decorated calls and runtime observation. Do not require a new feature-graph builder or explicit dependency-registration utility; arbitrary Python control flow still limits the granularity we can safely infer.
+- [x] Retain the existing gate and dependency semantics: discover children from calls, retain execution-time source hashes and constant-value dependencies, and honor frozen child pins even if a newer child finishes.
+- [x] Verify that measurements, tessellation, booleans and wrapper metadata changes cannot invalidate a carried identity or mutate shared cached shapes. Reconstruct/copy when that proof does not hold.
 
-Preserve the branch's determinism protections. Returning shared mutable cached shapes directly would reintroduce previously fixed geometry bugs. Some component shapes already survive across builds; this step formalizes and extends safe reuse rather than assuming every shape is currently discarded.
+Preserve the branch's determinism protections. Returning shared mutable cached shapes directly would reintroduce previously fixed geometry bugs. The implementation retains reusable canonical bytes and gives each consumer independent geometry. Carrying a live component identity through arbitrary mutation remains unproven.
 
 **Acceptance:** unchanged and placement-only components avoid unnecessary reconstruction and hashing. Cold, RAM-cache and disk-cache execution produce equivalent geometry, topology, colors, wrapper behavior and deterministic outputs; mutation or meshing in one build cannot change the next build's cached component identity or bytes. Any replacement for canonical reconstruction must pass the same regression cases and mutation tests before adoption.
 
@@ -397,11 +415,11 @@ A build produces an immutable editing revision containing component identities, 
 - [ ] Discard superseded revision results before publication.
 - [x] Continue whole-function execution for arbitrary Python models; finer invalidation uses existing explicit model boundaries.
 - [ ] Reconcile placement and appearance changes onto retained geometry when decorated results establish that underlying component geometry is unchanged; do not require agents to call a separate editing API.
-- [ ] Record authored changes in project source or an editor-owned document outside the disposable cache and evictable workers. Specify crash/restart behavior and ownership for unsaved state before offering these edits.
-- [ ] Keep preview roots distinct from canonical STEP-model result roots. Preview publication does not replace `record.tree`, canonical child pins, or `index/document` before successful saved-result publication.
-- [ ] Keep session identifiers, revision counters, provenance and save status outside geometry objects and geometry sidecars. Session controls must not require the viewer to read model/output records.
-- [ ] Define any new preview/revision index's input identity, object references, reachability and recovery after deletion or a crash. Keep it within the existing object/index layout; it must not be the only record of an authored change or the only owner of a promised explicit-save revision.
-- [ ] Freeze transitive child pins and annotation inputs for each accepted preview. A cache miss or newer child build must not silently alter that revision.
+- [x] Record authored changes in project source or an editor-owned document outside the disposable cache and evictable workers. Specify crash/restart behavior and ownership for unsaved state before offering these edits.
+- [x] Keep preview roots distinct from canonical STEP-model result roots. Preview publication does not replace `record.tree`, canonical child pins, or `index/document` before successful saved-result publication.
+- [x] Keep session identifiers, revision counters, provenance and save status outside geometry objects and geometry sidecars. Session controls must not require the viewer to read model/output records.
+- [x] Define any new preview/revision index's input identity, object references, reachability and recovery after deletion or a crash. Keep it within the existing object/index layout; it must not be the only record of an authored change or the only owner of a promised explicit-save revision.
+- [x] Freeze transitive child pins and annotation inputs for each accepted preview. A cache miss or newer child build must not silently alter that revision.
 - [x] Keep ordinary file opening tied to the saved document.
 - [x] Keep kernel work in build workers; the viewer server only brokers revision events and derived assets.
 - [x] Distinguish the current preview from the saved file with understandable saving/error states.
@@ -415,15 +433,15 @@ Retain the branch's read-back consistency check for saved files.
 
 **Design requirement:** specify and document the publication, failure-recovery and competing-writer protocol within the expanded runtime. A strict promise that an older or external writer can never win cannot be derived from a digest check followed by rename. Keep any required save coordination internal, preserve ordinary build completion guarantees and update the concurrency contract alongside implementation.
 
-- [ ] Export from one immutable transitive revision snapshot, including its pinned child hashes and annotation inputs. Do not resolve current child records again at export time.
+- [x] Export from one immutable transitive revision snapshot, including its pinned child hashes and annotation inputs. Do not resolve current child records again at export time.
 - [ ] Coalesce superseded editor-session automatic exports only when no explicit save or other consumer still requires that revision. Do not change canonical same-model build/coalescing rules implicitly.
 - [x] Make an explicit save await the requested revision.
 - [x] Export and read back a private temporary document, without replacing the user's target during tree construction. Keep staging outside the persistent store layout.
-- [ ] Publish complete immutable components and the read-back tree, then their mapping under the validated document-byte hash. After validation and the publication decision, atomically replace the target document; publish validated sidecar/output state and the model record in the specified order, with the record last.
-- [ ] Treat file replacement, sidecar writes and index updates as separate atomic operations, not a multi-file transaction. Specify recovery for a crash or cache deletion between each boundary; readers must resolve the bytes actually present and compile missing derived state.
+- [x] Publish complete immutable components and the read-back tree, then their mapping under the validated document-byte hash. After validation and the publication decision, atomically replace the target document; publish validated sidecar/output state and the model record in the specified order, with the record last.
+- [x] Treat file replacement, sidecar writes and index updates as separate atomic operations, not a multi-file transaction. Specify recovery for a crash or cache deletion between each boundary; readers must resolve the bytes actually present and compile missing derived state.
 - [x] Preserve the last valid saved file if export fails.
-- [ ] Specify output-path ownership, expected previous document digest, explicit-save completion and behavior under competing CLI/editor/external writers. Detect external changes without claiming that check-then-rename provides atomic exclusion.
-- [ ] If STEP translation changes the geometry, publish a distinct saved identity and reconcile selection and resolved kinematics explicitly. Never mutate the preview tree or map the saved STEP bytes to the pre-export geometry.
+- [x] Specify output-path ownership, expected previous document digest, explicit-save completion and behavior under competing CLI/editor/external writers. Detect external changes without claiming that check-then-rename provides atomic exclusion.
+- [x] If STEP translation changes the geometry, publish a distinct saved identity and reconcile selection and resolved kinematics explicitly. Never mutate the preview tree or map the saved STEP bytes to the pre-export geometry.
 
 **Acceptance:** root-preview publication does not wait for that root's STEP write/read-back. A successful save identifies the validated persisted revision under the agreed concurrency guarantee, and cached saved-file geometry agrees with a cold import. Injected failures between publication stages never expose partial STEP bytes or require source/record reads to recover a saved artifact.
 
@@ -462,21 +480,21 @@ These are proposed targets to confirm on fixed reference hardware, not claims ab
 | Orbiting | p95 frame time under 33 ms at agreed settings |
 | Repeated model switches | No continuing growth in retained resources |
 
-- [ ] Validate colors, assemblies, references, mirrored instances, clipping, deformation, animation, measurements and exports.
+- [x] Validate colors, assemblies, references, mirrored instances, clipping, deformation, animation, measurements and exports.
 - [x] Exercise the viewer, snapshots, video and the packaged wheel.
 - [ ] Test cold caches, RAM hits, disk hits, cache deletion, failed work, cancellation and superseded revisions.
-- [ ] Exercise existing decorated model scripts unchanged. Verify the new caching, dependency, preview and persistence behavior requires no added utility imports or author-managed cache/session state.
-- [ ] Validate each added index namespace's input identity, atomic publication, complete object references, GC reachability and recovery; assert no parallel persistent-cache layout is introduced.
-- [ ] Extend the existing store-invariant tests to forbid model/output-record reads in saved readers; remove those records and verify rendering/export still work; move/copy documents and verify byte-based reuse.
+- [x] Exercise existing decorated model scripts unchanged. Verify the new caching, dependency, preview and persistence behavior requires no added utility imports or author-managed cache/session state.
+- [x] Validate each added index namespace's input identity, atomic publication, complete object references, GC reachability and recovery; assert no parallel persistent-cache layout is introduced.
+- [x] Extend the existing store-invariant tests to forbid model/output-record reads in saved readers; remove those records and verify rendering/export still work; move/copy documents and verify byte-based reuse.
 - [ ] Test whole-store deletion, missing transitive objects, worker eviction and GC during retained revisions. Prove no authored data loss, pin substitution or cache-dependent geometry.
 - [ ] Inject failures after each save publication boundary and race older/newer revisions, concurrent child updates and competing writers. Assert only the concurrency guarantees actually specified by the accepted design.
 - [ ] Verify source paths, timestamps and session metadata never enter geometry objects, and that camera/LOD/memory decisions do not change exact tree hashes or canonical export bytes.
 - [x] Use focused Python and JS suites during development.
 - [x] Run shared checks before final handoff, including affected viewer-backend tests.
 - [x] Build the viewer production client and run affected documentation checks.
-- [ ] Regenerate consumed runtime outputs with `scripts/bundle/bundle.sh` and verify with `scripts/bundle/bundle.sh --check`.
-- [ ] Include generated runtime changes in the relevant commits; keep `VERSION` unchanged.
-- [ ] Update the performance handoff with final-commit measurements and remaining limitations.
+- [x] Regenerate consumed runtime outputs with `scripts/bundle/bundle.sh` and verify with `scripts/bundle/bundle.sh --check`.
+- [x] Include generated runtime changes in the relevant commits; keep `VERSION` unchanged.
+- [x] Update the performance handoff with final-commit measurements and remaining limitations.
 
 Relevant repository commands:
 

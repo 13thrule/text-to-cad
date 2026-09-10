@@ -47,6 +47,43 @@ first visible geometry at about 537 ms and peak largest-renderer RSS at about
 cleanup corrections and is retained as context, not a final release benchmark.
 The very large hand was not rerun.
 
+### Final browser confirmation
+
+[Cold/cached loads](results/viewer-cold-warm-20260910.json) and the
+[final lifecycle/orbit run](results/viewer-lifecycle-final-20260910.json) use
+runtime `947f1daded11eab5f0a432cad32b486b88cd5962`. No concurrent task builds,
+tests or other task browsers ran during these measurements. Both STEP files
+were copied to a source-free directory. The private store retained canonical
+document/component indexes but omitted model, output and mesh indexes; model
+and output indexes remained absent after all browser runs. Byte digests match
+the originals. Thus these checks also exercise saved-document independence.
+
+| Nine-part assembly | Empty mesh index | Populated mesh index |
+| --- | ---: | ---: |
+| First geometry frame proxy | 367 ms | 263 ms |
+| Largest renderer peak RSS | 279 MiB | 168 MiB |
+
+Each run starts a fresh browser profile. These are one cold/cached pair, not
+statistical distributions. The first-geometry probe observes a published
+component followed by WebGL draw calls in a browser frame, not a GPU completion
+fence. The harness's full-load observation polls at 500 ms, so its roughly
+659/656 ms readings are too coarse to compare full-load latency. Both runs
+display all nine parts and have no page exceptions or crashes. The cold run
+logs nine resource-404 messages while populating the initially empty mesh
+cache; the cached run logs none.
+
+The final lifecycle run passes all eight assertions. Repeated returns still
+settle at 21,668 GPU buffer bytes / 17 buffers; deletion counts increase
+78 → 147 → 216, and worker-resident estimates return to zero. First explicit
+topology demand uses tree expansion and observes selector readiness in 142 ms,
+including automation overhead. Six same-tab switches observe final publication
+in 234–286 ms before the separate 900 ms settling period. During a 5.05-second
+active orbit of the repeated assembly, 603 measured browser frame intervals
+have p50 8.3 ms, p95 9.9 ms and maximum 10.3 ms; per-frame draw count is 10.
+The viewport is 1400×900 with Metal and default LOD settings. These intervals
+measure browser presentation cadence, not isolated GPU execution, and do not
+establish large-hand frame rate or improvement over a pre-instancing baseline.
+
 ## Tests and packaging
 
 - Cadgen package Python suite: 1,373 tests pass, including the viewer backend.
@@ -55,7 +92,8 @@ The very large hand was not rerun.
 - Other Python skill suites: 144 tests pass across Bambu, Viewer, DfAM, DXF,
   G-code, SendCutSend and step.parts.
 - Global repository policy suite: 126 tests, one skipped, no failures.
-- cadgen-js: 922 tests pass. Viewer client: 372 tests pass.
+- cadgen-js: 931 tests pass after the final worker-cancellation patch. Viewer
+  client: 372 tests pass on that patch.
 - Production viewer and docs checks pass. The docs check required local
   dependency files because Turbopack rejects an external node_modules symlink.
 - Canonical version/skill pins remain 0.5.1; no release bump.
@@ -67,6 +105,28 @@ The very large hand was not rerun.
   schema-7 binding to actual STEP SHA-256, inspects it, re-emits STEP, exports
   GLB, renders a posed PNG, and encodes three animation frames as MP4.
 
-The final bundle freshness check passes. Runtime changes are committed through
-`43b233233`; the plan records the subsystem commits. These checks do not establish the unmet 250 ms preview target,
+Final concurrency review added three supervisor-level coalescing regressions:
+followers cannot hide an owner's preview, finish before its full completion,
+or become the producer after success/failure. Those and adjacent daemon/feed
+tests pass (73 total). A fourth added regression copies and renames a STEP,
+forbids model/output reads, text parsing and compile submission, then reuses
+the document tree and reconstructs its canonical geometry. Its four-test
+module, including the saved-reader snapshot, passes.
+
+Worker cancellation has 32 focused passing tests plus independent fault probes
+for queued/cache-waiting aborts, late replies, all-slot failure, surviving-slot
+dispatch and idle release. Each worker owns one synchronous request; active
+cancellation replaces that isolate, with other callers preserved. Failed
+accepted worker jobs propagate an error without moving tessellation onto the
+main thread. This final patch was independently reviewed before bundling.
+
+The final bundle freshness check and docs build pass again after cancellation.
+The [final wheel check](results/packaging-final-20260910.json) starts with clean
+setuptools staging, avoiding obsolete hashed assets from earlier local builds.
+All 28 packaged runtime files match the current generated paths and bytes
+exactly. Reinstalling that wheel and repeating the six installed-package
+build/reuse/inspection/export checks passes. Task-owned viewers and the preview
+daemon are stopped.
+Runtime changes are committed through `947f1dade`; the plan records the subsystem
+commits. These checks do not establish the unmet 250 ms preview target,
 large-hand targets, hard process-memory limits, or native-mesher quality parity.
