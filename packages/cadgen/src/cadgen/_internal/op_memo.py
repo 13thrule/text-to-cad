@@ -90,7 +90,7 @@ from functools import lru_cache
 from cadgen._internal.atomic_replace import replace_atomic
 
 # Salt: bump _OP_MEMO_VERSION whenever keying or hit semantics change.
-_OP_MEMO_VERSION = 5
+_OP_MEMO_VERSION = 6
 
 _lock = threading.RLock()
 _cache: OrderedDict[tuple, object] = OrderedDict()
@@ -583,9 +583,11 @@ def _class_path(cls) -> str:
 
 
 def _is_shape(value) -> bool:
-    # A build123d Shape: has a TopoDS under `wrapped`. Vector/Axis/Location also
-    # carry a `wrapped` (gp_*), and must not count — they have no `_wrapped`.
-    return hasattr(value, "_wrapped") and getattr(value, "_wrapped", None) is not None
+    # Geometry values can also own `_wrapped` (Vector now stores a gp_Vec
+    # there). Only topology Shapes participate in protection and recipes.
+    from build123d.topology import Shape
+
+    return isinstance(value, Shape) and value._wrapped is not None
 
 
 def _shape_args(key_args: tuple, kwargs: dict) -> list:
@@ -972,8 +974,8 @@ _CLASSMETHOD_TARGETS = (
 # pointer identity build123d compares by no longer survives an op (module
 # docstring). These replace ``Shape.is_same``/``__eq__``/``__hash__`` with
 # geometric identity: the pointer check first, the signature on a mismatch.
-# Vertex keeps determinism.py's coordinate hash -- equal signatures imply equal
-# coordinates, so it stays consistent with this ``__eq__``.
+# Vertex keeps determinism.py's hash, which calls the same live signature hash
+# below so native edits and nearly coincident vertices agree with ``__eq__``.
 
 _SIGNATURE_DECIMALS = 6
 

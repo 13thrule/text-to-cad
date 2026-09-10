@@ -149,6 +149,12 @@ def _warm_imports() -> None:
     the packagers) is another few hundred milliseconds a fresh worker paid on its first
     job. Spares fill in the background, so the cost lands where nobody is waiting.
     """
+    # The distribution's namespace and CLI parsers deliberately import no CAD
+    # kernel. Importing them alone leaves a supposedly warm spare paying the
+    # build123d/OCP import cost on its first real document job. Only a worker
+    # preloads the kernel; the daemon and viewer server remain lightweight.
+    with contextlib.suppress(Exception):
+        importlib.import_module("build123d")
     with contextlib.suppress(Exception):
         importlib.import_module("cadgen.generation")
     for tool in _TOOL_IMPORTS:

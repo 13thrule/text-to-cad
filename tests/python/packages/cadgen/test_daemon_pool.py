@@ -142,6 +142,38 @@ class Binding(_PoolFixture):
 
 
 class Spares(_PoolFixture):
+    def test_borrowed_worker_returns_when_no_replacement_fits(self):
+        with self._spares(1):
+            self.pool.ensure_spares()
+            _settle(self.pool)
+            # Memory admission can prevent the normal background replacement.
+            # Keep routing/release real while holding that refill opportunity.
+            with mock.patch.object(self.pool, "ensure_spares"):
+                worker = self.pool.acquire("")
+                imports = self.pool.snapshot()["imports"]
+                self.pool.release(worker)
+                returned = self.pool.snapshot()
+                self.assertEqual(returned["spares"], 1, returned)
+                self.assertFalse(worker.extra)
+                self.assertFalse(worker.killed)
+                again = self.pool.acquire("")
+                self.assertIs(again, worker)
+                self.assertEqual(self.pool.snapshot()["imports"], imports)
+                self.pool.release(again)
+
+    def test_borrowed_worker_retires_when_replacement_is_already_ready(self):
+        with self._spares(1):
+            self.pool.ensure_spares()
+            _settle(self.pool)
+            worker = self.pool.acquire("")
+            _settle(self.pool)
+            replacement = next(w for w in self.pool._workers if not w.busy)
+            self.assertIsNot(replacement, worker)
+            self.pool.release(worker)
+            self.assertNotIn(worker, self.pool._workers)
+            self.assertIn(replacement, self.pool._workers)
+            self.assertEqual(self.pool.snapshot()["spares"], 1)
+
     def test_ensure_spares_fills_to_k_in_the_background(self):
         with self._spares(2):
             self.pool.ensure_spares()

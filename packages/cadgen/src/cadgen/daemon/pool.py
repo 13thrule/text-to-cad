@@ -524,7 +524,12 @@ class Pool:
                 self._stats["recycles"] += 1
                 self._drop_locked(worker)
             elif worker.extra:
-                if len(self._spares_locked()) + self._spares_pending >= spare_count():
+                # A subject-less compile still has model == "" after clearing
+                # busy above. Count the OTHER spares: otherwise the returning
+                # worker counts itself and is retired even when it is the only
+                # warm worker that fits the memory budget.
+                other_spares = sum(spare is not worker for spare in self._spares_locked())
+                if other_spares + self._spares_pending >= spare_count():
                     # The spare set is already full (a replacement was started when this
                     # one was taken); keeping it too would grow the set by one per extra.
                     self._drop_locked(worker)

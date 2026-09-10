@@ -35,6 +35,7 @@ import ast
 import functools
 import hashlib
 import sys
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Mapping
@@ -221,34 +222,92 @@ def _resolve_module(name: str, roots: Iterable[Path]) -> Path | None:
     return None
 
 
-def _taken_names(tree: ast.Module, alias: str) -> set[str] | None:
-    """Static attribute reads, or None when the module escapes that boundary.
+@dataclass(frozen=True, slots=True)
+class _ImportSyntax:
+    # (from-import flag, module, relative level, (name, alias) pairs).
+    imports: tuple[tuple[bool, str, int, tuple[tuple[str, str], ...]], ...]
+    taken: tuple[tuple[str, tuple[str, ...] | None], ...]
 
-    ``getattr(alias, ...)``, passing the module elsewhere or copying its alias
-    can consume helpers without a visible ``alias.helper`` expression. Every
-    alias load must therefore be the direct base of a read-only Attribute.
-    This deliberately scans all scopes conservatively rather than guessing
-    whether another function uses the same name for an unrelated object.
-    """
-    nodes = tuple(ast.walk(tree))
+
+def _parse_import_syntax(payload: bytes, filename: str) -> _ImportSyntax:
+    """Only immutable syntax; no resolved paths, model names or imported values."""
+    nodes = tuple(ast.walk(ast.parse(payload, filename=filename)))
+    imports = []
+    wanted = set()
+    for node in nodes:
+        if isinstance(node, ast.Import):
+            names = tuple((alias.name, alias.asname or "") for alias in node.names)
+            imports.append((False, "", 0, names))
+            wanted.update(alias or name.split(".")[0] for name, alias in names)
+        elif isinstance(node, ast.ImportFrom):
+            names = tuple((alias.name, alias.asname or "") for alias in node.names)
+            imports.append((True, node.module or "", node.level, names))
+            wanted.update(alias or name for name, alias in names)
+    # getattr(alias, ...), passing/copying the module, and attribute writes
+    # require a source edge. Scan every scope conservatively: only direct
+    # read-only Attribute bases count as statically taken names.
     attributes = {
         id(node.value): node.attr
         for node in nodes
         if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load)
-        and isinstance(node.value, ast.Name) and node.value.id == alias
+        and isinstance(node.value, ast.Name) and node.value.id in wanted
     }
+    taken: dict[str, set[str] | None] = {name: set() for name in wanted}
     for node in nodes:
-        if isinstance(node, ast.Name) and node.id == alias and isinstance(node.ctx, ast.Load):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in wanted:
             if id(node) not in attributes:
-                return None
-    return set(attributes.values())
+                taken[node.id] = None
+            elif taken[node.id] is not None:
+                taken[node.id].add(attributes[id(node)])
+    return _ImportSyntax(
+        tuple(imports),
+        tuple(sorted((name, None if names is None else tuple(sorted(names))) for name, names in taken.items())),
+    )
 
 
-def static_imports(script: Path) -> StaticImports:
+_IMPORT_SYNTAX_MAX_BYTES = 8 * 1024 * 1024
+_IMPORT_SYNTAX_MAX_ENTRIES = 256
+
+
+class _ImportSyntaxMemo:
+    """One closure calculation's bounded byte-to-syntax recipes; never global."""
+
+    def __init__(self) -> None:
+        self.entries: OrderedDict[bytes, tuple[int, _ImportSyntax]] = OrderedDict()
+        self.size = 0
+
+    def get(self, payload: bytes, filename: str) -> _ImportSyntax:
+        cached = self.entries.get(payload)
+        if cached is not None:
+            self.entries.move_to_end(payload)
+            return cached[1]
+        syntax = _parse_import_syntax(payload, filename)
+
+        def retained_size(value: object) -> int:
+            # Shared strings/scalars counted repeatedly make this conservative.
+            return sys.getsizeof(value) + (
+                sum(retained_size(item) for item in value) if isinstance(value, tuple) else 0
+            )
+
+        charge = (512 + sys.getsizeof(payload) + sys.getsizeof(syntax)
+                  + retained_size(syntax.imports) + retained_size(syntax.taken))
+        if charge <= _IMPORT_SYNTAX_MAX_BYTES:
+            self.entries[payload] = (charge, syntax)
+            self.size += charge
+            while self.size > _IMPORT_SYNTAX_MAX_BYTES or len(self.entries) > _IMPORT_SYNTAX_MAX_ENTRIES:
+                self.size -= self.entries.popitem(last=False)[1][0]
+        return syntax
+
+
+def static_imports(script: Path, *, _syntax: _ImportSyntaxMemo | None = None) -> StaticImports:
     """Direct first-party imports of ``script``, classified by the boundary rule."""
     script = Path(script).resolve()
     try:
-        tree = ast.parse(script.read_bytes(), filename=str(script))
+        # Fresh bytes every time, even within this one closure calculation.
+        # A recipe hit skips syntax analysis, never filesystem resolution.
+        payload = script.read_bytes()
+        syntax = (_syntax.get(payload, str(script)) if _syntax is not None
+                  else _parse_import_syntax(payload, str(script)))
     except (OSError, SyntaxError, ValueError):
         return StaticImports((), ())
     roots = _search_roots(script)
@@ -256,6 +315,11 @@ def static_imports(script: Path) -> StaticImports:
     children: list[Path] = []
     constants: dict[str, dict[str, str]] = {}
     imports: dict[Path, set[str] | None] = {}
+    taken_by_name = dict(syntax.taken)
+
+    def taken_names(name: str) -> set[str] | None:
+        taken = taken_by_name[name]
+        return None if taken is None else set(taken)
 
     def note(target: Path, taken: set[str] | None) -> None:
         if target == script or not is_first_party_source_file(target):
@@ -266,38 +330,37 @@ def static_imports(script: Path) -> StaticImports:
     # A later import, including one inside a function, may take a helper from
     # a file first seen through a model name. Classify the union so normalizing
     # a runtime child ref never hides that source dependency.
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                target = _resolve_module(alias.name, roots)
+    for from_import, module, level, aliases in syntax.imports:
+        if not from_import:
+            for name, alias in aliases:
+                target = _resolve_module(name, roots)
                 if target is None:
                     continue
-                taken = _taken_names(tree, alias.asname or alias.name.split(".")[0])
+                taken = taken_names(alias or name.split(".")[0])
                 note(target, taken)
-        elif isinstance(node, ast.ImportFrom):
-            if node.level:
+        else:
+            if level:
                 # `from .chain import X` / `from . import chain` inside a package:
                 # relative to the importing file's own directory, `level - 1` up.
                 base = script.parent
-                for _ in range(node.level - 1):
+                for _ in range(level - 1):
                     base = base.parent
                 from_roots: list[Path] = [base]
             else:
                 from_roots = roots
-            module = node.module or ""
             prefix = f"{module}." if module else ""
             target = _resolve_module(module, from_roots) if module else None
-            names = {alias.name for alias in node.names}
+            names = {name for name, _alias in aliases}
             if "*" in names:
                 if target is not None:
                     note(target, None)  # star import: treat as source
                 continue
             # `from pkg import module` resolves the submodule, not a name in pkg.
-            for alias in node.names:
-                sub_target = _resolve_module(prefix + alias.name, from_roots)
+            for name, alias in aliases:
+                sub_target = _resolve_module(prefix + name, from_roots)
                 if sub_target is not None:
-                    note(sub_target, _taken_names(tree, alias.asname or alias.name))
-                    names.discard(alias.name)
+                    note(sub_target, taken_names(alias or name))
+                    names.discard(name)
             if names and target is not None:
                 note(target, names)
     for target, taken in imports.items():
@@ -319,11 +382,12 @@ def static_imports(script: Path) -> StaticImports:
     return StaticImports(tuple(sources), tuple(children), constants)
 
 
-def static_closure(script: Path) -> StaticImports:
+def static_closure(script: Path, *, _syntax: _ImportSyntaxMemo | None = None) -> StaticImports:
     """Transitive static closure stopping at model files. Model files reached
     through a result or value edge are children (not descended into); source-edge
     model files and every non-model file are descended into and collected."""
     script = Path(script).resolve()
+    syntax = _syntax if _syntax is not None else _ImportSyntaxMemo()
     sources: set[Path] = set()
     children: set[Path] = set()
     constants: dict[str, dict[str, str]] = {}
@@ -334,7 +398,7 @@ def static_closure(script: Path) -> StaticImports:
         if current in visited:
             continue
         visited.add(current)
-        imports = static_imports(current)
+        imports = static_imports(current, _syntax=syntax)
         for child in imports.child_models:
             children.add(child)
         for module, names in imports.constants.items():
@@ -479,7 +543,8 @@ def build_closure(
     """
     script = Path(script).resolve()
     base = script.parent
-    statics = static_closure(script)
+    syntax = _ImportSyntaxMemo()
+    statics = static_closure(script, _syntax=syntax)
     from cadgen.store.index import split_model_ref
 
     # Runtime calls carry exact script::function identities. Ownership of
@@ -492,7 +557,7 @@ def build_closure(
     child_owned: set[Path] = set(child_files)
     ours: set[Path] = {script, *statics.source_files}
     for child in list(child_files):
-        sources = static_closure(child).source_files
+        sources = static_closure(child, _syntax=syntax).source_files
         child_owned.update(sources)
         if child in called_files and child not in statics.child_models:
             # A dynamic module can supply a decorated call AND a helper/value

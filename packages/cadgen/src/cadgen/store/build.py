@@ -50,16 +50,22 @@ from cadgen.store.materialize import (
     _location_from_matrix,
     materialized_children,
 )
-from cadgen.store.objects import has_object, put_object_from_file, read_object
+from cadgen.store.objects import has_object, put_object_from_file, read_object, read_verified_object
 from cadgen.store.trees import put_tree
 
 
-def _component_index(cid: str) -> tuple[str, str] | None:
+def _component_index(cid: str, *, verify: bool = False) -> tuple[str, str] | None:
     entry = read_entry("component", cid)
     if not entry:
         return None
     surf, brep = str(entry.get("surf") or ""), str(entry.get("brep") or "")
     if surf and brep and has_object(surf) and has_object(brep):
+        if verify:
+            try:
+                read_verified_object(surf)
+                read_verified_object(brep)
+            except (OSError, ValueError):
+                return None
         return surf, brep
     return None
 
@@ -261,7 +267,7 @@ def _document_walk(
 
 
 def _publish_document_scene(
-    scene: Any, *, force: bool, progress: Any,
+    scene: Any, *, force: bool, progress: Any, repair_objects: bool = False,
 ) -> tuple[str, dict[str, Any], dict[str, Any], dict[str, list[str]], dict[str, str]]:
     from cadgen._internal.glb_topology import (
         STEP_EDGE_DEFAULT_RENDER_VISIBILITY_CLASSES, step_topology_capabilities,
@@ -272,6 +278,7 @@ def _publish_document_scene(
         walk, bbox_shape=artifact, root_name=walk.root["name"], force=force, progress=progress,
         extra={"capabilities": step_topology_capabilities(),
                "edgeRendering": {"visibilityClasses": list(STEP_EDGE_DEFAULT_RENDER_VISIBILITY_CLASSES)}},
+        repair_objects=repair_objects,
     )
     return digest, tree, stats, occurrence_map, node_map
 
@@ -285,9 +292,11 @@ def build_document_tree(
     record, appearance annotation or author options enter this tree. Both cold
     compilation and generated STEP read-back use this exact packaging path.
     This writes immutable objects and component indexes, never document indexes.
+    A compile miss can follow an unreadable indexed object, so canonical
+    publication verifies reuse and atomically repairs damaged derived bytes.
     """
     digest, tree, stats, _, _ = _publish_document_scene(
-        scene, force=force, progress=resolve_progress(progress),
+        scene, force=force, progress=resolve_progress(progress), repair_objects=True,
     )
     return digest, tree, stats
 
@@ -501,6 +510,7 @@ def _publish_tree(
     force: bool,
     progress: Any,
     extra: dict[str, Any] | None,
+    repair_objects: bool = False,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """Build the walk's missing components, ingest them, write the tree object."""
     from cadgen._internal.component_package import (
@@ -527,7 +537,7 @@ def _publish_tree(
     missing: list[tuple[str, Any]] = []
     resolved: dict[str, tuple[str, str]] = {}
     for cid, shape in shapes.items():
-        indexed = None if force else _component_index(cid)
+        indexed = None if force else _component_index(cid, verify=repair_objects)
         if indexed is not None:
             resolved[cid] = indexed
             reused.append(cid)
@@ -559,7 +569,9 @@ def _publish_tree(
             )
             for cid, shape in missing
         ]
-        workers = _component_build_worker_count(len(payloads))
+        workers = _component_build_worker_count(
+            len(payloads), payload_bytes=sum(len(args[0]) for args in payloads),
+        )
         progress.phase(PHASE_COMPONENTS, total=len(payloads))
         if workers > 1 and payloads:
             import multiprocessing
@@ -584,8 +596,8 @@ def _publish_tree(
                 _write_component_artifacts_atomic(shapes_by_cid[cid], scratch / f"{cid}.surf", cad_ref=cid)
             elif error is not None:
                 raise RuntimeError(f"component {cid} build failed: {error}")
-            surf_obj = put_object_from_file(scratch / f"{cid}.surf")
-            brep_obj = put_object_from_file(scratch / f"{cid}.brep")
+            surf_obj = put_object_from_file(scratch / f"{cid}.surf", repair=repair_objects)
+            brep_obj = put_object_from_file(scratch / f"{cid}.brep", repair=repair_objects)
             write_entry("component", cid, {"surf": surf_obj, "brep": brep_obj})
             resolved[cid] = (surf_obj, brep_obj)
             built.append(cid)
@@ -613,7 +625,7 @@ def _publish_tree(
     if bbox is not None:
         tree["bbox"] = bbox
     tree["stats"] = {"occurrenceCount": len(occurrences), "linkCount": len(links)}
-    tree_hash = put_tree(tree)
+    tree_hash = put_tree(tree, repair=repair_objects)
     stats = {
         "occurrences": len(occurrences),
         "links": len(links),
@@ -839,8 +851,9 @@ def build_tree_through_step(
        resolved from the store, own components read back from their BREP
        bytes). Publish this final source result unconditionally and notify the
        callback, which may await dependent saves, before writing the STEP.
-    3. Re-read the STEP with the scene loader — the same reader a cold
-       ``read_step`` and ``inspect`` use — and map every own occurrence to its
+    3. Re-read the STEP with the scene loader, reusing only a complete verified
+       canonical document of the exact emitted bytes unless forced. Map every
+       own occurrence to its
        node by id (``o1.2.3`` is the XCAF path, because the document's product
        tree mirrors the flattened grouping). Validate own occurrence placement
        and face-color survival without modifying the published source tree.
@@ -859,6 +872,7 @@ def build_tree_through_step(
         _normalized_face_colors,
     )
     from cadgen._internal.step_scene_loader import _selector_id, load_step_scene
+    from cadgen._internal.step_scene_package import lookup_document_scene
     from cadgen.step_export import export_build123d_step_file
     from cadgen.store.materialize import materialize_descriptor
     from cadgen.store.trees import flatten_tree
@@ -899,7 +913,9 @@ def build_tree_through_step(
         step_hash = export_build123d_step_file(document, step_path, logger=logger)
 
     with timed(f"tree: re-read STEP {step_path.name}"):
-        scene = load_step_scene(step_path, record_read=False)
+        scene, damaged_document = (None, False) if force else lookup_document_scene(step_path, step_hash=step_hash)
+        if scene is None:
+            scene = load_step_scene(step_path, record_read=False)
     nodes: dict[str, Any] = {}
     stack = list(scene.roots)
     while stack:
@@ -927,7 +943,11 @@ def build_tree_through_step(
                 )
     with timed("tree: canonical document"):
         document_hash, _document_tree, _document_stats, parsed_leaves, parsed_nodes = _publish_document_scene(
-            scene, force=False, progress=progress,
+            scene, force=force or damaged_document, progress=progress,
+            # A cache hit owns verified private geometry, but its backing
+            # objects can disappear before republishing too. Verify indexed
+            # reuse here; derive and atomically repair only failed entries.
+            repair_objects=True,
         )
         occurrence_map, appearance, node_map = _document_correspondence(
             descriptor, scene, parsed_leaves, parsed_nodes,

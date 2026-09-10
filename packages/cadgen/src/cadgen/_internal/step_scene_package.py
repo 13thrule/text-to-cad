@@ -7,17 +7,18 @@ tree with names/transforms/colors in ``assembly.json``, and per-face colors in
 each component's ``.surf`` index. So the tree IS the warm-load cache —
 there is no second geometry store. ``load_step_scene_cached`` keeps its name
 and contract (warm loads skip the text-STEP parse) but now reads the tree;
-a STEP with no current tree pays one full parse, and the tree the entry
-build then writes makes the next load warm. A warm load is the document's
-geometry, not a build's: a model's tree holds the prototypes re-read from the
-STEP it wrote (``cadgen.store.build.build_tree_through_step``), so this path
-and the parse it replaces return the same shapes.
+a STEP with no current tree pays one full parse, and the canonical document
+tree then makes the next load warm. This tree holds the prototypes read from
+the saved STEP; authored source result trees never participate. Saved readback
+uses the same verified reconstruction when those exact emitted bytes already
+have a canonical document tree.
 """
 
 from __future__ import annotations
 
 import hashlib
 import io
+import json
 import os
 import sys
 import tempfile
@@ -39,14 +40,10 @@ _IDENTITY_TRANSFORM = (
 )
 
 
-def _shape_from_brep(path: Path) -> Any | None:
+def _shape_from_brep(payload: bytes) -> Any | None:
     from OCP.BinTools import BinTools
     from OCP.TopoDS import TopoDS_Shape
 
-    try:
-        payload = path.read_bytes()
-    except OSError:
-        return None
     shape = TopoDS_Shape()
     try:
         BinTools.Read_s(shape, io.BytesIO(payload))
@@ -55,7 +52,7 @@ def _shape_from_brep(path: Path) -> Any | None:
     return None if shape.IsNull() else shape
 
 
-def _face_colors_from_surf(surf_path: Path, shape: Any) -> dict[int, ColorRGBA]:
+def _face_colors_from_surf(payload: bytes, shape: Any) -> dict[int, ColorRGBA] | None:
     """Hash-keyed per-face colors from the component's .surf index.
 
     The surf keys colors by face ORDINAL (TopExp.MapShapes order), which the
@@ -65,9 +62,9 @@ def _face_colors_from_surf(surf_path: Path, shape: Any) -> dict[int, ColorRGBA]:
     from cadgen._internal.surface_extract import read_surf
 
     try:
-        index, _ = read_surf(surf_path.read_bytes())
-    except Exception:  # noqa: BLE001 - a missing/old surf simply has no colors
-        return {}
+        index, _ = read_surf(payload)
+    except Exception:  # noqa: BLE001 - unreadable surface metadata is a cache miss
+        return None
     colors_by_ordinal: dict[int, ColorRGBA] = {}
     for face in index.get("faces") or []:
         color = face.get("color")
@@ -101,19 +98,53 @@ def _path_from_occurrence_id(occurrence_id: str) -> tuple[int, ...]:
         return (1,)
 
 
-def scene_from_render_package(step_path: Path, *, step_hash: str) -> LoadedStepScene | None:
-    """A LoadedStepScene rebuilt from the entry's tree, or None when
-    the tree is absent or unreadable — a miss compiles it through the build
-    pool. Content keying answers schema and hash by construction: a tree that
-    resolves for these bytes is current-scheme and theirs."""
-    from cadgen.store.objects import object_path
+def lookup_document_scene(step_path: Path, *, step_hash: str) -> tuple[LoadedStepScene | None, bool]:
+    """Return a private canonical scene and whether an indexed closure failed.
+
+    Only the current document-byte index participates. A missing index is an
+    ordinary miss; a missing, damaged or unreadable indexed object requires
+    derivation during saved-file republishing, never deleting the object that
+    another writer may already have repaired.
+    """
     from cadgen.store.records import tree_for_document_hash
-    from cadgen.store.trees import flatten, tree_complete
 
     tree = tree_for_document_hash(step_hash)
-    if not tree or not tree_complete(tree):
+    if not tree:
+        return None, False
+    try:
+        scene = _scene_from_document_tree(step_path, step_hash=step_hash, tree_hash=tree)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        scene = None
+    return scene, scene is None
+
+
+def scene_from_render_package(step_path: Path, *, step_hash: str) -> LoadedStepScene | None:
+    """A private scene from verified document objects, or None on a cache miss."""
+    return lookup_document_scene(step_path, step_hash=step_hash)[0]
+
+
+def _scene_from_document_tree(step_path: Path, *, step_hash: str, tree_hash: str) -> LoadedStepScene | None:
+    from cadgen.store.objects import read_verified_object
+    from cadgen.store.trees import TREE_KIND, flatten_tree
+
+    # Verify and flatten the SAME snapshot. Canonical byte-derived document
+    # trees have no source links, so no second tree lookup may occur here.
+    tree = json.loads(read_verified_object(tree_hash))
+    if not isinstance(tree, dict) or tree.get("kind") != TREE_KIND or tree.get("links"):
         return None
-    descriptor = flatten(tree)
+    assembly = tree.get("assembly")
+    if not isinstance(assembly, dict) or not isinstance(assembly.get("root"), dict):
+        return None
+    pending = [assembly["root"]]
+    while pending:
+        node = pending.pop()
+        if not isinstance(node, dict) or node.get("nodeType") == "link":
+            return None
+        children = node.get("children") or []
+        if not isinstance(children, list):
+            return None
+        pending.extend(children)
+    descriptor = flatten_tree(tree, tree_hash=tree_hash)
     if not isinstance(descriptor, dict) or descriptor.get("kind") != "assembly-package":
         return None
     components = descriptor.get("components")
@@ -129,12 +160,7 @@ def scene_from_render_package(step_path: Path, *, step_hash: str) -> LoadedStepS
     for cid, entry in components.items():
         if not isinstance(entry, dict):
             return None
-        try:
-            brep_path = object_path(str(entry.get("brep") or ""))
-            surf_path = object_path(str(entry.get("surf") or ""))
-        except ValueError:
-            return None
-        shape = _shape_from_brep(brep_path)
+        shape = _shape_from_brep(read_verified_object(str(entry.get("brep") or "")))
         if shape is None:
             return None
         key = _shape_hash(shape)
@@ -143,13 +169,17 @@ def scene_from_render_package(step_path: Path, *, step_hash: str) -> LoadedStepS
         color = entry.get("color")
         if isinstance(color, list) and len(color) == 4:
             prototype_colors[key] = tuple(float(c) for c in color)
-        face_colors = _face_colors_from_surf(surf_path, shape)
+        face_colors = _face_colors_from_surf(read_verified_object(str(entry.get("surf") or "")), shape)
+        if face_colors is None:
+            return None
         if face_colors:
             prototype_face_colors[key] = face_colors
 
     occurrence_by_id: dict[str, dict[str, Any]] = {
         str(occ.get("id")): occ for occ in occurrences if isinstance(occ, dict)
     }
+    if len(occurrence_by_id) != len(occurrences):
+        return None
 
     def leaf_node(occ: dict[str, Any]) -> OccurrenceNode | None:
         key = key_by_cid.get(str(occ.get("component")))
@@ -181,8 +211,8 @@ def scene_from_render_package(step_path: Path, *, step_hash: str) -> LoadedStepS
             if not children_meta:
                 occ = occurrence_by_id.get(node_id)
                 return leaf_node(occ) if occ is not None else None
-            children = [child for child in (build(c) for c in children_meta if isinstance(c, dict)) if child]
-            if not children:
+            children = [build(c) for c in children_meta]
+            if not children or any(child is None for child in children):
                 return None
             name = str(tree_node.get("name") or "") or None
             return OccurrenceNode(
@@ -278,7 +308,7 @@ def load_step_scene_cached(step_path: Path) -> LoadedStepScene:
     while True:
         payload = resolved_step_path.read_bytes()
         step_hash = hashlib.sha256(payload).hexdigest()
-        from_package = scene_from_render_package(resolved_step_path, step_hash=step_hash)
+        from_package, damaged_document = lookup_document_scene(resolved_step_path, step_hash=step_hash)
         if from_package is not None:
             _record_consumed_hash(resolved_step_path, step_hash)
             return from_package
@@ -294,7 +324,10 @@ def load_step_scene_cached(step_path: Path) -> LoadedStepScene:
         from cadgen.daemon import broker
         from cadgen.daemon.executors import submit_compile
 
-        job = submit_compile(resolved_step_path)
+        # A hash-valid object can still be unreadable (for example, a bad SURF
+        # container). Preserve that failed-closure verdict after removing its
+        # index pointer so compilation derives the canonical components again.
+        job = submit_compile(resolved_step_path, force=damaged_document)
         with broker.yielded():
             code = job.wait()
         if code != 0:

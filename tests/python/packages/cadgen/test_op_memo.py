@@ -212,6 +212,7 @@ class OpMemoTest(unittest.TestCase):
 
         face = Face.make_surface(Wire.make_circle(6.0))
         before = op_memo.stats()["unkeyable"]
+        errors_before = op_memo.stats()["errors"]
         first = Solid.extrude(face, Vector(0, 0, 4))
         off_axis = Face.make_surface(Wire.make_circle(2.0)).moved(Location((0, 10, 0)))
         Solid.revolve(off_axis, 180.0, Axis.X)
@@ -220,6 +221,62 @@ class OpMemoTest(unittest.TestCase):
         second = Solid.extrude(face, Vector(0, 0, 4))
         self.assertGreater(op_memo.stats()["hits"], hits_before)
         self.assertEqual(_digest(first), _digest(second))
+        self.assertEqual(op_memo.stats()["errors"], errors_before)
+
+    def test_shape_arguments_exclude_wrapped_geometry_values(self):
+        from build123d import Axis, Location, Plane, Shape, Vector
+        from build123d.topology import Face, Solid, Wire
+
+        class CustomSolid(Solid):
+            pass
+
+        face = Face.make_surface(Wire.make_circle(2))
+        solid = CustomSolid(Solid.make_box(1, 2, 3).wrapped)
+        values = (Vector(0, 0, 4), Axis.X, Location((1, 2, 3)), Plane.XY)
+        self.assertTrue(hasattr(values[0], "_wrapped"), "exercise Vector's native storage")
+        for value in (*values, Shape()):
+            with self.subTest(kind=type(value).__name__):
+                self.assertFalse(op_memo._is_shape(value))
+        self.assertTrue(op_memo._is_shape(solid), "Shape subclasses remain topology")
+        self.assertEqual(op_memo._shape_args((values[0], [face, values[1]]), {
+            "a": values[2], "b": (values[3], solid),
+        }), [face, solid])
+
+    def test_extrusion_with_vector_protects_profile_on_cold_ram_and_disk_paths(self):
+        from build123d import Vector
+        from build123d.topology import Face, Solid, Wire
+
+        face = Face.make_surface(Wire.make_circle(2))
+        vector = Vector(0, 0, 4)
+        profile_digest = _digest(face)
+        native_extrude = Solid.extrude.__func__.__wrapped__
+        observed = []
+
+        def observe(cls, profile, direction):
+            self.assertIs(direction, vector)
+            self.assertFalse(profile.wrapped.IsPartner(face.wrapped))
+            observed.append(profile)
+            return native_extrude(cls, profile, direction)
+
+        extrude = op_memo._memoized("test.protected_vector_extrude", observe, is_classmethod=True)
+        op_memo.clear()
+        errors_before = op_memo.stats()["errors"]
+        cold = extrude(Solid, face, vector)
+        warm = extrude(Solid, face, vector)
+        self.assertEqual(op_memo.stats()["errors"], errors_before)
+        op_memo.clear()  # the disk entry retains only the real shape argument recipe
+        disk_hits_before = op_memo.stats()["disk_hits"]
+        disk = extrude(Solid, face, Vector(0, 0, 4))
+        self.assertEqual(len(observed), 1, "RAM and disk hits must not run the factory")
+        self.assertGreater(op_memo.stats()["disk_hits"], disk_hits_before)
+        self.assertEqual(op_memo.stats()["errors"], errors_before)
+        self.assertEqual(_digest(face), profile_digest)
+        self.assertEqual(tuple(vector), (0, 0, 4))
+        for result in (warm, disk):
+            self.assertEqual(_digest(cold), _digest(result))
+            self.assertEqual((cold.label, cold.color, cold.topo_parent),
+                             (result.label, result.color, result.topo_parent))
+            self.assertFalse(cold.wrapped.IsPartner(result.wrapped))
 
     def test_disk_tier_survives_memory_clear(self):
         first = _build_part()

@@ -40,11 +40,11 @@ FLAT_KIND = "assembly-package"
 IDENTITY_16 = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
 
-def put_tree(tree: dict[str, Any]) -> str:
+def put_tree(tree: dict[str, Any], *, repair: bool = False) -> str:
     body = dict(tree)
     body["kind"] = TREE_KIND
     data = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return put_object(data)
+    return put_object(data, repair=repair)
 
 
 def get_tree(tree_hash: str) -> dict[str, Any] | None:

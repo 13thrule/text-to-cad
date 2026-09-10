@@ -456,8 +456,19 @@ def parallel_worker_count(work_count: int, *, env_var: str) -> int:
     return component_worker_limit(max(1, min((os.cpu_count() or 2) - 2, work_count, 8)))
 
 
-def _component_build_worker_count(missing_count: int) -> int:
-    """Worker count for parallel component builds (``CADGEN_COMPONENT_WORKERS``)."""
+_SERIAL_COMPONENT_PAYLOAD_BYTES = 768 * 1024
+
+
+def _component_build_worker_count(missing_count: int, *, payload_bytes: int | None = None) -> int:
+    """Avoid spawn startup for small BREP batches unless workers are explicit.
+
+    Both schedules reconstruct private shapes from the same payloads. The
+    conservative byte cutoff limits only the default component scheduler;
+    larger/unknown work and explicit overrides retain CPU and memory sizing.
+    """
+    if (payload_bytes is not None and payload_bytes <= _SERIAL_COMPONENT_PAYLOAD_BYTES
+            and not os.environ.get("CADGEN_COMPONENT_WORKERS", "").strip()):
+        return 1
     return parallel_worker_count(missing_count, env_var="CADGEN_COMPONENT_WORKERS")
 
 

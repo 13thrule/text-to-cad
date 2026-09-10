@@ -167,6 +167,18 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   path as a cold import, using only hierarchy, names, colors and geometry in
   the STEP bytes. Only this tree is entered in `index/document`.
 
+  Saved readback may reconstruct a private scene from that document index
+  when the freshly emitted STEP has an already-seen exact digest. It verifies
+  one snapshot of the root tree and every consumed BREP/SURF object against
+  its content address; document trees containing source links are rejected.
+  Missing, unreadable or damaged objects cause a raw STEP parse. New output
+  bytes and forced builds also use the raw parser. Both paths retain the same
+  placement, face-color and complete authored-to-written correspondence checks.
+  Canonical republishing verifies indexed component objects before reuse and
+  derives failed entries again; known damaged closures and forced builds
+  derive all canonical components. Current authored PBR is rebound after
+  readback, without consulting source records, output indexes or staged sidecars.
+
   Finishes that STEP does not carry persist in the schema-8 sidecar's
   `appearance.occurrences` map, keyed by verified canonical leaf IDs. Resolved
   kinematics are remapped to exact written product nodes, with independent
@@ -335,6 +347,11 @@ Each with the failure it prevents.
   result. Prevents both false-current (a constant imported from a model file
   changing unnoticed) and false-stale (a child's internal edit — or a comment
   beside a shared constant — rebuilding every parent).
+  One closure calculation may share immutable import-syntax recipes keyed by
+  exact source bytes, bounded by 8 MiB of accounted inputs/recipes and 256
+  entries. Every lookup still reads the file and resolves current import
+  availability, model classification and constant values; the recipes contain
+  no resolved dependency graph or freshness verdict and do not outlive the call.
 - **The two sides (§2, the law).** No object references source; no reader
   consults a record; records are deletable. Prevents: a moved or copied
   document rendering differently from its twin, a render path going stale or
@@ -345,7 +362,11 @@ Each with the failure it prevents.
   Prevents: a parent's result mixing two versions of one child.
 - **Objects are immutable.** An object is written once under its hash and
   never edited. Prevents: a component changing under every tree that shares
-  it.
+  it. Saved-document recovery may replace missing bytes or bytes that no
+  longer match their address, using newly derived bytes verified against that
+  address. This is explicit atomic repair, never deletion after a failed read.
+  A writer that finds valid bytes leaves them untouched; racing repair writers
+  publish the same content, so no reader sees an intermediate missing object.
 - **Portability: a moved project is a set of new models over the same
   objects.** Nothing path-dependent enters an object: closure files are
   recorded relative to the script, trees hold geometry, names and placements
@@ -385,9 +406,15 @@ Decided mechanically from the returned geometry and occurrence metadata.
   occurrences of one component within that materialization share their
   prototype. Different face-color components sharing BREP bytes receive
   private topology, preventing XCAF from overwriting another variant's styles.
-  Every occurrence owns its face-color and PBR maps. A byte-cache
-  hit still requires the object to exist on disk. Clearing the memo releases
-  only retained bytes, leaving active consumers' shapes valid.
+  Every occurrence owns its face-color and PBR maps. New byte-cache entries
+  require a matching content digest; a hit still requires the object to exist
+  on disk. A separate LRU retains immutable normalized SURF face-color recipes,
+  bounded by 4 MiB of accounted recipe memory and 1,024 entries. Unretained
+  SURF payloads do not consume that recipe budget. Every
+  recipe lookup rereads and verifies the complete current SURF payload; a hit
+  skips only JSON parsing and normalization. Each exposure receives a private
+  dictionary. Clearing the memos releases retained bytes and recipes, leaving
+  active consumers' shapes and appearance maps valid.
 - When the parent's result is written, every tagged child whose native
   partner, geometry and descendant metadata still match its original baseline
   becomes a **link**. Everything else — geometry the parent made, a sub-shape
@@ -437,8 +464,13 @@ only non-geometric `Free`/`Checked` flags. Native mutations must change the key.
 Each input is read again: Python properties can mutate geometry even during key
 construction. No TShape-to-content mapping replaces those reads. Shape hashes
 use a cheaper subset of the full equality signature, so collisions still require
-the complete equality check. The bounded rounding memo stores numeric inputs
+the complete equality check. Vertex hashes read their current native point at
+that same precision, including native point or location edits that leave Python
+coordinate attributes unchanged. The bounded rounding memo stores numeric inputs
 and outputs, never shapes or geometric signatures.
+Input protection and shape-attribute recipes accept actual topology shapes,
+including subclasses; geometry values such as vectors remain value arguments
+even when they also contain a private native wrapper.
 
 ## 7. Concurrency
 
@@ -522,9 +554,13 @@ Every build goes through one interface, `cadgen.daemon.executors.submit(model)
   idle takes it; whose worker is busy binds a spare as an **extra** for that
   one job (the extra returns to the spare set after); a model with no worker
   binds a spare and a replacement starts in the background; no spare means a
-  spawn. Spares: `CADGEN_DAEMON_SPARES` (default 2). Requests that name no
+  spawn. Spares load build123d/OCP as well as the lazy tool parsers before
+  announcing readiness; importing the supervisor never loads the kernel.
+  Spares: `CADGEN_DAEMON_SPARES` (default 2). Requests that name no
   model (`inspect`, `snapshot` on a document) borrow a spare without binding
-  it. Worker admission accounts for resident memory and pending reservations,
+  it. A returning borrowed worker fills an available spare slot rather than
+  counting itself as an existing replacement. Worker admission accounts for
+  resident memory and pending reservations,
   and may reclaim idle workers or refuse work (§9 below). A worker is recycled after
   `CADGEN_DAEMON_RECYCLE` jobs (default 1000) as a leak hedge, and the daemon
   exits after `CADGEN_DAEMON_IDLE_TIMEOUT` seconds idle (default 3600).
@@ -624,6 +660,12 @@ OCCT operation may grow between RSS samples. Where RSS cannot be enumerated,
 reservations still apply. Transient execution receives extraction-pool sizing,
 but has no daemon-wide aggregate process budget. CPU slot counts remain upper
 bounds, and extraction concurrency also fits the parent worker allowance.
+Component extraction defaults to inline work when the missing components'
+serialized BREP payloads total at most 768 KiB, avoiding fresh interpreter
+startup for small batches. Both schedules reconstruct private shapes from
+the same bytes. Larger or unknown payloads retain the existing worker-count
+policy; an explicit `CADGEN_COMPONENT_WORKERS` value retains its requested
+concurrency under the existing work-count and memory caps.
 
 **Browser resources.** Disposable decoded meshes, selectors, BVHs, GPU buffers,
 textures and worker work may have byte budgets and be reclaimed when unused.

@@ -358,16 +358,11 @@ def _generate_part_outputs(
     # Any on-demand output (mesh sidecar or --step export) must be produced even when the
     # tree is current, so its presence defeats the reuse fast paths.
     has_extra_outputs = _spec_requests_extra_outputs(spec)
-    package_current = (
-        spec.source != "generated"
-        or _assembly_glb_package_current(spec)
-    )
     if (
         preloaded_scene is None
         and spec.source != "generated"
         and not has_extra_outputs
         and not force
-        and package_current
         and _existing_topology_artifact_matches_spec_without_scene(spec)
     ):
         logger.debug(f"reused current tree: {_display_path(spec.step_path)}")
@@ -401,7 +396,6 @@ def _generate_part_outputs(
         not has_extra_outputs
         and spec.source != "generated"
         and not force
-        and package_current
         and _existing_topology_artifact_matches_options(spec, selector_options)
         and _generated_assembly_glb_closure_current(spec)
     ):

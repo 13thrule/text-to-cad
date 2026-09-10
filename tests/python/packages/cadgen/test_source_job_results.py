@@ -109,6 +109,8 @@ class SourceJobResults(unittest.TestCase):
         )
         namespace = runpy.run_path(str(script))
         with mock.patch.object(sys, "argv", [str(script)]), \
+             mock.patch("cadgen._internal.generation._assembly_glb_package_current",
+                        side_effect=AssertionError("generated outputs repeated an unused package gate")), \
              contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             first = namespace["part"]()
             first.cad_material["roughness"] = .9
