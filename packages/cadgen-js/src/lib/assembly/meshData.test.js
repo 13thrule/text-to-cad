@@ -8,6 +8,7 @@ import {
   buildComposedPackageMeshData,
   descendantLeafPartIds,
   findAssemblyNode,
+  findAssemblyNodes,
   focusedLeafPartIdsForAssemblyInspection,
   flattenAssemblyNodes,
   flattenAssemblyLeafParts,
@@ -19,6 +20,52 @@ import {
   treeSelectableAssemblyNodeIdsForInspection,
   resolveAssemblyPickedPartId
 } from "./meshData.js";
+
+test("batch assembly lookup preserves requested order, normalization, duplicates, missing and root semantics", () => {
+  const first = { id: " duplicate ", nodeType: "part", children: [] };
+  const root = { id: "actual-root", children: [
+    { id: "group", children: [first, { id: "leaf", nodeType: "part" }] },
+    { id: "duplicate", nodeType: "part" }, { id: "root", nodeType: "part" },
+    { id: 0, nodeType: "part" }, { id: 12, nodeType: "part" },
+  ] };
+  const ids = [" leaf ", "duplicate", "group", "duplicate", "missing", "actual-root", "root", "", null,
+    undefined, false, 0, "0", 12, { toString: () => " leaf " }];
+  const actual = findAssemblyNodes(root, ids);
+  const expected = ids.map(id => findAssemblyNode(root, id));
+  actual.forEach((node, i) => assert.equal(node, expected[i], `request ${i}`));
+  assert.equal(actual[1], first);
+  assert.deepEqual(actual.filter(Boolean).map(node => ({ ...node, leafPartIds: descendantLeafPartIds(node) })),
+    expected.filter(Boolean).map(node => ({ ...node, leafPartIds: descendantLeafPartIds(node) })));
+  assert.deepEqual(findAssemblyNodes(null, ids), ids.map(() => null));
+  assert.deepEqual(findAssemblyNodes(root, []), []);
+});
+
+test("batch lookup visits the tree once and retains no index between live tree changes", () => {
+  let reads = 0;
+  const nodes = Array.from({ length: 2048 }, (_, index) => ({
+    get id() { reads++; return `part-${index}`; }, children: [],
+  }));
+  const root = { get id() { reads++; return "actual-root"; }, children: nodes };
+  const requested = nodes.map((_, i) => `part-${nodes.length - 1 - i}`);
+  const found = findAssemblyNodes(root, [...requested, "part-0", "missing"]);
+  assert.equal(reads, nodes.length + 1, "one ID read per tree node, independent of request count/order");
+  assert.equal(found[0], nodes.at(-1)); assert.equal(found.at(-2), nodes[0]); assert.equal(found.at(-1), null);
+  const replacement = { id: "part-0", children: [{ id: "new-child", nodeType: "part" }] };
+  root.children = [replacement];
+  assert.deepEqual(findAssemblyNodes(root, ["part-0", "new-child", "part-1"]), [replacement, replacement.children[0], null]);
+  reads = 0;
+  assert.deepEqual(findAssemblyNodes(root, ["root", "", null]), [root, root, root]);
+  assert.equal(reads, 0, "root aliases need no traversal");
+});
+
+test("batch lookup handles deeply nested trees iteratively and stops after the final requested match", () => {
+  const leaf = { id: "needle", nodeType: "part", children: [] };
+  let root = leaf;
+  for (let index = 0; index < 10000; index++) root = { id: `nested-${index}`, children: [root] };
+  assert.equal(findAssemblyNodes(root, ["needle"])[0], leaf);
+  const short = { id: "match", get children() { throw new Error("unneeded descendants"); } };
+  assert.deepEqual(findAssemblyNodes(short, ["match", "match"]), [short, short]);
+});
 
 test("assembly helpers navigate nested assemblies down to leaf parts", () => {
   const root = {

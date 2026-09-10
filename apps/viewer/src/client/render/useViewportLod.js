@@ -8,7 +8,7 @@
 // debugging: `window.__CAD_VIEWER_LOD__ = false` before loading a model.
 import { useCallback, useEffect, useRef } from "react";
 
-import { loadRenderSurfPayloadAtLevel, reclaimIdleSurfWorkers, releaseSurfWorkers } from "cadgen-js/lib/renderAssetClient";
+import { loadRenderSurfPayloadAtLevel, reclaimIdleSurfWorkers, releaseSurfWorkers } from "cadgen-js/lib/renderAssetClient.js";
 import { estimateMeshRenderCost } from "cadgen-js/lib/render/meshCost.js";
 import { lodTessellationForLevel } from "cadgen-js/lib/surf/lodPolicy.js";
 
@@ -22,6 +22,20 @@ function publishLodMemoryLimitation(detail) {
   window.__cadViewerMemoryLimitation = detail;
   window.__cadViewerMemory = viewerMemoryPolicy.snapshot();
   window.dispatchEvent(new CustomEvent("cad:memory-limitation", { detail }));
+}
+
+/** Report blocked camera targets, without clearing another subsystem's limit. */
+export function syncViewportLodLimitation(status, policy = viewerMemoryPolicy, publish = publishLodMemoryLimitation) {
+  const targets = status?.disposed ? [] : (status?.unmetTargets || [])
+    .filter(({ reason }) => reason === "memory-denied" || reason === "memory-pressure");
+  if (targets.length) {
+    const detail = { source: "viewportLod", preservingCurrentView: true, unmetTargets: targets };
+    policy.noteLimitation(detail);
+    publish(detail);
+  } else if (policy.snapshot().lastLimitation?.source === "viewportLod") {
+    policy.clearLimitation();
+    publish(null);
+  }
 }
 
 function lodEnabled() {
@@ -61,15 +75,22 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
         if (reservation.ok) return reservation;
         reclaimIdleSurfWorkers();
         syncSurfWorkerMemory();
-        return viewerMemoryPolicy.reserve(request);
+        return viewerMemoryPolicy.reserve({ ...request, recordLimitation: false });
       },
       releaseLevel: (token) => viewerMemoryPolicy.release(token),
       memoryPressure: () => {
         const memory = viewerMemoryPolicy.snapshot();
         return memory.availableBytes < memory.ownedLimitBytes * 0.15;
       },
-      onLimitation: publishLodMemoryLimitation,
-      onIdle: () => { releaseSurfWorkers().then(syncSurfWorkerMemory, syncSurfWorkerMemory); },
+      onLimitation: (detail) => {
+        const owned = { ...detail, source: "viewportLod" };
+        viewerMemoryPolicy.noteLimitation(owned);
+        publishLodMemoryLimitation(owned);
+      },
+      onIdle: (status) => {
+        syncViewportLodLimitation(status);
+        releaseSurfWorkers().then(syncSurfWorkerMemory, syncSurfWorkerMemory);
+      },
       loadLevel: (cid, level, { signal }) => {
         const component = componentsRef.current.get(cid);
         if (!component) {
@@ -92,7 +113,6 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
       },
       applyLevel: async (cid, level, payload, { signal }) => {
         if (await applyRef.current?.(cid, level, payload, { signal }) === false || signal.aborted) return false;
-        viewerMemoryPolicy.clearLimitation();
         const component = componentsRef.current.get(cid);
         if (component && payload?.meshData) {
           component.meshBytes = estimateMeshRenderCost(payload.meshData).typedArrayBytes;

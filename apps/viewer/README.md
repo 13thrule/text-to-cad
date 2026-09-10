@@ -115,6 +115,14 @@ the build — detection only; it keeps serving.
   Offscreen components stay displayed. Ordinary camera sampling retains their
   existing detail; memory pressure can coarsen them before visible components.
   Unknown or not-yet-adopted bounds remain eligible.
+  A stationary camera requests the final level implied by the existing
+  hysteresis thresholds directly. If admission refuses that level, strictly
+  intermediate levels can supply measured replacement sizes for another try.
+  Failed loads stay parked; denied admission retries only after the displayed
+  level or camera intent changes. Pressure-driven coarsening caps subsequent
+  refinement until the camera or viewport changes, preventing upgrade/downgrade
+  loops. Mesh-bound and clip-plane updates do not reset that cap. An idle
+  scheduler reports memory-limited targets separately from settled quality.
   Scenes with joints, render modules, drawing poses or an active/collapsing
   exploded view keep conservative eligibility, including paused/disabled pose
   capabilities. Authored visibility and material flags are not LOD filters.

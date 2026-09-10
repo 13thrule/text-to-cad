@@ -94,8 +94,8 @@ export function desiredLevel(sample, levels = LOD_CHORD_LEVELS, targetPx = LOD_T
 
 /**
  * The level to render next, given the current one — the hysteresis step.
- * Moves at most one level per call (the scheduler re-evaluates after each
- * swap, so sustained zoom still climbs the whole ladder).
+ * Moves at most one level per call. Pressure coarsening uses this step;
+ * settledLevel folds repeated steps for an unchanged camera sample.
  */
 export function nextLevel(sample, currentLevel, levels = LOD_CHORD_LEVELS) {
   const current = Math.max(0, Math.min(levels.length - 1, currentLevel | 0));
@@ -110,6 +110,22 @@ export function nextLevel(sample, currentLevel, levels = LOD_CHORD_LEVELS) {
     }
   }
   return current;
+}
+
+/**
+ * Final hysteresis level for one unchanged numeric sample. An upgrade's
+ * previous error (>1.25) forbids reversing below .6; a downgrade lands below
+ * .6 and cannot reverse above 1.25. There are at most N-1 moves. Keep nextLevel
+ * as the authority so threshold arithmetic and starting-rung history agree.
+ */
+export function settledLevel(sample, currentLevel, levels = LOD_CHORD_LEVELS) {
+  let level = Math.max(0, Math.min(levels.length - 1, currentLevel | 0));
+  for (let check = 0; check < Math.max(1, levels.length); check += 1) {
+    const next = nextLevel(sample, level, levels);
+    if (next === level) return level;
+    level = next;
+  }
+  throw new Error("LOD policy did not settle for an unchanged sample");
 }
 
 /**

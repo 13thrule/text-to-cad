@@ -274,6 +274,7 @@ import {
   buildAssemblyLeafToNodePickMap,
   descendantLeafPartIds,
   findAssemblyNode,
+  findAssemblyNodes,
   flattenAssemblyNodes,
   flattenAssemblyLeafParts,
   leafPartIdsForAssemblySelection,
@@ -2418,8 +2419,7 @@ export default function CadWorkspace({
   );
   const assemblyParts = useMemo(() => {
     return viewerSelectableAssemblyNodeIds.length
-      ? viewerSelectableAssemblyNodeIds
-        .map((nodeId) => findAssemblyNode(assemblyRoot, nodeId))
+      ? findAssemblyNodes(assemblyRoot, viewerSelectableAssemblyNodeIds)
         .filter(Boolean)
         .map((node) => ({
           ...node,

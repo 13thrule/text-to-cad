@@ -105,11 +105,28 @@ export function sampleLodCamera(THREE, runtime, { components = new Map(), dynami
       else telemetry.excludedComponents++;
     }
   }
+  const viewportWidthPx = canvas.clientWidth || canvas.width || 0;
+  const viewportHeightPx = canvas.clientHeight || canvas.height || 0;
+  const projectionIntent = camera.isOrthographicCamera
+    ? [0, camera.left, camera.right, camera.top, camera.bottom, camera.zoom]
+    : [1, camera.fov, camera.aspect, camera.zoom, camera.filmGauge, camera.filmOffset];
+  const view = camera.view;
+  const viewIntent = view?.enabled
+    ? [1, view.fullWidth, view.fullHeight, view.offsetX, view.offsetY, view.width, view.height] : [0];
   return {
+    // Retry identity includes only the actual camera and viewport. A changed
+    // tessellated bound or model-group placement may resample distances, but
+    // must not erase a pressure ceiling and restart accepted L3/L2 oscillation.
+    // Clip near/far come from mesh bounds. Use projection intent fields rather
+    // than matrix coefficients: rebuilding a perspective matrix with another
+    // near distance can even round its x/y coefficients differently.
+    cameraKey: JSON.stringify([...camera.matrixWorld.elements, ...projectionIntent, ...viewIntent,
+      viewportWidthPx, viewportHeightPx]),
     camera: camera.isOrthographicCamera
       ? { kind: "orthographic", visibleWorldHeight: (camera.top - camera.bottom) / (camera.zoom || 1) }
       : { kind: "perspective", fovYDeg: camera.fov },
-    viewportHeightPx: canvas.clientHeight || canvas.height || 0,
+    viewportWidthPx,
+    viewportHeightPx,
     distanceFor: cid => distances.get(cid) ?? NaN,
     visibleFor: cid => visibility.get(cid) !== false,
     visibility: telemetry,

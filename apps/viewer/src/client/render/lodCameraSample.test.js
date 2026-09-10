@@ -175,3 +175,92 @@ test("live pose/post-transform order matches the displayed center without mutati
   assert.equal(JSON.stringify([r.partBounds, r.baseTransform, r.effectMatrix.elements, r.explodedViewMatrix.elements]), before);
   assert.ok(Object.values(s.visibility).every(Number.isFinite), "diagnostics contain only numeric counts");
 });
+
+test("LOD retry key ignores component/group bounds but changes for actual camera pose, projection and viewport", () => {
+  const f = fixture([["part", cube(0)]]);
+  f.runtime.renderer.domElement.clientWidth = 1200;
+  const initial = sample(f);
+  assert.equal(typeof initial.cameraKey, "string");
+  assert.equal(initial.viewportWidthPx, 1200);
+  assert.ok(JSON.parse(initial.cameraKey).every(Number.isFinite), "captured retry identity retains only numeric intent");
+  f.runtime.displayRecords[0].partBounds = cube(2);
+  f.runtime.modelGroup.position.y = 3;
+  const movedBounds = sample(f);
+  assert.notEqual(movedBounds.distanceFor("part"), initial.distanceFor("part"));
+  assert.equal(movedBounds.cameraKey, initial.cameraKey);
+  f.runtime.camera.position.x = 1;
+  const pan = sample(f);
+  assert.notEqual(pan.cameraKey, initial.cameraKey);
+  f.runtime.camera.zoom = 2; f.runtime.camera.updateProjectionMatrix();
+  const zoom = sample(f);
+  assert.notEqual(zoom.cameraKey, pan.cameraKey);
+  f.runtime.renderer.domElement.clientWidth = 800;
+  const width = sample(f);
+  assert.notEqual(width.cameraKey, zoom.cameraKey, "width-only panel resize is meaningful camera intent");
+  f.runtime.renderer.domElement.clientHeight = 600;
+  assert.notEqual(sample(f).cameraKey, width.cameraKey);
+  assert.equal(initial.cameraKey, movedBounds.cameraKey, "later native matrix changes cannot mutate a captured key");
+});
+
+test("geometry-derived clip distances preserve retry identity; physical projection intent changes it", () => {
+  for (const kind of ["perspective", "orthographic"]) {
+    const f = fixture([["part", cube(0)]]);
+    if (kind === "perspective") {
+      f.runtime.camera = new THREE.PerspectiveCamera(13, 1.333, .1, 2000);
+      f.runtime.camera.position.set(0, 0, 10); f.runtime.camera.lookAt(0, 0, 0);
+    }
+    const camera = f.runtime.camera;
+    const before = sample(f).cameraKey;
+    const horizontalScales = new Set();
+    for (const near of [.001, .003, 1, .0001234567, .0037913, .03123456789, .9173]) {
+      camera.near = near; camera.far = 2000; camera.updateProjectionMatrix();
+      horizontalScales.add(camera.projectionMatrix.elements[0]);
+      assert.equal(sample(f).cameraKey, before, `${kind}: mesh-derived clip distances cannot reopen pressure ceiling`);
+    }
+    if (kind === "perspective") assert.ok(horizontalScales.size > 1, "actual Three x/y projection rounding changes with near");
+    camera.far = 14500; camera.updateProjectionMatrix();
+    assert.equal(sample(f).cameraKey, before);
+    camera.zoom = 1.2; camera.updateProjectionMatrix();
+    let previous = sample(f).cameraKey;
+    assert.notEqual(previous, before);
+    if (kind === "perspective") {
+      for (const [field, value] of [["fov", 51], ["aspect", 1.8], ["filmGauge", 30], ["filmOffset", 2]]) {
+        camera[field] = value; camera.updateProjectionMatrix();
+        const next = sample(f).cameraKey; assert.notEqual(next, previous, field); previous = next;
+      }
+    } else {
+      camera.left = -6; camera.updateProjectionMatrix();
+      const next = sample(f).cameraKey; assert.notEqual(next, previous); previous = next;
+    }
+    camera.setViewOffset(1920, 1080, 100, 20, 960, 540);
+    const offset = sample(f).cameraKey; assert.notEqual(offset, previous);
+    camera.clearViewOffset();
+    assert.notEqual(sample(f).cameraKey, offset);
+  }
+});
+
+test("actual bounds/group publication resampling cannot reopen a pressure-coarsened rung", async () => {
+  const f = fixture([["part", cube(0)]]);
+  f.runtime.camera.zoom = 100; f.runtime.camera.updateProjectionMatrix();
+  let timer, scheduler;
+  const loads = [];
+  scheduler = createLodScheduler({
+    setTimeoutFn: fn => { timer = fn; return 1; }, clearTimeoutFn: () => {},
+    memoryPressure: () => scheduler.levelOf("part") === 3,
+    loadLevel: async (_cid, level) => { loads.push(level); assert.ok(loads.length < 7); return {}; }, applyLevel: () => true });
+  scheduler.setComponents([{ cid: "part", diagonal: 2, level: 0 }]);
+  scheduler.onCameraSample(sample(f)); timer();
+  for (let i = 0; i < 30; i++) await Promise.resolve();
+  assert.deepEqual(loads, [3, 2]);
+  f.runtime.displayRecords[0].partBounds = bounds([-.6, -.6, -.6], [.6, .6, .6]);
+  f.runtime.modelGroup.position.z = .1;
+  f.runtime.camera.near = .0123; f.runtime.camera.far = 40.51; f.runtime.camera.updateProjectionMatrix();
+  scheduler.onCameraSample(sample(f)); timer();
+  for (let i = 0; i < 30; i++) await Promise.resolve();
+  assert.deepEqual(loads, [3, 2]);
+  f.runtime.camera.position.z = 9;
+  scheduler.onCameraSample(sample(f)); timer();
+  for (let i = 0; i < 30; i++) await Promise.resolve();
+  assert.deepEqual(loads, [3, 2, 3, 2]);
+  scheduler.dispose();
+});

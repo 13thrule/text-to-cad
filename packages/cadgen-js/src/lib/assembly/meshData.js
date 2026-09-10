@@ -86,6 +86,29 @@ export function findAssemblyNode(root, nodeId) {
   return null;
 }
 
+// The same lookup semantics as nodeIds.map(id => findAssemblyNode(root, id)),
+// with one DFS for the requested IDs. Keep this index call-local: display trees
+// can change between publications, including edits that preserve node IDs.
+export function findAssemblyNodes(root, nodeIds) {
+  const ids = nodeIds.map((id) => String(id || "").trim());
+  const remaining = new Set(ids.filter((id) => id && id !== "root"));
+  const matches = new Map();
+  const stack = root && remaining.size ? [root] : [];
+  while (stack.length && remaining.size) {
+    const node = stack.pop();
+    const id = String(node?.id || "").trim();
+    if (remaining.delete(id)) {
+      matches.set(id, node); // first DFS match wins, including duplicate IDs
+      if (!remaining.size) break;
+    }
+    const children = Array.isArray(node?.children) ? node.children : [];
+    for (let index = children.length - 1; index >= 0; index -= 1) {
+      stack.push(children[index]);
+    }
+  }
+  return ids.map((id) => !id || id === "root" ? root || null : matches.get(id) || null);
+}
+
 export function rootAssemblyInspectionNodeId(root) {
   return String(root?.id || "").trim() || "root";
 }
