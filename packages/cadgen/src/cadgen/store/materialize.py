@@ -1,8 +1,10 @@
 """``materialize(tree)``: a model's geometry from its tree — the contract a parent
 composes against.
 
-Rebuilds a build123d ``Compound`` from a tree: components (BinTools read once
-per object, memoized per build), placed per the flattened structure, nested
+Rebuilds a build123d ``Compound`` from a tree: canonical component bytes are
+cached within a fixed budget, each independent consumer reconstructs fresh
+TShapes, and each object is decoded once per descriptor. Components are placed
+per the flattened structure, nested
 grouping preserved. The result is TAGGED with the tree hash
 (``__cadgen_tree__``) so the packager can recognize it intact in a parent's
 result and emit a link instead of copying components. The tag is metadata for
@@ -19,9 +21,10 @@ wrapper calls this.
 from __future__ import annotations
 
 import threading
+from collections import OrderedDict
 from typing import Any
 
-from cadgen.store.objects import read_object
+from cadgen.store.objects import has_object, read_object
 from cadgen.store.trees import flatten
 
 TREE_TAG = "__cadgen_tree__"
@@ -60,29 +63,73 @@ class _Partner:
     def __deepcopy__(self, memo: dict) -> "_Partner":
         return self
 
-# Per-build cache of BinTools reads by object hash: a build that composes the same
-# child several times (or several children sharing a component) parses each
-# component once. Reset by ``reset_memo`` at the start of each build.
-_SHAPE_MEMO: dict[str, Any] = {}
+# A process-local cache of immutable canonical BREP bytes. Live OCCT prototypes
+# cannot cross materialize() calls: build123d's moved() deliberately shares a
+# TShape, whose meshing and bookkeeping are mutable. The old live-shape memo
+# let one independent consumer alter another. Keeping bytes saves object reads
+# while every consumer receives a fresh reconstruction; on the nine-component
+# warm-build fixture that boundary costs about 4 ms per materialization.
+#
+# 64 MiB is a conservative fraction of the daemon worker's default 2 GiB
+# reservation. It bounds Python-owned retention independently of persistent
+# store GC; memory-pressure worker recycling reclaims the whole process.
+_BREP_BYTES_MEMO_CAPACITY = 64 * 1024 * 1024
+_BREP_BYTES_MEMO: OrderedDict[str, bytes] = OrderedDict()
+_BREP_BYTES_MEMO_SIZE = 0
 _SHAPE_MEMO_LOCK = threading.Lock()
 
 
 def reset_memo() -> None:
+    """Release process-owned materialization cache bytes.
+
+    Active consumers own their reconstructed TShapes and remain valid.
+    """
+    global _BREP_BYTES_MEMO_SIZE
     with _SHAPE_MEMO_LOCK:
-        _SHAPE_MEMO.clear()
+        _BREP_BYTES_MEMO.clear()
+        _BREP_BYTES_MEMO_SIZE = 0
+
+
+def _bytes_for_object(digest: str) -> bytes:
+    """Canonical bytes for an object that still exists in the store.
+
+    A cached payload never masks manual deletion: a new materialize call must
+    fail when its pinned object is gone. Already materialized consumers remain
+    self-contained through their own OCCT handles.
+    """
+    global _BREP_BYTES_MEMO_SIZE
+    if not has_object(digest):
+        with _SHAPE_MEMO_LOCK:
+            stale = _BREP_BYTES_MEMO.pop(digest, None)
+            if stale is not None:
+                _BREP_BYTES_MEMO_SIZE -= len(stale)
+        return read_object(digest)  # raises the store's ordinary missing-object error
+    with _SHAPE_MEMO_LOCK:
+        cached = _BREP_BYTES_MEMO.get(digest)
+        if cached is not None:
+            _BREP_BYTES_MEMO.move_to_end(digest)
+    if cached is not None:
+        return cached
+    payload = read_object(digest)
+    if len(payload) > _BREP_BYTES_MEMO_CAPACITY:
+        return payload
+    with _SHAPE_MEMO_LOCK:
+        existing = _BREP_BYTES_MEMO.get(digest)
+        if existing is not None:
+            _BREP_BYTES_MEMO.move_to_end(digest)
+            return existing
+        _BREP_BYTES_MEMO[digest] = payload
+        _BREP_BYTES_MEMO_SIZE += len(payload)
+        while _BREP_BYTES_MEMO_SIZE > _BREP_BYTES_MEMO_CAPACITY:
+            _old_digest, old_payload = _BREP_BYTES_MEMO.popitem(last=False)
+            _BREP_BYTES_MEMO_SIZE -= len(old_payload)
+    return payload
 
 
 def _shape_for_object(digest: str) -> Any:
-    with _SHAPE_MEMO_LOCK:
-        cached = _SHAPE_MEMO.get(digest)
-    if cached is not None:
-        return cached
     from cadgen._internal.component_package import _build123d_shape_from_brep_bytes
 
-    shape = _build123d_shape_from_brep_bytes(read_object(digest))
-    with _SHAPE_MEMO_LOCK:
-        _SHAPE_MEMO.setdefault(digest, shape)
-    return shape
+    return _build123d_shape_from_brep_bytes(_bytes_for_object(digest))
 
 
 def _location_from_matrix(matrix: list[float]):
@@ -141,13 +188,18 @@ def materialize_descriptor(
 
     components = descriptor.get("components") or {}
     shapes = dict(shapes or {})
+    decoded_by_object: dict[str, Any] = {}
     for cid, entry in components.items():
         if cid in shapes:
             continue
         brep = str((entry or {}).get("brep") or "")
         if not brep:
             raise FileNotFoundError(f"tree {tree_hash}: component {cid} has no brep object")
-        shapes[cid] = _shape_for_object(brep)
+        shape = decoded_by_object.get(brep)
+        if shape is None:
+            shape = _shape_for_object(brep)
+            decoded_by_object[brep] = shape
+        shapes[cid] = shape
 
     placed_by_id: dict[str, Any] = {}
     for occurrence in descriptor.get("occurrences") or []:

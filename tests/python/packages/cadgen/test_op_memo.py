@@ -12,6 +12,7 @@ import hashlib
 import io
 import os
 import unittest
+from unittest import mock
 
 from cadgen._internal import op_memo
 
@@ -124,6 +125,47 @@ class OpMemoTest(unittest.TestCase):
         BRepMesh_IncrementalMesh(first.wrapped, 0.5, False, 0.8, True)
         second = _build_part()
         self.assertEqual(_digest(second), reference)
+
+    def test_a_miss_reuses_its_verified_reconstruction_only_for_the_first_caller(self):
+        """Freeze proves canonical bytes by reading them once. The miss caller
+        receives that ephemeral reconstruction; later hits still read fresh."""
+        from build123d.topology import Solid
+
+        os.environ["CADGEN_OP_MEMO"] = "0"
+        box = Solid.make_box(20, 20, 8)
+        tool = Solid.make_cylinder(3, 12)
+        os.environ["CADGEN_OP_MEMO"] = "1"
+        op_memo.clear()
+        reads = 0
+        original = op_memo._read_brep
+
+        def counted(data):
+            nonlocal reads
+            reads += 1
+            return original(data)
+
+        os.environ["CADGEN_OP_MEMO_DISK"] = "0"
+        try:
+            with mock.patch.object(op_memo, "_read_brep", counted):
+                cold = box.cut(tool)
+                self.assertEqual(reads, 1, "a miss read canonical bytes twice")
+                warm = box.cut(tool)
+                self.assertEqual(reads, 2, "a RAM hit did not reconstruct independently")
+        finally:
+            os.environ.pop("CADGEN_OP_MEMO_DISK", None)
+        self.assertEqual(_digest(cold), _digest(warm))
+        self.assertFalse(cold.wrapped.IsPartner(warm.wrapped))
+
+    def test_first_consumer_reconstruction_supports_shape_sequences(self):
+        from build123d.topology import Solid
+
+        shapes = [Solid.make_box(2, 3, 4), Solid.make_cylinder(1, 5)]
+        stored, first = op_memo._freeze_result_for_first_consumer(shapes, [])
+        later = op_memo._thaw_result(stored, [])
+
+        self.assertIs(type(first), list)
+        self.assertEqual([_digest(shape) for shape in first], [_digest(shape) for shape in later])
+        self.assertTrue(all(not a.wrapped.IsPartner(b.wrapped) for a, b in zip(first, later)))
 
     def test_orientation_is_part_of_the_key(self):
         from build123d.topology import Solid

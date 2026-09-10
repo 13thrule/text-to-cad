@@ -741,16 +741,51 @@ def _freeze_result(result, shape_args: list):
     """Convert an op result into its stored form, verifying its bytes read
     back and its attributes are expressible. Raises _Unkeyable when the result
     cannot be cached."""
+    return _freeze_result_for_first_consumer(result, shape_args)[0]
+
+
+def _thaw_stored_shape(stored: _StoredShape, shape_args: list, reconstruction=None):
+    """Replay one stored shape, optionally using its just-verified BREP read."""
+    cls = _resolve_shape_class(stored.cls_path)
+    wrapped = reconstruction if reconstruction is not None else _read_brep(stored.brep)
+    clone = cls(_downcast(wrapped))
+    _apply_attrs(clone, stored.recipe["attrs"], shape_args)
+    specs = stored.recipe.get("children")
+    if specs:
+        from build123d.topology.shape_core import get_top_level_topods_shapes
+
+        tops = get_top_level_topods_shapes(clone.wrapped)
+        if len(tops) != len(specs):
+            raise ValueError("reconstruction has a different top-level shape count")
+        children = []
+        for spec, top in zip(specs, tops):
+            child = _resolve_shape_class(spec["cls"])(_downcast(top))
+            _apply_attrs(child, spec["attrs"], shape_args)
+            children.append(child)
+        clone.children = children
+    return clone
+
+
+def _freeze_result_for_first_consumer(result, shape_args: list):
+    """Stored bytes plus the miss caller's already-verified reconstruction.
+
+    Only canonical bytes and the attribute recipe enter either cache. The
+    ephemeral value avoids reading those bytes a second time on a miss; later
+    RAM and disk hits still reconstruct independently.
+    """
     if isinstance(result, (tuple, list)):
-        return ("seq", type(result), tuple(_freeze_result(r, shape_args) for r in result))
+        pairs = [_freeze_result_for_first_consumer(item, shape_args) for item in result]
+        stored = ("seq", type(result), tuple(pair[0] for pair in pairs))
+        first = type(result)(pair[1] for pair in pairs)
+        return stored, first
     if _is_shape(result):
         data = _write_brep(result.wrapped)
-        # Prove the bytes read back before anything is stored.
         reconstruction = _read_brep(data)
         recipe = _attribute_recipe(result, shape_args, reconstruction)
-        return _StoredShape(_class_path(type(result)), data, recipe)
+        stored = _StoredShape(_class_path(type(result)), data, recipe)
+        return stored, _thaw_stored_shape(stored, shape_args, reconstruction)
     if result is None or isinstance(result, (bool, int, float, str, bytes)):
-        return result
+        return result, result
     raise _Unkeyable(f"unstorable result type: {type(result).__name__}")
 
 
@@ -761,23 +796,7 @@ def _thaw_result(stored, shape_args: list):
         _, seq_type, items = stored
         return seq_type(_thaw_result(item, shape_args) for item in items)
     if isinstance(stored, _StoredShape):
-        cls = _resolve_shape_class(stored.cls_path)
-        clone = cls(_downcast(_read_brep(stored.brep)))
-        _apply_attrs(clone, stored.recipe["attrs"], shape_args)
-        specs = stored.recipe.get("children")
-        if specs:
-            from build123d.topology.shape_core import get_top_level_topods_shapes
-
-            tops = get_top_level_topods_shapes(clone.wrapped)
-            if len(tops) != len(specs):
-                raise ValueError("reconstruction has a different top-level shape count")
-            children = []
-            for spec, top in zip(specs, tops):
-                child = _resolve_shape_class(spec["cls"])(_downcast(top))
-                _apply_attrs(child, spec["attrs"], shape_args)
-                children.append(child)
-            clone.children = children
-        return clone
+        return _thaw_stored_shape(stored, shape_args)
     return stored
 
 
@@ -908,7 +927,7 @@ def _memoized(op_name: str, fn, *, is_classmethod: bool):
         result = fn(*run_args, **run_kwargs)
         _stats["misses"] += 1
         try:
-            stored = _freeze_result(result, shape_args)
+            stored, first_value = _freeze_result_for_first_consumer(result, shape_args)
         except _Unkeyable:
             _stats["unstorable"] += 1
             return result
@@ -917,12 +936,9 @@ def _memoized(op_name: str, fn, *, is_classmethod: bool):
             return result
         _store(key, stored)
         # The caller gets the same canonical reconstruction a future hit
-        # would: package output must not depend on cache state.
-        try:
-            return _thaw_result(stored, shape_args)
-        except Exception:
-            _stats["errors"] += 1
-            return result
+        # would. It is the ephemeral BREP read already verified while freezing;
+        # no live object enters either cache.
+        return first_value
 
     wrapper.__op_memo__ = True
     return wrapper
@@ -1156,4 +1172,3 @@ def clear() -> None:
     with _lock:
         _cache.clear()
         _tshape_bytes_memo.clear()
-

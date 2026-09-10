@@ -16,6 +16,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from tests.python.support.tmp_root import generated_cad_directory
+
 REPO = Path(__file__).resolve().parents[4]
 PYTHON = sys.executable
 
@@ -676,6 +678,105 @@ class LinkOrComponent(StoreCase):
             sorted(c.label for c in again.children),
             sorted(["bar", "pin_left", "pin_right", "pin_mirrored", "pin_cut", "pin_relocated"]),
         )
+
+
+class MaterializeCacheOwnership(unittest.TestCase):
+    """Independent materialize consumers never share mutable OCCT TShapes."""
+
+    def setUp(self) -> None:
+        self.tmp = generated_cad_directory(prefix="materialize-cache-")
+        self.addCleanup(self.tmp.cleanup)
+        self.previous = os.environ.get("CADGEN_CACHE_DIR")
+        os.environ["CADGEN_CACHE_DIR"] = str(Path(self.tmp.name) / "store")
+        from cadgen.store.materialize import reset_memo
+
+        reset_memo()
+        self.addCleanup(reset_memo)
+
+        def restore() -> None:
+            if self.previous is None:
+                os.environ.pop("CADGEN_CACHE_DIR", None)
+            else:
+                os.environ["CADGEN_CACHE_DIR"] = self.previous
+
+        self.addCleanup(restore)
+
+    @staticmethod
+    def _triangulated_faces(shape) -> int:
+        from OCP.BRep import BRep_Tool
+        from OCP.TopAbs import TopAbs_ShapeEnum
+        from OCP.TopExp import TopExp_Explorer
+        from OCP.TopLoc import TopLoc_Location
+        from OCP.TopoDS import TopoDS
+
+        count = 0
+        explorer = TopExp_Explorer(shape.wrapped, TopAbs_ShapeEnum.TopAbs_FACE)
+        while explorer.More():
+            face = TopoDS.Face_s(explorer.Current())
+            if BRep_Tool.Triangulation_s(face, TopLoc_Location()) is not None:
+                count += 1
+            explorer.Next()
+        return count
+
+    def _box_tree(self) -> str:
+        from build123d import Box
+        from cadgen.store.build import build_tree_from_compound
+
+        tree, _descriptor, _stats = build_tree_from_compound(Box(8, 6, 4), root_name="box")
+        return tree
+
+    def test_independent_consumers_are_mutation_and_mesh_isolated(self) -> None:
+        from OCP.BRepMesh import BRepMesh_IncrementalMesh
+        from cadgen.store.materialize import materialize, reset_memo
+
+        tree = self._box_tree()
+        first = materialize(tree, label="first")
+        original_checked = bool(first.wrapped.Checked())
+        first.wrapped.Checked(not original_checked)
+        BRepMesh_IncrementalMesh(first.wrapped, 0.1, False, 0.5, True)
+        self.assertGreater(self._triangulated_faces(first), 0)
+
+        # This call hits the process byte cache after the first consumer was
+        # mutated and meshed. It must reconstruct the canonical disk result.
+        second = materialize(tree, label="second")
+        self.assertFalse(first.wrapped.IsPartner(second.wrapped))
+        self.assertEqual(bool(second.wrapped.Checked()), original_checked)
+        self.assertEqual(self._triangulated_faces(second), 0)
+
+        reset_memo()
+        from_disk = materialize(tree, label="from-disk")
+        self.assertFalse(second.wrapped.IsPartner(from_disk.wrapped))
+        self.assertAlmostEqual(from_disk.volume, second.volume, places=12)
+        self.assertEqual(self._triangulated_faces(from_disk), 0)
+
+    def test_cache_release_does_not_invalidate_active_but_never_masks_deletion(self) -> None:
+        from cadgen.store.materialize import materialize, reset_memo
+        from cadgen.store.objects import object_path
+        from cadgen.store.trees import flatten
+
+        tree = self._box_tree()
+        active = materialize(tree)
+        volume = active.volume
+        brep = next(iter(flatten(tree)["components"].values()))["brep"]
+        object_path(brep).unlink()
+
+        with self.assertRaises(FileNotFoundError):
+            materialize(tree)
+        reset_memo()
+        self.assertAlmostEqual(active.volume, volume, places=12)
+
+    def test_canonical_byte_cache_is_byte_bounded_lru(self) -> None:
+        from cadgen.store import materialize as materialize_mod
+        from cadgen.store.objects import put_object
+
+        first = put_object(b"a" * 10)
+        second = put_object(b"b" * 10)
+        with mock.patch.object(materialize_mod, "_BREP_BYTES_MEMO_CAPACITY", 15):
+            materialize_mod._bytes_for_object(first)
+            materialize_mod._bytes_for_object(second)
+
+        self.assertEqual(list(materialize_mod._BREP_BYTES_MEMO), [second])
+        self.assertEqual(materialize_mod._BREP_BYTES_MEMO_SIZE, 10)
 
 
 class LinkedRootPlacement(StoreCase):
