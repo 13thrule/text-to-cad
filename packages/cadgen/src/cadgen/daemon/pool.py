@@ -344,7 +344,11 @@ class Pool:
             if worker is not None:
                 worker.busy = True  # reserve before releasing the bookkeeping lock
             try:
-                self._admit_locked(additional=0 if worker else self._policy.worker_bytes, dependency=dependency)
+                self._admit_locked(
+                    additional=0 if worker else self._policy.worker_bytes,
+                    dependency=dependency,
+                    isolated_worker=worker,
+                )
             except MemoryAdmissionError:
                 if worker is not None:
                     worker.busy = False
@@ -353,7 +357,10 @@ class Pool:
                     self._stats["memoryReclaims"] += 1
                     self._drop_locked(worker)
                     worker = None
-                    self._admit_locked(additional=self._policy.worker_bytes, dependency=dependency)
+                    self._admit_locked(
+                        additional=self._policy.worker_bytes,
+                        dependency=dependency,
+                    )
                 else:
                     raise
             if worker is None:
@@ -427,7 +434,13 @@ class Pool:
             self._stats["memoryReclaims"] += 1
             self._drop_locked(worker)
 
-    def _admit_locked(self, *, additional: int, dependency: bool) -> None:
+    def _admit_locked(
+        self,
+        *,
+        additional: int,
+        dependency: bool,
+        isolated_worker: Worker | None = None,
+    ) -> None:
         if not self._policy.limit_bytes:
             return
         ceiling = self._policy.limit_bytes - (0 if dependency else self._policy.dependency_bytes)
@@ -444,6 +457,24 @@ class Pool:
             if self._retiring and time.monotonic() < deadline:
                 self._cv.wait(timeout=0.05)
                 continue
+            # A configured reservation, or the measured retained cache of the
+            # selected worker, can be larger than the normal build allowance.
+            # It may use the dependency reserve only when it is literally the
+            # sole charge. If it later asks for a child, that admission fails
+            # explicitly while the parent and its geometry remain alive.
+            if not dependency:
+                sole_charge = (
+                    not self._retiring
+                    and not self._active_pending
+                    and not self._spares_pending
+                    and (
+                        self._workers == [isolated_worker]
+                        if isolated_worker is not None
+                        else not self._workers
+                    )
+                )
+                if sole_charge and usage + additional <= self._policy.limit_bytes:
+                    return
             self._stats["memoryRefusals"] += 1
             raise MemoryAdmissionError(
                 f"cadgen memory admission: {usage / MIB:.0f} MiB charged plus "
@@ -451,6 +482,7 @@ class Pool:
                 f"{ceiling / MIB:.0f} MiB {'dependency' if dependency else 'build'} allowance "
                 f"({self._policy.limit_bytes / MIB:.0f} MiB total). "
                 "Idle workers were reclaimed; active builds retain their geometry. "
+                "An oversized reservation may use the total allowance only while it is the sole charge. "
                 "Wait for active work to finish, increase CADGEN_MEMORY_MB, or reduce the workload."
             )
 

@@ -68,7 +68,10 @@ class Broker:
         self._next = 0
         self._peak = 0
         self._granted = 0
-        # (model, closure) -> {"done": Event, "exit": int | None}
+        # (model, closure) -> one uniquely owned entry. Consumers are explicit:
+        # losing a waiting subscriber never cancels canonical work another
+        # subscriber still needs, while losing the owner plus its last consumer
+        # leaves the worker eligible for cancellation by the supervisor.
         self._inflight: dict[tuple[str, str], dict[str, Any]] = {}
         self._coalesced = 0
 
@@ -106,25 +109,88 @@ class Broker:
 
     # in flight ------------------------------------------------------------------------
 
-    def claim(self, model: str, closure: str) -> dict[str, Any] | None:
-        """Register ``(model, closure)`` as in flight. Returns None when it is now
-        yours to build, else the entry to wait on (a job with identical source is
-        already running)."""
+    def claim_entry(self, model: str, closure: str) -> tuple[bool, dict[str, Any]]:
+        """Claim a unique in-flight entry.
+
+        Returns ``(True, entry)`` for its producer and ``(False, entry)`` for
+        an attached consumer. The entry token, rather than its reusable key,
+        makes late completion unable to finish a replacement producer.
+        """
         key = (model, closure)
         with self._cv:
             entry = self._inflight.get(key)
             if entry is not None and not entry["done"].is_set():
-                self._coalesced += 1
-                return entry
-            self._inflight[key] = {"done": threading.Event(), "exit": None}
-            return None
+                if entry["ownerActive"] or entry["consumers"]:
+                    entry["consumers"] += 1
+                    self._coalesced += 1
+                    return False, entry
+            entry = {
+                "key": key,
+                "done": threading.Event(),
+                "exit": None,
+                "ownerActive": True,
+                "consumers": 0,
+                "orphaned": threading.Event(),
+            }
+            self._inflight[key] = entry
+            return True, entry
+
+    def claim(self, model: str, closure: str) -> dict[str, Any] | None:
+        """Register ``(model, closure)`` as in flight. Returns None when it is now
+        yours to build, else the entry to wait on (a job with identical source is
+        already running)."""
+        owned, entry = self.claim_entry(model, closure)
+        return None if owned else entry
+
+    def _retire_orphan_locked(self, entry: dict[str, Any]) -> None:
+        key = entry["key"]
+        if self._inflight.get(key) is entry:
+            self._inflight.pop(key, None)
+        entry["orphaned"].set()
+        self._cv.notify_all()
+
+    def detach(self, entry: dict[str, Any]) -> bool:
+        """Detach one consumer; return True when its old work became orphaned.
+
+        Retirement and removal from the attachable registry are one locked
+        operation, so a new request receives a new token before the supervisor
+        terminates the old worker.
+        """
+        with self._cv:
+            if entry["consumers"]:
+                entry["consumers"] -= 1
+            if not entry["ownerActive"] and not entry["consumers"] and not entry["done"].is_set():
+                self._retire_orphan_locked(entry)
+            self._cv.notify_all()
+            return entry["orphaned"].is_set()
+
+    def abandon(self, entry: dict[str, Any]) -> bool:
+        """Mark the producer connection gone; return whether consumers remain."""
+        with self._cv:
+            entry["ownerActive"] = False
+            if not entry["consumers"] and not entry["done"].is_set():
+                self._retire_orphan_locked(entry)
+            return bool(entry["consumers"] and not entry["done"].is_set())
+
+    @staticmethod
+    def orphaned(entry: dict[str, Any]) -> bool:
+        return entry["orphaned"].is_set() and not entry["done"].is_set()
+
+    def finish_entry(self, entry: dict[str, Any], code: int) -> None:
+        with self._cv:
+            key = entry["key"]
+            if self._inflight.get(key) is entry:
+                self._inflight.pop(key, None)
+            entry["exit"] = int(code)
+            entry["ownerActive"] = False
+            entry["done"].set()
+            self._cv.notify_all()
 
     def finish(self, model: str, closure: str, code: int) -> None:
         with self._cv:
-            entry = self._inflight.pop((model, closure), None)
+            entry = self._inflight.get((model, closure))
         if entry is not None:
-            entry["exit"] = int(code)
-            entry["done"].set()
+            self.finish_entry(entry, code)
 
     def snapshot(self) -> dict[str, Any]:
         with self._cv:
@@ -180,8 +246,8 @@ class Broker:
         closure = str(request.get("closure") or "")
         op = request.get("op")
         if op == "claim":
-            entry = self.claim(model, closure)
-            if entry is None:
+            owned, entry = self.claim_entry(model, closure)
+            if owned:
                 _send(conn, {"inflight": "yours"})
                 # The claimer reports the outcome on this same connection; if it dies
                 # first, the attached parties are released with a failure.
@@ -193,12 +259,15 @@ class Broker:
                         code = int(payload.get("exit", 1))
                 except (OSError, ValueError):
                     pass
-                self.finish(model, closure, code)
+                self.finish_entry(entry, code)
                 return
             _send(conn, {"inflight": "attached"})
-            entry["done"].wait()
-            with contextlib.suppress(OSError):
-                _send(conn, {"exit": entry["exit"] if entry["exit"] is not None else 1})
+            try:
+                entry["done"].wait()
+                with contextlib.suppress(OSError):
+                    _send(conn, {"exit": entry["exit"] if entry["exit"] is not None else 1})
+            finally:
+                self.detach(entry)
         else:
             _send(conn, {"error": f"unknown inflight op {op!r}"})
 

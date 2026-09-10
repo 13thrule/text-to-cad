@@ -142,6 +142,7 @@ def _watch_client(
     done: threading.Event,
     tool: str,
     worker,
+    preserve_work=None,
 ) -> None:
     """Kill the WORKER when the requesting client vanishes mid-job.
 
@@ -160,9 +161,35 @@ def _watch_client(
         except OSError:
             if done.is_set():
                 return
+            if preserve_work is not None and preserve_work():
+                _log(f"{tool}: producer disconnected; continuing for coalesced consumers")
+                while not done.wait(CLIENT_LIVENESS_INTERVAL_SECONDS):
+                    if not preserve_work():
+                        _log(f"{tool}: last coalesced consumer disconnected; killing worker {worker.pid}")
+                        worker.kill()
+                        return
+                return
             _log(f"{tool}: client disconnected mid-request; killing worker {worker.pid}")
             worker.kill()
             return
+
+
+def _wait_for_inflight_consumer(conn: transport.Channel, entry: dict) -> int | None:
+    """Wait for canonical work, or return None when only this consumer left.
+
+    A request client sends no more messages, so a nonblocking receive is purely
+    an EOF probe. It emits no heartbeat frames and cannot disturb other users of
+    the same in-flight entry.
+    """
+    while not entry["done"].wait(CLIENT_LIVENESS_INTERVAL_SECONDS):
+        try:
+            if conn.recv(0.0) == b"":
+                return None
+        except (AttributeError, OSError):
+            # Simple in-process test channels have no receive side. A real
+            # transport.Channel normalizes peer loss to b"".
+            pass
+    return entry["exit"] if entry["exit"] is not None else 1
 
 
 def _status_payload() -> dict:
@@ -266,12 +293,17 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
     )
     inflight = None
     if subject and closure and request.get("coalesce"):
-        inflight = _BROKER.claim(subject, closure)
-        if inflight is not None:
+        owns_work, inflight = _BROKER.claim_entry(subject, closure)
+        if not owns_work:
             # Identical source is already building: attach, relay its exit, run nothing.
             _log(f"{tool} {model}: coalesced onto the job in flight")
-            inflight["done"].wait()
-            code = inflight["exit"] if inflight["exit"] is not None else 1
+            try:
+                code = _wait_for_inflight_consumer(conn, inflight)
+            finally:
+                _BROKER.detach(inflight)
+            if code is None:
+                _JOBS.finish(job, 1, error="client disconnected")
+                return
             _JOBS.finish(job, code)
             with contextlib.suppress(OSError), send_lock:
                 _send(conn, {"exit": code})
@@ -284,8 +316,8 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
         # retry here would bypass the daemon's aggregate admission policy.
         _log(f"{tool}: could not start a worker: {exc}")
         _JOBS.finish(job, 1, error=str(exc))
-        if subject and closure and request.get("coalesce"):
-            _BROKER.finish(subject, closure, 1)
+        if inflight is not None:
+            _BROKER.finish_entry(inflight, 1)
         with contextlib.suppress(OSError), send_lock:
             _send(conn, {"stream": "stderr", "data": f"cadgen-daemon: could not start a worker: {exc}\n"})
             _send(conn, {"exit": 1})
@@ -296,10 +328,16 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
     # reason the ledger records, so a reader (the CAD Viewer) can say why.
     stderr_tail: collections.deque[str] = collections.deque(maxlen=80)
     watchdog_done = threading.Event()
+    def preserve_coalesced_work() -> bool:
+        return bool(inflight is not None and _BROKER.abandon(inflight))
+
     watchdog = threading.Thread(
-        target=_watch_client, args=(conn, send_lock, watchdog_done, tool, worker), daemon=True
+        target=_watch_client,
+        args=(conn, send_lock, watchdog_done, tool, worker, preserve_coalesced_work),
+        daemon=True,
     )
     watchdog.start()
+    relay_connected = True
     try:
         worker.send({
             "kind": "run",
@@ -319,8 +357,15 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
             if frame.get("stream") == "stderr":
                 stderr_tail.append(str(frame.get("data") or ""))
             _JOBS.observe(frame)
-            with send_lock:
-                _send(conn, frame)
+            if relay_connected:
+                try:
+                    with send_lock:
+                        _send(conn, frame)
+                except OSError:
+                    if preserve_coalesced_work():
+                        relay_connected = False
+                    else:
+                        raise
     except pool_mod.WorkerGone as exc:
         # Its own frame, not a stderr chunk: the client owns the wording (it knows
         # how the user invoked it) and pins it by test; the supervisor supplies the
@@ -347,8 +392,8 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
         _POOL.release(worker, healthy=healthy and worker.alive())
         reason = failure_message("".join(stderr_tail))[0] if exit_code != 0 else None
         _JOBS.finish(job, exit_code, error=reason or None)
-        if subject and closure and request.get("coalesce"):
-            _BROKER.finish(subject, closure, exit_code)
+        if inflight is not None:
+            _BROKER.finish_entry(inflight, exit_code)
 
     _REQUESTS_SERVED[0] += 1
     _log(f"{tool} {argv!r} -> exit {exit_code} in {time.perf_counter() - started:.2f}s "

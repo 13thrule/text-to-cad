@@ -75,6 +75,8 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
         tree_hash = str(payload.get("tree") or "")
         if not tree_complete(tree_hash):
             result["error"] = "Preview geometry is no longer available in the cache"
+            if output_key == "preview":
+                result["previewUnavailable"] = True
             continue
         result[output_key] = {
             "tree": tree_hash,

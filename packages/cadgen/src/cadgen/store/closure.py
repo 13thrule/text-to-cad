@@ -177,26 +177,23 @@ def changed_constant(script: Path, constants: Mapping[str, Mapping[str, str]]) -
 
 
 @functools.lru_cache(maxsize=4096)
-def _model_function_name(path_str: str) -> str | None:
-    """The decorated model function's name when ``path`` is a model file, else None.
-    Static (AST) so nothing is imported to answer it."""
-    from cadgen.metadata import parse_generator_metadata
+def _model_function_names(path_str: str) -> frozenset[str]:
+    """All declared model names, without importing or choosing one model.
 
-    try:
-        metadata = parse_generator_metadata(Path(path_str))
-    except Exception:  # noqa: BLE001 - an unparseable file is not a model file
-        return None
-    if metadata is None or not getattr(metadata, "is_decorated", False):
-        return None
-    return str(getattr(metadata, "entry_function", "") or "") or None
+    A multi-model file still forms a result boundary when the importer takes
+    only decorated functions. Each model keeps that file's whole closure.
+    """
+    from cadgen.metadata import model_function_names
+
+    return frozenset(model_function_names(Path(path_str)))
 
 
 def is_model_file(path: Path) -> bool:
-    return _model_function_name(str(Path(path).resolve())) is not None
+    return bool(_model_function_names(str(Path(path).resolve())))
 
 
 def forget_model_files() -> None:
-    _model_function_name.cache_clear()
+    _model_function_names.cache_clear()
 
 
 # --- static import resolution -------------------------------------------------
@@ -244,41 +241,25 @@ def static_imports(script: Path) -> StaticImports:
     sources: list[Path] = []
     children: list[Path] = []
     constants: dict[str, dict[str, str]] = {}
-    seen: set[Path] = set()
+    imports: dict[Path, set[str] | None] = {}
 
-    def classify(target: Path, taken: set[str] | None) -> None:
-        if target in seen or target == script or not is_first_party_source_file(target):
+    def note(target: Path, taken: set[str] | None) -> None:
+        if target == script or not is_first_party_source_file(target):
             return
-        seen.add(target)
-        model_fn = _model_function_name(str(target))
-        if model_fn is None:
-            sources.append(target)
-            return
-        if taken is None:  # star import: everything, by file
-            sources.append(target)
-            return
-        # A model file. Names beyond the model function are value edges when
-        # every one is a module-level literal (tracked by value hash); any other
-        # name — a helper, a bd object, an expression — makes the file a source edge.
-        # (`import arm` with only `arm.arm()` calls records {"arm"}; nothing taken
-        # statically at all is a result edge too.)
-        beyond = set(taken) - {model_fn}
-        literals = (module_constant_hashes(target, beyond) or {}) if beyond else {}
-        if set(literals) == beyond:
-            children.append(target)
-            if literals:
-                constants.setdefault(str(target), {}).update(literals)
-        else:
-            sources.append(target)
+        previous = imports.get(target, set())
+        imports[target] = None if taken is None or previous is None else previous | taken
 
-    for node in tree.body:
+    # A later import, including one inside a function, may take a helper from
+    # a file first seen through a model name. Classify the union so normalizing
+    # a runtime child ref never hides that source dependency.
+    for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 target = _resolve_module(alias.name, roots)
                 if target is None:
                     continue
                 taken = _taken_names(tree, alias.asname or alias.name.split(".")[0])
-                classify(target, taken)
+                note(target, taken)
         elif isinstance(node, ast.ImportFrom):
             if node.level:
                 # `from .chain import X` / `from . import chain` inside a package:
@@ -295,17 +276,33 @@ def static_imports(script: Path) -> StaticImports:
             names = {alias.name for alias in node.names}
             if "*" in names:
                 if target is not None:
-                    classify(target, None)  # star import: treat as source
+                    note(target, None)  # star import: treat as source
                 continue
             # `from pkg import module` resolves the submodule, not a name in pkg.
             submodules = {n for n in names if _resolve_module(prefix + n, from_roots) is not None}
             for sub in submodules:
                 sub_target = _resolve_module(prefix + sub, from_roots)
                 if sub_target is not None:
-                    classify(sub_target, _taken_names(tree, sub))
+                    note(sub_target, _taken_names(tree, sub))
             names -= submodules
             if names and target is not None:
-                classify(target, names)
+                note(target, names)
+    for target, taken in imports.items():
+        model_names = _model_function_names(str(target))
+        if not model_names or taken is None:
+            sources.append(target)
+            continue
+        # Constants by value, functions by file, every decorated model by
+        # result. A module import with no statically taken names is also a
+        # result edge; actual model calls supply the exact function pins.
+        beyond = taken - model_names
+        literals = (module_constant_hashes(target, beyond) or {}) if beyond else {}
+        if set(literals) == beyond:
+            children.append(target)
+            if literals:
+                constants.setdefault(str(target), {}).update(literals)
+        else:
+            sources.append(target)
     return StaticImports(tuple(sources), tuple(children), constants)
 
 
@@ -457,7 +454,7 @@ def build_closure(
     *,
     executed: dict[str, str],
     discovered_inputs: Iterable[Path] = (),
-    children: Iterable[Path] = (),
+    children: Iterable[Path | str] = (),
 ) -> Closure:
     """The closure a build records.
 
@@ -470,14 +467,26 @@ def build_closure(
     script = Path(script).resolve()
     base = script.parent
     statics = static_closure(script)
-    child_files: set[Path] = set(Path(c).resolve() for c in children) | set(statics.child_models)
+    from cadgen.store.index import split_model_ref
+
+    # Runtime calls carry exact script::function identities. Ownership of
+    # executed source remains file-based, while the record keeps those exact
+    # function pins independently in its children list.
+    called_files = {split_model_ref(child)[0] for child in children}
+    child_files = called_files | set(statics.child_models)
     # Files exclusively owned by children: their own static closures, minus
     # anything this script also reaches through a source edge.
     child_owned: set[Path] = set(child_files)
-    for child in list(child_files):
-        for source in static_closure(child).source_files:
-            child_owned.add(source)
     ours: set[Path] = {script, *statics.source_files}
+    for child in list(child_files):
+        sources = static_closure(child).source_files
+        child_owned.update(sources)
+        if child in called_files and child not in statics.child_models:
+            # A dynamic module can supply a decorated call AND a helper/value
+            # used directly by this body. The call alone does not prove that
+            # its file is exclusively child-owned. Keep that source and its
+            # source closure unless static imports prove a result/value edge.
+            ours.update((child, *sources))
     child_owned -= ours
 
     files: set[Path] = set(ours)

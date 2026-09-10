@@ -6,6 +6,7 @@ import contextlib
 import json
 import os
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -26,6 +27,22 @@ class Connection:
         self.frames.append(json.loads(raw))
 
 
+class DisconnectableConnection(Connection):
+    def __init__(self):
+        super().__init__()
+        self.disconnected = threading.Event()
+        self.failed_send = threading.Event()
+
+    def send(self, raw):
+        if self.disconnected.is_set():
+            self.failed_send.set()
+            raise OSError("peer closed")
+        super().send(raw)
+
+    def recv(self, _timeout=None):
+        return b"" if self.disconnected.is_set() else None
+
+
 class PreviewWorker:
     pid = 123
     extra = False
@@ -37,12 +54,18 @@ class PreviewWorker:
         self.allow_save = threading.Event()
         self.saved_relayed = threading.Event()
         self.allow_exit = threading.Event()
+        self.killed = False
 
     def send(self, request):
         self.request = request
 
     def alive(self):
-        return True
+        return not self.killed
+
+    def kill(self):
+        self.killed = True
+        self.allow_save.set()
+        self.allow_exit.set()
 
     def event(self, sequence, **extra):
         return {"event": {"model": str(self.model), "job": self.request["job_id"],
@@ -95,13 +118,21 @@ class CoalescedPreviewRequests(unittest.TestCase):
              mock.patch("cadgen.store.records.model_for_output", side_effect=AssertionError("output record read")):
             return preview_status(str(self.root), str(self.output), jobs=self.ledger.snapshot())
 
+    def wait_until(self, predicate, message):
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            if predicate():
+                return
+            time.sleep(0.01)
+        self.fail(message)
+
     def exercise_follower(self, *, exit_code):
         worker = PreviewWorker(self.model, self.output, self.tree, exit_code=exit_code)
         worker_pool = mock.Mock()
         worker_pool.acquire.return_value = worker
         producer_conn, follower_conn = Connection(), Connection()
         claim_pending, allow_claim, follower_attached = (threading.Event() for _ in range(3))
-        original_claim = self.broker.claim
+        original_claim = self.broker.claim_entry
 
         def claim(*args):
             # The producer has reached its preview before the follower starts.
@@ -110,7 +141,7 @@ class CoalescedPreviewRequests(unittest.TestCase):
                 if not allow_claim.wait(5):
                     raise AssertionError("Test did not release the claim barrier")
             result = original_claim(*args)
-            if result is not None:
+            if not result[0]:
                 follower_attached.set()
             return result
 
@@ -119,7 +150,7 @@ class CoalescedPreviewRequests(unittest.TestCase):
                 stack.enter_context(mock.patch.object(server, name, value))
             stack.enter_context(mock.patch.object(server, "_log"))
             stack.enter_context(mock.patch.object(server, "_watch_client"))
-            stack.enter_context(mock.patch.object(self.broker, "claim", side_effect=claim))
+            stack.enter_context(mock.patch.object(self.broker, "claim_entry", side_effect=claim))
             executor = stack.enter_context(concurrent.futures.ThreadPoolExecutor(max_workers=2))
             producer_future = executor.submit(server._handle_request, producer_conn, self.request())
             try:
@@ -208,6 +239,64 @@ class CoalescedPreviewRequests(unittest.TestCase):
         self.assertEqual(self.broker.snapshot()["inflight"], 0)
         self.assertEqual(conn.frames[-1], {"exit": 1})
         worker_pool.release.assert_not_called()
+
+    def test_disconnected_producer_continues_for_an_attached_consumer(self):
+        worker = PreviewWorker(self.model, self.output, self.tree)
+        worker_pool = mock.Mock()
+        worker_pool.acquire.return_value = worker
+        producer_conn, consumer_conn = DisconnectableConnection(), DisconnectableConnection()
+
+        with mock.patch.object(server, "_POOL", worker_pool), \
+             mock.patch.object(server, "_JOBS", self.ledger), \
+             mock.patch.object(server, "_BROKER", self.broker), \
+             mock.patch.object(server, "CLIENT_LIVENESS_INTERVAL_SECONDS", 0.02), \
+             mock.patch.object(server, "_log"), \
+             concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            producer = executor.submit(server._handle_request, producer_conn, self.request())
+            self.assertTrue(worker.preview_relayed.wait(3))
+            consumer = executor.submit(server._handle_request, consumer_conn, self.request())
+            self.wait_until(lambda: self.broker.snapshot()["coalesced"] == 1, "consumer never attached")
+
+            producer_conn.disconnected.set()
+            self.assertTrue(producer_conn.failed_send.wait(3), "producer disconnect was not observed")
+            self.assertFalse(worker.killed, "canonical work was killed despite its attached consumer")
+            worker.allow_save.set()
+            worker.allow_exit.set()
+            producer.result(timeout=3)
+            consumer.result(timeout=3)
+
+        self.assertFalse(worker.killed)
+        self.assertEqual(consumer_conn.frames[-1], {"exit": 0})
+        worker_pool.release.assert_called_once_with(worker, healthy=True)
+        self.assertEqual(self.broker.snapshot()["inflight"], 0)
+
+    def test_disconnected_consumer_does_not_cancel_the_active_producer(self):
+        worker = PreviewWorker(self.model, self.output, self.tree)
+        worker_pool = mock.Mock()
+        worker_pool.acquire.return_value = worker
+        producer_conn, consumer_conn = DisconnectableConnection(), DisconnectableConnection()
+
+        with mock.patch.object(server, "_POOL", worker_pool), \
+             mock.patch.object(server, "_JOBS", self.ledger), \
+             mock.patch.object(server, "_BROKER", self.broker), \
+             mock.patch.object(server, "CLIENT_LIVENESS_INTERVAL_SECONDS", 0.02), \
+             mock.patch.object(server, "_log"), \
+             concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            producer = executor.submit(server._handle_request, producer_conn, self.request())
+            self.assertTrue(worker.preview_relayed.wait(3))
+            consumer = executor.submit(server._handle_request, consumer_conn, self.request())
+            self.wait_until(lambda: self.broker.snapshot()["coalesced"] == 1, "consumer never attached")
+
+            consumer_conn.disconnected.set()
+            consumer.result(timeout=3)
+            self.assertFalse(worker.killed, "one subscriber canceled its producer's canonical work")
+            self.assertEqual(self.broker.snapshot()["inflight"], 1)
+            worker.allow_save.set()
+            worker.allow_exit.set()
+            producer.result(timeout=3)
+
+        self.assertFalse(worker.killed)
+        worker_pool.release.assert_called_once_with(worker, healthy=True)
 
 
 if __name__ == "__main__":

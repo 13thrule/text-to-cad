@@ -85,6 +85,25 @@ class EditingPreviewTests(unittest.TestCase):
             previews={self.output: {"tree": missing}})])
         self.assertNotIn("preview", result)
         self.assertIn("no longer available", result["error"])
+        self.assertTrue(result["previewUnavailable"])
+
+    def test_expired_preview_preserves_a_separately_validated_saved_result(self):
+        from cadgen.catalog import artifact_file_hash
+        from cadgen.store.records import note_document_tree
+
+        Path(self.output).write_bytes(b"saved document")
+        digest = artifact_file_hash(Path(self.output))
+        note_document_tree(digest, self.tree)
+        missing = put_tree({"components": {"c": {"surf": "a" * 64, "brep": "b" * 64}}})
+        job = self.job(state="done", previews={self.output: {"tree": missing}},
+                       savedResults={self.output: {"tree": self.tree, "documentHash": digest}})
+        with mock.patch("cadgen.store.records.read_record", side_effect=AssertionError("model read")), \
+             mock.patch("cadgen.store.records.model_for_output", side_effect=AssertionError("output read")):
+            result = preview_status(str(self.root), self.output, jobs=[job])
+        self.assertNotIn("preview", result)
+        self.assertTrue(result["previewUnavailable"])
+        self.assertEqual(result["saved"]["documentHash"], digest)
+        self.assertEqual(result["saved"]["tree"], self.tree)
 
     def test_outside_root_and_hidden_paths_are_rejected(self):
         with self.assertRaises(ForbiddenAssetError):
