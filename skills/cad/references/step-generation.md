@@ -43,8 +43,10 @@ Rules the decorator enforces:
 - **The decorator only declares.** Nothing runs at decoration or import time.
   A model file without `if __name__ == "__main__": <model>()` never builds.
 - **A top-level call builds.** Calling the decorated name when no build is in
-  progress (`__main__`, a REPL) runs the pipeline and returns `None`; a failed
-  build exits with the pipeline's code. It takes no arguments.
+  progress (`__main__`, a REPL) runs the pipeline; a failed build exits with
+  the pipeline's code. A conventional real-file `__main__` bare call such as
+  `plate()` finishes every output without loading its discarded geometry back
+  into that process. It takes no arguments.
 - **A call inside a build composes.** From another model's body the same name
   returns the shape: the child is built if it is stale (writing ITS outputs
   and record), otherwise loaded from the store, and either way its result is
@@ -63,8 +65,11 @@ Rules the decorator enforces:
 - **Calling a model from plain Python returns its geometry.** Outside a build,
   `plate()` builds (or finds current) and returns the model's tree as a
   `Compound` — what a parent composing it would get — so a script, a notebook
-  or a REPL can read bounds, faces or volumes straight off a model. A drawing
-  returns `None`.
+  or a REPL can read bounds, faces or volumes straight off a model. Assign or
+  otherwise consume the call when using that return. Only a proven discarded
+  real-file `__main__` bare call skips this materialization; instrumented,
+  interactive and ambiguous calls keep returning geometry. A drawing returns
+  `None`.
 - **A model takes no parameters.** It is one configuration of one set of
   outputs, so there is nothing for an argument to select; the decorator
   refuses a parameter list. Parametric geometry is a plain factory the model

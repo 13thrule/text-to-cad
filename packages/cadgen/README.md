@@ -57,9 +57,13 @@ extraction is an artifact-only build-pool job selected by an attested producer.
 A first display or selector request still pays missing surface derivation.
 The exact input, codec and recovery boundaries are in [`STORE.md`](STORE.md).
 
-The authored tree is also the final result returned by decorated calls. A
-parent can consume a child's complete source result before that child's STEP
-save, but waits for every called child's declared outputs before saving itself.
+The authored tree is also the final result returned by decorated calls when the
+caller consumes that result. A conventional real-file `__main__` bare call
+finishes the checked source result and every declared output, then avoids
+materializing geometry that Python immediately discards; assigned, nested,
+interactive and instrumented calls retain the geometry return. A parent can
+consume a child's complete source result before that child's STEP save, but
+waits for every called child's declared outputs before saving itself.
 The child's job carries the exact immutable pin; asynchronous consumers never
 look up a newer model record to resolve it.
 For a small result made entirely of pinned child links, the build runtime

@@ -853,6 +853,13 @@ through the pool, tagged with the root request's id, identically for both
 executors. After publishing, the root runs its gate once more and says
 `already stale: …; rerun` if a child changed during the build.
 
+After a successful top-level build, the caller waits for the checked source
+result before returning. A proven discarded bare call in the actual real-file
+`__main__` module then returns without materializing that tree into native
+geometry. Any caller that consumes the result, any interactive or instrumented
+execution, and any uncertain bytecode keeps the materialized return. This does
+not shorten source publication, declared-output completion or failure paths.
+
 ## 9b. Editing previews and explicit saves
 
 Running existing decorated code publishes a complete preview before the root's

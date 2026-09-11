@@ -23,11 +23,12 @@ Semantics:
 - **A top-level call builds.** Calling the decorated name when no build is in
   progress (``__main__``, a REPL, a test) runs the full pipeline — freshness
   gate, progress, incremental package build, ``.step``/``.dxf`` output —
-  via the warm daemon when available, in-process otherwise. It returns
-  ``None``: the caller is the build's initiator, and loading the shape back
-  into it would force the kernel import the gate exists to avoid. A failed
-  build raises ``SystemExit`` with the pipeline's exit code, so ``python
-  model.py`` exits the way a build should.
+  via the warm daemon when available, in-process otherwise. A real-file
+  ``__main__`` bare call whose result is immediately discarded returns
+  ``None`` without loading the shape back into the initiator. Callers that use
+  the result, and interactive or instrumented callers, receive the materialized
+  shape. A failed build raises ``SystemExit`` with the pipeline's exit code, so
+  ``python model.py`` exits the way a build should.
 - **A call inside a build composes.** While a build is running (any model's,
   any thread of this process), calling a decorated name runs its body and
   returns the shape (or drawing) — this is how an assembly uses its children.
@@ -51,6 +52,7 @@ script's body costs ~0.2s before the gate and the warm handoff run.
 from __future__ import annotations
 
 import contextlib
+import dis
 import functools
 import inspect
 import os
@@ -76,6 +78,52 @@ __all__ = [
     "building",
     "build_in_progress",
 ]
+
+
+def _caller_discards_model_result() -> bool:
+    """Whether this wrapper's real-file ``__main__`` caller immediately POP_TOPs.
+
+    This is deliberately a one-way proof: every observer, unfamiliar runtime,
+    synthetic module and bytecode uncertainty keeps the historical materialized
+    return. The caller is two frames above this helper (helper -> model wrapper
+    -> call site).
+    """
+    if sys.implementation.name != "cpython":
+        return False
+    if sys.gettrace() is not None or sys.getprofile() is not None:
+        return False
+    monitoring = getattr(sys, "monitoring", None)
+    if monitoring is not None:
+        try:
+            if any(monitoring.get_tool(tool_id) is not None for tool_id in range(6)):
+                return False
+        except Exception:
+            return False
+    try:
+        caller = sys._getframe(2)
+        if caller.f_trace is not None:
+            return False
+        if caller.f_code.co_name != "<module>" or caller.f_globals.get("__name__") != "__main__":
+            return False
+        main_module = sys.modules.get("__main__")
+        if main_module is None or caller.f_globals is not vars(main_module):
+            return False
+        filename = Path(caller.f_code.co_filename)
+        declared_filename = Path(str(caller.f_globals.get("__file__", "")))
+        if (
+            filename.suffix.lower() != ".py"
+            or not filename.is_file()
+            or declared_filename.resolve() != filename.resolve()
+        ):
+            return False
+        following = next(
+            (instruction for instruction in dis.get_instructions(caller.f_code)
+             if instruction.offset > caller.f_lasti),
+            None,
+        )
+        return following is not None and following.opname == "POP_TOP"
+    except Exception:
+        return False
 
 
 # Whether a build is running on this thread. The pipeline enters ``building()``
@@ -495,10 +543,15 @@ def _decorator(
                 built._finish(code)
             if code != 0:
                 raise SystemExit(code)
+            tree = built.wait_result() if current.fmt == "step" else None
+            if current.fmt == "step" and _caller_discards_model_result():
+                return None
             # ...and hands back the geometry it built (or found current), so a plain
-            # script, a notebook or a REPL gets the shape a parent would: the model's
-            # tree materialized. A drawing has no tree and returns None.
-            return _built_geometry(current, tree=built.wait_result() if current.fmt == "step" else None)
+            # used return, notebook or REPL gets the shape a parent would: the model's
+            # tree materialized. A drawing has no tree and returns None. The bare-call
+            # shortcut above still waits for the checked source result before deciding,
+            # so persistence failures remain observable.
+            return _built_geometry(current, tree=tree)
 
         model.__cadgen_model__ = defn  # type: ignore[attr-defined]
         return model
