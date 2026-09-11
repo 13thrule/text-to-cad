@@ -299,6 +299,84 @@ class OpMemoTest(unittest.TestCase):
         finally:
             os.environ.pop("CADGEN_OP_MEMO_DISK", None)
 
+    def test_disk_shape_hits_obey_ram_capacity_and_keep_owned_results_valid(self):
+        from build123d.topology import Solid
+
+        factory = mock.Mock(side_effect=lambda width: Solid.make_box(width, 2, 3))
+        make_box = op_memo._memoized("test.disk_shape_residency", factory, is_classmethod=False)
+        expected = {width: _digest(make_box(width)) for width in (1, 2, 3)}
+        op_memo.clear()
+        factory.side_effect = AssertionError("a disk hit must not rebuild")
+        evictions = op_memo.stats()["evicted"]
+        with mock.patch.object(op_memo, "_capacity", return_value=2):
+            retained = make_box(1)
+            make_box(2)
+            make_box(1)  # Refresh the first entry before admitting the third.
+            make_box(3)
+            self.assertEqual(op_memo.stats()["entries"], 2)
+            self.assertEqual(op_memo.stats()["evicted"], evictions + 1)
+            hits = op_memo.stats()["disk_hits"]
+            self.assertEqual(_digest(make_box(1)), expected[1])
+            self.assertEqual(op_memo.stats()["disk_hits"], hits)
+            self.assertEqual(_digest(make_box(2)), expected[2])
+            self.assertEqual(op_memo.stats()["disk_hits"], hits + 1)
+            self.assertEqual(op_memo.stats()["entries"], 2)
+        op_memo.clear()
+        self.assertEqual(_digest(retained), expected[1])
+
+    def test_disk_value_hits_obey_ram_capacity_without_rewriting_the_store(self):
+        for value in (1, 2, 3):
+            op_memo.memoized_value("test.disk_value_residency", (value,), lambda: [value, value + 1])
+        op_memo.clear()
+        compute = mock.Mock(side_effect=AssertionError("a disk hit must not recompute"))
+        evictions = op_memo.stats()["evicted"]
+        with mock.patch.object(op_memo, "_capacity", return_value=2), \
+                mock.patch.object(op_memo, "_value_disk_put", side_effect=AssertionError("a hit must not rewrite")):
+            for value in (1, 2, 1, 3):
+                self.assertEqual(op_memo.memoized_value("test.disk_value_residency", (value,), compute),
+                                 [value, value + 1])
+            self.assertEqual(op_memo.stats()["entries"], 2)
+            self.assertEqual(op_memo.stats()["evicted"], evictions + 1)
+            hits = op_memo.stats()["disk_hits"]
+            op_memo.memoized_value("test.disk_value_residency", (1,), compute)
+            self.assertEqual(op_memo.stats()["disk_hits"], hits)
+            self.assertEqual(op_memo.memoized_value("test.disk_value_residency", (2,), compute), [2, 3])
+            self.assertEqual(op_memo.stats()["disk_hits"], hits + 1)
+            self.assertEqual(op_memo.stats()["entries"], 2)
+
+    def test_disk_values_miss_after_either_kernel_identity_changes(self):
+        identities = [("0.11.1", "7.9.3.1", "7.9.3.1.1"),
+                      ("0.11.1", "7.9.4.1", "7.9.3.1.1"),
+                      ("0.11.1", "7.9.3.1", "7.9.3.1.2")]
+        for identity, expected in zip(identities, (1, 2, 3)):
+            op_memo.clear()
+            compute = mock.Mock(return_value=expected)
+            with mock.patch.object(op_memo, "_runtime_versions", return_value=identity):
+                self.assertEqual(op_memo.memoized_value("test.kernel_identity", (), compute), expected)
+                compute.assert_called_once_with()
+        for identity, expected in zip(identities, (1, 2, 3)):
+            op_memo.clear()
+            with mock.patch.object(op_memo, "_runtime_versions", return_value=identity):
+                self.assertEqual(op_memo.memoized_value("test.kernel_identity", (),
+                                 mock.Mock(side_effect=AssertionError("same kernel must hit disk"))), expected)
+
+    def test_unknown_kernel_identity_disables_disk_reuse_but_keeps_computation(self):
+        import OCP
+        from pathlib import Path
+
+        for unknown in (None, "", "unknown"):
+            op_memo.clear()
+            op_memo._runtime_versions.cache_clear()
+            with mock.patch.object(OCP, "__version__", unknown):
+                self.assertEqual(op_memo.memoized_value("test.unknown_kernel", (), lambda: 17), 17)
+                op_memo.clear()
+                compute = mock.Mock(return_value=23)
+                self.assertEqual(op_memo.memoized_value("test.unknown_kernel", (), compute), 23)
+                compute.assert_called_once_with()
+        op_memo._runtime_versions.cache_clear()
+        self.addCleanup(op_memo._runtime_versions.cache_clear)
+        self.assertFalse((Path(self._tmp.name) / "index/op").exists())
+
 
 def _memo_outcome(fn):
     """What a caller observes: the result's volume, or the exception class."""

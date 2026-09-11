@@ -18,6 +18,8 @@ Scope and placement:
 - The cache lives in this module, which survives the generation runner's
   first-party module eviction (cadgen and site-packages are never evicted), so
   a warm daemon worker keeps its cache across requests.
+  Computed results and disk hits share the same least-recently-used RAM limit.
+  Evicting a RAM entry neither deletes its disk entry nor changes an owned result.
 - Keys hash current input shapes by their BinTools BREP bytes: bytes stripped
   of location, orientation and triangulation, combined with the shape's own
   location matrix and orientation. A native edit can change a TShape without
@@ -90,7 +92,7 @@ from functools import lru_cache
 from cadgen._internal.atomic_replace import replace_atomic
 
 # Salt: bump _OP_MEMO_VERSION whenever keying or hit semantics change.
-_OP_MEMO_VERSION = 6
+_OP_MEMO_VERSION = 7
 
 _lock = threading.RLock()
 _cache: OrderedDict[tuple, object] = OrderedDict()
@@ -294,13 +296,19 @@ def _build_key(op_name: str, args: tuple, kwargs: dict) -> tuple:
     return (_OP_MEMO_VERSION, op_name, tuple(key_parts), tuple(kw_parts))
 
 
-def _store(key: tuple, result: object) -> None:
+def _remember(key: tuple, result: object) -> None:
+    """Apply the same RAM limit to computed results and persistent-cache hits."""
     with _lock:
         _cache[key] = result
         _cache.move_to_end(key)
         capacity = _capacity()
         while len(_cache) > capacity:
             _cache.popitem(last=False)
+            _stats["evicted"] += 1
+
+
+def _store(key: tuple, result: object) -> None:
+    _remember(key, result)
     _disk_put(key, result)
 
 
@@ -311,9 +319,7 @@ def _lookup(key: tuple):
             return _cache[key]
     stored = _disk_get(key)
     if stored is not None:
-        with _lock:
-            _cache[key] = stored
-            _cache.move_to_end(key)
+        _remember(key, stored)
         _stats["disk_hits"] += 1
     return stored
 
@@ -331,13 +337,31 @@ def _disk_enabled() -> bool:
     return os.environ.get("CADGEN_OP_MEMO_DISK", "1") != "0"
 
 
-def _op_index_key(key: tuple) -> str:
-    """The op-memo entry key: the op key plus the memo scheme and the kernel
-    version, so a changed scheme or build123d simply misses (no salted
-    directories to sweep)."""
+@lru_cache(maxsize=1)
+def _runtime_versions() -> tuple[str, str, str]:
+    """Resolve loaded bindings and their distribution only on a kernel path.
+
+    Unknown versions decline the optional disk tier; they must not create a
+    shared persistent namespace for unrelated kernel builds.
+    """
+    from importlib.metadata import version
+
+    import OCP
     import build123d
 
-    scheme = f"v{_OP_MEMO_VERSION}-b123d{getattr(build123d, '__version__', 'unknown')}"
+    versions = (getattr(build123d, "__version__", None),
+                getattr(OCP, "__version__", None), version("cadquery-ocp"))
+    if any(not isinstance(value, str) or not value.strip() or "unknown" in value.lower()
+           for value in versions):
+        raise ValueError("op memo requires known build123d and OCP versions for persistent reuse")
+    return versions
+
+
+def _op_index_key(key: tuple) -> str:
+    """Bind disk entries to the operation, scheme, loaded OCP and distribution."""
+    build123d_version, ocp_version, distribution_version = _runtime_versions()
+    scheme = (f"v{_OP_MEMO_VERSION}-b123d{build123d_version}"
+              f"-ocp{ocp_version}-cadquery-ocp{distribution_version}")
     return hashlib.sha256((scheme + "\0" + repr(key)).encode("utf-8")).hexdigest()
 
 
@@ -445,22 +469,14 @@ def memoized_value(op_name: str, key_args: tuple, compute):
     from_disk = _value_disk_get(key)
     if from_disk is not None:
         value = from_disk[0]
-        with _lock:
-            _cache[key] = value
-            _cache.move_to_end(key)
+        _remember(key, value)
         _stats["disk_hits"] += 1
         _stats["hits"] += 1
         return value
 
     value = compute()
     _stats["misses"] += 1
-    with _lock:
-        _cache[key] = value
-        _cache.move_to_end(key)
-        capacity = _capacity()
-        while len(_cache) > capacity:
-            _cache.popitem(last=False)
-            _stats["evicted"] += 1
+    _remember(key, value)
     _value_disk_put(key, value)
     return value
 

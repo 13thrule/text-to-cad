@@ -48,6 +48,14 @@ content: the daemon's job ledger, read over its socket (§7, §9). Editing
 previews use the same immutable objects, with ephemeral request handles in
 that ledger (§9b); there is no preview directory or persistent session index.
 
+Operation-index keys include the operation scheme, build123d version, loaded
+OCP binding version and cadquery-ocp distribution version. Unknown runtime
+versions disable persistent op reuse; normal computation remains available.
+These are input-index compatibility fields, never tree/component content or
+salts on document-byte keys. Computed results and disk hits share the same
+process LRU limit; dropping a RAM entry does not delete its persistent entry or
+invalidate a consumer's private geometry.
+
 ### The two sides of the store — a law
 
 `objects/` is the **artifact side**: what geometry exists. `index/model`,
