@@ -1,0 +1,591 @@
+{
+  "comparison": "cached saved geometry, per-part facts and two directed OCCT cuts; no profiler or timing claim",
+  "metadata": {
+    "archiveRoot": "/private/tmp/cadgen-before-7aa.3YIWp2",
+    "baselineSource": "read-only git archive of the named commit; package runtime unmodified",
+    "cpu": "unavailable",
+    "cpuCount": 10,
+    "environment": {
+      "CADGEN_CACHE_DIR": "/private/tmp/cadgen-before-7aa.3YIWp2/models/nine-part/store"
+    },
+    "gitHead": "7aa3e85be76f305437abd3d7aba26e38b28e43cb",
+    "harnessSha256": {
+      "check_split_geometry.py": "6cc43f891ef89ede20c183d82e59a4cd07676e1fe2a0348a5a3f4fa5892764bd",
+      "common.py": "dbe795da2c32b173bd05fc2fb116f3627fda66b02d1ed769f6f094dbd589e3ed",
+      "split_warm_build.py": "e016db2372560336a43663a736ca9def2e8a7fbe15286009041bd8f902e73396",
+      "verify_split.py": "53b6183a53aa575f17bc4a28d226c7070ab61351284aabd424d82deb578006d2",
+      "warm_build.py": "76398e4d9ebdb7f0fefff9bed0ad8223ec68bed9f24fb0fc2fe9ac5c1a6deada"
+    },
+    "loadedCadgenModules": {
+      "cadgen": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/__init__.py",
+      "cadgen._internal": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/__init__.py",
+      "cadgen._internal.atomic_replace": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/atomic_replace.py",
+      "cadgen._internal.font_scan": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/font_scan.py",
+      "cadgen._internal.glb_topology": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/glb_topology.py",
+      "cadgen._internal.kernel_import_site": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/kernel_import_site.py",
+      "cadgen._internal.source_hash": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/source_hash.py",
+      "cadgen._internal.step_hash": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/step_hash.py",
+      "cadgen._internal.step_scene": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/step_scene.py",
+      "cadgen._internal.step_scene_geometry": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/step_scene_geometry.py",
+      "cadgen._internal.step_scene_loader": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/step_scene_loader.py",
+      "cadgen._internal.step_scene_mesh": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/step_scene_mesh.py",
+      "cadgen._internal.step_scene_package": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/step_scene_package.py",
+      "cadgen._internal.step_scene_types": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/step_scene_types.py",
+      "cadgen._internal.surface_extract": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/_internal/surface_extract.py",
+      "cadgen.catalog": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/catalog.py",
+      "cadgen.metadata": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/metadata.py",
+      "cadgen.selector_types": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/selector_types.py",
+      "cadgen.step_scene": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/step_scene.py",
+      "cadgen.store": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/store/__init__.py",
+      "cadgen.store.index": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/store/index.py",
+      "cadgen.store.objects": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/store/objects.py",
+      "cadgen.store.paths": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/store/paths.py",
+      "cadgen.store.records": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/store/records.py",
+      "cadgen.store.trees": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen/src/cadgen/store/trees.py"
+    },
+    "machine": "arm64",
+    "node": "v26.7.0",
+    "nodeBuildersDirectory": "/private/tmp/cadgen-before-7aa.3YIWp2/packages/cadgen-js/bin",
+    "nodeRuntimeExercised": false,
+    "nodeRuntimeReason": "STEP-only builds and imports; no mesh export or browser work",
+    "packagedNodeRuntimeSha256": {
+      "packages/cadgen/src/cadgen/_runtime/node/THIRD_PARTY_LICENSES.txt": "f3f2e2341b55e27c390f37f08adb0e8ff7ddc1d9b499fdc18253f62270726407",
+      "packages/cadgen/src/cadgen/_runtime/node/dxf-mesh.mjs": "6ac632a9aea7ff6e9ecf126485e9bcb73ae3d73511dcbd8d7c8caabf8d1321bd",
+      "packages/cadgen/src/cadgen/_runtime/node/mesh-export.mjs": "4e02ded7850e8fdac88141208bbcafd43bc487e583f61d61d39c35f8c448c9fd",
+      "packages/cadgen/src/cadgen/_runtime/node/package.json": "5a065fe7d8eab2a582f428e11c2ea63aaf70607a54f69cfd5c711b5c53d91b32"
+    },
+    "physicalMemoryBytes": "unavailable",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.13 (main, Jun  2 2026, 22:33:40) [Clang 22.1.3 ]",
+    "pythonExecutable": "/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python",
+    "sourceFingerprint": "cd405009b4828ccdf1edc4f555ed6ad75f6db8f59f6a25ce36fdaad245daab54",
+    "timeUtc": "2026-09-10T17:31:11.727821+00:00",
+    "versions": {
+      "build123d": "0.11.1",
+      "cadgen": "0.5.1",
+      "cadquery-ocp": "7.9.3.1.1",
+      "numpy": "2.5.2"
+    }
+  },
+  "parts": {
+    "carrier_plate": {
+      "checks": {
+        "area": true,
+        "bbox": true,
+        "symmetricDifference": true,
+        "topologyCounts": true,
+        "valid": true,
+        "volume": true
+      },
+      "directedDifferenceVolumes": [
+        0,
+        0
+      ],
+      "monolithic": {
+        "area": 18685.753280580684,
+        "bbox": {
+          "max": [
+            52.5,
+            52.5,
+            -1.0
+          ],
+          "min": [
+            -52.5,
+            -52.5,
+            -5.0
+          ]
+        },
+        "edges": 12,
+        "faces": 6,
+        "solids": 1,
+        "valid": true,
+        "vertices": 8,
+        "volume": 34250.02010055549
+      },
+      "passed": true,
+      "split": {
+        "area": 18685.753280580684,
+        "bbox": {
+          "max": [
+            52.5,
+            52.5,
+            -1.0
+          ],
+          "min": [
+            -52.5,
+            -52.5,
+            -5.0
+          ]
+        },
+        "edges": 12,
+        "faces": 6,
+        "solids": 1,
+        "valid": true,
+        "vertices": 8,
+        "volume": 34250.02010055549
+      }
+    },
+    "planet_gear_1_18_teeth": {
+      "checks": {
+        "area": true,
+        "bbox": true,
+        "symmetricDifference": true,
+        "topologyCounts": true,
+        "valid": true,
+        "volume": true
+      },
+      "directedDifferenceVolumes": [
+        0,
+        0
+      ],
+      "monolithic": {
+        "area": 4014.355213457079,
+        "bbox": {
+          "max": [
+            62.489884487497,
+            20.29041273361031,
+            8.0
+          ],
+          "min": [
+            21.51011551251,
+            -20.29041273361,
+            0.0
+          ]
+        },
+        "edges": 219,
+        "faces": 75,
+        "solids": 1,
+        "valid": true,
+        "vertices": 146,
+        "volume": 7003.689343329177
+      },
+      "passed": true,
+      "split": {
+        "area": 4014.355213457079,
+        "bbox": {
+          "max": [
+            62.489884487497,
+            20.29041273361031,
+            8.0
+          ],
+          "min": [
+            21.51011551251,
+            -20.29041273361,
+            0.0
+          ]
+        },
+        "edges": 219,
+        "faces": 75,
+        "solids": 1,
+        "valid": true,
+        "vertices": 146,
+        "volume": 7003.689343329177
+      }
+    },
+    "planet_gear_2_18_teeth": {
+      "checks": {
+        "area": true,
+        "bbox": true,
+        "symmetricDifference": true,
+        "topologyCounts": true,
+        "valid": true,
+        "volume": true
+      },
+      "directedDifferenceVolumes": [
+        0,
+        0
+      ],
+      "monolithic": {
+        "area": 4014.3552134570796,
+        "bbox": {
+          "max": [
+            -0.5101155125029919,
+            56.663479692556734,
+            8.0
+          ],
+          "min": [
+            -41.48988448748999,
+            16.082654225336423,
+            0.0
+          ]
+        },
+        "edges": 219,
+        "faces": 75,
+        "solids": 1,
+        "valid": true,
+        "vertices": 146,
+        "volume": 7003.689343329185
+      },
+      "passed": true,
+      "split": {
+        "area": 4014.3552134570796,
+        "bbox": {
+          "max": [
+            -0.5101155125029919,
+            56.663479692556734,
+            8.0
+          ],
+          "min": [
+            -41.48988448748999,
+            16.082654225336423,
+            0.0
+          ]
+        },
+        "edges": 219,
+        "faces": 75,
+        "solids": 1,
+        "valid": true,
+        "vertices": 146,
+        "volume": 7003.689343329185
+      }
+    },
+    "planet_gear_3_18_teeth": {
+      "checks": {
+        "area": true,
+        "bbox": true,
+        "symmetricDifference": true,
+        "topologyCounts": true,
+        "valid": true,
+        "volume": true
+      },
+      "directedDifferenceVolumes": [
+        0,
+        0
+      ],
+      "monolithic": {
+        "area": 4014.3552134570787,
+        "bbox": {
+          "max": [
+            -0.5101155125030168,
+            -16.0826542253361,
+            8.0
+          ],
+          "min": [
+            -41.489884487490016,
+            -56.66347969255641,
+            0.0
+          ]
+        },
+        "edges": 219,
+        "faces": 75,
+        "solids": 1,
+        "valid": true,
+        "vertices": 146,
+        "volume": 7003.689343329184
+      },
+      "passed": true,
+      "split": {
+        "area": 4014.3552134570787,
+        "bbox": {
+          "max": [
+            -0.5101155125030168,
+            -16.0826542253361,
+            8.0
+          ],
+          "min": [
+            -41.489884487490016,
+            -56.66347969255641,
+            0.0
+          ]
+        },
+        "edges": 219,
+        "faces": 75,
+        "solids": 1,
+        "valid": true,
+        "vertices": 146,
+        "volume": 7003.689343329184
+      }
+    },
+    "planet_pin_1": {
+      "checks": {
+        "area": true,
+        "bbox": true,
+        "symmetricDifference": true,
+        "topologyCounts": true,
+        "valid": true,
+        "volume": true
+      },
+      "directedDifferenceVolumes": [
+        0,
+        0
+      ],
+      "monolithic": {
+        "area": 320.4424506661763,
+        "bbox": {
+          "max": [
+            45.0,
+            3.0,
+            9.0
+          ],
+          "min": [
+            39.0,
+            -3.0,
+            -5.0
+          ]
+        },
+        "edges": 3,
+        "faces": 3,
+        "solids": 1,
+        "valid": true,
+        "vertices": 2,
+        "volume": 395.840674352314
+      },
+      "passed": true,
+      "split": {
+        "area": 320.4424506661763,
+        "bbox": {
+          "max": [
+            45.0,
+            3.0,
+            9.0
+          ],
+          "min": [
+            39.0,
+            -3.0,
+            -5.0
+          ]
+        },
+        "edges": 3,
+        "faces": 3,
+        "solids": 1,
+        "valid": true,
+        "vertices": 2,
+        "volume": 395.840674352314
+      }
+    },
+    "planet_pin_2": {
+      "checks": {
+        "area": true,
+        "bbox": true,
+        "symmetricDifference": true,
+        "topologyCounts": true,
+        "valid": true,
+        "volume": true
+      },
+      "directedDifferenceVolumes": [
+        0,
+        0
+      ],
+      "monolithic": {
+        "area": 320.4424506661763,
+        "bbox": {
+          "max": [
+            -18.0,
+            39.373066958946,
+            9.0
+          ],
+          "min": [
+            -24.0,
+            33.373066958946,
+            -5.0
+          ]
+        },
+        "edges": 3,
+        "faces": 3,
+        "solids": 1,
+        "valid": true,
+        "vertices": 2,
+        "volume": 395.840674352314
+      },
+      "passed": true,
+      "split": {
+        "area": 320.4424506661763,
+        "bbox": {
+          "max": [
+            -18.0,
+            39.373066958946,
+            9.0
+          ],
+          "min": [
+            -24.0,
+            33.373066958946,
+            -5.0
+          ]
+        },
+        "edges": 3,
+        "faces": 3,
+        "solids": 1,
+        "valid": true,
+        "vertices": 2,
+        "volume": 395.840674352314
+      }
+    },
+    "planet_pin_3": {
+      "checks": {
+        "area": true,
+        "bbox": true,
+        "symmetricDifference": true,
+        "topologyCounts": true,
+        "valid": true,
+        "volume": true
+      },
+      "directedDifferenceVolumes": [
+        0,
+        0
+      ],
+      "monolithic": {
+        "area": 320.4424506661763,
+        "bbox": {
+          "max": [
+            -18.0,
+            -33.37306695894,
+            9.0
+          ],
+          "min": [
+            -24.0,
+            -39.37306695894,
+            -5.0
+          ]
+        },
+        "edges": 3,
+        "faces": 3,
+        "solids": 1,
+        "valid": true,
+        "vertices": 2,
+        "volume": 395.84067435231407
+      },
+      "passed": true,
+      "split": {
+        "area": 320.4424506661763,
+        "bbox": {
+          "max": [
+            -18.0,
+            -33.37306695894,
+            9.0
+          ],
+          "min": [
+            -24.0,
+            -39.37306695894,
+            -5.0
+          ]
+        },
+        "edges": 3,
+        "faces": 3,
+        "solids": 1,
+        "valid": true,
+        "vertices": 2,
+        "volume": 395.84067435231407
+      }
+    },
+    "ring_gear_60_internal_teeth": {
+      "checks": {
+        "area": true,
+        "bbox": true,
+        "symmetricDifference": true,
+        "topologyCounts": true,
+        "valid": true,
+        "volume": true
+      },
+      "directedDifferenceVolumes": [
+        0,
+        0
+      ],
+      "monolithic": {
+        "area": 18902.868777018586,
+        "bbox": {
+          "max": [
+            70.0,
+            70.0,
+            8.0
+          ],
+          "min": [
+            -70.0,
+            -70.0,
+            0.0
+          ]
+        },
+        "edges": 723,
+        "faces": 243,
+        "solids": 1,
+        "valid": true,
+        "vertices": 482,
+        "volume": 32036.334273075758
+      },
+      "passed": true,
+      "split": {
+        "area": 18902.868777018586,
+        "bbox": {
+          "max": [
+            70.0,
+            70.0,
+            8.0
+          ],
+          "min": [
+            -70.0,
+            -70.0,
+            0.0
+          ]
+        },
+        "edges": 723,
+        "faces": 243,
+        "solids": 1,
+        "valid": true,
+        "vertices": 482,
+        "volume": 32036.334273075758
+      }
+    },
+    "sun_gear_24_teeth": {
+      "checks": {
+        "area": true,
+        "bbox": true,
+        "symmetricDifference": true,
+        "topologyCounts": true,
+        "valid": true,
+        "volume": true
+      },
+      "directedDifferenceVolumes": [
+        0,
+        0
+      ],
+      "monolithic": {
+        "area": 6551.992097897357,
+        "bbox": {
+          "max": [
+            26.844610481094,
+            26.844610481094,
+            8.0
+          ],
+          "min": [
+            -26.84461048109,
+            -26.84461048109,
+            0.0
+          ]
+        },
+        "edges": 291,
+        "faces": 99,
+        "solids": 1,
+        "valid": true,
+        "vertices": 194,
+        "volume": 12491.65827800674
+      },
+      "passed": true,
+      "split": {
+        "area": 6551.992097897357,
+        "bbox": {
+          "max": [
+            26.844610481094,
+            26.844610481094,
+            8.0
+          ],
+          "min": [
+            -26.84461048109,
+            -26.84461048109,
+            0.0
+          ]
+        },
+        "edges": 291,
+        "faces": 99,
+        "solids": 1,
+        "valid": true,
+        "vertices": 194,
+        "volume": 12491.65827800674
+      }
+    }
+  },
+  "passed": true,
+  "tolerances": {
+    "areaMm2": 1e-07,
+    "bboxMm": 1e-07,
+    "volumeMm3": 1e-07
+  }
+}

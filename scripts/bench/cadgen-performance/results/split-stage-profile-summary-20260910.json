@@ -1,0 +1,185 @@
+{
+  "functions": {
+    "baseline.initial": {
+      "calls": 9,
+      "exclusiveMs": 0.32895756885409355,
+      "inclusiveMs": 20.187123212963343
+    },
+    "baseline.verify_live": {
+      "calls": 9,
+      "exclusiveMs": 0.27512386441230774,
+      "inclusiveMs": 18.38925015181303
+    },
+    "build.through_step": {
+      "calls": 1,
+      "exclusiveMs": 0.49971044063568115,
+      "inclusiveMs": 505.2643329836428
+    },
+    "child.await_all_outputs": {
+      "calls": 2,
+      "exclusiveMs": 0.0383756123483181,
+      "inclusiveMs": 2.338958904147148
+    },
+    "child.await_output": {
+      "calls": 18,
+      "exclusiveMs": 0.01083221286535263,
+      "inclusiveMs": 0.014915131032466888
+    },
+    "child.collect_pins": {
+      "calls": 1,
+      "exclusiveMs": 0.009248964488506317,
+      "inclusiveMs": 1.0300418362021446
+    },
+    "child.force": {
+      "calls": 9,
+      "exclusiveMs": 0.573835801333189,
+      "inclusiveMs": 134.08729108050466
+    },
+    "child.resolve_tree": {
+      "calls": 36,
+      "exclusiveMs": 0.11928984895348549,
+      "inclusiveMs": 96.26416815444827
+    },
+    "child.submit_or_current": {
+      "calls": 9,
+      "exclusiveMs": 3.4514539875090122,
+      "inclusiveMs": 12.290248181670904
+    },
+    "closure.build": {
+      "calls": 1,
+      "exclusiveMs": 27.16520894318819,
+      "inclusiveMs": 27.16520894318819
+    },
+    "document.cached_scene_lookup": {
+      "calls": 1,
+      "exclusiveMs": 0.1082499511539936,
+      "inclusiveMs": 0.1082499511539936
+    },
+    "document.correspondence": {
+      "calls": 1,
+      "exclusiveMs": 0.07754191756248474,
+      "inclusiveMs": 0.07754191756248474
+    },
+    "document.native_parse": {
+      "calls": 1,
+      "exclusiveMs": 267.05591613426805,
+      "inclusiveMs": 267.05591613426805
+    },
+    "document.publish_canonical": {
+      "calls": 1,
+      "exclusiveMs": 2.674415707588196,
+      "inclusiveMs": 32.166707795113325
+    },
+    "document.write_step": {
+      "calls": 1,
+      "exclusiveMs": 127.72454228252172,
+      "inclusiveMs": 127.72454228252172
+    },
+    "gate.stale": {
+      "calls": 59,
+      "exclusiveMs": 52.30424925684929,
+      "inclusiveMs": 78.7246678955853
+    },
+    "generation.part_outputs": {
+      "calls": 1,
+      "exclusiveMs": 13.039875775575638,
+      "inclusiveMs": 531.6197080537677
+    },
+    "generation.run_body_and_normalize": {
+      "calls": 1,
+      "exclusiveMs": 15.717375557869673,
+      "inclusiveMs": 194.00133285671473
+    },
+    "geometry.content_identity": {
+      "calls": 9,
+      "exclusiveMs": 1.6015022993087769,
+      "inclusiveMs": 5.718875210732222
+    },
+    "geometry.decode_brep": {
+      "calls": 18,
+      "exclusiveMs": 14.733417890965939,
+      "inclusiveMs": 14.733417890965939
+    },
+    "geometry.fingerprint.initial": {
+      "calls": 18,
+      "exclusiveMs": 13.69975134730339,
+      "inclusiveMs": 39.35542004182935
+    },
+    "geometry.fingerprint.verify_live": {
+      "calls": 18,
+      "exclusiveMs": 12.171249836683273,
+      "inclusiveMs": 35.9556651674211
+    },
+    "geometry.serialize_brep": {
+      "calls": 27,
+      "exclusiveMs": 16.709997318685055,
+      "inclusiveMs": 16.709997318685055
+    },
+    "job.wait_completion": {
+      "calls": 2,
+      "exclusiveMs": 0.004082918167114258,
+      "inclusiveMs": 0.004082918167114258
+    },
+    "job.wait_source_result": {
+      "calls": 3,
+      "exclusiveMs": 90.51945898681879,
+      "inclusiveMs": 90.51945898681879
+    },
+    "materialize.acquire_private_brep": {
+      "calls": 18,
+      "exclusiveMs": 0.5008354783058167,
+      "inclusiveMs": 15.26229316368699
+    },
+    "materialize.descriptor": {
+      "calls": 10,
+      "exclusiveMs": 19.034964498132467,
+      "inclusiveMs": 57.233668863773346
+    },
+    "materialize.face_recipe": {
+      "calls": 18,
+      "exclusiveMs": 3.3910414204001427,
+      "inclusiveMs": 3.3910414204001427
+    },
+    "objects.complete_pin_check": {
+      "calls": 49,
+      "exclusiveMs": 10.014955420047045,
+      "inclusiveMs": 10.014955420047045
+    },
+    "prepublish.current_input_check": {
+      "calls": 1,
+      "exclusiveMs": 0.45120902359485626,
+      "inclusiveMs": 0.45120902359485626
+    },
+    "prepublish.saved_pair_hash": {
+      "calls": 3,
+      "exclusiveMs": 3.8747931830585003,
+      "inclusiveMs": 3.8747931830585003
+    },
+    "source.walk_compound": {
+      "calls": 1,
+      "exclusiveMs": 0.44174958020448685,
+      "inclusiveMs": 18.8530832529068
+    },
+    "tree.flatten_draft": {
+      "calls": 20,
+      "exclusiveMs": 0.9209583513438702,
+      "inclusiveMs": 1.796624157577753
+    },
+    "tree.flatten_hash": {
+      "calls": 10,
+      "exclusiveMs": 0.7014567963778973,
+      "inclusiveMs": 1.1024153791368008
+    },
+    "tree.publish": {
+      "calls": 2,
+      "exclusiveMs": 44.92745827883482,
+      "inclusiveMs": 44.92745827883482
+    }
+  },
+  "novelSamples": 3,
+  "previewMedianMs": 309.11562498658895,
+  "qualification": "Nested function wrappers on the root thread only, including blocked wall time. Inclusive rows nest; exclusive is only net of instrumented child functions. Child workers are uninstrumented and their source/save timestamps remain in modelMilestones. Startup, module import, source edits and output verification remain outside each run timer. These are attribution timings, not the unprofiled acceptance study.",
+  "sourceFingerprint": "53fee3b43da021396ddf326c5e7d0b63555430d1bb2b5695fd06f2ab6be12381",
+  "sourceReport": "scripts/bench/cadgen-performance/results/split-stage-profile-20260910.json",
+  "totalMedianMs": 773.3306251466274
+}

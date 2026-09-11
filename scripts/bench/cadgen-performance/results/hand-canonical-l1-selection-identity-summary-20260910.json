@@ -1,0 +1,170 @@
+{
+  "sourceReport": "hand-canonical-l1-selection-identity-20260910.json",
+  "sourceReportSha256": "08ea6920c0c2aef51f9ba1174b575ee4a6e36deceac178c903755a5e1430974a",
+  "qualification": "Fresh private browser, isolated2709968dc plusonlythree selectionidentityfiles; currentworkingtreeLODchangesexcluded. Source-free canonical hand already compiled. All866 L0/L1 entries warm from census; higher levels partly warm from prior adaptive/private/user-play activity. No matched or isolated latency claim; unrelated host work/user play may continue. Same180s acceptance deadline and2GiB largest renderer guard. No allocation sampling or forced collection before detail grading; existing harness diagnostics/settling occur afterward. Gate levelCounts are record.viewportLod; later lodEventCount can include post-grade work.",
+  "outcome": "passed-forced-all-L1",
+  "assertions": {
+    "subprocessCompleted": true,
+    "requestedDetailLoaded": true,
+    "expectedComponents": true,
+    "allComponentsAtLeastL1": true,
+    "expectedOccurrences": true,
+    "withinRssBound": true,
+    "noCrash": true,
+    "noPageErrors": true,
+    "runtimeUnchanged": true
+  },
+  "gate": {
+    "levels": {
+      "1": 866
+    },
+    "occurrences": 3259,
+    "workloadMs": 97581,
+    "workloadPeakRendererMiB": 1482.140625,
+    "overallPeakRendererMiB": 1482.140625,
+    "headroomBelow2048MiB": 565.859375,
+    "firstGeometryFrameMs": 900,
+    "initialCompleteRawPublicationMs": 15764.900000095367,
+    "initialCompleteRampMs": 15909,
+    "initialCompleteObservedLogMs": 15920,
+    "startedAt": "2026-09-11T00:38:55.745Z",
+    "gradedAt": "2026-09-11T00:40:33.326Z",
+    "finishedAt": "2026-09-11T00:40:40.058Z"
+  },
+  "owners": {
+    "displayCpuBytes": 469556184,
+    "gpuEstimatedBytes": 456820484,
+    "bvhBytes": 0,
+    "surfaceInstanceSets": 156,
+    "surfaceInstances": 2549,
+    "surfaceInstanceBytes": 193724,
+    "occurrences": 3259
+  },
+  "memoryPolicy": {
+    "budgetBytes": 1610612736,
+    "gpuHeadroomBytes": 268435456,
+    "ownedLimitBytes": 1342177280,
+    "replacementHeadroomBytes": 134217728,
+    "retainedByCategory": {
+      "displayCpu": 469556184,
+      "selectors": 0,
+      "bvh": 0,
+      "gpuEstimated": 456820484,
+      "deformation": 0,
+      "assetCaches": 0,
+      "workerResidentEstimated": 0,
+      "replacementPending": 0
+    },
+    "inFlightByCategory": {},
+    "retainedBytes": 926376668,
+    "inFlightBytes": 0,
+    "estimatedOwnedBytes": 926376668,
+    "availableBytes": 415800612,
+    "reservationCount": 0,
+    "lastLimitation": null,
+    "hardRssCap": false
+  },
+  "workers": {
+    "created": 6,
+    "terminated": 6,
+    "live": 0,
+    "peakLive": 4
+  },
+  "cacheWrites": {
+    "active": 0,
+    "activeBytes": 0,
+    "peakActive": 0,
+    "peakBytes": 0,
+    "total": 0,
+    "totalBytes": 0
+  },
+  "errors": {
+    "page": [],
+    "inPage": [],
+    "http": []
+  },
+  "postGradeDiagnostics": {
+    "quiescenceVerified": false,
+    "pageBeforeGc": {
+      "usedSize": 221995548,
+      "totalSize": 330416128,
+      "embedderHeapUsedSize": 7740536,
+      "backingStorageSize": 481870101
+    },
+    "pageAfterGc": {
+      "usedSize": 72931268,
+      "totalSize": 74973184,
+      "embedderHeapUsedSize": 5625592,
+      "backingStorageSize": 473746215
+    },
+    "backingBeyondDisplayedCpuBytes": 4190031,
+    "last128WorkerRequests": {
+      "count": 128,
+      "cached": 128,
+      "medianExecutionMs": 0.39999961853027344,
+      "medianStartGapMs": 94.59999990463257
+    }
+  },
+  "isolatedSource": {
+    "baselineCommit": "2709968dc9cf7613a455a8e7a97c7f6fbfa0cd4c",
+    "checkedBaselineBlobs": 474,
+    "changes": [
+      {
+        "path": "apps/viewer/src/client/components/workbench/hooks/useCadWorkspaceSelection.js",
+        "baselineSha256": "ec4656922c26cbde1a5f5ea5b31dc970f426cf6a9bb075943dbacf71ae89eeaf",
+        "candidateSha256": "71c01705c796be29c57fdecddf759cc8abb7c4fafab706e320ddbeac9fa4abad"
+      },
+      {
+        "path": "apps/viewer/src/client/workbench/valueUtils.js",
+        "baselineSha256": "27a344f46d97befeebde0eb2d046f7539056e7bceacfd8a7fe658897929b44f8",
+        "candidateSha256": "ed01e50257d388f6fcdca68b393a4bf8afb47192613ecdae47990b7c2e586d03"
+      },
+      {
+        "path": "apps/viewer/src/client/workbench/valueUtils.test.js",
+        "baselineSha256": "34c591caa1246e357446d51623077a0098c500ad7be2c8b18012a7d544a92823",
+        "candidateSha256": "d4b1196409ee39f25fd854694b9d20c4da4f7bc8a37e217ad7d4141c66a513c7"
+      }
+    ],
+    "sourceDigestScope": "474archivetrackedfiles; distinctfromwholecurrentruntimefingerprintscheme",
+    "source": "730b148dabfecb4d7ffa132c996531991c0c6414d46a8f03921763146e06127e",
+    "builtClient": "4403930820cea97c7ecfca0a5eb975a82040d722f283bdc16800a17f13f9276b",
+    "workers": [
+      {
+        "path": "/assets/glbMeshWorker-BKAG73hs.js",
+        "bytes": 197641,
+        "sha256": "fe763ffd228d6cdc8ea2784f8726b14e816d87ef4b5677b4d6be8ea5d6f04c0f"
+      },
+      {
+        "path": "/assets/raycastBvhWorker-Bx8Ori6S.js",
+        "bytes": 138869,
+        "sha256": "501d2dcdd14e8d37fe41505b7676dadf93e108fbc3c2f46d90957262b07d2c19"
+      },
+      {
+        "path": "/assets/stlMeshWorker-k-Bj4GhT.js",
+        "bytes": 2343,
+        "sha256": "39dead3f3c1dd36a37fbeaca3cee4c33ecbd56dec066d862d9d060ad9b98281a"
+      },
+      {
+        "path": "/assets/surfWorker-Bhjj_KyM.js",
+        "bytes": 81432,
+        "sha256": "c72ec65fabc1487d0f1f98f20ca62bb0ffd73fe133533865b38da43a1b697629"
+      }
+    ]
+  },
+  "harnessProof": {
+    "original": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/scripts/bench/viewer-memory/measure.mjs",
+    "originalSha256": "11b9533eca871246f555742a4800910a0c0cc0bae104d7e23df4a68933870b9f",
+    "copy": "/private/tmp/cadgen-performance-20260910/measure-selection-identity.mjs",
+    "copySha256": "e976d61efec416b3cbc754b828e05f24705a837f8cb8a9d5667173a9f3f0592f",
+    "importOnlyDiff": "--- durablemeasure\n\n+++ isolatedcopy\n\n@@ -26,10 +26,10 @@\n\n import os from \"node:os\";\n import path from \"node:path\";\n import { createRequire } from \"node:module\";\n-import { isRequestedDetailComplete } from \"./completion.mjs\";\n-import { viewerRuntimeFingerprint, verifyServedViewerClient } from \"./fingerprint.mjs\";\n-import { installWorkerProbe } from \"./worker-probe.mjs\";\n-import { collectHeapDiagnostics, installCacheWriteProbe } from \"./heap-diagnostics.mjs\";\n+import { isRequestedDetailComplete } from \"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/scripts/bench/viewer-memory/completion.mjs\";\n+import { viewerRuntimeFingerprint, verifyServedViewerClient } from \"/private/tmp/cadgen-performance-20260910/selection-fingerprint-adapter.mjs\";\n+import { installWorkerProbe } from \"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/scripts/bench/viewer-memory/worker-probe.mjs\";\n+import { collectHeapDiagnostics, installCacheWriteProbe } from \"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/scripts/bench/viewer-memory/heap-diagnostics.mjs\";\n \n const PLAYWRIGHT_FROM = process.env.PLAYWRIGHT_FROM\n   || \"/Users/jakefitzgerald/robots/text-to-cad/apps/viewer/node_modules/playwright\";",
+    "newMetadata": "DurableharnessrecordsworkloadFinishedAt/workloadMs/workloadPeakRss immediatelyaftergradingloop,beforepostgradecollectors; gatesunchanged."
+  },
+  "servicesPreserved": [
+    3262,
+    3267,
+    3273,
+    3274,
+    3275
+  ],
+  "visualQualification": "This forced-detail run didnotcaptureascreenshot; isolatedmediumselection/geometrywasvisuallyverifiedseparately. Noadditionalhandreloadforscreenshot."
+}

@@ -1,0 +1,339 @@
+{
+  "complete": true,
+  "functions": [
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 256.59129209816456,
+      "function": "document.native_parse",
+      "inclusiveMsMedian": 256.59129209816456
+    },
+    {
+      "callsMedian": 4,
+      "exclusiveMsMedian": 150.85306111723185,
+      "function": "model.function._make_external_gear",
+      "inclusiveMsMedian": 272.5228746421635
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 120.87862519547343,
+      "function": "document.write_step",
+      "inclusiveMsMedian": 120.87862519547343
+    },
+    {
+      "callsMedian": 47,
+      "exclusiveMsMedian": 75.70912782102823,
+      "function": "op.current_input_digest",
+      "inclusiveMsMedian": 75.70912782102823
+    },
+    {
+      "callsMedian": 8414,
+      "exclusiveMsMedian": 67.77392886579037,
+      "function": "identity.hash_signature",
+      "inclusiveMsMedian": 67.77392886579037
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 50.841421354562044,
+      "function": "model.function._make_internal_ring_gear",
+      "inclusiveMsMedian": 82.63941574841738
+    },
+    {
+      "callsMedian": 3828,
+      "exclusiveMsMedian": 40.19356518983841,
+      "function": "identity.full_signature",
+      "inclusiveMsMedian": 40.19356518983841
+    },
+    {
+      "callsMedian": 4,
+      "exclusiveMsMedian": 25.144331622868776,
+      "function": "gate.stale",
+      "inclusiveMsMedian": 25.144331622868776
+    },
+    {
+      "callsMedian": 2,
+      "exclusiveMsMedian": 17.345957923680544,
+      "function": "tree.publish",
+      "inclusiveMsMedian": 55.53220817819238
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 13.558374717831612,
+      "function": "generation.run_body_and_normalize",
+      "inclusiveMsMedian": 394.74458433687687
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 12.171292211860418,
+      "function": "generation.part_outputs",
+      "inclusiveMsMedian": 486.37241730466485
+    },
+    {
+      "callsMedian": 18,
+      "exclusiveMsMedian": 10.367000475525856,
+      "function": "geometry.serialize_brep",
+      "inclusiveMsMedian": 10.367000475525856
+    },
+    {
+      "callsMedian": 13,
+      "exclusiveMsMedian": 10.061375796794891,
+      "function": "op.read_brep",
+      "inclusiveMsMedian": 10.061375796794891
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 9.109791833907366,
+      "function": "materialize.descriptor",
+      "inclusiveMsMedian": 9.109791833907366
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 8.491834159940481,
+      "function": "topology.actual.bool_op",
+      "inclusiveMsMedian": 8.491834159940481
+    },
+    {
+      "callsMedian": 11,
+      "exclusiveMsMedian": 6.961166393011808,
+      "function": "geometry.decode_brep",
+      "inclusiveMsMedian": 6.961166393011808
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 4.25703777000308,
+      "function": "model.function._make_carrier_plate",
+      "inclusiveMsMedian": 18.85033305734396
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 3.7847920320928097,
+      "function": "prepublish.saved_pair_hash",
+      "inclusiveMsMedian": 3.7847920320928097
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 3.30820819362998,
+      "function": "closure.build",
+      "inclusiveMsMedian": 3.30820819362998
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 2.698041032999754,
+      "function": "prepublish.current_input_check",
+      "inclusiveMsMedian": 2.698041032999754
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 2.346707973629236,
+      "function": "build.through_step",
+      "inclusiveMsMedian": 467.93433418497443
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 2.190082799643278,
+      "function": "model.function._make_planet_pin",
+      "inclusiveMsMedian": 2.3967502638697624
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 2.1424987353384495,
+      "function": "op.store",
+      "inclusiveMsMedian": 2.1424987353384495
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 2.0389570854604244,
+      "function": "document.publish_canonical",
+      "inclusiveMsMedian": 36.93458437919617
+    },
+    {
+      "callsMedian": 18,
+      "exclusiveMsMedian": 1.9480031915009022,
+      "function": "geometry.content_identity",
+      "inclusiveMsMedian": 12.315003667026758
+    },
+    {
+      "callsMedian": 4,
+      "exclusiveMsMedian": 1.6260421834886074,
+      "function": "objects.complete_pin_check",
+      "inclusiveMsMedian": 1.6260421834886074
+    },
+    {
+      "callsMedian": 31,
+      "exclusiveMsMedian": 0.6756228394806385,
+      "function": "op.build_key",
+      "inclusiveMsMedian": 38.519419729709625
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 0.4309159703552723,
+      "function": "source.walk_compound",
+      "inclusiveMsMedian": 7.085041608661413
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 0.4103761166334152,
+      "function": "op.private_input_copy",
+      "inclusiveMsMedian": 0.4103761166334152
+    },
+    {
+      "callsMedian": 5,
+      "exclusiveMsMedian": 0.3795875236392021,
+      "function": "model.function._trapezoid_tooth_profile",
+      "inclusiveMsMedian": 0.5070827901363373
+    },
+    {
+      "callsMedian": 13,
+      "exclusiveMsMedian": 0.3469986841082573,
+      "function": "op.wrapper_replay",
+      "inclusiveMsMedian": 10.18779119476676
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 0.22929208353161812,
+      "function": "model.function.planetary_gear_assembly",
+      "inclusiveMsMedian": 378.36941611021757
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 0.2226666547358036,
+      "function": "op.write_brep",
+      "inclusiveMsMedian": 0.2226666547358036
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 0.16083335503935814,
+      "function": "op.disk_lookup",
+      "inclusiveMsMedian": 0.16083335503935814
+    },
+    {
+      "callsMedian": 2,
+      "exclusiveMsMedian": 0.14641555026173592,
+      "function": "tree.flatten_draft",
+      "inclusiveMsMedian": 0.14641555026173592
+    },
+    {
+      "callsMedian": 8,
+      "exclusiveMsMedian": 0.14304136857390404,
+      "function": "topology.call.bool_op",
+      "inclusiveMsMedian": 52.45904019102454
+    },
+    {
+      "callsMedian": 558,
+      "exclusiveMsMedian": 0.1252838410437107,
+      "function": "model.function._polar_point",
+      "inclusiveMsMedian": 0.1252838410437107
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 0.09533343836665154,
+      "function": "tree.flatten_hash",
+      "inclusiveMsMedian": 0.22341683506965637
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 0.09262468665838242,
+      "function": "document.cached_scene_lookup",
+      "inclusiveMsMedian": 0.09262468665838242
+    },
+    {
+      "callsMedian": 13,
+      "exclusiveMsMedian": 0.0720825046300888,
+      "function": "op.lookup",
+      "inclusiveMsMedian": 0.23937411606311798
+    },
+    {
+      "callsMedian": 5,
+      "exclusiveMsMedian": 0.06858399137854576,
+      "function": "topology.call.solid.extrude",
+      "inclusiveMsMedian": 8.10058368369937
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 0.05295826122164726,
+      "function": "document.correspondence",
+      "inclusiveMsMedian": 0.05295826122164726
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 0.03633415326476097,
+      "function": "op.first_consumer_capture",
+      "inclusiveMsMedian": 0.5601248703896999
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 0.027208123356103897,
+      "function": "op.capture_attributes",
+      "inclusiveMsMedian": 0.027208123356103897
+    },
+    {
+      "callsMedian": 10,
+      "exclusiveMsMedian": 0.02483278512954712,
+      "function": "op.replay",
+      "inclusiveMsMedian": 10.161292273551226
+    },
+    {
+      "callsMedian": 3,
+      "exclusiveMsMedian": 0.007210765033960342,
+      "function": "model.function._planet_center",
+      "inclusiveMsMedian": 0.01070881262421608
+    },
+    {
+      "callsMedian": 2,
+      "exclusiveMsMedian": 0.0019581057131290436,
+      "function": "child.await_all_outputs",
+      "inclusiveMsMedian": 0.0019581057131290436
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 0.0017499551177024841,
+      "function": "job.wait_source_result",
+      "inclusiveMsMedian": 0.0017499551177024841
+    },
+    {
+      "callsMedian": 1,
+      "exclusiveMsMedian": 0.0006672926247119904,
+      "function": "child.collect_pins",
+      "inclusiveMsMedian": 0.0006672926247119904
+    }
+  ],
+  "medianBuildMs": 919.3896669894457,
+  "medianPreviewMs": 487.7139162272215,
+  "medianRootBodyMs": 378.36941611021757,
+  "opStatsDeltas": [
+    {
+      "disk_hits": 0,
+      "errors": 0,
+      "evicted": 0,
+      "hits": 26,
+      "misses": 5,
+      "unkeyable": 0,
+      "unstorable": 0
+    },
+    {
+      "disk_hits": 0,
+      "errors": 0,
+      "evicted": 0,
+      "hits": 26,
+      "misses": 5,
+      "unkeyable": 0,
+      "unstorable": 0
+    },
+    {
+      "disk_hits": 0,
+      "errors": 0,
+      "evicted": 0,
+      "hits": 26,
+      "misses": 5,
+      "unkeyable": 0,
+      "unstorable": 0
+    }
+  ],
+  "proofReport": "mono-body-profile-proof-20260910.json",
+  "qualification": "Three unseen geometry builds from a16-call instrumented study. All16actual STEP outputs match prior uninstrumented variants. Inclusive functions nest; self excludes only instrumented descendants. Gear-helper self includes uninstrumented build123d/native primitive/context work, not exclusively Python. Identity/key aggregates cover the full call; no per-body claim is made for those high-frequency counters. Topology actual methods include both Python and OCCT. These are attribution, not replacement acceptance timings.",
+  "sampleLabels": [
+    "novel-geometry-1",
+    "novel-geometry-2",
+    "novel-geometry-3"
+  ],
+  "sourceReport": "mono-body-profile-20260910.json"
+}

@@ -1,0 +1,158 @@
+{
+  "allClosureValuesExactlyEqual": true,
+  "helperSha256": "e63e7ba3b9fca1ecfd42aa34c517feb51dee1be36234c2257cf92b25516bfe67",
+  "helperSource": "\"\"\"Scratch A/B of call-scoped immutable import syntax keyed by fresh source bytes.\"\"\"\nimport ast\nfrom collections import OrderedDict\nimport hashlib\nimport json\nfrom pathlib import Path\nimport statistics\nimport sys\nimport time\n\nREPO=Path('/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad')\nsys.path.insert(0,str(REPO/'scripts/bench/cadgen-performance'))\nfrom common import metadata,source_fingerprint\nfrom cadgen.store import closure as cl\n\n\ndef syntax(payload, filename):\n    nodes=tuple(ast.walk(ast.parse(payload,filename=filename)))\n    imports=[]\n    wanted=set()\n    for node in nodes:\n        if isinstance(node,ast.Import):\n            names=tuple((alias.name,alias.asname or '') for alias in node.names)\n            imports.append((0,'',0,names))\n            wanted.update(alias or name.split('.')[0] for name,alias in names)\n        elif isinstance(node,ast.ImportFrom):\n            names=tuple((alias.name,alias.asname or '') for alias in node.names)\n            imports.append((1,node.module or '',node.level,names))\n            wanted.update(alias or name for name,alias in names)\n    attributes={id(node.value):node.attr for node in nodes if isinstance(node,ast.Attribute) and isinstance(node.ctx,ast.Load) and isinstance(node.value,ast.Name) and node.value.id in wanted}\n    takes={name:set() for name in wanted}\n    for node in nodes:\n        if isinstance(node,ast.Name) and isinstance(node.ctx,ast.Load) and node.id in wanted:\n            if id(node) not in attributes:\n                takes[node.id]=None\n            elif takes[node.id] is not None:\n                takes[node.id].add(attributes[id(node)])\n    return tuple(imports),tuple(sorted((name,None if values is None else tuple(sorted(values))) for name,values in takes.items()))\n\n\nmemo=OrderedDict()\nsize=0\ncounts={}\n\n\ndef candidate(script):\n    global size\n    script=Path(script).resolve()\n    try:\n        payload=script.read_bytes()\n        cached=memo.get(payload)\n        if cached is None:\n            recipe=syntax(payload,str(script))\n            counts['misses']+=1\n            if len(payload)<=65536 and len(memo)<256:\n                memo[payload]=recipe\n                size+=len(payload)\n        else:\n            counts['hits']+=1\n            recipe=cached\n    except (OSError,SyntaxError,ValueError):\n        return cl.StaticImports((),())\n    roots=cl._search_roots(script)\n    sources=[]; children=[]; constants={}; imports={}\n    taken_lookup=dict(recipe[1])\n    def taken(name):\n        values=taken_lookup[name]\n        return None if values is None else set(values)\n    def note(target,names):\n        if target==script or not cl.is_first_party_source_file(target):\n            return\n        previous=imports.get(target,set())\n        imports[target]=None if names is None or previous is None else previous|names\n    for kind,module,level,names in recipe[0]:\n        if kind==0:\n            for name,alias in names:\n                target=cl._resolve_module(name,roots)\n                if target is not None:\n                    note(target,taken(alias or name.split('.')[0]))\n            continue\n        if level:\n            base=script.parent\n            for _ in range(level-1):\n                base=base.parent\n            from_roots=[base]\n        else:\n            from_roots=roots\n        prefix=f'{module}.' if module else ''\n        target=cl._resolve_module(module,from_roots) if module else None\n        remaining={name for name,_ in names}\n        if '*' in remaining:\n            if target is not None:\n                note(target,None)\n            continue\n        for name,alias in names:\n            sub_target=cl._resolve_module(prefix+name,from_roots)\n            if sub_target is not None:\n                note(sub_target,taken(alias or name))\n                remaining.discard(name)\n        if remaining and target is not None:\n            note(target,remaining)\n    for target,names in imports.items():\n        model_names=cl._model_function_names(str(target))\n        if not model_names or names is None:\n            sources.append(target)\n            continue\n        beyond=names-model_names\n        literals=(cl.module_constant_hashes(target,beyond) or {}) if beyond else {}\n        if set(literals)==beyond:\n            children.append(target)\n            if literals:\n                constants.setdefault(str(target),{}).update(literals)\n        else:\n            sources.append(target)\n    return cl.StaticImports(tuple(sources),tuple(children),constants)\n\n\ndef main():\n    global size\n    initial=metadata()\n    root=REPO/'models/tmp/split-stage-profile-20260910/src'\n    script=root/'planetary_gear_assembly.py'\n    children=[path for path in root.glob('*.py') if path!=script]\n    executed={str(path.resolve()):cl._semantic_source_hash(path) for path in root.rglob('*.py')}\n    original=cl.static_imports\n    rows=[]\n    expected=cl.build_closure(script,executed=executed,children=children)\n    try:\n        for sample in range(5):\n            for mode in (['existing','syntax-recipe'] if sample%2==0 else ['syntax-recipe','existing']):\n                memo.clear();size=0;counts.clear();counts.update(hits=0,misses=0)\n                cl.static_imports=original if mode=='existing' else candidate\n                started=time.perf_counter()\n                got=cl.build_closure(script,executed=executed,children=children)\n                elapsed=(time.perf_counter()-started)*1000\n                assert got==expected\n                rows.append({'sample':sample,'mode':mode,'milliseconds':elapsed,'cache':dict(counts),'sourceBytesRetained':size,'entries':len(memo)})\n    finally:\n        cl.static_imports=original\n    medians={mode:statistics.median(row['milliseconds'] for row in rows if row['sample'] and row['mode']==mode) for mode in ['existing','syntax-recipe']}\n    report={'metadata':initial,'helperSource':Path(__file__).read_text(encoding='utf-8'),'helperSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'qualification':'Four interleaved warm samples of a full real nine-child build_closure after one unreported-in-median priming sample. Every candidate call gets a new syntax memo and every lookup reads source bytes and resolves current filesystem availability. Scratch admission is conservatively limited to256files of <=64KiB; production would charge actual retained recipes and input bytes. No kernel work/model build/STEP persistence.', 'rows':rows,'medianMs':medians,'relativeChangePercent':(medians['syntax-recipe']/medians['existing']-1)*100,'allClosureValuesExactlyEqual':True,'inputSourceSha256':{str(path.relative_to(root)):hashlib.sha256(path.read_bytes()).hexdigest() for path in root.rglob('*.py')},'runtimeUnchanged':source_fingerprint()==initial['sourceFingerprint']}\n    assert report['runtimeUnchanged']\n    out=REPO/'scripts/bench/cadgen-performance/results/closure-syntax-probe-20260910.json'\n    assert not out.exists()\n    out.write_text(json.dumps(report,indent=2,sort_keys=True)+'\\n',encoding='utf-8')\n    print(json.dumps({'medianMs':medians,'relativeChangePercent':report['relativeChangePercent'],'rows':rows},indent=2))\n\n\nif __name__=='__main__':\n    main()\n",
+  "inputSourceSha256": {
+    "carrier_plate.py": "62f03d87d509697600c28bbee874f24ec7eabca958974e16f229bd2f240bc632",
+    "lib/__init__.py": "cc2ec02a43bac07571056ef93d1172294316485e7a52553ef0607ef34fa5dbe2",
+    "lib/geometry.py": "47c586611beba639d094ca12e3438529e131c6a6205c0a6d5d7020e4a7782815",
+    "planet_gear_1.py": "03d34e3898ee425b0cc0064e941739e8b3ccebce8d872fbcabf29f0dab7d0017",
+    "planet_gear_2.py": "26b823022e7240441729f45d86d73b3a1a6030ff6de58aa49656cd84ac2d53f8",
+    "planet_gear_3.py": "6053f49bf5b1cd6657ed452004469ffde391892ba715a04abb1a06e354d0a3dc",
+    "planet_pin_1.py": "def7b979060715efd4fbe05c1d7508967e52b9f76cf97ea7dc3cf469d868511b",
+    "planet_pin_2.py": "4ee2265afaaf978764815cd5fb06195564d7542000eda354a1c4d7efed2a37bf",
+    "planet_pin_3.py": "6378e43817c612ad1a5b8ca5e422c4affadebd868e603271328671d3b261e8ae",
+    "planetary_gear_assembly.py": "366b80c95240b0f4603356a9760f598a3e8c4a6c21f0a8adb0641ef9f43fd576",
+    "ring_gear.py": "a037186134201292b9d193f74d6a35719969ee34fc8e9f1e2716f09bf81715b5",
+    "sun_gear.py": "0d7ed0dd89993186e54a33d78ca6acd8b49cae4f7caa3a6d23f2ab76a50561e7"
+  },
+  "medianMs": {
+    "existing": 24.47733306325972,
+    "syntax-recipe": 10.281604016199708
+  },
+  "metadata": {
+    "cpu": "unavailable",
+    "cpuCount": 10,
+    "environment": {},
+    "gitHead": "ff6ff1679d6f3a4643bb96ed1bbd3a16a5d037c8",
+    "machine": "arm64",
+    "node": "v26.7.0",
+    "physicalMemoryBytes": "unavailable",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.13 (main, Jun  2 2026, 22:33:40) [Clang 22.1.3 ]",
+    "pythonExecutable": "/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python",
+    "sourceFingerprint": "98b2a5ce1c6e2053a536bc8f19f79e518f63d0322f7142bc30b2d0242d16e1d1",
+    "timeUtc": "2026-09-10T19:58:35.366169+00:00",
+    "versions": {
+      "build123d": "0.11.1",
+      "cadgen": "0.5.1",
+      "cadquery-ocp": "7.9.3.1.1",
+      "numpy": "2.5.2"
+    }
+  },
+  "qualification": "Four interleaved warm samples of a full real nine-child build_closure after one unreported-in-median priming sample. Every candidate call gets a new syntax memo and every lookup reads source bytes and resolves current filesystem availability. Scratch admission is conservatively limited to256files of <=64KiB; production would charge actual retained recipes and input bytes. No kernel work/model build/STEP persistence.",
+  "relativeChangePercent": -57.995407466868556,
+  "rows": [
+    {
+      "cache": {
+        "hits": 0,
+        "misses": 0
+      },
+      "entries": 0,
+      "milliseconds": 25.318583007901907,
+      "mode": "existing",
+      "sample": 0,
+      "sourceBytesRetained": 0
+    },
+    {
+      "cache": {
+        "hits": 8,
+        "misses": 11
+      },
+      "entries": 11,
+      "milliseconds": 10.552792344242334,
+      "mode": "syntax-recipe",
+      "sample": 0,
+      "sourceBytesRetained": 12528
+    },
+    {
+      "cache": {
+        "hits": 8,
+        "misses": 11
+      },
+      "entries": 11,
+      "milliseconds": 10.374499950557947,
+      "mode": "syntax-recipe",
+      "sample": 1,
+      "sourceBytesRetained": 12528
+    },
+    {
+      "cache": {
+        "hits": 0,
+        "misses": 0
+      },
+      "entries": 0,
+      "milliseconds": 24.781166575849056,
+      "mode": "existing",
+      "sample": 1,
+      "sourceBytesRetained": 0
+    },
+    {
+      "cache": {
+        "hits": 0,
+        "misses": 0
+      },
+      "entries": 0,
+      "milliseconds": 24.420958012342453,
+      "mode": "existing",
+      "sample": 2,
+      "sourceBytesRetained": 0
+    },
+    {
+      "cache": {
+        "hits": 8,
+        "misses": 11
+      },
+      "entries": 11,
+      "milliseconds": 10.188708081841469,
+      "mode": "syntax-recipe",
+      "sample": 2,
+      "sourceBytesRetained": 12528
+    },
+    {
+      "cache": {
+        "hits": 8,
+        "misses": 11
+      },
+      "entries": 11,
+      "milliseconds": 10.056708939373493,
+      "mode": "syntax-recipe",
+      "sample": 3,
+      "sourceBytesRetained": 12528
+    },
+    {
+      "cache": {
+        "hits": 0,
+        "misses": 0
+      },
+      "entries": 0,
+      "milliseconds": 24.490457959473133,
+      "mode": "existing",
+      "sample": 3,
+      "sourceBytesRetained": 0
+    },
+    {
+      "cache": {
+        "hits": 0,
+        "misses": 0
+      },
+      "entries": 0,
+      "milliseconds": 24.46420816704631,
+      "mode": "existing",
+      "sample": 4,
+      "sourceBytesRetained": 0
+    },
+    {
+      "cache": {
+        "hits": 8,
+        "misses": 11
+      },
+      "entries": 11,
+      "milliseconds": 10.40854211896658,
+      "mode": "syntax-recipe",
+      "sample": 4,
+      "sourceBytesRetained": 12528
+    }
+  ],
+  "runtimeUnchanged": true
+}

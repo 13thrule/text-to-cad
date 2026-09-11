@@ -1,0 +1,123 @@
+{
+  "kind": "post-grade numeric analysis; diagnostic attribution, no matched or isolated speedup claim",
+  "sourceReport": "scripts/bench/cadgen-performance/results/hand-default-adaptive-settled-tree-20260910.json",
+  "nearSampleWindowMs": [
+    26803,
+    56579.5
+  ],
+  "workerCompletionQualification": "Requests both started and completed in window, final128-request bounded probe tail. Uncached elapsed includes worker-owned SURF HTTP/body, parsing, tessellation, mesh construction and encoding; not mesher CPU alone.",
+  "workers": {
+    "total": {
+      "count": 35,
+      "median": 518.4000000953674,
+      "minimum": 0.5,
+      "maximum": 6347.89999961853,
+      "total": 22791.499999523163
+    },
+    "cached": {
+      "count": 2,
+      "median": 0.5500001907348633,
+      "minimum": 0.5,
+      "maximum": 0.6000003814697266,
+      "total": 1.1000003814697266
+    },
+    "uncached": {
+      "count": 33,
+      "median": 518.7000002861023,
+      "minimum": 410.7000002861023,
+      "maximum": 6347.89999961853,
+      "total": 22790.399999141693
+    },
+    "startGapMs": {
+      "count": 34,
+      "median": 692.7000000476837,
+      "minimum": 91.39999961853027,
+      "maximum": 787.8000001907349,
+      "total": 22184.400000095367
+    },
+    "longest": [
+      {
+        "cid": "056f821159cb927e",
+        "ms": 6347.89999961853,
+        "cachedBytes": 0
+      },
+      {
+        "cid": "68bba2031b13f39c",
+        "ms": 607.1999998092651,
+        "cachedBytes": 0
+      },
+      {
+        "cid": "024b96bea0072aa5",
+        "ms": 595.7999997138977,
+        "cachedBytes": 0
+      },
+      {
+        "cid": "c43c51c974e9852c",
+        "ms": 595.5999999046326,
+        "cachedBytes": 0
+      },
+      {
+        "cid": "8ddf9f6f26542d04",
+        "ms": 567.9000000953674,
+        "cachedBytes": 0
+      }
+    ]
+  },
+  "publicationGapMs": {
+    "count": 34,
+    "median": 690.1999998092651,
+    "minimum": 101.5,
+    "maximum": 785.8000001907349,
+    "total": 22197.700000286102
+  },
+  "distinctSampledAdoptionWaitMs": {
+    "count": 34,
+    "median": 110.25,
+    "minimum": 46.40000009536743,
+    "maximum": 122.2000002861023,
+    "total": 3656.4000000953674
+  },
+  "distinctSampledMainSceneMs": {
+    "count": 34,
+    "median": 29.8,
+    "minimum": 26.1,
+    "maximum": 34.2,
+    "total": 1009.2000000000002
+  },
+  "windowResourceTiming": {
+    "truncated": false,
+    "statusCounts": {
+      "200": 2,
+      "204": 34,
+      "404": 33
+    },
+    "durationsMs": {
+      "200": {
+        "count": 2,
+        "median": 43.40000009536743,
+        "minimum": 43.200000286102295,
+        "maximum": 43.59999990463257,
+        "total": 86.80000019073486
+      },
+      "404": {
+        "count": 33,
+        "median": 1.0999999046325684,
+        "minimum": 1,
+        "maximum": 1.3000001907348633,
+        "total": 36.500001430511475
+      },
+      "204": {
+        "count": 34,
+        "median": 6.099999904632568,
+        "minimum": 5.199999809265137,
+        "maximum": 52.80000019073486,
+        "total": 258.40000200271606
+      }
+    },
+    "qualification": "Window resource entries only; worker-owned SURF requests absent.204 completions reported as status, not HTTP method inferred. Nested elapsed intervals are not additive CPU."
+  },
+  "nearStartUnmetTargets": 98,
+  "nearEndUnmetTargets": 63,
+  "nextEvidence": "A bounded representative uncached worker phase diagnostic can separate SURF fetch/body, parsing, tessellation/build/encode from the remaining main-thread adoption cost. Higher-target warmth and unrelated host work prevent comparison against the earlier mostly-cached profile.",
+  "sourceReportSha256": "de670bd4c0763a55fb2935aaf6b3f45d7a45c5add556619a67bd2b58a36d7672"
+}

@@ -1,0 +1,122 @@
+{
+  "startedAt": "2026-09-10T21:37:37.741Z",
+  "qualification": "Isolated Node counterfactual microbenchmark, not browser latency or hand acceptance. Same actual canonical saved assembly tree, selectableIDs from existing collapsed-tree policy, unchanged memo result shaping. Display-enriched bounds/material fields are absent from this raw saved tree. Parse/input setup and proof checks excluded from samples.",
+  "node": "v26.7.0",
+  "cpu": "Apple M1 Max",
+  "sourceBefore": {
+    "packages/cadgen-js/src/lib/assembly/meshData.js": "5d6cee3b94f24a74a93450fe1bf8fe7bbdb8aa3e89f1fa5bef102176e30d5060",
+    "apps/viewer/src/client/components/CadWorkspace.js": "24093fff8f74cfd714f546247bf36065336237ae7fc269d699b236051c9718d0",
+    "apps/viewer/src/client/workbench/assemblyIsolation.js": "e4e8097e9e3dd6af0501317b26b5644a839b8ed35621da20820f54528d9f1dfe"
+  },
+  "samples": [
+    {
+      "iteration": 0,
+      "name": "baseline",
+      "ms": 94.38262500000002
+    },
+    {
+      "iteration": 0,
+      "name": "candidate",
+      "ms": 1.3176669999999149
+    },
+    {
+      "iteration": 0,
+      "name": "candidate",
+      "ms": 1.4515839999999116
+    },
+    {
+      "iteration": 0,
+      "name": "baseline",
+      "ms": 94.28649999999993
+    },
+    {
+      "iteration": 1,
+      "name": "baseline",
+      "ms": 97.43762500000003
+    },
+    {
+      "iteration": 1,
+      "name": "candidate",
+      "ms": 1.2120419999999967
+    },
+    {
+      "iteration": 1,
+      "name": "candidate",
+      "ms": 0.9452079999999796
+    },
+    {
+      "iteration": 1,
+      "name": "baseline",
+      "ms": 96.22895800000003
+    },
+    {
+      "iteration": 2,
+      "name": "baseline",
+      "ms": 97.25708399999996
+    },
+    {
+      "iteration": 2,
+      "name": "candidate",
+      "ms": 0.9594579999999269
+    },
+    {
+      "iteration": 2,
+      "name": "candidate",
+      "ms": 0.9957500000000437
+    },
+    {
+      "iteration": 2,
+      "name": "baseline",
+      "ms": 96.204792
+    },
+    {
+      "iteration": 3,
+      "name": "baseline",
+      "ms": 95.91795800000011
+    },
+    {
+      "iteration": 3,
+      "name": "candidate",
+      "ms": 0.7684159999998883
+    },
+    {
+      "iteration": 3,
+      "name": "candidate",
+      "ms": 0.8416250000000218
+    },
+    {
+      "iteration": 3,
+      "name": "baseline",
+      "ms": 95.26754200000005
+    }
+  ],
+  "input": {
+    "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/performance-hand-20260910/store/objects/98/22de20097b9a213e64b6d4655ef8cbf9ed1c6eeb1ae2322605802b37cc1951",
+    "bytes": 1744435,
+    "sha256": "9822de20097b9a213e64b6d4655ef8cbf9ed1c6eeb1ae2322605802b37cc1951"
+  },
+  "requestCount": 3259,
+  "resultSha256": "4aca1721f052c7369a5973bfe720f4b359e814cc0c1bfa4ecf5cc27ac3a7031f",
+  "summary": {
+    "baseline": {
+      "count": 8,
+      "medianMs": 96.06137500000006,
+      "minMs": 94.28649999999993,
+      "maxMs": 97.43762500000003
+    },
+    "candidate": {
+      "count": 8,
+      "medianMs": 0.9776039999999853,
+      "minMs": 0.7684159999998883,
+      "maxMs": 1.4515839999999116
+    }
+  },
+  "sourceAfter": {
+    "packages/cadgen-js/src/lib/assembly/meshData.js": "5d6cee3b94f24a74a93450fe1bf8fe7bbdb8aa3e89f1fa5bef102176e30d5060",
+    "apps/viewer/src/client/components/CadWorkspace.js": "24093fff8f74cfd714f546247bf36065336237ae7fc269d699b236051c9718d0",
+    "apps/viewer/src/client/workbench/assemblyIsolation.js": "e4e8097e9e3dd6af0501317b26b5644a839b8ed35621da20820f54528d9f1dfe"
+  },
+  "sourceUnchanged": true,
+  "exactResultParity": true,
+  "finishedAt": "2026-09-10T21:37:38.931Z"
+}

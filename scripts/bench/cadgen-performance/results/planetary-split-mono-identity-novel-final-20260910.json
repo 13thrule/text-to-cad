@@ -1,0 +1,18 @@
+{
+  "allNineVariantsExactlyEqual": true,
+  "baselineQualification": "Old split STEP serialization differs from current. Original baseline fixture has prior bidirectional zero symmetric-difference volumes for all nine parts; unseen baseline variants are retained but have not been independently compared geometrically.",
+  "checked": "actual output bytes hashed after each timer; compared every variant and repeat",
+  "monoReport": "mono-after-unseen-final-20260910.json",
+  "splitReport": "planetary-split-after-novel-final-20260910.json",
+  "variantStepSha256": {
+    "baseline": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+    "geometry": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+    "novel-geometry-1": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+    "novel-geometry-2": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+    "novel-geometry-3": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+    "novel-placement-1": "ff48468f93f8d36b2858fa81b01341dcf2ada4c35d7641da5cd0c06d2d560296",
+    "novel-placement-2": "b4355917f7e4e3e2218ffe7fad40ae5dc6f517cb72ec3c4cc86c213e4427ad93",
+    "novel-placement-3": "484f17d07dfdf78ceea294293c1c4cefdb1338ed7d1a4100bdf00ad944748062",
+    "placement": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7"
+  }
+}

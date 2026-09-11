@@ -1,0 +1,350 @@
+{
+  "generatedAt": "2026-09-10T19:30:25.140Z",
+  "qualification": "Read-only cached TESS headers plus Node structural/GC ownership and allocation-count probe. Eight real cached heavy component meshes, 32 synthetic occurrences each, 24 fresh-buffer same-geometry replacements. No tessellation, WebGL, React, browser or end-to-end performance claim. No full all-L1 estimate when canonical entries are missing.",
+  "node": "v26.7.0",
+  "census": {
+    "totalUnique": 866,
+    "coarseCached": 866,
+    "canonicalCached": 378,
+    "coarse": {
+      "surfaceBytes": 113272188,
+      "cadEdgeArrayBytes": 12405140,
+      "cadEdgeSegmentTextureBytes": 18448832,
+      "fileBytes": 185937400,
+      "triangles": 3744839
+    },
+    "canonicalAvailable": {
+      "surfaceBytes": 225610632,
+      "cadEdgeArrayBytes": 6296420,
+      "cadEdgeSegmentTextureBytes": 9372800,
+      "fileBytes": 359278484,
+      "triangles": 8783020
+    },
+    "mixedCanonicalAvailableElseCoarse": {
+      "surfaceBytes": 281663436,
+      "cadEdgeArrayBytes": 12589320,
+      "cadEdgeSegmentTextureBytes": 18743520,
+      "fileBytes": 451459972,
+      "triangles": 10639107
+    }
+  },
+  "components": [
+    {
+      "cid": "1477eb2b7150753a",
+      "level": 1,
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/performance-hand-20260910/store/objects/74/0d48a33c24c39433cb96000a827f25c1a4674fd7f35ae6ca001e031060a1ce",
+      "object": "740d48a33c24c39433cb96000a827f25c1a4674fd7f35ae6ca001e031060a1ce",
+      "triangles": 783535,
+      "surfaceBytes": 20534340,
+      "cadEdgeArrayBytes": 609200,
+      "cadEdgeSegmentTextureBytes": 848192,
+      "fileBytes": 32921108
+    },
+    {
+      "cid": "71e17644c5e3f978",
+      "level": 1,
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/performance-hand-20260910/store/objects/cc/ed9d998c5f2018cebb8ce4a5fc961078f42c272ccb67915c292f409f8ec984",
+      "object": "cced9d998c5f2018cebb8ce4a5fc961078f42c272ccb67915c292f409f8ec984",
+      "triangles": 319990,
+      "surfaceBytes": 8268696,
+      "cadEdgeArrayBytes": 73900,
+      "cadEdgeSegmentTextureBytes": 112096,
+      "fileBytes": 12930084
+    },
+    {
+      "cid": "056f821159cb927e",
+      "level": 1,
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/performance-hand-20260910/store/objects/a0/3e73f4fa57617920f48bf482a198d6d9cc90b8ecf1b10a8a2f73ebe23247e4",
+      "object": "a03e73f4fa57617920f48bf482a198d6d9cc90b8ecf1b10a8a2f73ebe23247e4",
+      "triangles": 193233,
+      "surfaceBytes": 6085044,
+      "cadEdgeArrayBytes": 591372,
+      "cadEdgeSegmentTextureBytes": 897888,
+      "fileBytes": 9668860
+    },
+    {
+      "cid": "142fb8ec0a57c1b4",
+      "level": 1,
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/performance-hand-20260910/store/objects/d2/5f3c58997e45420d14316df15fc0f6f28dda64db5ab13e8d6462f1cbfd8743",
+      "object": "d25f3c58997e45420d14316df15fc0f6f28dda64db5ab13e8d6462f1cbfd8743",
+      "triangles": 185427,
+      "surfaceBytes": 5100012,
+      "cadEdgeArrayBytes": 418032,
+      "cadEdgeSegmentTextureBytes": 627936,
+      "fileBytes": 8324604
+    },
+    {
+      "cid": "690648ac5ece20c8",
+      "level": 1,
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/performance-hand-20260910/store/objects/35/310006caa1001480a78718e5febace5575bce92620709b599ac3e48265eda0",
+      "object": "35310006caa1001480a78718e5febace5575bce92620709b599ac3e48265eda0",
+      "triangles": 147918,
+      "surfaceBytes": 3561696,
+      "cadEdgeArrayBytes": 5000,
+      "cadEdgeSegmentTextureBytes": 7808,
+      "fileBytes": 5639300
+    },
+    {
+      "cid": "58e6aa938e03649e",
+      "level": 1,
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/performance-hand-20260910/store/objects/03/867e69a8157c197bb73b15bbfac9ea3eef9d006b09cb1a8e2d72b69d7f9990",
+      "object": "03867e69a8157c197bb73b15bbfac9ea3eef9d006b09cb1a8e2d72b69d7f9990",
+      "triangles": 117787,
+      "surfaceBytes": 3054324,
+      "cadEdgeArrayBytes": 115764,
+      "cadEdgeSegmentTextureBytes": 166176,
+      "fileBytes": 4922500
+    },
+    {
+      "cid": "55df78e7e418df66",
+      "level": 1,
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/performance-hand-20260910/store/objects/c8/c3db611b6cccac284ddbcd8375b6b4f735fe832c475a8b57c9cbc9d51b5092",
+      "object": "c8c3db611b6cccac284ddbcd8375b6b4f735fe832c475a8b57c9cbc9d51b5092",
+      "triangles": 111690,
+      "surfaceBytes": 2891592,
+      "cadEdgeArrayBytes": 119944,
+      "cadEdgeSegmentTextureBytes": 175648,
+      "fileBytes": 4668188
+    },
+    {
+      "cid": "024b96bea0072aa5",
+      "level": 1,
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/performance-hand-20260910/store/objects/ef/1583d9dc732c88b7c2b9a2b0a0eb7951494b2c17e6735cd6a6142ca0226a15",
+      "object": "ef1583d9dc732c88b7c2b9a2b0a0eb7951494b2c17e6735cd6a6142ca0226a15",
+      "triangles": 111722,
+      "surfaceBytes": 2709888,
+      "cadEdgeArrayBytes": 10268,
+      "cadEdgeSegmentTextureBytes": 15680,
+      "fileBytes": 4290344
+    }
+  ],
+  "baseline": {
+    "rss": 283918336,
+    "heapTotal": 33144832,
+    "heapUsed": 16392288,
+    "external": 117574056,
+    "arrayBuffers": 113827279
+  },
+  "unchanged": [
+    {
+      "label": "20 unchanged instance reconciliations",
+      "ms": 7.908333000000027,
+      "pass": 5600,
+      "sync": 320,
+      "characters": 1899840
+    },
+    {
+      "label": "20 unchanged instance reconciliations",
+      "ms": 6.382916000000023,
+      "pass": 5600,
+      "sync": 320,
+      "characters": 1899840
+    },
+    {
+      "label": "20 unchanged instance reconciliations",
+      "ms": 7.7283330000000205,
+      "pass": 5600,
+      "sync": 320,
+      "characters": 1899840
+    }
+  ],
+  "updates": [
+    {
+      "label": "one component replacement + source update",
+      "ms": 13.008624999999995,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 14.378083000000004,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 7.1506669999999986,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 5.247792000000004,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 4.517083000000014,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 3.9772080000000187,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 3.4027090000000157,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 3.4862079999999764,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 6.742833000000019,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 5.1889170000000036,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 5.516374999999982,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 4.249959000000047,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 4.436958000000004,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 3.1545830000000024,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 3.3284590000000094,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 2.8886249999999905,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 6.344832999999994,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 4.138332999999989,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 3.9360840000000508,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 4.031041999999957,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 3.224292000000105,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 2.8600000000000136,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 2.6652090000000044,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    },
+    {
+      "label": "one component replacement + source update",
+      "ms": 2.9476250000000164,
+      "pass": 280,
+      "sync": 16,
+      "characters": 94992
+    }
+  ],
+  "tracked": {
+    "component": 24,
+    "record": 768,
+    "set": 24,
+    "geometry": 24
+  },
+  "stillAlive": {},
+  "afterUpdates": {
+    "rss": 335265792,
+    "heapTotal": 35504128,
+    "heapUsed": 16390632,
+    "external": 117602194,
+    "arrayBuffers": 113827279
+  },
+  "afterDispose": {
+    "rss": 335822848,
+    "heapTotal": 35504128,
+    "heapUsed": 13460880,
+    "external": 117602194,
+    "arrayBuffers": 113775055
+  },
+  "fingerprints": {
+    "packages/cadgen-js/src/common/cadScene.js": "d325aa8f864fb400d53b01b058a426cd9d12fe6d3d99ef3da5d7c032268e0e0e",
+    "packages/cadgen-js/src/common/cadSurfaceInstances.js": "5a4ed78b82981e87f5588077e3af300fa37d6c5bedf50dc34d54e0682d51fbb3",
+    "packages/cadgen-js/src/lib/assembly/meshData.js": "81db1e09cb0e88c56b5d9f1f0083c72b5832f820c947cfc50fe70b2cf97237a4"
+  },
+  "runtimeUnchanged": true,
+  "executedHelper": "import fs from 'node:fs';\nimport crypto from 'node:crypto';\nimport assert from 'node:assert/strict';\nimport { pathToFileURL } from 'node:url';\nconst repo='/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad';\nconst store=`${repo}/models/tmp/performance-hand-20260910/store`;\nconst output='/private/tmp/cadgen-performance-20260910/instance-ownership-churn.json';\nconst objectPath=hash=>`${store}/objects/${hash.slice(0,2)}/${hash.slice(2)}`;\nconst tree=JSON.parse(fs.readFileSync(objectPath('9822de20097b9a213e64b6d4655ef8cbf9ed1c6eeb1ae2322605802b37cc1951')));\nconst fingerprints=()=>Object.fromEntries(['packages/cadgen-js/src/common/cadScene.js','packages/cadgen-js/src/common/cadSurfaceInstances.js','packages/cadgen-js/src/lib/assembly/meshData.js'].map(p=>[p,crypto.createHash('sha256').update(fs.readFileSync(`${repo}/${p}`)).digest('hex')]));\nconst beforeFingerprint=fingerprints();\nconst header=(cid,level)=>{\n  const key=`${cid}-t2-l${level===0?'2.000000e-3-a1.400000e+0':'1.500000e-3-a3.500000e-1'}`;\n  let fd;\n  try {\n    const record=JSON.parse(fs.readFileSync(`${store}/index/mesh/${key}`));\n    const path=objectPath(record.object); fd=fs.openSync(path,'r');\n    const prefix=Buffer.alloc(12); if(fs.readSync(fd,prefix,0,12,0)!==12) throw Error('short prefix');\n    if(prefix.readUInt32LE(0)!==0x53534554 || prefix.readUInt32LE(4)!==3) throw Error('unsupported TESS');\n    const bytes=Buffer.alloc(prefix.readUInt32LE(8)); fs.readSync(fd,bytes,0,bytes.length,12);\n    const h=JSON.parse(bytes.toString('utf8'));\n    const edges=h.edges.filter(e=>e.visibilityClass!=='none');\n    const points=edges.reduce((n,e)=>n+e.count/3,0);\n    const segments=edges.reduce((n,e)=>n+Math.max(0,e.count/3-1),0);\n    return {cid,level,path,object:record.object,triangles:h.indexCount/3,surfaceBytes:4*(h.positionCount+h.normalCount+h.indexCount),cadEdgeArrayBytes:points*12+segments*8,cadEdgeSegmentTextureBytes:segments*32,fileBytes:fs.fstatSync(fd).size};\n  } catch(error) { if(error.code==='ENOENT') return null; throw error; }\n  finally { if(fd!==undefined) fs.closeSync(fd); }\n};\nconst rows=Object.keys(tree.components).map(cid=>({cid,coarse:header(cid,0),canonical:header(cid,1)}));\nconst sum=(values,key)=>values.reduce((n,r)=>n+(r?.[key]||0),0);\nconst census={totalUnique:rows.length,coarseCached:rows.filter(r=>r.coarse).length,canonicalCached:rows.filter(r=>r.canonical).length};\nfor(const [name,values] of [['coarse',rows.map(r=>r.coarse)],['canonicalAvailable',rows.map(r=>r.canonical)],['mixedCanonicalAvailableElseCoarse',rows.map(r=>r.canonical||r.coarse)]]) {\n  census[name]=Object.fromEntries(['surfaceBytes','cadEdgeArrayBytes','cadEdgeSegmentTextureBytes','fileBytes','triangles'].map(k=>[k,sum(values,k)]));\n}\nconst mod=p=>import(pathToFileURL(`${repo}/${p}`));\nconst THREE=await mod('packages/cadgen-js/node_modules/three/build/three.module.js');\nconst {decodeComponentTessellation,surfIndexFromCacheEntry}=await mod('packages/cadgen-js/src/lib/surf/tessellationCache.js');\nconst {buildMeshDataFromSurf}=await mod('packages/cadgen-js/src/lib/surf/surfMeshData.js');\nconst {buildComposedPackageMeshData}=await mod('packages/cadgen-js/src/lib/assembly/meshData.js');\nconst {buildModel}=await mod('packages/cadgen-js/src/common/cadScene.js');\nconst candidates=rows.map(r=>r.canonical).filter(Boolean).sort((a,b)=>b.surfaceBytes-a.surfaceBytes).slice(0,8);\nconst templates={};\nfor(const row of candidates){const decoded=decodeComponentTessellation(fs.readFileSync(row.path));templates[row.cid]=buildMeshDataFromSurf(surfIndexFromCacheEntry(decoded),null,{component:decoded.component});}\nconst fresh=cid=>{const base=templates[cid];return {...base,vertices:new Float32Array(base.vertices),normals:new Float32Array(base.normals),indices:new Uint32Array(base.indices)};};\nconst components=Object.fromEntries(candidates.map(r=>[r.cid,fresh(r.cid)]));\nconst occurrences=[];\nfor(const {cid} of candidates)for(let i=0;i<32;i++)occurrences.push({id:`${cid}:${i}`,component:cid,name:`${cid}:${i}`,transform:[1,0,0,0,0,1,0,0,0,0,1,0,i*10,0,0,1]});\nconst descriptor={components:tree.components,occurrences,assembly:{root:{id:'probe',nodeType:'assembly',children:occurrences.map(o=>({id:o.id,nodeType:'part',children:[]}))}}};\nlet composed=buildComposedPackageMeshData(descriptor,components);\nconst scene=buildModel(THREE,composed,{renderPartsIndividually:true,displayMode:'solid'});\nassert.equal(scene.displayRecords.length,256);\nassert.equal(scene.runtime.cadSurfaceInstanceSets.size,8);\nconst memory=()=>{global.gc();return process.memoryUsage();};\nconst baseline=memory();\nconst stringify=JSON.stringify;\nlet counts=null;\nJSON.stringify=function(value,...args){const result=stringify.call(this,value,...args);if(counts&&value&&typeof value==='object'){let kind;if(Object.hasOwn(value,'vertexColors')&&Object.hasOwn(value,'roughness')&&Object.hasOwn(value,'type'))kind='pass';else if(Object.hasOwn(value,'pass')&&Object.hasOwn(value,'clippingPlanes'))kind='sync';if(kind){counts[kind]++;counts.characters+=result.length;}}return result;};\nconst measure=(label,fn)=>{counts={pass:0,sync:0,characters:0};const start=performance.now();fn();const ms=performance.now()-start;const result={label,ms,...counts};counts=null;return result;};\nfor(let i=0;i<2;i++)scene.syncSurfaceInstances();\nconst unchanged=[];\nfor(let i=0;i<3;i++)unchanged.push(measure('20 unchanged instance reconciliations',()=>{for(let j=0;j<20;j++)scene.syncSurfaceInstances();}));\nconst tracked=[];const updates=[];\nfunction replaceOne(revision){\n  const cid=candidates[revision%candidates.length].cid;\n  const retired=scene.displayRecords.filter(r=>r.sourcePart.componentId===cid);\n  tracked.push({kind:'component',ref:new WeakRef(components[cid])});\n  for(const record of retired)tracked.push({kind:'record',ref:new WeakRef(record)});\n  for(const set of new Set(retired.map(r=>r.surfaceInstance?.set).filter(Boolean)))tracked.push({kind:'set',ref:new WeakRef(set)});\n  for(const g of new Set(retired.map(r=>r.geometry)))tracked.push({kind:'geometry',ref:new WeakRef(g)});\n  components[cid]=fresh(cid);\n  composed=buildComposedPackageMeshData(descriptor,components,{previous:composed});\n  updates.push(measure('one component replacement + source update',()=>scene.update({source:composed})));\n  const current=new Set(scene.displayRecords);\n  assert.equal(scene.runtime.cadSurfaceInstanceSets.size,8);\n  for(const set of scene.runtime.cadSurfaceInstanceSets){assert.equal(set.disposed,false);assert.ok(set.records.every(r=>current.has(r)&&r.surfaceInstance?.set===set&&r.geometry===set.object.geometry));}\n}\nfor(let revision=0;revision<24;revision++){replaceOne(revision);await new Promise(setImmediate);global.gc();}\nJSON.stringify=stringify;\nawait new Promise(setImmediate);global.gc();await new Promise(setImmediate);global.gc();\nconst alive={};const total={};for(const {kind,ref} of tracked){total[kind]=(total[kind]||0)+1;if(ref.deref())alive[kind]=(alive[kind]||0)+1;}\nconst afterUpdates=process.memoryUsage();\nscene.dispose();\nawait new Promise(setImmediate);global.gc();\nconst report={generatedAt:new Date().toISOString(),qualification:'Read-only cached TESS headers plus Node structural/GC ownership and allocation-count probe. Eight real cached heavy component meshes, 32 synthetic occurrences each, 24 fresh-buffer same-geometry replacements. No tessellation, WebGL, React, browser or end-to-end performance claim. No full all-L1 estimate when canonical entries are missing.',node:process.version,census,components:candidates,baseline,unchanged,updates,tracked:total,stillAlive:alive,afterUpdates,afterDispose:process.memoryUsage(),fingerprints:beforeFingerprint,runtimeUnchanged:stringify(beforeFingerprint)===stringify(fingerprints())};\nfs.writeFileSync(output,stringify(report,null,2)+'\\n');\nconsole.log(stringify({output,census,unchanged,updateMs:updates.map(r=>r.ms),tracked:total,stillAlive:alive,baseline,afterUpdates,runtimeUnchanged:report.runtimeUnchanged},null,2));\n",
+  "executedHelperSha256": "fd4759829cbd16f80738ebafa57cc361a22f52a5dcdad04d55401346b9131427"
+}

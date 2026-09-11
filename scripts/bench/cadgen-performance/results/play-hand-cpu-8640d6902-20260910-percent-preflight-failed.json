@@ -1,0 +1,153 @@
+{
+  "startedAt": "2026-09-10T21:31:52.721Z",
+  "qualification": "DIAGNOSTIC only: ~8-second main-thread CDP CPU sampling during800% refinement. No isolated latency or performance acceptance claim; user/other agents may concurrently use CPU or viewer. Fresh private browser, default LOD, existing cache warmth not controlled. No allocation sampling/forcedGC. Frozen dist proof, not mutable source.",
+  "origin": "http://127.0.0.1:3262",
+  "dist": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902",
+  "errors": [],
+  "consoleErrors": [],
+  "httpFailures": [],
+  "peakRss": {
+    "browser": {
+      "rssBytes": 99614720,
+      "largestPidBytes": 99614720,
+      "processCount": 1
+    },
+    "gpu-process": {
+      "rssBytes": 329531392,
+      "largestPidBytes": 329531392,
+      "processCount": 1
+    },
+    "utility": {
+      "rssBytes": 51544064,
+      "largestPidBytes": 51544064,
+      "processCount": 1
+    },
+    "renderer": {
+      "rssBytes": 1159053312,
+      "largestPidBytes": 1085997056,
+      "processCount": 2
+    }
+  },
+  "servedProofAtStart": {
+    "dist": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902",
+    "matches": true,
+    "files": [
+      {
+        "path": "/",
+        "bytes": 1750,
+        "sha256": "56b5b75f97948674909f981f6897a25167aae5a1df274bc7f1b98cc87306b200"
+      },
+      {
+        "path": "/assets/index-Dq-FAf-c.js",
+        "bytes": 1060000,
+        "sha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f"
+      },
+      {
+        "path": "/assets/vendor-react-DqJhD6MJ.js",
+        "bytes": 165206,
+        "sha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e"
+      },
+      {
+        "path": "/assets/vendor-three-BGohPKcK.js",
+        "bytes": 877893,
+        "sha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98"
+      },
+      {
+        "path": "/assets/vendor-ui-pdltCN0Z.js",
+        "bytes": 138106,
+        "sha256": "9a6d4555b95048bb585800bd497289c9c0c22d3128b6a2524475cfffb85a2b8c"
+      },
+      {
+        "path": "/assets/vendor-icons-DGUzLxE6.js",
+        "bytes": 14568,
+        "sha256": "6cc61a9996afcc25ba4f37b9e33b6b2ed59782fd40f4f12dca68514224715ecc"
+      },
+      {
+        "path": "/assets/index-k_YIz_ZS.css",
+        "bytes": 97908,
+        "sha256": "b622433a8f94db7d43c1ebed4426eee7f866f8046821c127bd8549bb758ced72"
+      }
+    ],
+    "workers": [
+      {
+        "path": "/assets/glbMeshWorker-BKAG73hs.js",
+        "bytes": 197641,
+        "sha256": "fe763ffd228d6cdc8ea2784f8726b14e816d87ef4b5677b4d6be8ea5d6f04c0f"
+      },
+      {
+        "path": "/assets/raycastBvhWorker-Bx8Ori6S.js",
+        "bytes": 138869,
+        "sha256": "501d2dcdd14e8d37fe41505b7676dadf93e108fbc3c2f46d90957262b07d2c19"
+      },
+      {
+        "path": "/assets/stlMeshWorker-k-Bj4GhT.js",
+        "bytes": 2343,
+        "sha256": "39dead3f3c1dd36a37fbeaca3cee4c33ecbd56dec066d862d9d060ad9b98281a"
+      },
+      {
+        "path": "/assets/surfWorker-Bhjj_KyM.js",
+        "bytes": 81432,
+        "sha256": "c72ec65fabc1487d0f1f98f20ca62bb0ffd73fe133533865b38da43a1b697629"
+      }
+    ]
+  },
+  "browser": "148.0.7778.96",
+  "initialComplete": {
+    "meshCost": {
+      "meshRevision": "9822de20097b9a213e64b6d4655ef8cbf9ed1c6eeb1ae2322605802b37cc1951",
+      "composed": {
+        "triangleCount": 22989008,
+        "typedArrayBytes": 127250744
+      },
+      "componentTotalBytes": 127250744,
+      "componentTotalTriangles": 3809989,
+      "componentCount": 866,
+      "occurrenceCount": 3259,
+      "totalComponents": 866,
+      "loadedComponents": 866,
+      "publishCount": 8,
+      "final": true,
+      "at": 15186.900000095367
+    },
+    "sceneSync": {
+      "atMs": 15341,
+      "ms": 37.5,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    "viewportLod": {
+      "componentCount": 866,
+      "levelCounts": {
+        "0": 865,
+        "1": 1
+      },
+      "minimumLevel": 0,
+      "belowMinimum": 0,
+      "busy": true,
+      "pendingEvaluation": false,
+      "failedLevels": 0,
+      "visibility": {
+        "components": 866,
+        "occurrences": 3259,
+        "visibleOccurrences": 3259,
+        "excludedOccurrences": 0,
+        "fallbackOccurrences": 0,
+        "visibleComponents": 866,
+        "excludedComponents": 0,
+        "fallbackComponents": 0,
+        "pendingOccurrences": 0,
+        "dynamicFailOpen": 0
+      }
+    }
+  },
+  "zoomBefore": "100%",
+  "outcome": "failed-diagnostic",
+  "error": "page.waitForFunction: Timeout 5000ms exceeded.\n    at /private/tmp/cadgen-performance-20260910/play-hand-cpu-profile.mjs:25:13",
+  "privateBrowserClosed": true,
+  "viewerServersLeftUntouched": [
+    3262,
+    3267
+  ],
+  "finishedAt": "2026-09-10T21:32:13.741Z"
+}

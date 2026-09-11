@@ -1,0 +1,877 @@
+{
+  "complete": true,
+  "finalMonoAndSplitEveryActualOutputIdentical": true,
+  "qualification": "Current runtime actual emitted STEP hashes are compared with the prior validated current runtime, by exact run label. Baseline7aa emitted different STEP bytes; its geometric-equivalence qualification remains separate.",
+  "summary": [
+    {
+      "beforeMs": 18.81458330899477,
+      "changeSinceBaselinePercent": -26.804119195099695,
+      "changeSincePreviousCurrentPercent": -1.0250379881685534,
+      "finalCurrentMs": 13.77149997279048,
+      "finalPreviewMedianMs": null,
+      "kind": "unchanged",
+      "novel": false,
+      "previousCurrentMs": 13.91412504017353,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 1020.1665419153869,
+      "changeSinceBaselinePercent": -38.929133990719066,
+      "changeSincePreviousCurrentPercent": 1.3084551297294356,
+      "finalCurrentMs": 623.0245418846607,
+      "finalPreviewMedianMs": 436.4413330331445,
+      "kind": "geometry",
+      "novel": false,
+      "previousCurrentMs": 614.9778328835964,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 939.1419589519501,
+      "changeSinceBaselinePercent": -33.43040482112186,
+      "changeSincePreviousCurrentPercent": 2.3571686172884965,
+      "finalCurrentMs": 625.1830002292991,
+      "finalPreviewMedianMs": 441.6629169136286,
+      "kind": "placement",
+      "novel": false,
+      "previousCurrentMs": 610.7857502065599,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 942.9418332874775,
+      "changeSinceBaselinePercent": -8.346834294211336,
+      "changeSincePreviousCurrentPercent": 0.9297932272403386,
+      "finalCurrentMs": 864.2360409721732,
+      "finalPreviewMedianMs": 464.5546250976622,
+      "kind": "geometry",
+      "novel": true,
+      "previousCurrentMs": 856.2744590453804,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 930.4768750444055,
+      "changeSinceBaselinePercent": -9.778525216944079,
+      "changeSincePreviousCurrentPercent": -4.801176648571126,
+      "finalCurrentMs": 839.4899591803551,
+      "finalPreviewMedianMs": 439.08199993893504,
+      "kind": "placement",
+      "novel": true,
+      "previousCurrentMs": 881.828083191067,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 15.704999677836895,
+      "changeSinceBaselinePercent": -35.73596278030482,
+      "changeSincePreviousCurrentPercent": 1.3464060612657924,
+      "finalCurrentMs": 10.09266683831811,
+      "finalPreviewMedianMs": null,
+      "kind": "unchanged",
+      "novel": false,
+      "previousCurrentMs": 9.958583861589432,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 867.9126668721437,
+      "changeSinceBaselinePercent": -56.510860555360395,
+      "changeSincePreviousCurrentPercent": -0.36350376501539383,
+      "finalCurrentMs": 377.447749953717,
+      "finalPreviewMedianMs": 137.2829582542181,
+      "kind": "geometry",
+      "novel": false,
+      "previousCurrentMs": 378.82479233667254,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 855.1492500118911,
+      "changeSinceBaselinePercent": -50.797570393943495,
+      "changeSincePreviousCurrentPercent": 0.2927109393185301,
+      "finalCurrentMs": 420.7542077638209,
+      "finalPreviewMedianMs": 167.75187477469444,
+      "kind": "placement",
+      "novel": false,
+      "previousCurrentMs": 419.52620865777135,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 926.8417907878757,
+      "changeSinceBaselinePercent": -31.98081309788059,
+      "changeSincePreviousCurrentPercent": -2.309336938006745,
+      "finalCurrentMs": 630.4302499629557,
+      "finalPreviewMedianMs": 152.33445772901177,
+      "kind": "geometry",
+      "novel": true,
+      "previousCurrentMs": 645.3331671655178,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 869.4669171236455,
+      "changeSinceBaselinePercent": -23.578662157795616,
+      "changeSincePreviousCurrentPercent": 0.9077968507083867,
+      "finalCurrentMs": 664.4582501612604,
+      "finalPreviewMedianMs": 171.14833276718855,
+      "kind": "placement",
+      "novel": true,
+      "previousCurrentMs": 658.4805841557682,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 22.455834317952394,
+      "changeSinceBaselinePercent": -25.622705775397602,
+      "changeSincePreviousCurrentPercent": 1.2482767190480804,
+      "finalCurrentMs": 16.70204196125269,
+      "finalPreviewMedianMs": null,
+      "kind": "unchanged",
+      "novel": false,
+      "previousCurrentMs": 16.496124677360058,
+      "workload": "split"
+    },
+    {
+      "beforeMs": 574.1972499527037,
+      "changeSinceBaselinePercent": -10.715067893793574,
+      "changeSincePreviousCurrentPercent": -1.1088974226389436,
+      "finalCurrentMs": 512.6716247759759,
+      "finalPreviewMedianMs": 309.9566660821438,
+      "kind": "geometry",
+      "novel": false,
+      "previousCurrentMs": 518.4203749522567,
+      "workload": "split"
+    },
+    {
+      "beforeMs": 537.3273342847824,
+      "changeSinceBaselinePercent": -18.25645413056619,
+      "changeSincePreviousCurrentPercent": -0.9496742120645885,
+      "finalCurrentMs": 439.23041597008705,
+      "finalPreviewMedianMs": 226.34491603821516,
+      "kind": "placement",
+      "novel": false,
+      "previousCurrentMs": 443.4416671283543,
+      "workload": "split"
+    },
+    {
+      "beforeMs": 597.4093331024051,
+      "changeSinceBaselinePercent": 30.959725843245977,
+      "changeSincePreviousCurrentPercent": 3.092832936409584,
+      "finalCurrentMs": 782.3656247928739,
+      "finalPreviewMedianMs": 335.81495797261596,
+      "kind": "geometry",
+      "novel": true,
+      "previousCurrentMs": 758.8942921720445,
+      "workload": "split"
+    },
+    {
+      "beforeMs": 545.6634173169732,
+      "changeSinceBaselinePercent": 17.379982707779895,
+      "changeSincePreviousCurrentPercent": -7.1327604859694915,
+      "finalCurrentMs": 640.499624889344,
+      "finalPreviewMedianMs": 209.02562513947487,
+      "kind": "placement",
+      "novel": true,
+      "previousCurrentMs": 689.6938341669738,
+      "workload": "split"
+    }
+  ],
+  "unchangedSourceFingerprint": "797a3d1c7f20d209cc5cc386357ddec79a491576b5d33d5a8ce4230cd3d86323",
+  "workloads": {
+    "imported": {
+      "actualOutputChecks": [
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 0,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "expectedSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "ordinal": 1,
+          "passed": true,
+          "run": "prime-geometry"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 2,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "expectedSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "ordinal": 3,
+          "passed": true,
+          "run": "prime-placement"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 4,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 5,
+          "passed": true,
+          "run": "unchanged-1"
+        },
+        {
+          "actualSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "expectedSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "ordinal": 6,
+          "passed": true,
+          "run": "geometry-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 7,
+          "passed": true,
+          "run": "restore-geometry-1"
+        },
+        {
+          "actualSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "expectedSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "ordinal": 8,
+          "passed": true,
+          "run": "placement-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 9,
+          "passed": true,
+          "run": "restore-placement-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 10,
+          "passed": true,
+          "run": "unchanged-2"
+        },
+        {
+          "actualSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "expectedSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "ordinal": 11,
+          "passed": true,
+          "run": "geometry-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 12,
+          "passed": true,
+          "run": "restore-geometry-2"
+        },
+        {
+          "actualSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "expectedSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "ordinal": 13,
+          "passed": true,
+          "run": "placement-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 14,
+          "passed": true,
+          "run": "restore-placement-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 15,
+          "passed": true,
+          "run": "unchanged-3"
+        },
+        {
+          "actualSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "expectedSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "ordinal": 16,
+          "passed": true,
+          "run": "geometry-3"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 17,
+          "passed": true,
+          "run": "restore-geometry-3"
+        },
+        {
+          "actualSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "expectedSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "ordinal": 18,
+          "passed": true,
+          "run": "placement-3"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 19,
+          "passed": true,
+          "run": "restore-placement-3"
+        },
+        {
+          "actualSha256": "7f1c871e3f173b91977ca245bd2fdad8908de36c17d1c08e6c9a607ae94d4c66",
+          "expectedSha256": "7f1c871e3f173b91977ca245bd2fdad8908de36c17d1c08e6c9a607ae94d4c66",
+          "ordinal": 20,
+          "passed": true,
+          "run": "novel-geometry-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 21,
+          "passed": true,
+          "run": "restore-novel-geometry-1"
+        },
+        {
+          "actualSha256": "03ec53d6aa4c913e127207607b66310c9cbb5e9d1b985a6bce728c6b2e138b52",
+          "expectedSha256": "03ec53d6aa4c913e127207607b66310c9cbb5e9d1b985a6bce728c6b2e138b52",
+          "ordinal": 22,
+          "passed": true,
+          "run": "novel-geometry-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 23,
+          "passed": true,
+          "run": "restore-novel-geometry-2"
+        },
+        {
+          "actualSha256": "27d4c774b3c98cc95315c637f7e85b06e78cd5fde1eb58c18f2be2bc73e7954e",
+          "expectedSha256": "27d4c774b3c98cc95315c637f7e85b06e78cd5fde1eb58c18f2be2bc73e7954e",
+          "ordinal": 24,
+          "passed": true,
+          "run": "novel-geometry-3"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 25,
+          "passed": true,
+          "run": "restore-novel-geometry-3"
+        },
+        {
+          "actualSha256": "95568725591a9018ce5d548a4ffc3ae0c21976dbba58c10a29fe5d3f6a60cb53",
+          "expectedSha256": "95568725591a9018ce5d548a4ffc3ae0c21976dbba58c10a29fe5d3f6a60cb53",
+          "ordinal": 26,
+          "passed": true,
+          "run": "novel-placement-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 27,
+          "passed": true,
+          "run": "restore-novel-placement-1"
+        },
+        {
+          "actualSha256": "02da77fb67c72d6379dde2a4272fed56e51302cc93dfb1719220a07ae939473c",
+          "expectedSha256": "02da77fb67c72d6379dde2a4272fed56e51302cc93dfb1719220a07ae939473c",
+          "ordinal": 28,
+          "passed": true,
+          "run": "novel-placement-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 29,
+          "passed": true,
+          "run": "restore-novel-placement-2"
+        },
+        {
+          "actualSha256": "0a816af4b32e146ebf8f3f4a55d1926e5533720510eef757e23d3f178e5d48ab",
+          "expectedSha256": "0a816af4b32e146ebf8f3f4a55d1926e5533720510eef757e23d3f178e5d48ab",
+          "ordinal": 30,
+          "passed": true,
+          "run": "novel-placement-3"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 31,
+          "passed": true,
+          "run": "restore-novel-placement-3"
+        }
+      ],
+      "baselineReport": "imported-before-unseen-final-20260910.json",
+      "callCount": 32,
+      "currentReport": "imported-after-unseen-cache-final-20260910.json",
+      "previousReport": "imported-after-unseen-final-20260910.json",
+      "sourceFingerprint": "797a3d1c7f20d209cc5cc386357ddec79a491576b5d33d5a8ce4230cd3d86323",
+      "uniqueOutputVariants": 9
+    },
+    "mono": {
+      "actualOutputChecks": [
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 0,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 1,
+          "passed": true,
+          "run": "prime-geometry"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 2,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 3,
+          "passed": true,
+          "run": "prime-placement"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 4,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 5,
+          "passed": true,
+          "run": "unchanged-1"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 6,
+          "passed": true,
+          "run": "geometry-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 7,
+          "passed": true,
+          "run": "restore-geometry-1"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 8,
+          "passed": true,
+          "run": "placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 9,
+          "passed": true,
+          "run": "restore-placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 10,
+          "passed": true,
+          "run": "unchanged-2"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 11,
+          "passed": true,
+          "run": "geometry-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 12,
+          "passed": true,
+          "run": "restore-geometry-2"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 13,
+          "passed": true,
+          "run": "placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 14,
+          "passed": true,
+          "run": "restore-placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 15,
+          "passed": true,
+          "run": "unchanged-3"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 16,
+          "passed": true,
+          "run": "geometry-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 17,
+          "passed": true,
+          "run": "restore-geometry-3"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 18,
+          "passed": true,
+          "run": "placement-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 19,
+          "passed": true,
+          "run": "restore-placement-3"
+        },
+        {
+          "actualSha256": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+          "expectedSha256": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+          "ordinal": 20,
+          "passed": true,
+          "run": "novel-geometry-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 21,
+          "passed": true,
+          "run": "restore-novel-geometry-1"
+        },
+        {
+          "actualSha256": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+          "expectedSha256": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+          "ordinal": 22,
+          "passed": true,
+          "run": "novel-geometry-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 23,
+          "passed": true,
+          "run": "restore-novel-geometry-2"
+        },
+        {
+          "actualSha256": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+          "expectedSha256": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+          "ordinal": 24,
+          "passed": true,
+          "run": "novel-geometry-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 25,
+          "passed": true,
+          "run": "restore-novel-geometry-3"
+        },
+        {
+          "actualSha256": "ff48468f93f8d36b2858fa81b01341dcf2ada4c35d7641da5cd0c06d2d560296",
+          "expectedSha256": "ff48468f93f8d36b2858fa81b01341dcf2ada4c35d7641da5cd0c06d2d560296",
+          "ordinal": 26,
+          "passed": true,
+          "run": "novel-placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 27,
+          "passed": true,
+          "run": "restore-novel-placement-1"
+        },
+        {
+          "actualSha256": "b4355917f7e4e3e2218ffe7fad40ae5dc6f517cb72ec3c4cc86c213e4427ad93",
+          "expectedSha256": "b4355917f7e4e3e2218ffe7fad40ae5dc6f517cb72ec3c4cc86c213e4427ad93",
+          "ordinal": 28,
+          "passed": true,
+          "run": "novel-placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 29,
+          "passed": true,
+          "run": "restore-novel-placement-2"
+        },
+        {
+          "actualSha256": "484f17d07dfdf78ceea294293c1c4cefdb1338ed7d1a4100bdf00ad944748062",
+          "expectedSha256": "484f17d07dfdf78ceea294293c1c4cefdb1338ed7d1a4100bdf00ad944748062",
+          "ordinal": 30,
+          "passed": true,
+          "run": "novel-placement-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 31,
+          "passed": true,
+          "run": "restore-novel-placement-3"
+        }
+      ],
+      "baselineReport": "mono-before-unseen-final-20260910.json",
+      "callCount": 32,
+      "currentReport": "mono-after-unseen-cache-final-20260910.json",
+      "previousReport": "mono-after-unseen-final-20260910.json",
+      "sourceFingerprint": "797a3d1c7f20d209cc5cc386357ddec79a491576b5d33d5a8ce4230cd3d86323",
+      "uniqueOutputVariants": 9
+    },
+    "split": {
+      "actualOutputChecks": [
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 0,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 1,
+          "passed": true,
+          "run": "prime-geometry"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 2,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 3,
+          "passed": true,
+          "run": "prime-placement"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 4,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 5,
+          "passed": true,
+          "run": "unchanged-1"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 6,
+          "passed": true,
+          "run": "geometry-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 7,
+          "passed": true,
+          "run": "restore-geometry-1"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 8,
+          "passed": true,
+          "run": "placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 9,
+          "passed": true,
+          "run": "restore-placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 10,
+          "passed": true,
+          "run": "unchanged-2"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 11,
+          "passed": true,
+          "run": "geometry-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 12,
+          "passed": true,
+          "run": "restore-geometry-2"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 13,
+          "passed": true,
+          "run": "placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 14,
+          "passed": true,
+          "run": "restore-placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 15,
+          "passed": true,
+          "run": "unchanged-3"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 16,
+          "passed": true,
+          "run": "geometry-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 17,
+          "passed": true,
+          "run": "restore-geometry-3"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 18,
+          "passed": true,
+          "run": "placement-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 19,
+          "passed": true,
+          "run": "restore-placement-3"
+        },
+        {
+          "actualSha256": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+          "expectedSha256": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+          "ordinal": 20,
+          "passed": true,
+          "run": "novel-geometry-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 21,
+          "passed": true,
+          "run": "restore-novel-geometry-1"
+        },
+        {
+          "actualSha256": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+          "expectedSha256": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+          "ordinal": 22,
+          "passed": true,
+          "run": "novel-geometry-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 23,
+          "passed": true,
+          "run": "restore-novel-geometry-2"
+        },
+        {
+          "actualSha256": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+          "expectedSha256": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+          "ordinal": 24,
+          "passed": true,
+          "run": "novel-geometry-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 25,
+          "passed": true,
+          "run": "restore-novel-geometry-3"
+        },
+        {
+          "actualSha256": "ff48468f93f8d36b2858fa81b01341dcf2ada4c35d7641da5cd0c06d2d560296",
+          "expectedSha256": "ff48468f93f8d36b2858fa81b01341dcf2ada4c35d7641da5cd0c06d2d560296",
+          "ordinal": 26,
+          "passed": true,
+          "run": "novel-placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 27,
+          "passed": true,
+          "run": "restore-novel-placement-1"
+        },
+        {
+          "actualSha256": "b4355917f7e4e3e2218ffe7fad40ae5dc6f517cb72ec3c4cc86c213e4427ad93",
+          "expectedSha256": "b4355917f7e4e3e2218ffe7fad40ae5dc6f517cb72ec3c4cc86c213e4427ad93",
+          "ordinal": 28,
+          "passed": true,
+          "run": "novel-placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 29,
+          "passed": true,
+          "run": "restore-novel-placement-2"
+        },
+        {
+          "actualSha256": "484f17d07dfdf78ceea294293c1c4cefdb1338ed7d1a4100bdf00ad944748062",
+          "expectedSha256": "484f17d07dfdf78ceea294293c1c4cefdb1338ed7d1a4100bdf00ad944748062",
+          "ordinal": 30,
+          "passed": true,
+          "run": "novel-placement-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 31,
+          "passed": true,
+          "run": "restore-novel-placement-3"
+        }
+      ],
+      "baselineReport": "planetary-split-before-novel-final-20260910.json",
+      "callCount": 32,
+      "currentReport": "planetary-split-after-cache-final-20260910.json",
+      "previousReport": "planetary-split-after-novel-final-20260910.json",
+      "sourceFingerprint": "797a3d1c7f20d209cc5cc386357ddec79a491576b5d33d5a8ce4230cd3d86323",
+      "uniqueOutputVariants": 9
+    }
+  }
+}

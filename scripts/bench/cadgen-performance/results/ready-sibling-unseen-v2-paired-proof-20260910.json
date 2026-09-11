@@ -1,0 +1,481 @@
+{
+  "complete": true,
+  "completedUtc": "2026-09-10T20:37:53Z",
+  "driverSha256": "e9f556d5740dd9673eee51bd1b0105232bc24af1c1ca2bc81ebe3c121a64256d",
+  "driverSource": "\"\"\"Coordinate two independent warm hosts; every barrier precedes its timer.\"\"\"\nimport hashlib\nimport json\nimport os\nfrom pathlib import Path\nimport selectors\nimport signal\nimport statistics\nimport subprocess\nimport time\nimport traceback\n\nREPO=Path('/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad')\nPYTHON=Path('/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python')\nLOGS=Path('/private/tmp/cadgen-performance-20260910')\nREPORTS=REPO/'scripts/bench/cadgen-performance/results'\nHOST=LOGS/'run-ready-sibling-unseen-v2-host.py'\nOUT=REPORTS/'ready-sibling-unseen-v2-paired-proof-20260910.json'\n\n\nclass Host:\n    def __init__(self, condition):\n        self.condition=condition\n        self.buffer=b''\n        self.daemon=None\n        self.log=(LOGS/f'ready-sibling-unseen-v2-{condition}-host.log').open('wb')\n        env={k:v for k,v in os.environ.items() if not k.startswith('CADGEN_') and k not in {'PYTHONPATH','NODE_PATH','NODE_OPTIONS'}}\n        env.update(PYTHONPATH=str(REPO/'packages/cadgen/src'),PYTHONDONTWRITEBYTECODE='1')\n        self.process=subprocess.Popen([str(PYTHON),str(HOST),condition],cwd=REPO,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,bufsize=0)\n        self.selector=selectors.DefaultSelector()\n        self.selector.register(self.process.stdout,selectors.EVENT_READ)\n    def next(self):\n        deadline=time.monotonic()+120\n        while True:\n            if b'\\n' in self.buffer:\n                raw,self.buffer=self.buffer.split(b'\\n',1)\n                try:data=json.loads(raw)\n                except (ValueError,UnicodeDecodeError):continue\n                if data.get('control')=='ownedDaemon':\n                    self.daemon=data['pid']\n                if data.get('control')=='ready':return data\n                continue\n            remaining=deadline-time.monotonic()\n            if remaining<=0:raise TimeoutError(f'{self.condition} host stalled')\n            if not self.selector.select(min(remaining,5)):continue\n            payload=os.read(self.process.stdout.fileno(),65536)\n            if not payload:\n                code=self.process.wait(timeout=5)\n                if code:raise RuntimeError(f'{self.condition} host failed {code}; see its log')\n                return None\n            self.log.write(payload);self.log.flush()\n            self.buffer+=payload\n    def grant(self, label):\n        self.process.stdin.write((label+'\\n').encode('utf-8'))\n        self.process.stdin.flush()\n    def close(self):\n        if self.process.stdin and not self.process.stdin.closed:self.process.stdin.close()\n        if self.process.poll() is None:\n            try:self.process.wait(timeout=30)\n            except subprocess.TimeoutExpired:\n                self.process.terminate()\n                try:self.process.wait(timeout=30)\n                except subprocess.TimeoutExpired:\n                    self.process.kill();self.process.wait(timeout=5)\n                    # Only the child daemon PID this owned host announced is eligible.\n                    if self.daemon:\n                        try:os.kill(self.daemon,signal.SIGTERM)\n                        except ProcessLookupError:pass\n        self.selector.close();self.log.close()\n\n\ndef main():\n    assert not OUT.exists()\n    proof={'complete':False,'startedUtc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'grants':[],'qualification':'Two independent root interpreters, stores and2worker/0spare child daemons. Inputs/variants match exactly. One complete call at a time; condition order alternates. Each host primes the same two geometry and two placement values, then sees107/108/109 once. Barriers precede timers; no source/body/native work overlaps between timed calls. Six unseen measurements total, with three exact input/STEP pairs. This is a scratch counterfactual, not shipped runtime.'}\n    hosts={}\n    try:\n        for condition in ('ordinary','prepared'):hosts[condition]=Host(condition)\n        ready={condition:host.next() for condition,host in hosts.items()}\n        for ordinal in range(16):\n            a,b=ready['ordinary'],ready['prepared']\n            assert a and b and a==b,(ordinal,a,b)\n            order=('ordinary','prepared') if ordinal%2==0 else ('prepared','ordinary')\n            # Reverse the first condition for the middle unseen input too.\n            if ordinal==12:order=('prepared','ordinary')\n            for condition in order:\n                proof['grants'].append({'ordinal':ordinal,'condition':condition,'run':a['run'],'variant':a['variant'],'utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())})\n                hosts[condition].grant(a['run'])\n                ready[condition]=hosts[condition].next()\n        assert all(value is None for value in ready.values())\n        reports={c:json.loads((REPORTS/f'ready-sibling-unseen-v2-{c}-20260910.json').read_text(encoding='utf-8')) for c in hosts}\n        host_proofs={c:json.loads((REPORTS/f'ready-sibling-unseen-v2-{c}-proof-20260910.json').read_text(encoding='utf-8')) for c in hosts}\n        for c,data in host_proofs.items():\n            assert data['complete'] and data['ownedDaemonStopped'] and data['sourcesRestored'] and data['runtimeUnchanged'],(c,data)\n        fingerprints={data['metadata']['sourceFingerprint'] for data in reports.values()}\n        assert len(fingerprints)==1\n        proof['sourceFingerprint']=next(iter(fingerprints))\n        checks=[]\n        for ordinary,prepared in zip(reports['ordinary']['runs'],reports['prepared']['runs']):\n            assert ordinary['run']==prepared['run'] and ordinary['variant']==prepared['variant']\n            outputs=[list(row['actualOutputSha256'].values()) for row in (ordinary,prepared)]\n            assert outputs[0]==outputs[1] and len(outputs[0])==1\n            assert ordinary['childPinCheckPassed'] and prepared['childPinCheckPassed']\n            checks.append({'run':ordinary['run'],'actualRootStepSha256':outputs[0][0],'exactMatch':True,'both9ChildPinChecks':True})\n        proof['exactPairs']=checks\n        summaries=[]\n        for condition,report in reports.items():\n            rows=[r for r in report['runs'] if r['novelEdit']]\n            assert len(rows)==3 and all(r['firstOutputDigestInStudy'] for r in rows)\n            summaries.append({'condition':condition,'count':3,'medianTotalMs':statistics.median(r['milliseconds'] for r in rows),'medianPreviewMs':statistics.median(r['firstPreviewMs'] for r in rows),'medianRootBodyMs':statistics.median(s['milliseconds'] for r in rows for s in r['stages'] if s['label'].startswith('run step model ') and s['label'].endswith('/planetary_gear_assembly.py')),'samples':[{'run':r['run'],'milliseconds':r['milliseconds'],'previewMs':r['firstPreviewMs'],'counters':r['counterfactual']['counters']} for r in rows]})\n        proof['summary']=summaries\n        proof['hostProofs']={c:f'ready-sibling-unseen-v2-{c}-proof-20260910.json' for c in hosts}\n        proof['complete']=True\n    except BaseException:\n        proof['failure']=traceback.format_exc()\n        raise\n    finally:\n        for host in hosts.values():host.close()\n        proof['hostExits']={c:h.process.returncode for c,h in hosts.items()}\n        proof['completedUtc']=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())\n        proof['driverSource']=Path(__file__).read_text(encoding='utf-8')\n        proof['driverSha256']=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()\n        OUT.write_text(json.dumps(proof,indent=2,sort_keys=True)+'\\n',encoding='utf-8')\n\n\nif __name__=='__main__':main()\n",
+  "exactPairs": [
+    {
+      "actualRootStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "prime-baseline"
+    },
+    {
+      "actualRootStepSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "prime-geometry"
+    },
+    {
+      "actualRootStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "prime-baseline"
+    },
+    {
+      "actualRootStepSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "prime-placement"
+    },
+    {
+      "actualRootStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "prime-baseline"
+    },
+    {
+      "actualRootStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "unchanged-1"
+    },
+    {
+      "actualRootStepSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "geometry-1"
+    },
+    {
+      "actualRootStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "restore-geometry-1"
+    },
+    {
+      "actualRootStepSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "placement-1"
+    },
+    {
+      "actualRootStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "restore-placement-1"
+    },
+    {
+      "actualRootStepSha256": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "novel-geometry-1"
+    },
+    {
+      "actualRootStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "restore-novel-geometry-1"
+    },
+    {
+      "actualRootStepSha256": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "novel-geometry-2"
+    },
+    {
+      "actualRootStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "restore-novel-geometry-2"
+    },
+    {
+      "actualRootStepSha256": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "novel-geometry-3"
+    },
+    {
+      "actualRootStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+      "both9ChildPinChecks": true,
+      "exactMatch": true,
+      "run": "restore-novel-geometry-3"
+    }
+  ],
+  "grants": [
+    {
+      "condition": "ordinary",
+      "ordinal": 0,
+      "run": "prime-baseline",
+      "utc": "2026-09-10T20:37:11Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 0,
+      "run": "prime-baseline",
+      "utc": "2026-09-10T20:37:18Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 1,
+      "run": "prime-geometry",
+      "utc": "2026-09-10T20:37:26Z",
+      "variant": "geometry"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 1,
+      "run": "prime-geometry",
+      "utc": "2026-09-10T20:37:27Z",
+      "variant": "geometry"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 2,
+      "run": "prime-baseline",
+      "utc": "2026-09-10T20:37:27Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 2,
+      "run": "prime-baseline",
+      "utc": "2026-09-10T20:37:29Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 3,
+      "run": "prime-placement",
+      "utc": "2026-09-10T20:37:30Z",
+      "variant": "placement"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 3,
+      "run": "prime-placement",
+      "utc": "2026-09-10T20:37:31Z",
+      "variant": "placement"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 4,
+      "run": "prime-baseline",
+      "utc": "2026-09-10T20:37:31Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 4,
+      "run": "prime-baseline",
+      "utc": "2026-09-10T20:37:32Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 5,
+      "run": "unchanged-1",
+      "utc": "2026-09-10T20:37:32Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 5,
+      "run": "unchanged-1",
+      "utc": "2026-09-10T20:37:32Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 6,
+      "run": "geometry-1",
+      "utc": "2026-09-10T20:37:32Z",
+      "variant": "geometry"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 6,
+      "run": "geometry-1",
+      "utc": "2026-09-10T20:37:32Z",
+      "variant": "geometry"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 7,
+      "run": "restore-geometry-1",
+      "utc": "2026-09-10T20:37:33Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 7,
+      "run": "restore-geometry-1",
+      "utc": "2026-09-10T20:37:33Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 8,
+      "run": "placement-1",
+      "utc": "2026-09-10T20:37:34Z",
+      "variant": "placement"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 8,
+      "run": "placement-1",
+      "utc": "2026-09-10T20:37:34Z",
+      "variant": "placement"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 9,
+      "run": "restore-placement-1",
+      "utc": "2026-09-10T20:37:35Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 9,
+      "run": "restore-placement-1",
+      "utc": "2026-09-10T20:37:35Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 10,
+      "run": "novel-geometry-1",
+      "utc": "2026-09-10T20:37:35Z",
+      "variant": "novel-geometry-1"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 10,
+      "run": "novel-geometry-1",
+      "utc": "2026-09-10T20:37:36Z",
+      "variant": "novel-geometry-1"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 11,
+      "run": "restore-novel-geometry-1",
+      "utc": "2026-09-10T20:37:37Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 11,
+      "run": "restore-novel-geometry-1",
+      "utc": "2026-09-10T20:37:37Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 12,
+      "run": "novel-geometry-2",
+      "utc": "2026-09-10T20:37:38Z",
+      "variant": "novel-geometry-2"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 12,
+      "run": "novel-geometry-2",
+      "utc": "2026-09-10T20:37:38Z",
+      "variant": "novel-geometry-2"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 13,
+      "run": "restore-novel-geometry-2",
+      "utc": "2026-09-10T20:37:39Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 13,
+      "run": "restore-novel-geometry-2",
+      "utc": "2026-09-10T20:37:40Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 14,
+      "run": "novel-geometry-3",
+      "utc": "2026-09-10T20:37:40Z",
+      "variant": "novel-geometry-3"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 14,
+      "run": "novel-geometry-3",
+      "utc": "2026-09-10T20:37:41Z",
+      "variant": "novel-geometry-3"
+    },
+    {
+      "condition": "prepared",
+      "ordinal": 15,
+      "run": "restore-novel-geometry-3",
+      "utc": "2026-09-10T20:37:42Z",
+      "variant": "baseline"
+    },
+    {
+      "condition": "ordinary",
+      "ordinal": 15,
+      "run": "restore-novel-geometry-3",
+      "utc": "2026-09-10T20:37:47Z",
+      "variant": "baseline"
+    }
+  ],
+  "hostExits": {
+    "ordinary": 0,
+    "prepared": 0
+  },
+  "hostProofs": {
+    "ordinary": "ready-sibling-unseen-v2-ordinary-proof-20260910.json",
+    "prepared": "ready-sibling-unseen-v2-prepared-proof-20260910.json"
+  },
+  "qualification": "Two independent root interpreters, stores and2worker/0spare child daemons. Inputs/variants match exactly. One complete call at a time; condition order alternates. Each host primes the same two geometry and two placement values, then sees107/108/109 once. Barriers precede timers; no source/body/native work overlaps between timed calls. Six unseen measurements total, with three exact input/STEP pairs. This is a scratch counterfactual, not shipped runtime.",
+  "sourceFingerprint": "f28ff6af1be5d901aaff6006843a1268516ccfccea2bc41b1630b64823028150",
+  "startedUtc": "2026-09-10T20:37:08Z",
+  "summary": [
+    {
+      "condition": "ordinary",
+      "count": 3,
+      "medianPreviewMs": 285.80158296972513,
+      "medianRootBodyMs": 145.0,
+      "medianTotalMs": 711.7031249217689,
+      "samples": [
+        {
+          "counters": {
+            "attempts": 0,
+            "budgetMs": 0.0,
+            "consumed": 0,
+            "discarded": 0,
+            "failed": 0,
+            "maxPreparedBrepBytes": 0,
+            "maxPreparedCount": 0,
+            "maxPreparedSurfBytes": 0,
+            "prepareMs": 0.0,
+            "prepared": 0,
+            "revalidationFallbacks": 0,
+            "reverifyMs": 0.0,
+            "scopes": 0
+          },
+          "milliseconds": 709.1077910736203,
+          "previewMs": 283.46404107287526,
+          "run": "novel-geometry-1"
+        },
+        {
+          "counters": {
+            "attempts": 0,
+            "budgetMs": 0.0,
+            "consumed": 0,
+            "discarded": 0,
+            "failed": 0,
+            "maxPreparedBrepBytes": 0,
+            "maxPreparedCount": 0,
+            "maxPreparedSurfBytes": 0,
+            "prepareMs": 0.0,
+            "prepared": 0,
+            "revalidationFallbacks": 0,
+            "reverifyMs": 0.0,
+            "scopes": 0
+          },
+          "milliseconds": 711.7031249217689,
+          "previewMs": 285.80158296972513,
+          "run": "novel-geometry-2"
+        },
+        {
+          "counters": {
+            "attempts": 0,
+            "budgetMs": 0.0,
+            "consumed": 0,
+            "discarded": 0,
+            "failed": 0,
+            "maxPreparedBrepBytes": 0,
+            "maxPreparedCount": 0,
+            "maxPreparedSurfBytes": 0,
+            "prepareMs": 0.0,
+            "prepared": 0,
+            "revalidationFallbacks": 0,
+            "reverifyMs": 0.0,
+            "scopes": 0
+          },
+          "milliseconds": 834.3774587847292,
+          "previewMs": 377.1993746049702,
+          "run": "novel-geometry-3"
+        }
+      ]
+    },
+    {
+      "condition": "prepared",
+      "count": 3,
+      "medianPreviewMs": 251.94391561672091,
+      "medianRootBodyMs": 109.0,
+      "medianTotalMs": 682.926082983613,
+      "samples": [
+        {
+          "counters": {
+            "attempts": 8,
+            "budgetMs": 1.714540645480156,
+            "consumed": 8,
+            "discarded": 0,
+            "failed": 0,
+            "maxPreparedBrepBytes": 600698,
+            "maxPreparedCount": 8,
+            "maxPreparedSurfBytes": 1881045,
+            "prepareMs": 39.29866757243872,
+            "prepared": 8,
+            "revalidationFallbacks": 0,
+            "reverifyMs": 2.536956686526537,
+            "scopes": 1
+          },
+          "milliseconds": 695.775999687612,
+          "previewMs": 251.94391561672091,
+          "run": "novel-geometry-1"
+        },
+        {
+          "counters": {
+            "attempts": 8,
+            "budgetMs": 1.6664168797433376,
+            "consumed": 8,
+            "discarded": 0,
+            "failed": 0,
+            "maxPreparedBrepBytes": 600698,
+            "maxPreparedCount": 8,
+            "maxPreparedSurfBytes": 1881045,
+            "prepareMs": 40.84458481520414,
+            "prepared": 8,
+            "revalidationFallbacks": 0,
+            "reverifyMs": 2.513791434466839,
+            "scopes": 1
+          },
+          "milliseconds": 680.3894583135843,
+          "previewMs": 246.5683752670884,
+          "run": "novel-geometry-2"
+        },
+        {
+          "counters": {
+            "attempts": 8,
+            "budgetMs": 1.4125406742095947,
+            "consumed": 8,
+            "discarded": 0,
+            "failed": 0,
+            "maxPreparedBrepBytes": 600698,
+            "maxPreparedCount": 8,
+            "maxPreparedSurfBytes": 1881045,
+            "prepareMs": 37.80804108828306,
+            "prepared": 8,
+            "revalidationFallbacks": 0,
+            "reverifyMs": 2.275459934026003,
+            "scopes": 1
+          },
+          "milliseconds": 682.926082983613,
+          "previewMs": 254.36483277007937,
+          "run": "novel-geometry-3"
+        }
+      ]
+    }
+  ]
+}

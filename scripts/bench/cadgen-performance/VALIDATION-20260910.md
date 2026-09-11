@@ -6,6 +6,64 @@ functional and lifecycle checks. Concurrent test activity makes their elapsed
 times unsuitable for performance comparisons; the isolated CPU study is in
 [RESULTS-20260910.md](RESULTS-20260910.md).
 
+## Current checkpoint
+
+The branch remains under active implementation. Ongoing acceptance uses the
+nine-part planetary assembly and modest repeated-parts fixtures. The user
+stopped further tendon-hand stress tests on September 11; prior hand results
+remain historical evidence, without a further full-hand acceptance gate.
+
+On `8971f760d`, **1,015 shared JavaScript tests and 486 viewer tests pass**.
+The changes cover unchanged selection identity, exact mesh/selector publication,
+reservation ownership through scene adoption, partial-failure teardown,
+restoration and stale-context rejection. Independent review passed. Production
+bundling and its freshness gate pass. Repository policy checks pass with one
+skip; two local-IPC modules were rerun with the required sandbox allowance.
+Docs checks pass, with the Next build rerun with local helper ports enabled.
+The canonical version and skill pins remain `0.5.1`.
+
+The latest broad Python run passed **1,593 package tests**, including the viewer
+backend and bounded sibling preparation. Its 334.801-second duration is
+functional validation, not a benchmark. Python behavior is unchanged by
+`8971f760d`. The 24 browser-harness helper tests pass at their previous
+checkpoint and were rerun successfully after the alert fix; adaptive satisfaction
+requires settled quality and no unmet targets.
+
+The [installed-wheel checkpoint](results/installed-wheel-8971f760d-20260911.json.gz)
+passes on `8971f760d`: 182 Python files and 29 runtime files match source,
+wheel and isolated installation; all served viewer assets and four workers
+match the installed bytes. Cold/warm decorated builds retain identical outputs
+and exact pins. After deleting source and the build store, source-free STEP
+inspection, STEP/STL/GLB export, posed PNG and a three-frame MP4 pass with
+model/output index reads forbidden. Cold import also forbids code-index reads.
+The generated and cold-imported document trees agree. The posed image and
+first/last video frames were visually inspected, and the owned validation
+viewer exited normally. This is a functional packaging check, not a timing
+measurement. The [preceding wheel checkpoint](results/installed-wheel-2709968dc-20260911.json.gz)
+and [earlier wheel proof](results/installed-wheel-current-20260910.json.gz) remain
+separate historical evidence. Later runtime changes require relevant validation.
+
+The [integrated medium adaptive check](results/viewer-nine-adaptive-ownership-integrated-20260910.json.gz)
+passes all 13 assertions with no page/HTTP errors and all requested detail
+targets settled. Peak renderer RSS is 210.56 MiB; orbit frame interval p95 is
+8.7 ms. The complete nine-part view was visually reviewed. The [integrated ownership checks](VIEWER-OWNERSHIP-INTEGRATED-20260910.md)
+pass 90 assertions across the adaptive and seven failure/interaction cases.
+The alert-only follow-up on `c07488e1d` passes 15 more assertions: after actual
+restoration the obsolete error overlay clears while selection and exact
+mesh/selector pairing remain. Its 486 viewer tests and canonical bundle/check
+pass. Injected delays and faults are functional probes, not performance measurements.
+Bounded grouping of detail requests is being implemented in an isolated copy.
+
+The [matched selection retention study](VIEWER-SELECTION-RETENTION-20260911.md)
+shows the same 246 detail adoptions retaining 9 workspace contexts instead of
+503, and post-collection backing storage falling from 19.953 to 3.393 MB.
+The isolated selection fix also passed the last permitted hand L1 test at
+1,482 MiB, with all 866 components and 3,259 occurrences. That historical
+result does not validate later runtime changes or cold fine-detail meshing.
+See the [browser comparison](VIEWER-NINE-BEFORE-AFTER-20260910.md) and
+[memory investigation](VIEWER-MEMORY-DIAGNOSTIC-20260910.md) for the earlier
+failed checkpoints and the exact cache/measurement boundaries.
+
 ## Browser behavior
 
 [First save](results/preview-first-save-20260910.json): Chromium rendered all
@@ -266,8 +324,61 @@ Known bounds remain: explicit-GC loss can invalidate a retained view, STEP and
 sidecar replacements are separate atomic operations, and the existing file-hash
 memo assumes a byte change also changes mtime or size.
 
-The plan remains **in progress**: the warm-preview target, full-detail hand
-loading/interaction, comfortable memory headroom, complete animation/edit-memory
-measurements, safe backend live-shape retention, and superseded automatic-export
-coalescing are not completed. The native study supports retaining JS; it does
-not establish native visual or interactive parity.
+At this checkpoint the plan remained **in progress**. Later work below replaces
+shared live-shape retention with canonical bytes and private reconstruction;
+automatic-export coalescing does not apply to the explicit-build flow. The
+native study supports retaining JS; it does not establish native visual or
+interactive parity.
+
+## Locked-dependency integration checkpoint
+
+The installed dependencies used by the historical browser checks included
+three-mesh-bvh 0.8.0, although the repository lock requires 0.9.14. Those reports
+now retain that actual-version qualification. Their numeric results are not
+validation of 0.9.14. Isolated, offline lockfile installs in this worktree now
+resolve Three.js 0.185.1, three-mesh-bvh 0.9.14 and React 18.3.1. The primary
+checkout and both lockfiles are unchanged. Browser fingerprints record actual
+resolved dependency paths, versions and package-manifest digests.
+
+- Shared JavaScript: **974 tests pass** with the locked dependencies.
+- Viewer client: **409 tests pass** with the locked dependencies.
+- Production bundle generation and `bundle.sh --check` pass after those tests.
+- The package Python suite passed **1,536 tests**, including the viewer backend,
+  with exact-output readback reuse and the 768 KiB extraction crossover. This
+  precedes the subsequent live vertex-hash correction and source-free corrupt
+  object repair; those changes require their own validation.
+
+Full-hand canonical-detail acceptance, matched final repeated and unseen edit
+measurements, and a fresh installed-wheel check remain pending. Passing these
+test suites does not establish the remaining performance targets.
+
+The final backend integration then passed **1,545 package Python tests** in
+368.903 seconds, including the viewer backend. It includes live native vertex
+hashing, actual topology-shape classification for protected extrusion inputs,
+operation-cache salt 6, and source-free repair of corrupt or unreadable cached
+objects. The targeted factory regression verifies cold, RAM and disk results
+have private geometry and equivalent bytes and wrapper attributes. The original
+profile remains unchanged and no memo fallback is introduced. Nine-part
+cold/warm geometry also remains valid and byte-identical.
+
+The repository policy suite passed **126 tests with one skip**; docs production
+checks and the canonical 0.5.1 version/pin check passed. Subsequent browser-only
+instance and worker changes require separate JavaScript, browser and bundle
+validation; these Python results are not claims about those later changes.
+
+## Surface worker and instance retention checkpoint
+
+The integrated shared runtime passes **992 JavaScript tests** and the viewer
+passes **409 client tests** with the isolated locked dependencies. This includes
+retained instance groups, direct visibility/deformation/material updates,
+virtualized assembly rows, unchanged composition reuse, and the surface BVH
+worker's admission, stale-result rejection, cancellation and exact hit tests.
+The focused worker checks also execute the real worker entry in a Node worker
+thread; browser worker latency still requires the measured browser check.
+
+`scripts/bundle/bundle.sh` and `--check` pass. Vite emits the dedicated
+`raycastBvhWorker-Bx8Ori6S.js` asset, and the viewer's main entry is
+`index-7SVkujAV.js`. The snapshot renderer does not import this interactive
+worker path, so it needs no extra worker route. All 1,545 backend test results
+above still apply: no Python runtime changed after that suite. The current
+full-hand and installed-wheel gates remain pending.

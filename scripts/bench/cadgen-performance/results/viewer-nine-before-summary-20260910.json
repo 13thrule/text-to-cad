@@ -1,0 +1,143 @@
+{
+  "commit": "7aa3e85be76f305437abd3d7aba26e38b28e43cb",
+  "rawReports": [
+    "viewer-nine-before-7aa-locked-20260910.json",
+    "viewer-nine-before-7aa-locked-cached3-20260910.json"
+  ],
+  "inputStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+  "inputStepBytes": 2268663,
+  "uniqueComponents": 9,
+  "occurrences": 9,
+  "cold": {
+    "firstGeometryMs": 472,
+    "completionGateMs": 720,
+    "largestRendererMiB": 276.65625,
+    "afterGcLargestRendererMiB": 263.5625,
+    "workerPeak": 8,
+    "uniqueTriangles": 6452,
+    "loaded": true
+  },
+  "cachedSamples": [
+    {
+      "firstGeometryMs": 325,
+      "completionGateMs": 671,
+      "largestRendererMiB": 199.5625,
+      "afterGcLargestRendererMiB": 184.359375,
+      "workerPeak": 8,
+      "uniqueTriangles": 6452,
+      "loaded": true
+    },
+    {
+      "firstGeometryMs": 317,
+      "completionGateMs": 676,
+      "largestRendererMiB": 202.234375,
+      "afterGcLargestRendererMiB": 188.578125,
+      "workerPeak": 8,
+      "uniqueTriangles": 6452,
+      "loaded": true
+    },
+    {
+      "firstGeometryMs": 311,
+      "completionGateMs": 673,
+      "largestRendererMiB": 200.40625,
+      "afterGcLargestRendererMiB": 185.5625,
+      "workerPeak": 8,
+      "uniqueTriangles": 6452,
+      "loaded": true
+    }
+  ],
+  "cachedSummary": {
+    "firstGeometryMs": {
+      "median": 317,
+      "min": 311,
+      "max": 325
+    },
+    "completionGateMs": {
+      "median": 673,
+      "min": 671,
+      "max": 676
+    },
+    "largestRendererMiB": {
+      "median": 200.40625,
+      "min": 199.5625,
+      "max": 202.234375
+    },
+    "afterGcLargestRendererMiB": {
+      "median": 185.5625,
+      "min": 184.359375,
+      "max": 188.578125
+    }
+  },
+  "qualification": {
+    "source": "Original7aa archive,629 original runtime/client source blobs verified unchanged; archived Vite alias resolves archived shared source. Dependency links resolve current isolated installs only; original and current locks agree.",
+    "detail": "No viewport refinement; every worker request uses the original default tessellation options {}.9 unique components and9 occurrence records are independently verified.",
+    "legacyGate": "Original7aa has no meshCost.occurrenceCount and its stage remains LOADING. Private baseline-only gate supplies verified expected9 and still asserts actual rendered occurrences9, scene records9, final9/9 publish and draw activity. Current gate is unchanged.",
+    "cache": "First run9 cold mesh requests and9 successful cache writes; next3 runs9 cached requests each. Every run uses a fresh Chromium profile. Existing canonical document; no STEP parse in timed window.",
+    "timing": "No allocation sampling. Exact per-run UTC was not collected by this harness revision; conservative process windows come from unique log creation/last-write timestamps and report generation times.",
+    "isolation": "Other agent confirmed its completed19-test tool call preceded receiving the browser hold message, sent before module proof at19:07:30.585Z. Browser process began no earlier than19:07:51.624Z; no observed overlap.",
+    "console": "Cold run recorded9 HTTP404 console messages alongside9 uncached requests; cached runs recorded none. No page crash or allocation error; all runs met the independently qualified final display gate.",
+    "accounting": "Historical baseline scene ledger reports BVH roots only, excluding indirect permutation. Process RSS remains the comparison metric.",
+    "cleanup": "Owned viewer3272/pid87689 stopped successfully; no unrelated viewer was stopped.",
+    "setupFailures": [
+      "Sandboxed localhost bind returned Operation not permitted; approved localhost launch succeeded before measurement.",
+      "Baseline lacks cadgen.cli.main; attempted stop through that module failed, then python -m cadgen.viewer stop --port3272 succeeded."
+    ]
+  },
+  "processWindowsUTC": [
+    {
+      "startNotBefore": "2026-09-10T19:07:51.624485Z",
+      "finishedBy": "2026-09-10T19:08:13.710547Z",
+      "runs": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "startNotBefore": "2026-09-10T19:09:18.058352Z",
+      "finishedBy": "2026-09-10T19:09:25.461926Z",
+      "runs": [
+        1
+      ]
+    }
+  ],
+  "fingerprint": {
+    "source": "8c733b2a2b6fbc2a74460c4dcba50cc06e52f0994e6472b9ffbd4fc1c1857b15",
+    "builtClient": "e3add773d6582b0282e3683dd55b9c4818f3b12da791ad7946099737c345108f",
+    "installedDependencies": {
+      "apps/viewer": {
+        "three": {
+          "version": "0.185.1",
+          "packageJson": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/apps/viewer/node_modules/three/package.json",
+          "packageJsonSha256": "1d5c438acdc1fe5a52fb8ede2e417afd91fec91d22275c40f7b739591b24e4df"
+        },
+        "three-mesh-bvh": null,
+        "react": {
+          "version": "18.3.1",
+          "packageJson": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/apps/viewer/node_modules/react/package.json",
+          "packageJsonSha256": "d4e68a5c96babb20cad1daafea8b78822eae45b341552cf5418d06a5304fa64c"
+        }
+      },
+      "packages/cadgen-js": {
+        "three": {
+          "version": "0.185.1",
+          "packageJson": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen-js/node_modules/three/package.json",
+          "packageJsonSha256": "1d5c438acdc1fe5a52fb8ede2e417afd91fec91d22275c40f7b739591b24e4df"
+        },
+        "three-mesh-bvh": {
+          "version": "0.9.14",
+          "packageJson": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen-js/node_modules/three-mesh-bvh/package.json",
+          "packageJsonSha256": "d5c6a97866c5b2fc84009da322e9304e764e40c35d600c1a3851a3cf590a5edf"
+        },
+        "react": null
+      }
+    }
+  },
+  "allFingerprintsEqual": true,
+  "canonicalDocumentProof": {
+    "documentDigest": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+    "tree": "d34345bdc0a7a6a030f34af8872d6ad9a6ab43f24ca5bcfa83e00edb2e298e01",
+    "indexLastWrittenUTC": "2026-09-10T17:13:18.595007Z",
+    "note": "Existing canonical document index predates browser process by nearly two hours."
+  }
+}

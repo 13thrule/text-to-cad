@@ -710,5 +710,11 @@
       "inPageErrors": []
     }
   ],
-  "generatedAt": "2026-09-10T06:31:29.387Z"
+  "generatedAt": "2026-09-10T06:31:29.387Z",
+  "measuredJsDependencies": {
+    "three": "0.185.1",
+    "three-mesh-bvh": "0.8.0",
+    "qualification": "Historical measured environment used borrowed dependencies. Retrospective installed-package audit confirmed three-mesh-bvh 0.8.0 instead of the lockfile pin 0.9.14; these metrics are preserved as measured, not a validation of 0.9.14. Existing served-runtime validity qualifications still apply.",
+    "evidence": "Both apps/viewer/node_modules/three-mesh-bvh and packages/cadgen-js/node_modules/three-mesh-bvh resolved to the borrowed primary checkout with package metadata version 0.8.0 before isolated dependency installation."
+  }
 }

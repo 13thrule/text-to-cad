@@ -1,6 +1,6 @@
 # Cadgen performance execution plan
 
-## Execution status — in progress, September 10, 2026
+## Execution status — in progress, September 11, 2026
 
 The initial implementation below is committed on `codex/tendon-hand-performance`, based on the
 reviewed `codex/tendon-hand-preview` tip `7aa3e85be`. The requested branch is
@@ -48,110 +48,140 @@ checkout. No release version change is part of this work.
   appearance-sensitive export identity are covered by regression tests.
 - Durable build benchmark: added under `scripts/bench/cadgen-performance`.
   Native OCCT meshing is evaluated; the current JS mesher is retained.
+  The later moderate-fixture study establishes a deterministic native adapter
+  and a uniform margin that meets finite sampled quality targets, but curved
+  workloads cost more. Native producer integration is deferred; it is not an
+  unfinished prerequisite for this performance work.
   See [the measured study](scripts/bench/cadgen-performance/RESULTS-20260910.md).
   Integrated packaging and browser lifecycle validation pass. See the
   [validation record](scripts/bench/cadgen-performance/VALIDATION-20260910.md).
 
-The current nine-part study on M1 Max / 64 GiB measures unchanged builds at
-18.81 ms, geometry edits at 842.03 ms and placement edits at 835.37 ms
-(medians of three). Backend preview publication is 452.36 / 451.26 ms;
-**the 250 ms target is not met**. Repeated 2.27 MB imports take 25.86–26.89 ms
-with compilation forbidden. Source restoration and runtime fingerprint checks
-pass. These samples do not establish a complete warm-build speedup over the
-previous small studies. See [the current measurements](scripts/bench/cadgen-performance/RESULTS-20260910.md#saved-document-repair-warm-check).
+The matched [warm comparison](scripts/bench/cadgen-performance/WARM-COMPARISON-20260910.md)
+measures the reviewed `7aa3e85be` runtime and the current source on the same
+machine and input bytes, separating previously emitted edits from new values.
+Repeated imported-STEP geometry/placement saves improve from 867.91 / 855.15 ms
+to 387.67 / 421.54 ms. New imported saves improve from 926.84 / 869.47 ms to
+649.98 / 742.61 ms; previews arrive in 153.22 / 194.59 ms. Repeated foreign
+reads improve from 257.60 to 31.19 ms. A first read from an empty store instead
+regresses from 256.56 to 4,200.79 ms, including compile-worker startup and
+canonical publication. A separately verified already-warm daemon handles an
+empty-store first read in 1,354.14 ms; its 2,270.42 ms startup is separate.
 
-Current integration and installed-package results are recorded in the
-[saved-document repair validation](scripts/bench/cadgen-performance/VALIDATION-20260910.md#saved-document-identity-repair).
-The additional repair closes the confirmed saved-identity defects, including a
-per-face color collision and several document/annotation selection races.
-Passing correctness checks do not complete every performance target.
+The procedural nine-part model still reruns its complete Python body. New
+geometry/placement saves are 952.15 / 951.36 ms, versus 942.94 / 930.48 ms on
+the original; previews are 506.83 / 496.18 ms. **The 250 ms preview target
+remains unmet.** Earlier current windows were faster; exact output bytes match,
+but separate windows do not isolate the cause of that variation. Profiling
+locates repeated sketch/context and live shape-identity work in the model body.
 
-The earlier large-hand check completed at initial coarse detail with refinement
-disabled: 67.86 seconds cold and 18.77 seconds cached, with peak largest-renderer
-RSS of 1,965 / 1,890 MiB. Those runs predate the document-tree/component-input
-cutovers. They do not validate this runtime on the hand, full-resolution
-interaction, matched-quality improvement or comfortable memory headroom.
-The plan remains **in progress**. See the remaining work below and the
-[current nine-part measurements](scripts/bench/cadgen-performance/RESULTS-20260910.md#saved-document-repair-warm-check).
-Checked items below reflect implementation and available regression evidence.
-An unchecked item can be partially implemented; it remains open where the
-full stated behavior or validation matrix has not been demonstrated.
+A split version uses ordinary child decorators and produces identical current
+STEP bytes for all nine checked variants. Repeated geometry/placement saves
+improve from 574.20 / 537.33 ms to 453.56 / 379.48 ms. New values still regress
+from 597.41 / 545.66 ms to 686.37 / 600.06 ms, a 14.9% / 10.0% gap. Their
+previews arrive in 268.85 / 178.68 ms. Immutable syntax recipes shared within
+one closure calculation and removal of an unused freshness traversal reduce
+the preceding split regression. Bounded private preparation of already-pinned
+siblings is now implemented for ordinary `Compound` list/tuple construction.
+Its separate, controlled `children=` experiment reduces new geometry preview
+median from 352.93 to 276.53 ms and complete saves from 808.20 to 760.04 ms;
+placement preview is unchanged. Both conditions have substantial first-edit
+stalls, and these timings do not replace the older cross-version comparison.
+See [sibling preparation](scripts/bench/cadgen-performance/SIBLING-PREPARATION-20260910.md).
+Each repeat/unseen category has three observations;
+new-value samples are three distinct inputs, not latency confidence intervals.
 
-Runtime commits: `9d6afe240` (imports), `1405be434` (kernel ownership),
-`fac454929` (daemon admission/order), `989ed7b80` (preview/save and annotations),
-`43b233233` (viewer loading, instancing and resource lifecycle), `947f1dade`
-(isolated worker cancellation and additional ownership/reader regressions).
+The new source-result protocol removes child STEP persistence from the
+parent's preview path. Every called child, including discarded calls, still
+finishes its declared outputs before the parent saves. Source/document records
+use schema 3. Cold compile now forbids prior code-index reads, and focused
+regressions cover exact job results, no-op gate races, one-slot scheduling,
+failed saves and source-free document recovery.
 
-Resumed runtime commits: `619d7afcd` (mutation/pin/publication integrity),
-`bd096f0ce` (shared consumers and dependency boundaries), `b3a4df3d0` (component
-lookup), and `ddd5817ec` (retained previews, coarse loading and worker ownership).
-The earlier hand and warm reports match `ddd5817ec` by runtime fingerprint. The final
-dependency guard in `d14d7f992` conservatively tracks escaped module aliases;
-its package was separately validated by the resumed wheel report. The later
-saved-document repair changes canonical packaging, component identity and saved
-readers. The old reports retain their original fingerprints and are not final
-branch acceptance results.
-
-The final browser checks on `947f1dade` use copied STEP files without source or
-model/output indexes. The nine-part model's first-geometry frame proxy is
-367 ms with an empty mesh index and 263 ms after it is populated; peak largest
-renderer RSS is 279 and 168 MiB. These are one cold/cached pair, not a statistical
-comparison. Six file switches retain the GPU plateau; a five-second active
-orbit of the 24-occurrence fixture records p95 browser frame interval 9.9 ms
-at 1400×900 with Metal. Those browser measurements predate the resumed work.
-The resumed measurements use their separately fingerprinted Python runtime;
-the saved-document repair has its own small-fixture report.
-
-
-Original target: `codex/tendon-hand-preview`; implementation branch: `codex/tendon-hand-performance`.
-
-Reviewed baseline: `7aa3e85be76f305437abd3d7aba26e38b28e43cb`, fetched September 9, 2026.
-
-Saved-document repair: `858f718fc` (canonical document/result separation,
-bound appearance, per-face component identity, exact reader selection and
-material ownership). Its installed wheel and new nine-part study match the
-committed runtime by fingerprint.
+The [mesher v2 study](scripts/bench/cadgen-performance/MESHER-V2-20260910.md)
+fixes the reproduced trim, winding, short-edge and pole defects. It compares
+JS and private native OCCT extraction on the planetary and curved corpora,
+including sampled surface error and reference/edge audits. It supports
+retaining JS; it does not prove visual equivalence for arbitrary STEP files
+or a continuous geometric error bound.
 
 ## Remaining implementation and acceptance work
 
-The implementation does not imply full FreeCAD parity. The measured warm model
-body still takes roughly 400 ms, before preview packing, and arbitrary Python
-still reruns at the decorated function boundary. Unsafe reuse of mutable kernel
-shapes was rejected; per-consumer reconstruction adds about 4 ms on this fixture.
-The changes provide earlier display and cheaper cached reads, not a demonstrated
-reduction in total warm-save time.
+The plan remains **in progress**. Passing correctness suites does not complete
+every performance target, and the final installed-wheel check must follow the
+last runtime changes.
 
-The following items are explicit limits of this implementation:
+- Complete integrated viewer loading, interaction, detail refinement and memory
+  checks on the **nine-part planetary assembly and modest repeated-parts
+  fixtures**. The user explicitly stopped further tendon-hand stress tests on
+  September 11; full-hand acceptance is no longer a required iteration gate.
+  Preserve its existing results as historical diagnostic evidence.
+  The integrated `8971f760d` medium adaptive checkpoint passes all 13 assertions,
+  including every settled-detail target, with 210.56 MiB peak renderer RSS and
+  orbit frame interval p95 of 8.7 ms. These successive checkpoints are not a
+  matched speedup measurement. Subsequent runtime changes require another
+  bounded medium check.
+  Identity-preserving selection pruning is implemented and independently
+  reviewed. The same 246 detail adoptions retain 9 workspace contexts rather
+  than 503, and backing storage after collection falls from 19.953 to 3.393 MB.
+  Nonempty selection and hiding pass actual browser checks. The final isolated
+  hand run also passed all 866 L1 components / 3,259 occurrences at 1,482 MiB
+  peak renderer RSS, before collection; that recorded result does not require
+  further hand runs. See the [selection investigation](scripts/bench/cadgen-performance/VIEWER-SELECTION-RETENTION-20260911.md).
+  Full cleanup and failed-publication recovery are committed in `8971f760d`;
+  independent review, 1,015 shared tests and 486 viewer tests pass. Separate
+  browser checks pass 90 assertions, and the restored-alert fix in `c07488e1d`
+  passes 15 further assertions. Bounded grouping of detail
+  requests is being developed in an isolated copy. It must retain leases
+  through actual adoption or disposal, preserve matching selectors, and never
+  restore an old scene into a newer model. Grouping should reduce repeated
+  whole-assembly work; its effect must be measured on the moderate fixtures.
+  Cold fine-detail meshing is a separate investigation, now using the planetary
+  and small curved corpora. Browser probes continue to verify actual served
+  client/worker bytes and installed dependency versions.
+- Resolve the measured new-value split-build regression. A later frozen
+  `2709968dc` comparison passes all 64 calls and exact-output/pin checks, but
+  new-geometry saves still regress in that window; its preview median is 267 ms.
+  See the [qualified split checkpoint](scripts/bench/cadgen-performance/WARM-COMPARISON-20260910.md#later-split-only-checkpoint-september-11).
+  Finish the moderate-fixture browser comparison. Current package validation passes
+  1,593 Python tests, 1,015 shared JS tests and 486 viewer tests. The current
+  `8971f760d` installed wheel/source-free export checks pass, with 182 Python
+  files and 29 runtime files matching source, wheel and installation. Later
+  runtime changes require their relevant checks again.
+  The medium repeated-assembly lifecycle already exercises selection, orbit,
+  animation, file switches and six saved-file replacements with stable owned
+  geometry/GPU allocation totals.
+- Validate final small cold builds and exact-output readback reuse. Missing
+  component BREP batches up to 768 KiB now use the same extraction code inline,
+  respecting explicit worker overrides. Previously seen exact STEP bytes may
+  reuse a verified canonical document scene; unseen outputs still parse STEP.
+  Atomic repair replaces only invalid derived bytes with their correct content.
+  Actual source-free reader tests cover corrupt tree, BREP and SURF objects,
+  including hash-valid unreadable SURF data, without consulting code indexes.
+- Keep the procedural preview target visible. Finer invalidation uses existing
+  decorated model boundaries; multiple functions in one file still share that
+  file's source hash. No cache/session helpers are added to model authors.
+- Shared mutable backend prototypes were rejected after native mutation tests.
+  The runtime retains canonical bytes and reconstructs private shapes for each
+  consumer. That preserves cache-state equivalence and is not a headless-kernel
+  requirement. It also does not turn arbitrary Python into a retained FreeCAD
+  feature document.
+- Saves remain explicit builds. There is no separate automatic-save queue to
+  coalesce, cancellation of shared canonical jobs, or provisional-child pin
+  substitution. Check/rename publication detects observed conflicts but is not
+  a cross-writer transaction. Preview handles remain ephemeral rather than
+  manual-GC roots; authoritative source and saved STEP stay outside the cache.
 
-- The under-250-ms warm-preview target is unmet. A further optimization needs a
-  proven mutation boundary or finer existing decorated-model boundaries; no
-  source-author cache/session helpers are introduced.
-  Multiple decorated functions in one file still share the whole-file source
-  hash. Separate model files can isolate unrelated work, but a changed child's
-  canonical save remains on its parent's preview path. That is an execution-
-  graph limitation of this implementation, not a requirement of headless OCCT.
-- The resumed implementation adds an explicit coarse initial level for large
-  assemblies and individually expensive components. Components that cannot fit
-  even at that level are refused; arbitrary component partitioning is not
-  implemented. Complete coarse loading passes the bounded hand check; full
-  refinement, large-hand interaction and comfortable RSS headroom remain open.
-- Native meshing was compared at equal input tolerances, not proven matched
-  visual quality. The experiment supports retaining JS and records its quality
-  audit flags for a separate investigation.
-- Large-hand diagnostics found and fixed late sibling publication after a
-  failed load, pressure recovery that did not rearm after real progress, and
-  worker accounting that charged the largest job to every slot. Removing full
-  assembly composition from every component request enabled complete loading.
-- The [saved-document identity repair](scripts/bench/cadgen-performance/SAVED-IDENTITY-FOLLOWUP.md)
-  is implemented. Schema-8 annotations preserve PBR independently of canonical
-  STEP geometry; component input v2 prevents per-face color collisions. Rebuild
-  old authored outputs to persist finishes that previously existed only in the
-  cache. Lost legacy source/cache metadata cannot be recovered retroactively.
-- Preview handles are ephemeral and not manual-GC roots. Source and saved STEP
-  remain durable; worker/restart/cache-loss behavior is stated in STORE.md.
-- Saves remain explicit builds. There is no automatic-save queue, cancellation
-  of shared canonical jobs, or provisional-child pin substitution. Check/rename
-  publication detects observed conflicts but is not a cross-writer transaction.
+The old large-hand reports measured initial coarse detail with refinement
+disabled: 67.86 seconds cold and 18.77 seconds cached, with peak largest-renderer
+RSS of 1,965 / 1,890 MiB. They predate the current canonical document and mesher
+cutovers and are retained as historical evidence, not final acceptance.
+
+Implementation branch: `codex/tendon-hand-performance`; reviewed baseline:
+`7aa3e85be76f305437abd3d7aba26e38b28e43cb`. The separate hand project is safely
+extracted into `models/tendon_hand` on `codex/tendon-hand-project`, one commit
+above `main`, with no generated large artifacts. Its legacy R13 assets require
+the documented, separately preserved local checkpoint. The original hand
+project folders have been removed from the performance branch.
 
 ## Objective
 
@@ -179,7 +209,9 @@ The user clarified that expanding cadgen's cache store and runtime is welcome pr
 
 ### Memory is a managed resource
 
-Introduce browser and backend memory management within the approved runtime extension. [STORE.md](packages/cadgen/STORE.md), sections 9 and 11, currently prohibits memory/worker caps; replace that policy with precise admission, ownership and reclamation rules alongside implementation. The old prohibition is a documented policy change to make, not a reason to drop these optimizations.
+Browser and backend memory management now use the approved runtime extension.
+[STORE.md](packages/cadgen/STORE.md), sections 9 and 11, replaced the former
+memory/worker-cap prohibition with admission, ownership and reclamation rules.
 
 Any accepted backend policy must distinguish reclaiming in-memory resources from deleting persistent derived cache entries. On-disk GC remains explicit through `cadgen store gc`; browser or worker pressure must not start a disk sweeper.
 
@@ -287,8 +319,8 @@ Model selection is informed by the [OpenAI model guidance](https://developers.op
 
 - [x] Extend the existing harness under `scripts/bench/viewer-memory/` and add durable build-stage measurements where needed.
 - [x] Measure unchanged builds, placement-only edits, one-component geometry edits and repeated imports of unchanged vendor STEP files separately.
-- [ ] Measure cold and cached viewer loads, orbiting, selection, animation and model switching.
-- [ ] Exercise repeated edits and model switches to detect retained memory.
+- [x] Measure cold and cached viewer loads, orbiting, selection, animation and model switching on the medium fixtures; large-hand acceptance remains open.
+- [x] Exercise repeated edits and model switches to detect retained memory; distinguish the measured resource plateau from proof about all browser heap allocations.
 
 Use the existing nine-part planetary assembly for routine development. Add an inexpensive assembly with many occurrences of a few components to expose draw-call and object-count costs, plus a curved component to exercise tessellation. Store CAD fixtures and generated artifacts under `models/`.
 
@@ -406,7 +438,7 @@ Profile and improve the existing operation and component caches before introduci
 
 - [x] Measure BREP key construction, reconstruction, subshape equality/hashing and assembly traversal independently.
 - [x] Reuse immutable component identities across builds after verifying native geometry and hierarchy metadata. Native pointer identity alone is insufficient.
-- [ ] Carry known component identity through unchanged placements instead of rediscovering it by serialization.
+- [x] Carry known component identity through unchanged placements instead of rediscovering it by serialization. A full native/metadata integrity check remains; forced extraction reads the pinned BREP, and missing assets take the canonical derivation path.
 - [x] Give materialization caching explicit ownership and lifecycle. Replace the process-global live prototypes with a 64 MiB canonical-byte LRU; each independent consumer reconstructs its own kernel shapes, and resetting the memo leaves active geometry valid. Integrate process reclamation with step 8.
 - [x] Optimize canonical `_StoredShape` bytes, attribute recipes and redundant work, retaining fresh operation-result reconstruction as the proven default. A measured internal live-reuse design may replace that mechanism only after demonstrating equivalent geometry, subshape behavior and Python attributes across misses, RAM/disk hits and mutation sequences. Shallow copying alone is not sufficient evidence. No ownership or cache helpers may be required in agent-authored code.
 - [x] Preserve canonical reconstruction wherever component reuse cannot be proven equivalent. Releasing a materialization-cache reference must not invalidate geometry still owned by an active or suspended build.
@@ -447,12 +479,12 @@ A build produces an immutable editing revision containing component identities, 
 **Design requirement:** define the internal preview input and any derived index entries. Decorated execution publishes immutable preview results automatically, and the viewer subscribes through cadgen's runtime. Ordinary saved-file rendering retains the current artifact-only contract. For code edits, existing project source is authoritative; runtime-owned revision snapshots support pending explicit saves. No separate preview artifact, session import or persistence utility is required from the agent. Recovery belongs to the editing/build runtime and must not teach saved-artifact readers to execute source.
 
 - [x] Publish changed components and occurrence changes to an explicitly attached editing session.
-- [ ] Retain unchanged backend shapes and browser resources.
+- [x] Retain canonical backend bytes with private reconstruction, and retain unchanged browser resources. Shared mutable backend prototypes were rejected by native mutation tests; literal live-shape retention is superseded by this ownership design.
 - [x] Discard superseded revision results before preview publication; explicit saves still complete under the specified competing-writer guarantee.
 - [x] Continue whole-function execution for arbitrary Python models; finer invalidation uses existing explicit model boundaries.
 - [x] Reconcile placement and appearance changes onto retained geometry when decorated results establish that underlying component geometry is unchanged; do not require agents to call a separate editing API.
 - [x] Record authored changes in project source or an editor-owned document outside the disposable cache and evictable workers. Specify crash/restart behavior and ownership for unsaved state before offering these edits.
-- [x] Keep preview roots distinct from canonical STEP-model result roots. Preview publication does not replace `record.tree`, canonical child pins, or `index/document` before successful saved-result publication.
+- [x] Make the complete authored preview the final source-model result, with schema-3 records invalidating the former STEP-translated own-component semantics. Exact child jobs publish and replay this result before persistence. `record.tree` is updated only after save publication checks; `index/document` remains exclusively byte-derived.
 - [x] Keep session identifiers, revision counters, provenance and save status outside geometry objects and geometry sidecars. Session controls must not require the viewer to read model/output records.
 - [x] Define any new preview/revision index's input identity, object references, reachability and recovery after deletion or a crash. Keep it within the existing object/index layout; it must not be the only record of an authored change or the only owner of a promised explicit-save revision.
 - [x] Freeze transitive child pins and annotation inputs for each accepted preview. A cache miss or newer child build must not silently alter that revision.
@@ -461,7 +493,7 @@ A build produces an immutable editing revision containing component identities, 
 - [x] Distinguish the current preview from the saved file with understandable saving/error states.
 - [x] Update package, store and viewer contracts for the explicit preview input.
 
-**Acceptance:** a preview update can appear before the root's own STEP export completes. Unchanged components are neither retransmitted nor reuploaded. A session rejects superseded preview results. Authored edits survive cache deletion and worker eviction under the editor's stated durability contract. Existing child jobs may still await their own STEP persistence; eliminating that dependency requires a separate decision about provisional child results and cannot silently change canonical pin semantics.
+**Acceptance:** a preview update can appear before the root's own STEP export completes and before its children's STEP persistence. Parents consume each job's complete final authored result, never a provisional pin or a later model-record lookup. Every called child still completes all declared outputs before its parent saves; failures preserve the parent's prior saved file. One-slot nesting yields and resumes correctly. Unchanged components are neither retransmitted nor reuploaded. A session rejects superseded preview results. Authored edits survive cache deletion and worker eviction under the editor's stated durability contract.
 
 ## 10. Move STEP persistence behind preview publication
 
@@ -470,7 +502,7 @@ Retain the branch's read-back consistency check for saved files.
 **Design requirement:** specify and document the publication, failure-recovery and competing-writer protocol within the expanded runtime. A strict promise that an older or external writer can never win cannot be derived from a digest check followed by rename. Keep any required save coordination internal, preserve ordinary build completion guarantees and update the concurrency contract alongside implementation.
 
 - [x] Export from one immutable transitive revision snapshot, including its pinned child hashes and annotation inputs. Do not resolve current child records again at export time.
-- [ ] Coalesce superseded editor-session automatic exports only when no explicit save or other consumer still requires that revision. Do not change canonical same-model build/coalescing rules implicitly.
+- Automatic-export coalescing is not applicable to the implemented explicit-build flow: there is no automatic-save queue. All requested outputs remain required. Any future queue must distinguish dispensable automatic exports from explicit saves and other consumers without changing canonical build coalescing implicitly.
 - [x] Make an explicit save await the requested revision.
 - [x] Export and read back a private temporary document, without replacing the user's target during tree construction. Keep staging outside the persistent store layout.
 - [x] Publish complete immutable components and the read-back tree, then their mapping under the validated document-byte hash. After validation and the publication decision, atomically replace the target document; publish validated sidecar/output state and the model record in the specified order, with the record last.
@@ -487,12 +519,12 @@ Steps 9–10 complete the editing milestone. Revision-based preview must land be
 
 Run this as a measured architectural experiment after avoidable buffer and loading costs are removed.
 
-- [ ] Compare native OCCT triangulation with the JS mesher at matched visual quality.
-- [ ] Cover curved and trimmed surfaces, seams, normals and watertightness.
-- [ ] Verify face/reference mapping and edge display.
-- [ ] Measure cold meshing, cached loading, transport size and memory.
-- [ ] Exercise component instances and LODs.
-- [ ] Mesh worker-owned reconstructions so OCCT triangulation cannot mutate a shared prototype or change its canonical BREP/component identity. Verify determinism across fresh processes and cache states for each effective mesh key.
+- [x] Compare native OCCT triangulation with the JS mesher using explicit sampled geometric quality criteria. Equal visual quality and continuous error bounds remain unproven; they are adoption requirements for a future native renderer.
+- [x] Cover curved and trimmed surfaces, seams, normals and welded-edge diagnostics on the two bounded corpora.
+- [x] Audit face/reference and edge ranges. Native interactive picking and edge display were not integrated; production JS behavior retains its renderer tests.
+- [x] Measure uncached meshing, cached decode, transport size and process memory, with startup and delivery boundaries stated.
+- [x] Exercise both LODs and component reuse in the experiment. Native interactive instancing remains an adoption requirement, not a prerequisite for retaining JS.
+- [x] Mesh private reconstructions so OCCT triangulation cannot mutate shared inputs. Verify fresh-process byte determinism and record native mutation of the private shape's BREP serialization.
 - [x] Record a decision with the measured benefits, maintenance costs and contract implications.
 
 Adopt native display meshing only if the measured benefit justifies the change. If viewport meshes differ from export meshes, specify that distinction explicitly and preserve exact selection/measurement semantics.

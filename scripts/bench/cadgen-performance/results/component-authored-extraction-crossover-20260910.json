@@ -1,0 +1,134 @@
+{
+  "payloadBytes": 608098,
+  "components": 9,
+  "tree": "153983150495c32a5059ad246d1b245695a120f35751a012ce956f788826ee1f",
+  "inputHashes": {
+    "1de70d41f35bf55f": "23edcf45f53b450c6cb13ff2154e89fde4f6b1ef3f7075aeed754e93dbe0aa41",
+    "25ffc3d7645b5097": "176f14367458af0cdf8a563dfefddb019e22b4c0759a682daf1cdd515a7906ac",
+    "2aa876918f0713a2": "bca5afb0ca3a1ad99ec8565678ab3e30ecb4cfc0bd05fad5df085ad87849f209",
+    "445744cc248bb6b9": "894806eb2056ceb268aa065ef4020bbeb6a64179288a6bdc432aef1e5c9e4fa5",
+    "56b32a08be20e570": "d32cd95ff83e9862da1895a11862f244207908855c9bf3ca34252430e2b0d09d",
+    "66fa72c5da1d3a6b": "dc7182e7b8267f59988f9cd198060e8fac7e296b18ebee8d8b337a6c9ee706db",
+    "6d7ced113ff800e0": "0549ab6ab656b79c8966a7aec296edb0244122c538f96f4707a9f456e0f8e646",
+    "6e2929f07c6f5597": "df37c99db0d08feb7db5adfc479be964e93540e4e58038025a1cfbc43bb50cbe",
+    "d5dbb0aab42bcd6f": "4bd6c4963533e530b3e21f1b2136c0f08e5ad7fc55b2d09f7ed7a56477cfad04"
+  },
+  "rows": [
+    {
+      "mode": "serial",
+      "sample": 0,
+      "workers": 1,
+      "milliseconds": 399.86454183235765,
+      "outputHashes": {
+        "1de70d41f35bf55f.brep": "23edcf45f53b450c6cb13ff2154e89fde4f6b1ef3f7075aeed754e93dbe0aa41",
+        "1de70d41f35bf55f.surf": "eb7e0acc5296454a75eb4f8e28b78df90c7dd2e1cb90501c5c8aa18bfae476ab",
+        "25ffc3d7645b5097.brep": "176f14367458af0cdf8a563dfefddb019e22b4c0759a682daf1cdd515a7906ac",
+        "25ffc3d7645b5097.surf": "e6cba45d5143643ddb53b3d5cd5f3047b0756e7d88fd7556511448bbaf9c4212",
+        "2aa876918f0713a2.brep": "bca5afb0ca3a1ad99ec8565678ab3e30ecb4cfc0bd05fad5df085ad87849f209",
+        "2aa876918f0713a2.surf": "0d8ee2268790fc5a353663620dcc9f2f572b7a66ad7d2c7b7c910be44196430b",
+        "445744cc248bb6b9.brep": "894806eb2056ceb268aa065ef4020bbeb6a64179288a6bdc432aef1e5c9e4fa5",
+        "445744cc248bb6b9.surf": "66f1d8dd3aef7e0e293338cab14931f68dc0d52198a762481d879f9589ad8df7",
+        "56b32a08be20e570.brep": "d32cd95ff83e9862da1895a11862f244207908855c9bf3ca34252430e2b0d09d",
+        "56b32a08be20e570.surf": "85d93244f36fdde2ec50619bb66b2fb846c96509e63e60a1ba877eb04247e7c8",
+        "66fa72c5da1d3a6b.brep": "dc7182e7b8267f59988f9cd198060e8fac7e296b18ebee8d8b337a6c9ee706db",
+        "66fa72c5da1d3a6b.surf": "4cf94e9556ca9472f1ab0c2cad37697a3f65b9c7a790657a7baaa63a49f9cfb6",
+        "6d7ced113ff800e0.brep": "0549ab6ab656b79c8966a7aec296edb0244122c538f96f4707a9f456e0f8e646",
+        "6d7ced113ff800e0.surf": "fc617b7386a938639179703cbca1cf3467585d7a00a70c4a2dd3f7b500aa62d4",
+        "6e2929f07c6f5597.brep": "df37c99db0d08feb7db5adfc479be964e93540e4e58038025a1cfbc43bb50cbe",
+        "6e2929f07c6f5597.surf": "437cfd7b583d3e2affedba003fa2c246858366267a5ba7cb8e777db407b2728a",
+        "d5dbb0aab42bcd6f.brep": "4bd6c4963533e530b3e21f1b2136c0f08e5ad7fc55b2d09f7ed7a56477cfad04",
+        "d5dbb0aab42bcd6f.surf": "9be605ef7bef463d4fe5b7a99a3be19c7c4073f11384ae04c529e1fc12331f8d"
+      }
+    },
+    {
+      "mode": "spawn",
+      "sample": 0,
+      "workers": 4,
+      "milliseconds": 3043.7827077694237,
+      "outputHashes": {
+        "1de70d41f35bf55f.brep": "23edcf45f53b450c6cb13ff2154e89fde4f6b1ef3f7075aeed754e93dbe0aa41",
+        "1de70d41f35bf55f.surf": "eb7e0acc5296454a75eb4f8e28b78df90c7dd2e1cb90501c5c8aa18bfae476ab",
+        "25ffc3d7645b5097.brep": "176f14367458af0cdf8a563dfefddb019e22b4c0759a682daf1cdd515a7906ac",
+        "25ffc3d7645b5097.surf": "e6cba45d5143643ddb53b3d5cd5f3047b0756e7d88fd7556511448bbaf9c4212",
+        "2aa876918f0713a2.brep": "bca5afb0ca3a1ad99ec8565678ab3e30ecb4cfc0bd05fad5df085ad87849f209",
+        "2aa876918f0713a2.surf": "0d8ee2268790fc5a353663620dcc9f2f572b7a66ad7d2c7b7c910be44196430b",
+        "445744cc248bb6b9.brep": "894806eb2056ceb268aa065ef4020bbeb6a64179288a6bdc432aef1e5c9e4fa5",
+        "445744cc248bb6b9.surf": "66f1d8dd3aef7e0e293338cab14931f68dc0d52198a762481d879f9589ad8df7",
+        "56b32a08be20e570.brep": "d32cd95ff83e9862da1895a11862f244207908855c9bf3ca34252430e2b0d09d",
+        "56b32a08be20e570.surf": "85d93244f36fdde2ec50619bb66b2fb846c96509e63e60a1ba877eb04247e7c8",
+        "66fa72c5da1d3a6b.brep": "dc7182e7b8267f59988f9cd198060e8fac7e296b18ebee8d8b337a6c9ee706db",
+        "66fa72c5da1d3a6b.surf": "4cf94e9556ca9472f1ab0c2cad37697a3f65b9c7a790657a7baaa63a49f9cfb6",
+        "6d7ced113ff800e0.brep": "0549ab6ab656b79c8966a7aec296edb0244122c538f96f4707a9f456e0f8e646",
+        "6d7ced113ff800e0.surf": "fc617b7386a938639179703cbca1cf3467585d7a00a70c4a2dd3f7b500aa62d4",
+        "6e2929f07c6f5597.brep": "df37c99db0d08feb7db5adfc479be964e93540e4e58038025a1cfbc43bb50cbe",
+        "6e2929f07c6f5597.surf": "437cfd7b583d3e2affedba003fa2c246858366267a5ba7cb8e777db407b2728a",
+        "d5dbb0aab42bcd6f.brep": "4bd6c4963533e530b3e21f1b2136c0f08e5ad7fc55b2d09f7ed7a56477cfad04",
+        "d5dbb0aab42bcd6f.surf": "9be605ef7bef463d4fe5b7a99a3be19c7c4073f11384ae04c529e1fc12331f8d"
+      }
+    },
+    {
+      "mode": "spawn",
+      "sample": 1,
+      "workers": 4,
+      "milliseconds": 3096.801165957004,
+      "outputHashes": {
+        "1de70d41f35bf55f.brep": "23edcf45f53b450c6cb13ff2154e89fde4f6b1ef3f7075aeed754e93dbe0aa41",
+        "1de70d41f35bf55f.surf": "eb7e0acc5296454a75eb4f8e28b78df90c7dd2e1cb90501c5c8aa18bfae476ab",
+        "25ffc3d7645b5097.brep": "176f14367458af0cdf8a563dfefddb019e22b4c0759a682daf1cdd515a7906ac",
+        "25ffc3d7645b5097.surf": "e6cba45d5143643ddb53b3d5cd5f3047b0756e7d88fd7556511448bbaf9c4212",
+        "2aa876918f0713a2.brep": "bca5afb0ca3a1ad99ec8565678ab3e30ecb4cfc0bd05fad5df085ad87849f209",
+        "2aa876918f0713a2.surf": "0d8ee2268790fc5a353663620dcc9f2f572b7a66ad7d2c7b7c910be44196430b",
+        "445744cc248bb6b9.brep": "894806eb2056ceb268aa065ef4020bbeb6a64179288a6bdc432aef1e5c9e4fa5",
+        "445744cc248bb6b9.surf": "66f1d8dd3aef7e0e293338cab14931f68dc0d52198a762481d879f9589ad8df7",
+        "56b32a08be20e570.brep": "d32cd95ff83e9862da1895a11862f244207908855c9bf3ca34252430e2b0d09d",
+        "56b32a08be20e570.surf": "85d93244f36fdde2ec50619bb66b2fb846c96509e63e60a1ba877eb04247e7c8",
+        "66fa72c5da1d3a6b.brep": "dc7182e7b8267f59988f9cd198060e8fac7e296b18ebee8d8b337a6c9ee706db",
+        "66fa72c5da1d3a6b.surf": "4cf94e9556ca9472f1ab0c2cad37697a3f65b9c7a790657a7baaa63a49f9cfb6",
+        "6d7ced113ff800e0.brep": "0549ab6ab656b79c8966a7aec296edb0244122c538f96f4707a9f456e0f8e646",
+        "6d7ced113ff800e0.surf": "fc617b7386a938639179703cbca1cf3467585d7a00a70c4a2dd3f7b500aa62d4",
+        "6e2929f07c6f5597.brep": "df37c99db0d08feb7db5adfc479be964e93540e4e58038025a1cfbc43bb50cbe",
+        "6e2929f07c6f5597.surf": "437cfd7b583d3e2affedba003fa2c246858366267a5ba7cb8e777db407b2728a",
+        "d5dbb0aab42bcd6f.brep": "4bd6c4963533e530b3e21f1b2136c0f08e5ad7fc55b2d09f7ed7a56477cfad04",
+        "d5dbb0aab42bcd6f.surf": "9be605ef7bef463d4fe5b7a99a3be19c7c4073f11384ae04c529e1fc12331f8d"
+      }
+    },
+    {
+      "mode": "serial",
+      "sample": 1,
+      "workers": 1,
+      "milliseconds": 383.1464168615639,
+      "outputHashes": {
+        "1de70d41f35bf55f.brep": "23edcf45f53b450c6cb13ff2154e89fde4f6b1ef3f7075aeed754e93dbe0aa41",
+        "1de70d41f35bf55f.surf": "eb7e0acc5296454a75eb4f8e28b78df90c7dd2e1cb90501c5c8aa18bfae476ab",
+        "25ffc3d7645b5097.brep": "176f14367458af0cdf8a563dfefddb019e22b4c0759a682daf1cdd515a7906ac",
+        "25ffc3d7645b5097.surf": "e6cba45d5143643ddb53b3d5cd5f3047b0756e7d88fd7556511448bbaf9c4212",
+        "2aa876918f0713a2.brep": "bca5afb0ca3a1ad99ec8565678ab3e30ecb4cfc0bd05fad5df085ad87849f209",
+        "2aa876918f0713a2.surf": "0d8ee2268790fc5a353663620dcc9f2f572b7a66ad7d2c7b7c910be44196430b",
+        "445744cc248bb6b9.brep": "894806eb2056ceb268aa065ef4020bbeb6a64179288a6bdc432aef1e5c9e4fa5",
+        "445744cc248bb6b9.surf": "66f1d8dd3aef7e0e293338cab14931f68dc0d52198a762481d879f9589ad8df7",
+        "56b32a08be20e570.brep": "d32cd95ff83e9862da1895a11862f244207908855c9bf3ca34252430e2b0d09d",
+        "56b32a08be20e570.surf": "85d93244f36fdde2ec50619bb66b2fb846c96509e63e60a1ba877eb04247e7c8",
+        "66fa72c5da1d3a6b.brep": "dc7182e7b8267f59988f9cd198060e8fac7e296b18ebee8d8b337a6c9ee706db",
+        "66fa72c5da1d3a6b.surf": "4cf94e9556ca9472f1ab0c2cad37697a3f65b9c7a790657a7baaa63a49f9cfb6",
+        "6d7ced113ff800e0.brep": "0549ab6ab656b79c8966a7aec296edb0244122c538f96f4707a9f456e0f8e646",
+        "6d7ced113ff800e0.surf": "fc617b7386a938639179703cbca1cf3467585d7a00a70c4a2dd3f7b500aa62d4",
+        "6e2929f07c6f5597.brep": "df37c99db0d08feb7db5adfc479be964e93540e4e58038025a1cfbc43bb50cbe",
+        "6e2929f07c6f5597.surf": "437cfd7b583d3e2affedba003fa2c246858366267a5ba7cb8e777db407b2728a",
+        "d5dbb0aab42bcd6f.brep": "4bd6c4963533e530b3e21f1b2136c0f08e5ad7fc55b2d09f7ed7a56477cfad04",
+        "d5dbb0aab42bcd6f.surf": "9be605ef7bef463d4fe5b7a99a3be19c7c4073f11384ae04c529e1fc12331f8d"
+      }
+    }
+  ],
+  "summary": {
+    "serial": 391.5054793469608,
+    "spawn": 3070.291936863214
+  },
+  "allOutputBytesEqual": true,
+  "provenance": {
+    "inputStudy": "warm-after-small-batch-20260910.json",
+    "inputTreeRole": "first authored source result, not its saved canonical document",
+    "probeSource": "from __future__ import annotations\n\nimport hashlib\nimport json\nimport multiprocessing\nimport os\nfrom pathlib import Path\nimport statistics\nimport time\nfrom concurrent.futures import ProcessPoolExecutor\n\n\ndef main():\n    root = Path('/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad')\n    study = json.loads((root / 'scripts/bench/cadgen-performance/results/warm-after-small-batch-20260910.json').read_text())\n    os.environ['CADGEN_CACHE_DIR'] = study['store']\n    import build123d\n    from cadgen._internal.component_package import _build_component_surf_worker, _component_build_worker_count\n    from cadgen.store.objects import read_object\n    from cadgen.store.trees import flatten\n    descriptor = flatten(study['runs'][0]['tree'])\n    blobs = {cid: read_object(entry['brep']) for cid, entry in descriptor['components'].items()}\n    output = root / 'models/tmp/component-authored-extraction-ab-uncontended'\n    workers = _component_build_worker_count(len(blobs), payload_bytes=sum(map(len, blobs.values())))\n    report = {'payloadBytes': sum(map(len, blobs.values())), 'components': len(blobs),\n              'tree': study['runs'][0]['tree'], 'inputHashes': {cid: hashlib.sha256(blob).hexdigest() for cid, blob in blobs.items()},\n              'rows': []}\n    expected = None\n    for sample in range(2):\n        for mode in (('serial', 'spawn') if sample == 0 else ('spawn', 'serial')):\n            folder = output / f'{sample}-{mode}'\n            folder.mkdir(parents=True, exist_ok=True)\n            payloads = [(blob, cid, str(folder / f'{cid}.surf'), None) for cid, blob in blobs.items()]\n            started = time.perf_counter()\n            if mode == 'spawn':\n                with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context('spawn')) as pool:\n                    results = list(pool.map(_build_component_surf_worker, payloads))\n            else:\n                results = [_build_component_surf_worker(payload) for payload in payloads]\n            elapsed = (time.perf_counter() - started) * 1000\n            assert all(error is None for cid, error in results), results\n            hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(folder.iterdir())\n                      if p.suffix in {'.surf', '.brep'}}\n            if expected is None:\n                expected = hashes\n            assert hashes == expected\n            row = {'mode': mode, 'sample': sample, 'workers': workers if mode == 'spawn' else 1,\n                   'milliseconds': elapsed, 'outputHashes': hashes}\n            report['rows'].append(row)\n            print({k: v for k, v in row.items() if k != 'outputHashes'}, flush=True)\n    report['summary'] = {mode: statistics.median(row['milliseconds'] for row in report['rows'] if row['mode'] == mode)\n                         for mode in ['serial', 'spawn']}\n    report['allOutputBytesEqual'] = True\n    Path('/private/tmp/cadgen-performance-20260910/component-authored-extraction-ab.json').write_text(json.dumps(report,indent=2)+'\\n')\n\n\nif __name__ == '__main__':\n    main()\n",
+    "timingWindow": "isolated rerun after discarding the prior potentially contended run",
+    "scope": "extraction stage only; no runtime fingerprint was captured by this private probe"
+  }
+}

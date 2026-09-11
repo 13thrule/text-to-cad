@@ -1,0 +1,2541 @@
+{
+  "qualification": "Main-thread sampled CPU diagnostic, not an isolated performance comparison. Inclusive times overlap and must not be summed. Sample weights use CDP timeDeltas; gap between their sum and profile duration is reported. Frozen bundle excerpts are authoritative; no rebuilding or mapping to mutable sources.",
+  "interval": {
+    "startedAt": 15607.699999809265,
+    "endedAt": 23764.400000095367,
+    "actualMs": 8156.700000286102,
+    "requestedMs": 8000,
+    "timeOrigin": 1789075964620
+  },
+  "profileDurationMs": 8360.029,
+  "sampleWeightsMs": 8356.964,
+  "unweightedTailMs": 3.065,
+  "selfTop": [
+    {
+      "id": 77,
+      "function": "_l",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 257,
+      "column": 61527,
+      "selfMs": 2887.518,
+      "inclusiveMs": 2887.518,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "let s=o.length-1;s>=0;s-=1)n.push(o[s])}return t}function _l(e,t){const n=String(t||\"\").trim();if(!e||!n||n===\"root\")return e||null;const r=[e];for(;r.length;){const o=r.pop();if(String(o?.id||\"\").trim()===n)return o;const s=Array.isArray(o?.children)?o.children:[];for(let i=s.length-1;i>=0;i-=1)r.push(s[i])}return nul"
+    },
+    {
+      "id": 75,
+      "function": "",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 260,
+      "column": 2079,
+      "selfMs": 549.632,
+      "inclusiveMs": 3583.923,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": ",kn,Ce,mi]),pv=x.useMemo(()=>new Set(rc),[rc]),Xp=x.useMemo(()=>rc.length?rc.map(C=>_l(ln,C)).filter(Boolean).map(C=>({...C,leafPartIds:wp(C)})):[],[ln,rc]),hv=x.useMemo(()=>Kie(Xp),[Xp]),Qb=Ce?sl:Gs&&No&&!!zr,gv=Gs&&Qb&&lf.length>0,Ws=x.useMemo(()=>{const C=new Map;for(const P of qp)C.set(P.id,P);for(const P of lf)C.s"
+    },
+    {
+      "id": 2,
+      "function": "(program)",
+      "url": "",
+      "line": null,
+      "column": null,
+      "selfMs": 473.608,
+      "inclusiveMs": 473.608
+    },
+    {
+      "id": 78,
+      "function": "(garbage collector)",
+      "url": "",
+      "line": null,
+      "column": null,
+      "selfMs": 189.612,
+      "inclusiveMs": 189.612
+    },
+    {
+      "id": 76,
+      "function": "",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 260,
+      "column": 2100,
+      "selfMs": 134.491,
+      "inclusiveMs": 3022.009,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "emo(()=>new Set(rc),[rc]),Xp=x.useMemo(()=>rc.length?rc.map(C=>_l(ln,C)).filter(Boolean).map(C=>({...C,leafPartIds:wp(C)})):[],[ln,rc]),hv=x.useMemo(()=>Kie(Xp),[Xp]),Qb=Ce?sl:Gs&&No&&!!zr,gv=Gs&&Qb&&lf.length>0,Ws=x.useMemo(()=>{const C=new Map;for(const P of qp)C.set(P.id,P);for(const P of lf)C.set(P.id,P);return C},"
+    },
+    {
+      "id": 255,
+      "function": "Td",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 251,
+      "column": 30635,
+      "selfMs": 66.772,
+      "inclusiveMs": 66.772,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "LB&&c6(e)>=vO}function x6(e){return CO(e)||b6(e)}function Td(e){const t=Math.floor((Number(e?.indices?.length)||0)/3),n=Array.isArray(e?.parts)?e.parts.reduce((s,i)=>{const a=Number(i?.triangleCount);return s+(Number.isFinite(a)&&a>0?a:0)},0):0,r=new Set([e]);for(const s of Array.isArray(e?.parts)?e.parts:[])s?.sourceM"
+    },
+    {
+      "id": 23,
+      "function": "Q1.renderBufferDirect",
+      "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+      "line": 4108,
+      "column": 29115,
+      "selfMs": 58.199,
+      "inclusiveMs": 490.303,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+      "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+      "excerpt": "&&we.releaseShaderCache(E))}this.renderBufferDirect=function(E,W,ne,$,j,Pe){W===null&&(W=Te);const Oe=j.isMesh&&j.matrixWorld.determinantAffine()<0,Ie=gv(E,W,ne,$,j);S.setMaterial($,Oe);let ze=ne.index,We=1;if($.wireframe===!0){if(ze=oe.getWireframeAttribute(ne),ze===void 0)return;We=2}const nt=ne.drawRange,at=ne.attri"
+    },
+    {
+      "id": 18,
+      "function": "_",
+      "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+      "line": 4084,
+      "column": 5654,
+      "selfMs": 52.734,
+      "inclusiveMs": 208.057,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+      "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+      "excerpt": "0){const N=s.properties.get(R);N.light=y}return R}function _(w,A,y,b,R){if(w.visible===!1)return;if(w.layers.test(A.layers)&&(w.isMesh||w.isLine||w.isPoints)&&(w.castShadow||w.receiveShadow&&R===dr)&&(!w.frustumCulled||n.intersectsObject(w))){w.modelViewMatrix.multiplyMatrices(y.matrixWorldInverse,w.matrixWorld);const "
+    },
+    {
+      "id": 27,
+      "function": "v",
+      "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+      "line": 4057,
+      "column": 2298,
+      "selfMs": 51.682,
+      "inclusiveMs": 54.707,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+      "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+      "excerpt": "function p(y){return l.add(y),y===0?\"uv\":`uv${y}`}function v(y,b,R,I,N,H){const G=I.fog,O=N.geometry,z=y.isMeshStandardMaterial||y.isMeshLambertMaterial||y.isMeshPhongMaterial?I.environment:null,V=y.isMeshStandardMaterial||y.isMeshLambertMaterial&&!y.envMap||y.isMeshPhongMaterial&&!y.envMap,Q=e.get(y.envMap||z,V),se=Q&"
+    },
+    {
+      "id": 564,
+      "function": "dc",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 251,
+      "column": 113686,
+      "selfMs": 48.834,
+      "inclusiveMs": 63.485,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "{e?.traverse&&e.traverse(n=>{ls(n?.material,t)})}function dc(e,t){if(!e?.THREE)return;const n=gO(e.THREE,t,e.modelBounds,e.modelGroup?.position),r=n?[n]:[];e.activeClipPlane=n,e.activeClipPlanes=r,e.renderer&&(e.renderer.localClippingEnabled=!0);for(const s of Array.isArray(e.displayRecords)?e.displayRecords:[])ls(s.ma"
+    },
+    {
+      "id": 24,
+      "function": "gv",
+      "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+      "line": 4108,
+      "column": 40863,
+      "selfMs": 48.616,
+      "inclusiveMs": 326.741,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+      "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+      "excerpt": "oundingBox.containsPoint(_))return j}return null}function gv(E,W,ne,$,j){W.isScene!==!0&&(W=Te),ie.resetTextureUnits();const Pe=W.fog,Oe=$.isMeshStandardMaterial||$.isMeshLambertMaterial||$.isMeshPhongMaterial?W.environment:null,Ie=Q===null?R.outputColorSpace:Q.isXRRenderTarget===!0?Q.texture.colorSpace:lt.workingColor"
+    },
+    {
+      "id": 7,
+      "function": "updateMatrixWorld",
+      "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+      "line": 1,
+      "column": 63301,
+      "selfMs": 47.388,
+      "inclusiveMs": 92.607,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+      "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+      "excerpt": "]*n-r[10]*i}this.matrixWorldNeedsUpdate=!0}updateMatrixWorld(e){this.matrixAutoUpdate&&this.updateMatrix(),(this.matrixWorldNeedsUpdate||e)&&(this.matrixWorldAutoUpdate===!0&&(this.parent===null?this.matrixWorld.copy(this.matrix):this.matrixWorld.multiplyMatrices(this.parent.matrixWorld,this.matrix)),this.matrixWorldNe"
+    },
+    {
+      "id": 649,
+      "function": "dc",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 251,
+      "column": 113686,
+      "selfMs": 46.98,
+      "inclusiveMs": 59.137,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "{e?.traverse&&e.traverse(n=>{ls(n?.material,t)})}function dc(e,t){if(!e?.THREE)return;const n=gO(e.THREE,t,e.modelBounds,e.modelGroup?.position),r=n?[n]:[];e.activeClipPlane=n,e.activeClipPlanes=r,e.renderer&&(e.renderer.localClippingEnabled=!0);for(const s of Array.isArray(e.displayRecords)?e.displayRecords:[])ls(s.ma"
+    },
+    {
+      "id": 574,
+      "function": "M",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 251,
+      "column": 24435,
+      "selfMs": 43.038,
+      "inclusiveMs": 392.024,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "ceInstanceSets,a);for(const E of u.displayRecords)DW(E)}},M=(E=f)=>{_h(u,E);for(const _ of u.displayRecords)pO(e,_,u.materialSettings,{baseTheme:u.baseTheme,displayMode:u.displayMode});const v=E.parameterSetup!==!1,N=E.stepParameters||null;(y!==N||b!==v)&&(b&&UC(u,y,E.callbacks),y=N,b=v,b&&TH(e,u,y,s,E.callbacks));cons"
+    },
+    {
+      "id": 44,
+      "function": "bindVertexArray",
+      "url": "",
+      "line": null,
+      "column": null,
+      "selfMs": 42.23,
+      "inclusiveMs": 42.23
+    },
+    {
+      "id": 597,
+      "function": "dc",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 251,
+      "column": 113686,
+      "selfMs": 42.068,
+      "inclusiveMs": 49.665,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "{e?.traverse&&e.traverse(n=>{ls(n?.material,t)})}function dc(e,t){if(!e?.THREE)return;const n=gO(e.THREE,t,e.modelBounds,e.modelGroup?.position),r=n?[n]:[];e.activeClipPlane=n,e.activeClipPlanes=r,e.renderer&&(e.renderer.localClippingEnabled=!0);for(const s of Array.isArray(e.displayRecords)?e.displayRecords:[])ls(s.ma"
+    },
+    {
+      "id": 612,
+      "function": "dc",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 251,
+      "column": 113686,
+      "selfMs": 40.847,
+      "inclusiveMs": 48.362,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "{e?.traverse&&e.traverse(n=>{ls(n?.material,t)})}function dc(e,t){if(!e?.THREE)return;const n=gO(e.THREE,t,e.modelBounds,e.modelGroup?.position),r=n?[n]:[];e.activeClipPlane=n,e.activeClipPlanes=r,e.renderer&&(e.renderer.localClippingEnabled=!0);for(const s of Array.isArray(e.displayRecords)?e.displayRecords:[])ls(s.ma"
+    },
+    {
+      "id": 591,
+      "function": "_H",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 251,
+      "column": 9678,
+      "selfMs": 39.697,
+      "inclusiveMs": 53.265,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": ":0)||a!==(o.clipping===!0))&&(o.needsUpdate=!0)}}function _H(e,t,n,r=null){const o=gO(e.THREE,t,n,r),s=o?[o]:[];e.activeClipPlane=o,e.activeClipPlanes=s;for(const i of e.displayRecords)ls(i.material,s),ls(i.edgeMaterials,s),ls(i.silhouette?.material,s),ls(i.ghostMaterial,s);for(const i of e.cadEdgeInstanceSets)ls(i.mat"
+    },
+    {
+      "id": 596,
+      "function": "RN",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 254,
+      "column": 54689,
+      "selfMs": 39.416,
+      "inclusiveMs": 111.413,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": ".isInterleavedBufferAttribute?n.data:n);return t}function RN(e){const t=Array.isArray(e?.displayRecords)?e.displayRecords:[],n=new Set,r=new Set,o=new Set,s=new Set;let i=j1(e?.cadScene?.meshData,o),a=0;const l=new Set,c={occurrences:0,edgeObjects:0,edgeInstanceSets:0,edgeInstances:0,surfaceInstanceSets:0,surfaceInstan"
+    },
+    {
+      "id": 416,
+      "function": "hi",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 259,
+      "column": 59191,
+      "selfMs": 36.313,
+      "inclusiveMs": 36.313,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "t i=s.slice(1);return{id:`${n}:${i}`,copyText:s}}function hi(e,t,n){const r=String(t||\"\").trim();!r||!n||e.has(r)||e.set(r,n)}function Pce(e){const t=new Map;if(!e)return t;const n=[e];for(;n.length;){const r=n.pop(),o=cs(r),s=xm(r,o);s&&(hi(t,o,s),hi(t,r?.id,s),hi(t,r?.topologyReferenceId,s),hi(t,r?.displaySelector,s)"
+    },
+    {
+      "id": 258,
+      "function": "RY",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 254,
+      "column": 54144,
+      "selfMs": 30.34,
+      "inclusiveMs": 51.053,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "1(e,t){return kA.reduce((n,r)=>n+vl(e?.[r],t),0)}function RY(e){const t=new Set,n=new Set(Object.values(e||{}));for(const i of n)for(const a of Array.isArray(i?.parts)?i.parts:[])a?.sourceMesh&&n.add(a.sourceMesh);const r=new Set;for(const i of n)for(const a of kA)ArrayBuffer.isView(i?.[a])&&r.add(i[a]);let o=0;for(con"
+    },
+    {
+      "id": 585,
+      "function": "EH",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 251,
+      "column": 3160,
+      "selfMs": 29.13,
+      "inclusiveMs": 48.221,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "pdate=!0),o.depthWrite=s&&!r?!1:e.baseDepthWrite}function EH(e,t,{baseTheme:n=Do,edgeSettings:r,hiddenPartIds:o,hoveredPartId:s,focusedPartId:i,selectedPartIds:a,showEdges:l=!0}={}){const c=new Set(Array.isArray(o)?o:[]),u=new Set(Array.isArray(a)?a:[]),d=new Set((Array.isArray(s)?s:[s]).map(v=>String(v||\"\").trim()).fi"
+    },
+    {
+      "id": 26,
+      "function": "$o",
+      "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+      "line": 4108,
+      "column": 37956,
+      "selfMs": 28.753,
+      "inclusiveMs": 107.716,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+      "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+      "excerpt": "ct(ne,W,$,j,E,Pe),E.onAfterRender(R,W,ne,$,j,Pe)}function $o(E,W,ne){W.isScene!==!0&&(W=Te);const $=Y.get(E),j=w.state.lights,Pe=w.state.shadowsArray,Oe=j.state.version,Ie=we.getParameters(E,j.state,Pe,W,ne,w.state.lightProbeGridArray),ze=we.getProgramCacheKey(Ie);let We=$.programs;$.environment=E.isMeshStandardMateria"
+    },
+    {
+      "id": 11,
+      "function": "Hc",
+      "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+      "line": 4108,
+      "column": 34218,
+      "selfMs": 28.563,
+      "inclusiveMs": 111.067,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+      "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+      "excerpt": "?T=A[A.length-1]:T=null,N!==null&&N.renderEnd()};function Hc(E,W,ne,$){if(E.visible===!1)return;if(E.layers.test(W.layers)){if(E.isGroup)ne=E.renderOrder;else if(E.isLOD)E.autoUpdate===!0&&E.update(W);else if(E.isLightProbeGrid)w.pushLightProbeGrid(E);else if(E.isLight)w.pushLight(E),E.castShadow&&w.pushShadow(E);else "
+    },
+    {
+      "id": 598,
+      "function": "kh",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 251,
+      "column": 66323,
+      "selfMs": 28.226,
+      "inclusiveMs": 44.549,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "pdate=!0),o.depthWrite=s&&!r?!1:e.baseDepthWrite}function kh(e,t,{viewerTheme:n,edgeSettings:r,hiddenPartIds:o,hoveredPartId:s,focusedPartId:i,selectedPartIds:a,showEdges:l,displayMode:c=zt.SOLID}){const u=new Set(Array.isArray(o)?o:[]),d=new Set(Array.isArray(a)?a:[]),f=new Set((Array.isArray(s)?s:[s]).map(v=>String(v"
+    }
+  ],
+  "inclusiveTop": [
+    {
+      "id": 64,
+      "function": "Le",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 1,
+      "column": 10007,
+      "selfMs": 0.0,
+      "inclusiveMs": 6437.341,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "-1;function Ae(){return!(i.unstable_now()-ce<Ce)}function Le(){if(q!==null){var P=i.unstable_now();ce=P;var W=!0;try{W=q(!0,P)}finally{W?fe():(K=!1,q=null)}}else K=!1}var fe;if(typeof G==\"function\")fe=function(){G(Le)};else if(typeof MessageChannel<\"u\"){var me=new MessageChannel,_e=me.port2;me.port1.onmessage=Le,fe=fun"
+    },
+    {
+      "id": 65,
+      "function": "b",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 1,
+      "column": 9498,
+      "selfMs": 0.0,
+      "inclusiveMs": 6434.328,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "b);else{var W=s(z);W!==null&&re(Q,W.startTime-P)}}function b(P,W){F=!1,A&&(A=!1,$(oe),oe=-1),L=!0;var M=T;try{for(J(W),O=s(E);O!==null&&(!(O.expirationTime>W)||P&&!Ae());){var m=O.callback;if(typeof m==\"function\"){O.callback=null,T=O.priorityLevel;var C=m(O.expirationTime<=W);W=i.unstable_now(),typeof C==\"function\"?O.c"
+    },
+    {
+      "id": 66,
+      "function": "Ga",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 34562,
+      "selfMs": 1.532,
+      "inclusiveMs": 4862.717,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "(null,e))}e.callbackPriority=t,e.callbackNode=n}}function Ga(e,t){if(Al=-1,Il=0,(le&6)!==0)throw Error(s(327));var n=e.callbackNode;if(Qn()&&e.callbackNode!==n)return null;var r=Kr(e,e===Me?je:0);if(r===0)return null;if((r&30)!==0||(r&e.expiredLanes)!==0||t)t=jl(e,r);else{t=r;var l=le;le|=2;var o=qa();(Me!==e||je!==t)&"
+    },
+    {
+      "id": 67,
+      "function": "jl",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 39646,
+      "selfMs": 3.019,
+      "inclusiveMs": 4106.181,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "pn&268435455)===0&&(Ol&268435455)===0||qt(Me,je)}function jl(e,t){var n=le;le|=2;var r=qa();(Me!==e||je!==t)&&(Tt=null,hn(e,t));do try{Ed();break}catch(l){Ja(e,l)}while(!0);if(li(),le=n,Tl.current=r,Ne!==null)throw Error(s(261));return Me=null,je=0,Te}function Ed(){for(;Ne!==null;)ba(Ne)}function Cd(){for(;Ne!==null&&!"
+    },
+    {
+      "id": 68,
+      "function": "Ed",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 39849,
+      "selfMs": 4.586,
+      "inclusiveMs": 4101.649,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "=null)throw Error(s(261));return Me=null,je=0,Te}function Ed(){for(;Ne!==null;)ba(Ne)}function Cd(){for(;Ne!==null&&!Xc();)ba(Ne)}function ba(e){var t=rc(e.alternate,e,nt);e.memoizedProps=e.pendingProps,t===null?ec(e):Ne=t,Ai.current=null}function ec(e){var t=e;do{var n=t.alternate;if(e=t.return,(t.flags&32768)===0){if"
+    },
+    {
+      "id": 69,
+      "function": "rc",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 43952,
+      "selfMs": 1.513,
+      "inclusiveMs": 4068.036,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "ror(s(314))}r!==null&&r.delete(t),nc(e,n)}var rc;rc=function(e,t,n){if(e!==null)if(e.memoizedProps!==t.pendingProps||Qe.current)Ye=!0;else{if((e.lanes&n)===0&&(t.flags&128)===0)return Ye=!1,hd(e,t,n);Ye=(e.flags&131072)!==0}else Ye=!1,Se&&(t.flags&1048576)!==0&&As(t,pl,t.index);switch(t.lanes=0,t.tag){case 2:var r=t.ty"
+    },
+    {
+      "id": 70,
+      "function": "_i",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 3093,
+      "selfMs": 0.0,
+      "inclusiveMs": 4017.515,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "ull&&e.ref!==n)&&(t.flags|=512,t.flags|=2097152)}function _i(e,t,n,r,l){var o=Ke(n)?un:Ue.current;return o=Dn(t,o),Un(t,l),n=hi(e,t,n,r,o,l),r=vi(),e!==null&&!Ye?(t.updateQueue=e.updateQueue,t.flags&=-2053,e.lanes&=~l,zt(e,t,l)):(Se&&r&&qo(t),t.flags|=1,Be(e,t,n,l),t.child)}function La(e,t,n,r,l){if(Ke(n)){var o=!0;cl("
+    },
+    {
+      "id": 71,
+      "function": "hi",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 6,
+      "column": 16931,
+      "selfMs": 9.063,
+      "inclusiveMs": 4014.452,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "e.length;n++)if(!ct(e[n],t[n]))return!1;return!0}function hi(e,t,n,r,l,o){if(dn=o,xe=t,t.memoizedState=null,t.updateQueue=null,t.lanes=0,kl.current=e===null||e.memoizedState===null?ad:cd,e=n(r,l),Cr){o=0;do{if(Cr=!1,_r=0,25<=o)throw Error(s(301));o+=1,De=ze=null,t.updateQueue=null,kl.current=fd,e=n(r,l)}while(Cr)}if(kl"
+    },
+    {
+      "id": 72,
+      "function": "jce",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 259,
+      "column": 63329,
+      "selfMs": 7.147,
+      "inclusiveMs": 3844.247,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": ".relations};delete n.glb,t.relations=n}return t}function jce({manifestEntries:e=[],manifestRevision:t=0,catalogHydrated:n=!1,catalogRefreshing:r=!1,catalogError:o=\"\"}){const s=Array.isArray(e)?e:[],i=s,a=Kg(),[l,c]=x.useState(()=>typeof window<\"u\"&&new URL(window.location.href).searchParams.get(\"mode\")===\"editing\"),u=x"
+    },
+    {
+      "id": 74,
+      "function": "ca",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 6,
+      "column": 21338,
+      "selfMs": 1.522,
+      "inclusiveMs": 3736.104,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "=null&&mi(t,r[1])?r[0]:(n.memoizedState=[e,t],e)}function ca(e,t){var n=it();t=t===void 0?null:t;var r=n.memoizedState;return r!==null&&t!==null&&mi(t,r[1])?r[0]:(e=e(),n.memoizedState=[e,t],e)}function fa(e,t,n){return(dn&21)===0?(e.baseState&&(e.baseState=!1,Ye=!0),e.memoizedState=n):(ct(n,t)||(n=Wu(),xe.lanes|=n,pn|"
+    },
+    {
+      "id": 73,
+      "function": "Vd.te.useMemo",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 1,
+      "column": 6828,
+      "selfMs": 0.0,
+      "inclusiveMs": 3736.104,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "{return re.current.useLayoutEffect(m,C)},te.useMemo=function(m,C){return re.current.useMemo(m,C)},te.useReducer=function(m,C,ee){return re.current.useReducer(m,C,ee)},te.useRef=function(m){return re.current.useRef(m)},te.useState=function(m){return re.current.useState(m)},te.useSyncExternalStore=function(m,C,ee){return"
+    },
+    {
+      "id": 75,
+      "function": "",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 260,
+      "column": 2079,
+      "selfMs": 549.632,
+      "inclusiveMs": 3583.923,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": ",kn,Ce,mi]),pv=x.useMemo(()=>new Set(rc),[rc]),Xp=x.useMemo(()=>rc.length?rc.map(C=>_l(ln,C)).filter(Boolean).map(C=>({...C,leafPartIds:wp(C)})):[],[ln,rc]),hv=x.useMemo(()=>Kie(Xp),[Xp]),Qb=Ce?sl:Gs&&No&&!!zr,gv=Gs&&Qb&&lf.length>0,Ws=x.useMemo(()=>{const C=new Map;for(const P of qp)C.set(P.id,P);for(const P of lf)C.s"
+    },
+    {
+      "id": 76,
+      "function": "",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 260,
+      "column": 2100,
+      "selfMs": 134.491,
+      "inclusiveMs": 3022.009,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "emo(()=>new Set(rc),[rc]),Xp=x.useMemo(()=>rc.length?rc.map(C=>_l(ln,C)).filter(Boolean).map(C=>({...C,leafPartIds:wp(C)})):[],[ln,rc]),hv=x.useMemo(()=>Kie(Xp),[Xp]),Qb=Ce?sl:Gs&&No&&!!zr,gv=Gs&&Qb&&lf.length>0,Ws=x.useMemo(()=>{const C=new Map;for(const P of qp)C.set(P.id,P);for(const P of lf)C.set(P.id,P);return C},"
+    },
+    {
+      "id": 77,
+      "function": "_l",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 257,
+      "column": 61527,
+      "selfMs": 2887.518,
+      "inclusiveMs": 2887.518,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "let s=o.length-1;s>=0;s-=1)n.push(o[s])}return t}function _l(e,t){const n=String(t||\"\").trim();if(!e||!n||n===\"root\")return e||null;const r=[e];for(;r.length;){const o=r.pop();if(String(o?.id||\"\").trim()===n)return o;const s=Array.isArray(o?.children)?o.children:[];for(let i=s.length-1;i>=0;i-=1)r.push(s[i])}return nul"
+    },
+    {
+      "id": 272,
+      "function": "Qn",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 41491,
+      "selfMs": 4.521,
+      "inclusiveMs": 1571.611,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "(o&1)!==0?e===Vi?Or++:(Or=0,Vi=e):Or=0,Qt(),null}function Qn(){if(Zt!==null){var e=Hu(Fl),t=ut.transition,n=pe;try{if(ut.transition=null,pe=16>e?16:e,Zt===null)var r=!1;else{if(e=Zt,Zt=null,Fl=0,(le&6)!==0)throw Error(s(331));var l=le;for(le|=4,U=e.current;U!==null;){var o=U,u=o.child;if((U.flags&16)!==0){var c=o.delet"
+    },
+    {
+      "id": 271,
+      "function": "",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 40883,
+      "selfMs": 0.0,
+      "inclusiveMs": 1571.611,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "ags&2064)===0&&(n.flags&2064)===0||Ml||(Ml=!0,lc(Hr,function(){return Qn(),null})),o=(n.flags&15990)!==0,(n.subtreeFlags&15990)!==0||o){o=ut.transition,ut.transition=null;var u=pe;pe=1;var c=le;le|=4,Ai.current=null,wd(e,n),$a(n,e),Qf(Qo),Gr=!!$o,Qo=$o=null,e.current=n,Sd(n),Gc(),le=c,pe=u,ut.transition=o}else e.curren"
+    },
+    {
+      "id": 562,
+      "function": "zl",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 24266,
+      "selfMs": 1.515,
+      "inclusiveMs": 1350.681,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "d 0,o!==void 0&&Oi(t,n,o)}l=l.next}while(l!==r)}}function zl(e,t){if(t=t.updateQueue,t=t!==null?t.lastEffect:null,t!==null){var n=t=t.next;do{if((n.tag&e)===e){var r=n.create;n.destroy=r()}n=n.next}while(n!==t)}}function Di(e){var t=e.ref;if(t!==null){var n=e.stateNode;e.tag,e=n,typeof t==\"function\"?t(e):t.current=e}}f"
+    },
+    {
+      "id": 566,
+      "function": "",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 255,
+      "column": 8847,
+      "selfMs": 16.626,
+      "inclusiveMs": 1006.295,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "heduleIdleQuality(),R.requestRender())},[O,We]),x.useEffect(()=>{const R=ue.current;if(!R)return;const{THREE:H,modelGroup:de,edgesGroup:ve,facePickGroup:Ee,edgePickGroup:pt,vertexPickGroup:Ve}=R,Ze=({preserveModelIdentity:ft=!1,releaseGpu:lt=!0}={})=>{dt.current.invalidate(),Oc(R),R.cadScene?.dispose?.({releaseGpu:lt})"
+    },
+    {
+      "id": 3,
+      "function": "Mt",
+      "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+      "line": 254,
+      "column": 128666,
+      "selfMs": 0.0,
+      "inclusiveMs": 983.566,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+      "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+      "excerpt": "e.now()))},120),t.current&&(t.current.rafId=gt)};function Mt(ee){$e.renderQueued=!1,$e.renderQueuedAt=0,$e.renderFallbackTimerId&&(window.clearTimeout($e.renderFallbackTimerId),$e.renderFallbackTimerId=0);const Fe=d(t.current,ee),it=f(t.current,ee),xn=TJ(dt,ee,t.current);(Fe||it)&&l(t.current),Wt(t.current),wt.shadowMa"
+    },
+    {
+      "id": 4,
+      "function": "Q1.render",
+      "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+      "line": 4108,
+      "column": 32152,
+      "selfMs": 0.0,
+      "inclusiveMs": 977.437,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+      "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+      "excerpt": "f),Be.addEventListener(\"sessionend\",Bf),this.render=function(E,W){if(W!==void 0&&W.isCamera!==!0){ke(\"WebGLRenderer.render: camera is not an instance of THREE.Camera.\");return}if(I===!0)return;N!==null&&N.renderStart(E,W);const ne=Be.enabled===!0&&Be.isPresenting===!0,$=b!==null&&(Q===null||ne)&&b.begin(R,Q);if(E.matri"
+    },
+    {
+      "id": 102,
+      "function": "_d",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 40499,
+      "selfMs": 1.231,
+      "inclusiveMs": 755.004,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": ",t,n,r)}finally{ut.transition=l,pe=r}return null}function _d(e,t,n,r){do Qn();while(Zt!==null);if((le&6)!==0)throw Error(s(327));n=e.finishedWork;var l=e.finishedLanes;if(n===null)return null;if(e.finishedWork=null,e.finishedLanes=0,n===e.current)throw Error(s(177));e.callbackNode=null,e.callbackPriority=0;var o=n.lane"
+    },
+    {
+      "id": 101,
+      "function": "vn",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 40374,
+      "selfMs": 0.0,
+      "inclusiveMs": 755.004,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "e=t;return}Ne=t=e}while(t!==null);Te===0&&(Te=5)}function vn(e,t,n){var r=pe,l=ut.transition;try{ut.transition=null,pe=1,_d(e,t,n,r)}finally{ut.transition=l,pe=r}return null}function _d(e,t,n,r){do Qn();while(Zt!==null);if((le&6)!==0)throw Error(s(327));n=e.finishedWork;var l=e.finishedLanes;if(n===null)return null;if("
+    },
+    {
+      "id": 104,
+      "function": "Za",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 36708,
+      "selfMs": 0.0,
+      "inclusiveMs": 713.261,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "Times;0<t;){var n=31-at(t),r=1<<n;e[n]=-1,t&=~r}}function Za(e){if((le&6)!==0)throw Error(s(327));Qn();var t=Kr(e,0);if((t&1)===0)return Ge(e,Pe()),null;var n=jl(e,t);if(e.tag!==0&&n===2){var r=So(e);r!==0&&(t=r,n=Wi(e,r))}if(n===1)throw n=zr,hn(e,0),qt(e,t),Ge(e,Pe()),n;if(n===6)throw Error(s(345));return e.finishedWo"
+    },
+    {
+      "id": 103,
+      "function": "Qt",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 6,
+      "column": 3178,
+      "selfMs": 0.0,
+      "inclusiveMs": 713.261,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "ull?_t=[e]:_t.push(e)}function rd(e){fl=!0,Fs(e)}function Qt(){if(!Jo&&_t!==null){Jo=!0;var e=0,t=pe;try{var n=_t;for(pe=1;e<n.length;e++){var r=n[e];do r=r(!0);while(r!==null)}_t=null,fl=!1}catch(l){throw _t!==null&&(_t=_t.slice(e+1)),Iu(wo,Qt),l}finally{pe=t,Jo=!1}}return null}var Mn=[],Fn=0,dl=null,pl=0,rt=[],lt=0,s"
+    },
+    {
+      "id": 105,
+      "function": "Qn",
+      "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+      "line": 8,
+      "column": 41491,
+      "selfMs": 3.706,
+      "inclusiveMs": 657.3,
+      "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-react-DqJhD6MJ.js",
+      "frozenFileSha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e",
+      "excerpt": "(o&1)!==0?e===Vi?Or++:(Or=0,Vi=e):Or=0,Qt(),null}function Qn(){if(Zt!==null){var e=Hu(Fl),t=ut.transition,n=pe;try{if(ut.transition=null,pe=16>e?16:e,Zt===null)var r=!1;else{if(e=Zt,Zt=null,Fl=0,(le&6)!==0)throw Error(s(331));var l=le;for(le|=4,U=e.current;U!==null;){var o=U,u=o.child;if((U.flags&16)!==0){var c=o.delet"
+    }
+  ],
+  "hottestStacks": [
+    {
+      "leaf": {
+        "id": 77,
+        "function": "_l",
+        "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+        "line": 257,
+        "column": 61527,
+        "selfMs": 2887.518,
+        "inclusiveMs": 2887.518,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+        "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+        "excerpt": "let s=o.length-1;s>=0;s-=1)n.push(o[s])}return t}function _l(e,t){const n=String(t||\"\").trim();if(!e||!n||n===\"root\")return e||null;const r=[e];for(;r.length;){const o=r.pop();if(String(o?.id||\"\").trim()===n)return o;const s=Array.isArray(o?.children)?o.children:[];for(let i=s.length-1;i>=0;i-=1)r.push(s[i])}return nul"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "_l",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 257,
+          "column": 61527
+        },
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 260,
+          "column": 2100
+        },
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 260,
+          "column": 2079
+        },
+        {
+          "function": "ca",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 6,
+          "column": 21338
+        },
+        {
+          "function": "Vd.te.useMemo",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 6828
+        },
+        {
+          "function": "jce",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 259,
+          "column": 63329
+        },
+        {
+          "function": "hi",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 6,
+          "column": 16931
+        },
+        {
+          "function": "_i",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 3093
+        },
+        {
+          "function": "rc",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 43952
+        },
+        {
+          "function": "Ed",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 39849
+        },
+        {
+          "function": "jl",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 39646
+        },
+        {
+          "function": "Ga",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 34562
+        },
+        {
+          "function": "b",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 9498
+        },
+        {
+          "function": "Le",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 10007
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 75,
+        "function": "",
+        "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+        "line": 260,
+        "column": 2079,
+        "selfMs": 549.632,
+        "inclusiveMs": 3583.923,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+        "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+        "excerpt": ",kn,Ce,mi]),pv=x.useMemo(()=>new Set(rc),[rc]),Xp=x.useMemo(()=>rc.length?rc.map(C=>_l(ln,C)).filter(Boolean).map(C=>({...C,leafPartIds:wp(C)})):[],[ln,rc]),hv=x.useMemo(()=>Kie(Xp),[Xp]),Qb=Ce?sl:Gs&&No&&!!zr,gv=Gs&&Qb&&lf.length>0,Ws=x.useMemo(()=>{const C=new Map;for(const P of qp)C.set(P.id,P);for(const P of lf)C.s"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 260,
+          "column": 2079
+        },
+        {
+          "function": "ca",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 6,
+          "column": 21338
+        },
+        {
+          "function": "Vd.te.useMemo",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 6828
+        },
+        {
+          "function": "jce",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 259,
+          "column": 63329
+        },
+        {
+          "function": "hi",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 6,
+          "column": 16931
+        },
+        {
+          "function": "_i",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 3093
+        },
+        {
+          "function": "rc",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 43952
+        },
+        {
+          "function": "Ed",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 39849
+        },
+        {
+          "function": "jl",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 39646
+        },
+        {
+          "function": "Ga",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 34562
+        },
+        {
+          "function": "b",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 9498
+        },
+        {
+          "function": "Le",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 10007
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 2,
+        "function": "(program)",
+        "url": "",
+        "line": null,
+        "column": null,
+        "selfMs": 473.608,
+        "inclusiveMs": 473.608
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "(program)",
+          "url": "",
+          "line": null,
+          "column": null
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 78,
+        "function": "(garbage collector)",
+        "url": "",
+        "line": null,
+        "column": null,
+        "selfMs": 189.612,
+        "inclusiveMs": 189.612
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "(garbage collector)",
+          "url": "",
+          "line": null,
+          "column": null
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 76,
+        "function": "",
+        "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+        "line": 260,
+        "column": 2100,
+        "selfMs": 134.491,
+        "inclusiveMs": 3022.009,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+        "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+        "excerpt": "emo(()=>new Set(rc),[rc]),Xp=x.useMemo(()=>rc.length?rc.map(C=>_l(ln,C)).filter(Boolean).map(C=>({...C,leafPartIds:wp(C)})):[],[ln,rc]),hv=x.useMemo(()=>Kie(Xp),[Xp]),Qb=Ce?sl:Gs&&No&&!!zr,gv=Gs&&Qb&&lf.length>0,Ws=x.useMemo(()=>{const C=new Map;for(const P of qp)C.set(P.id,P);for(const P of lf)C.set(P.id,P);return C},"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 260,
+          "column": 2100
+        },
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 260,
+          "column": 2079
+        },
+        {
+          "function": "ca",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 6,
+          "column": 21338
+        },
+        {
+          "function": "Vd.te.useMemo",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 6828
+        },
+        {
+          "function": "jce",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 259,
+          "column": 63329
+        },
+        {
+          "function": "hi",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 6,
+          "column": 16931
+        },
+        {
+          "function": "_i",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 3093
+        },
+        {
+          "function": "rc",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 43952
+        },
+        {
+          "function": "Ed",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 39849
+        },
+        {
+          "function": "jl",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 39646
+        },
+        {
+          "function": "Ga",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 34562
+        },
+        {
+          "function": "b",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 9498
+        },
+        {
+          "function": "Le",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 10007
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 255,
+        "function": "Td",
+        "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+        "line": 251,
+        "column": 30635,
+        "selfMs": 66.772,
+        "inclusiveMs": 66.772,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+        "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+        "excerpt": "LB&&c6(e)>=vO}function x6(e){return CO(e)||b6(e)}function Td(e){const t=Math.floor((Number(e?.indices?.length)||0)/3),n=Array.isArray(e?.parts)?e.parts.reduce((s,i)=>{const a=Number(i?.triangleCount);return s+(Number.isFinite(a)&&a>0?a:0)},0):0,r=new Set([e]);for(const s of Array.isArray(e?.parts)?e.parts:[])s?.sourceM"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "Td",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 251,
+          "column": 30635
+        },
+        {
+          "function": "S6",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 251,
+          "column": 31086
+        },
+        {
+          "function": "jce",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 259,
+          "column": 63329
+        },
+        {
+          "function": "hi",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 6,
+          "column": 16931
+        },
+        {
+          "function": "_i",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 3093
+        },
+        {
+          "function": "rc",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 43952
+        },
+        {
+          "function": "Ed",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 39849
+        },
+        {
+          "function": "jl",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 39646
+        },
+        {
+          "function": "Ga",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 34562
+        },
+        {
+          "function": "b",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 9498
+        },
+        {
+          "function": "Le",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 10007
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 23,
+        "function": "Q1.renderBufferDirect",
+        "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+        "line": 4108,
+        "column": 29115,
+        "selfMs": 58.199,
+        "inclusiveMs": 490.303,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+        "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+        "excerpt": "&&we.releaseShaderCache(E))}this.renderBufferDirect=function(E,W,ne,$,j,Pe){W===null&&(W=Te);const Oe=j.isMesh&&j.matrixWorld.determinantAffine()<0,Ie=gv(E,W,ne,$,j);S.setMaterial($,Oe);let ze=ne.index,We=1;if($.wireframe===!0){if(ze=oe.getWireframeAttribute(ne),ze===void 0)return;We=2}const nt=ne.drawRange,at=ne.attri"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "Q1.renderBufferDirect",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 29115
+        },
+        {
+          "function": "Jo",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 37223
+        },
+        {
+          "function": "zf",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 35346
+        },
+        {
+          "function": "Q1.render",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 32152
+        },
+        {
+          "function": "Mt",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 254,
+          "column": 128666
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 18,
+        "function": "_",
+        "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+        "line": 4084,
+        "column": 5654,
+        "selfMs": 52.734,
+        "inclusiveMs": 208.057,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+        "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+        "excerpt": "0){const N=s.properties.get(R);N.light=y}return R}function _(w,A,y,b,R){if(w.visible===!1)return;if(w.layers.test(A.layers)&&(w.isMesh||w.isLine||w.isPoints)&&(w.castShadow||w.receiveShadow&&R===dr)&&(!w.frustumCulled||n.intersectsObject(w))){w.modelViewMatrix.multiplyMatrices(y.matrixWorldInverse,w.matrixWorld);const "
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "_",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4084,
+          "column": 5654
+        },
+        {
+          "function": "_",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4084,
+          "column": 5654
+        },
+        {
+          "function": "_",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4084,
+          "column": 5654
+        },
+        {
+          "function": "_",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4084,
+          "column": 5654
+        },
+        {
+          "function": "V1.render",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4084,
+          "column": 758
+        },
+        {
+          "function": "Q1.render",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 32152
+        },
+        {
+          "function": "Mt",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 254,
+          "column": 128666
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 27,
+        "function": "v",
+        "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+        "line": 4057,
+        "column": 2298,
+        "selfMs": 51.682,
+        "inclusiveMs": 54.707,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+        "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+        "excerpt": "function p(y){return l.add(y),y===0?\"uv\":`uv${y}`}function v(y,b,R,I,N,H){const G=I.fog,O=N.geometry,z=y.isMeshStandardMaterial||y.isMeshLambertMaterial||y.isMeshPhongMaterial?I.environment:null,V=y.isMeshStandardMaterial||y.isMeshLambertMaterial&&!y.envMap||y.isMeshPhongMaterial&&!y.envMap,Q=e.get(y.envMap||z,V),se=Q&"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "v",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4057,
+          "column": 2298
+        },
+        {
+          "function": "$o",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 37956
+        },
+        {
+          "function": "gv",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 40863
+        },
+        {
+          "function": "Q1.renderBufferDirect",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 29115
+        },
+        {
+          "function": "Jo",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 37223
+        },
+        {
+          "function": "zf",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 35346
+        },
+        {
+          "function": "Q1.render",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 32152
+        },
+        {
+          "function": "Mt",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 254,
+          "column": 128666
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 564,
+        "function": "dc",
+        "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+        "line": 251,
+        "column": 113686,
+        "selfMs": 48.834,
+        "inclusiveMs": 63.485,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+        "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+        "excerpt": "{e?.traverse&&e.traverse(n=>{ls(n?.material,t)})}function dc(e,t){if(!e?.THREE)return;const n=gO(e.THREE,t,e.modelBounds,e.modelGroup?.position),r=n?[n]:[];e.activeClipPlane=n,e.activeClipPlanes=r,e.renderer&&(e.renderer.localClippingEnabled=!0);for(const s of Array.isArray(e.displayRecords)?e.displayRecords:[])ls(s.ma"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "dc",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 251,
+          "column": 113686
+        },
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 255,
+          "column": 2718
+        },
+        {
+          "function": "zl",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 24266
+        },
+        {
+          "function": "Qn",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 41491
+        },
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 40883
+        },
+        {
+          "function": "b",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 9498
+        },
+        {
+          "function": "Le",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 10007
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 24,
+        "function": "gv",
+        "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+        "line": 4108,
+        "column": 40863,
+        "selfMs": 48.616,
+        "inclusiveMs": 326.741,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+        "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+        "excerpt": "oundingBox.containsPoint(_))return j}return null}function gv(E,W,ne,$,j){W.isScene!==!0&&(W=Te),ie.resetTextureUnits();const Pe=W.fog,Oe=$.isMeshStandardMaterial||$.isMeshLambertMaterial||$.isMeshPhongMaterial?W.environment:null,Ie=Q===null?R.outputColorSpace:Q.isXRRenderTarget===!0?Q.texture.colorSpace:lt.workingColor"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "gv",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 40863
+        },
+        {
+          "function": "Q1.renderBufferDirect",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 29115
+        },
+        {
+          "function": "Jo",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 37223
+        },
+        {
+          "function": "zf",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 35346
+        },
+        {
+          "function": "Q1.render",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 32152
+        },
+        {
+          "function": "Mt",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 254,
+          "column": 128666
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 7,
+        "function": "updateMatrixWorld",
+        "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+        "line": 1,
+        "column": 63301,
+        "selfMs": 47.388,
+        "inclusiveMs": 92.607,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/vendor-three-BGohPKcK.js",
+        "frozenFileSha256": "231ce03fb0e57ef3d2db9581fea6d197a7e5cebd176313682e6eb4eb50346d98",
+        "excerpt": "]*n-r[10]*i}this.matrixWorldNeedsUpdate=!0}updateMatrixWorld(e){this.matrixAutoUpdate&&this.updateMatrix(),(this.matrixWorldNeedsUpdate||e)&&(this.matrixWorldAutoUpdate===!0&&(this.parent===null?this.matrixWorld.copy(this.matrix):this.matrixWorld.multiplyMatrices(this.parent.matrixWorld,this.matrix)),this.matrixWorldNe"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "updateMatrixWorld",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 1,
+          "column": 63301
+        },
+        {
+          "function": "updateMatrixWorld",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 1,
+          "column": 63301
+        },
+        {
+          "function": "updateMatrixWorld",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 1,
+          "column": 63301
+        },
+        {
+          "function": "Q1.render",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 32152
+        },
+        {
+          "function": "Mt",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 254,
+          "column": 128666
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 649,
+        "function": "dc",
+        "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+        "line": 251,
+        "column": 113686,
+        "selfMs": 46.98,
+        "inclusiveMs": 59.137,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+        "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+        "excerpt": "{e?.traverse&&e.traverse(n=>{ls(n?.material,t)})}function dc(e,t){if(!e?.THREE)return;const n=gO(e.THREE,t,e.modelBounds,e.modelGroup?.position),r=n?[n]:[];e.activeClipPlane=n,e.activeClipPlanes=r,e.renderer&&(e.renderer.localClippingEnabled=!0);for(const s of Array.isArray(e.displayRecords)?e.displayRecords:[])ls(s.ma"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "dc",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 251,
+          "column": 113686
+        },
+        {
+          "function": "syncClip",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 255,
+          "column": 18836
+        },
+        {
+          "function": "Bh",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 251,
+          "column": 105624
+        },
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 255,
+          "column": 17947
+        },
+        {
+          "function": "zl",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 24266
+        },
+        {
+          "function": "Qn",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 41491
+        },
+        {
+          "function": "Za",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 36708
+        },
+        {
+          "function": "Qt",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 6,
+          "column": 3178
+        },
+        {
+          "function": "_d",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 40499
+        },
+        {
+          "function": "vn",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 40374
+        },
+        {
+          "function": "Ga",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 34562
+        },
+        {
+          "function": "b",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 9498
+        },
+        {
+          "function": "Le",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 10007
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 574,
+        "function": "M",
+        "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+        "line": 251,
+        "column": 24435,
+        "selfMs": 43.038,
+        "inclusiveMs": 392.024,
+        "frozenFile": "/private/tmp/cadgen-performance-20260910/play-viewer-dist-8640d6902/assets/index-Dq-FAf-c.js",
+        "frozenFileSha256": "7b32686ec0e9156f8b07b4da8acbca0eadc29a5dc9db05072ddbbc3913f86d8f",
+        "excerpt": "ceInstanceSets,a);for(const E of u.displayRecords)DW(E)}},M=(E=f)=>{_h(u,E);for(const _ of u.displayRecords)pO(e,_,u.materialSettings,{baseTheme:u.baseTheme,displayMode:u.displayMode});const v=E.parameterSetup!==!1,N=E.stepParameters||null;(y!==N||b!==v)&&(b&&UC(u,y,E.callbacks),y=N,b=v,b&&TH(e,u,y,s,E.callbacks));cons"
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "M",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 251,
+          "column": 24435
+        },
+        {
+          "function": "update",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 251,
+          "column": 25299
+        },
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 255,
+          "column": 8847
+        },
+        {
+          "function": "zl",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 24266
+        },
+        {
+          "function": "Qn",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 41491
+        },
+        {
+          "function": "",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 8,
+          "column": 40883
+        },
+        {
+          "function": "b",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 9498
+        },
+        {
+          "function": "Le",
+          "url": "http://127.0.0.1:3262/assets/vendor-react-DqJhD6MJ.js",
+          "line": 1,
+          "column": 10007
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    },
+    {
+      "leaf": {
+        "id": 44,
+        "function": "bindVertexArray",
+        "url": "",
+        "line": null,
+        "column": null,
+        "selfMs": 42.23,
+        "inclusiveMs": 42.23
+      },
+      "chainLeafToRoot": [
+        {
+          "function": "bindVertexArray",
+          "url": "",
+          "line": null,
+          "column": null
+        },
+        {
+          "function": "c",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 3671,
+          "column": 14257
+        },
+        {
+          "function": "a",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 3671,
+          "column": 13979
+        },
+        {
+          "function": "Q1.renderBufferDirect",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 29115
+        },
+        {
+          "function": "Jo",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 37223
+        },
+        {
+          "function": "zf",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 35346
+        },
+        {
+          "function": "Q1.render",
+          "url": "http://127.0.0.1:3262/assets/vendor-three-BGohPKcK.js",
+          "line": 4108,
+          "column": 32152
+        },
+        {
+          "function": "Mt",
+          "url": "http://127.0.0.1:3262/assets/index-Dq-FAf-c.js",
+          "line": 254,
+          "column": 128666
+        },
+        {
+          "function": "(root)",
+          "url": "",
+          "line": null,
+          "column": null
+        }
+      ]
+    }
+  ],
+  "runtimeBuckets": {
+    "(idle)": 25.98,
+    "(program)": 473.608,
+    "(garbage collector)": 189.612
+  },
+  "publicationGapsMs": {
+    "count": 36,
+    "median": 220.09999990463257,
+    "min": 213.19999980926514,
+    "max": 246.7000002861023
+  },
+  "workerPostMessageDurationMs": {
+    "count": 37,
+    "median": 0.5,
+    "min": 0.2999997138977051,
+    "max": 1.6999998092651367
+  },
+  "cachedRequests": 37,
+  "workerRequestCount": 37,
+  "completeResourceDurationMs": {
+    "count": 37,
+    "median": 51.69999980926514,
+    "min": 2.0999999046325684,
+    "max": 73.59999990463257
+  },
+  "completeResourceTtfbMs": {
+    "count": 37,
+    "median": 1.200000286102295,
+    "min": 0.7999997138977051,
+    "max": 3.1999998092651367
+  },
+  "completeResourceBodyMs": {
+    "count": 37,
+    "median": 49.799999713897705,
+    "min": 0.8000001907348633,
+    "max": 72.0
+  },
+  "completeResourceCount": 37,
+  "allOverlapResourceCount": 38,
+  "sceneEntries": [
+    {
+      "atMs": 15785,
+      "ms": 40.1,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 16033,
+      "ms": 37.7,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 16253,
+      "ms": 32.7,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 16474,
+      "ms": 32.5,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 16695,
+      "ms": 33.2,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 16913,
+      "ms": 31.2,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 17132,
+      "ms": 34.5,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 17351,
+      "ms": 34.6,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 17573,
+      "ms": 33.8,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 17796,
+      "ms": 31.8,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 18017,
+      "ms": 34.2,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 18238,
+      "ms": 31.7,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 18458,
+      "ms": 34.2,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 18677,
+      "ms": 33.5,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 18892,
+      "ms": 30.4,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 19106,
+      "ms": 31,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 19350,
+      "ms": 36.7,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 19577,
+      "ms": 34.8,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 19801,
+      "ms": 34.2,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 20020,
+      "ms": 34.4,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 20240,
+      "ms": 32.3,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 20461,
+      "ms": 34.8,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 20681,
+      "ms": 33,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 20897,
+      "ms": 32.2,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 21117,
+      "ms": 35.5,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 21341,
+      "ms": 33.6,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 21569,
+      "ms": 38,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 21793,
+      "ms": 35.1,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 22014,
+      "ms": 33.8,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 22236,
+      "ms": 30.8,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 22452,
+      "ms": 31.6,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 22666,
+      "ms": 31.4,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 22882,
+      "ms": 31.6,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 23096,
+      "ms": 30.9,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 23313,
+      "ms": 31.9,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 23526,
+      "ms": 30.8,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    {
+      "atMs": 23741,
+      "ms": 31.7,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    }
+  ],
+  "firstSample": {
+    "at": 15607.699999809265,
+    "lod": {
+      "componentCount": 866,
+      "levelCounts": {
+        "0": 866
+      },
+      "minimumLevel": 0,
+      "belowMinimum": 0,
+      "busy": true,
+      "pendingEvaluation": false,
+      "failedLevels": 0,
+      "visibility": {
+        "components": 866,
+        "occurrences": 3259,
+        "visibleOccurrences": 974,
+        "excludedOccurrences": 2285,
+        "fallbackOccurrences": 0,
+        "visibleComponents": 367,
+        "excludedComponents": 499,
+        "fallbackComponents": 0,
+        "pendingOccurrences": 0,
+        "dynamicFailOpen": 0
+      }
+    },
+    "adoption": {
+      "requested": 0,
+      "adopted": 0,
+      "rejected": 0,
+      "lastWaitMs": 0,
+      "maxWaitMs": 0,
+      "pending": 0,
+      "pendingMs": 0
+    },
+    "sceneSyncCount": 8,
+    "sceneSyncTotalMs": 237.99999904632568,
+    "lastScene": {
+      "atMs": 15262,
+      "ms": 46.2,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    "workers": {
+      "created": 6,
+      "terminated": 5,
+      "live": 1,
+      "peakLive": 4
+    },
+    "drawCount": 23353,
+    "lastDrawAt": 15605.400000095367,
+    "reservationCount": 1
+  },
+  "lastSample": {
+    "at": 23764.400000095367,
+    "lod": {
+      "componentCount": 866,
+      "levelCounts": {
+        "0": 840,
+        "1": 15,
+        "2": 11
+      },
+      "minimumLevel": 0,
+      "belowMinimum": 0,
+      "busy": true,
+      "pendingEvaluation": false,
+      "failedLevels": 0,
+      "visibility": {
+        "components": 866,
+        "occurrences": 3259,
+        "visibleOccurrences": 974,
+        "excludedOccurrences": 2285,
+        "fallbackOccurrences": 0,
+        "visibleComponents": 367,
+        "excludedComponents": 499,
+        "fallbackComponents": 0,
+        "pendingOccurrences": 0,
+        "dynamicFailOpen": 0
+      }
+    },
+    "adoption": {
+      "requested": 37,
+      "adopted": 37,
+      "rejected": 0,
+      "lastWaitMs": 147,
+      "maxWaitMs": 170.09999990463257,
+      "pending": 0,
+      "pendingMs": 0
+    },
+    "sceneSyncCount": 45,
+    "sceneSyncTotalMs": 1474.1999979019165,
+    "lastScene": {
+      "atMs": 23741,
+      "ms": 31.7,
+      "mode": "reuse",
+      "records": 3259,
+      "reason": ""
+    },
+    "workers": {
+      "created": 6,
+      "terminated": 5,
+      "live": 1,
+      "peakLive": 4
+    },
+    "drawCount": 188691,
+    "lastDrawAt": 23764.199999809265,
+    "reservationCount": 1
+  },
+  "inferredRequestLinks": {
+    "qualification": "Chronological join by exact16-hex CID and nearest preceding completed matching cache entry, each used once, within1s. This is inferred linkage, not a shared request ID. Intervals overlap CPU/render work and cannot be summed as independent CPU costs.",
+    "pairs": [
+      {
+        "cid": "efe28be218a10d76",
+        "resourceKey": "efe28be218a10d76-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 15607.400000095367,
+        "responseEnd": 15621.5,
+        "workerStart": 15624,
+        "workerEnd": 15625.099999904633
+      },
+      {
+        "cid": "d90d45f8be8ef3db",
+        "resourceKey": "d90d45f8be8ef3db-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 15797.800000190735,
+        "responseEnd": 15871.400000095367,
+        "workerStart": 15873.699999809265,
+        "workerEnd": 15875.199999809265
+      },
+      {
+        "cid": "3977e156a08f50ea",
+        "resourceKey": "3977e156a08f50ea-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 16044.400000095367,
+        "responseEnd": 16096.699999809265,
+        "workerStart": 16098.699999809265,
+        "workerEnd": 16099.199999809265
+      },
+      {
+        "cid": "539ba1594531bdfc",
+        "resourceKey": "539ba1594531bdfc-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 16263.699999809265,
+        "responseEnd": 16318.900000095367,
+        "workerStart": 16320.900000095367,
+        "workerEnd": 16321.5
+      },
+      {
+        "cid": "bbd31fecf07a2dd3",
+        "resourceKey": "bbd31fecf07a2dd3-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 16484.800000190735,
+        "responseEnd": 16538.099999904633,
+        "workerStart": 16540.400000095367,
+        "workerEnd": 16540.900000095367
+      },
+      {
+        "cid": "495d3b819c9173e6",
+        "resourceKey": "495d3b819c9173e6-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 16705,
+        "responseEnd": 16756.699999809265,
+        "workerStart": 16758.900000095367,
+        "workerEnd": 16759.400000095367
+      },
+      {
+        "cid": "93a8e6fc09c1a355",
+        "resourceKey": "93a8e6fc09c1a355-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 16922.599999904633,
+        "responseEnd": 16972.400000095367,
+        "workerStart": 16976.199999809265,
+        "workerEnd": 16976.599999904633
+      },
+      {
+        "cid": "2bcfa6ea9e7d7eb6",
+        "resourceKey": "2bcfa6ea9e7d7eb6-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 17141.300000190735,
+        "responseEnd": 17193.699999809265,
+        "workerStart": 17195.900000095367,
+        "workerEnd": 17196.400000095367
+      },
+      {
+        "cid": "e86d410af696cf3d",
+        "resourceKey": "e86d410af696cf3d-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 17361.699999809265,
+        "responseEnd": 17415.900000095367,
+        "workerStart": 17418.300000190735,
+        "workerEnd": 17418.800000190735
+      },
+      {
+        "cid": "c45ec8f8481a63ce",
+        "resourceKey": "c45ec8f8481a63ce-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 17584.900000095367,
+        "responseEnd": 17637.300000190735,
+        "workerStart": 17639.5,
+        "workerEnd": 17640.199999809265
+      },
+      {
+        "cid": "2600ba9b6f029457",
+        "resourceKey": "2600ba9b6f029457-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 17805.800000190735,
+        "responseEnd": 17856.699999809265,
+        "workerStart": 17859.5,
+        "workerEnd": 17860
+      },
+      {
+        "cid": "43e891adc4025478",
+        "resourceKey": "43e891adc4025478-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 18028.300000190735,
+        "responseEnd": 18079.699999809265,
+        "workerStart": 18083,
+        "workerEnd": 18083.5
+      },
+      {
+        "cid": "efe28be218a10d76",
+        "resourceKey": "efe28be218a10d76-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 18247.400000095367,
+        "responseEnd": 18300.300000190735,
+        "workerStart": 18302.400000095367,
+        "workerEnd": 18302.900000095367
+      },
+      {
+        "cid": "d90d45f8be8ef3db",
+        "resourceKey": "d90d45f8be8ef3db-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 18468.099999904633,
+        "responseEnd": 18519.199999809265,
+        "workerStart": 18521.199999809265,
+        "workerEnd": 18521.699999809265
+      },
+      {
+        "cid": "74854a4d9f8b5b06",
+        "resourceKey": "74854a4d9f8b5b06-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 18687.699999809265,
+        "responseEnd": 18737.900000095367,
+        "workerStart": 18739.5,
+        "workerEnd": 18740
+      },
+      {
+        "cid": "32148652af6721eb",
+        "resourceKey": "32148652af6721eb-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 18900.900000095367,
+        "responseEnd": 18903,
+        "workerStart": 18952.199999809265,
+        "workerEnd": 18952.599999904633
+      },
+      {
+        "cid": "68bba2031b13f39c",
+        "resourceKey": "68bba2031b13f39c-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 19115.099999904633,
+        "responseEnd": 19166.599999904633,
+        "workerStart": 19169.400000095367,
+        "workerEnd": 19170.400000095367
+      },
+      {
+        "cid": "c43c51c974e9852c",
+        "resourceKey": "c43c51c974e9852c-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 19359.900000095367,
+        "responseEnd": 19415,
+        "workerStart": 19418.099999904633,
+        "workerEnd": 19418.599999904633
+      },
+      {
+        "cid": "ccdecd00d0c8e267",
+        "resourceKey": "ccdecd00d0c8e267-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 19587.5,
+        "responseEnd": 19639.300000190735,
+        "workerStart": 19641.300000190735,
+        "workerEnd": 19641.900000095367
+      },
+      {
+        "cid": "4497372122424f17",
+        "resourceKey": "4497372122424f17-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 19810.599999904633,
+        "responseEnd": 19860.800000190735,
+        "workerStart": 19862.800000190735,
+        "workerEnd": 19863.099999904633
+      },
+      {
+        "cid": "fcdc6fc2fe1c7f38",
+        "resourceKey": "fcdc6fc2fe1c7f38-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 20031.5,
+        "responseEnd": 20082.900000095367,
+        "workerStart": 20084.800000190735,
+        "workerEnd": 20085.199999809265
+      },
+      {
+        "cid": "c628b78f5e1e4696",
+        "resourceKey": "c628b78f5e1e4696-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 20250,
+        "responseEnd": 20301.699999809265,
+        "workerStart": 20303.599999904633,
+        "workerEnd": 20304
+      },
+      {
+        "cid": "41fdb9d804acd53b",
+        "resourceKey": "41fdb9d804acd53b-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 20471.099999904633,
+        "responseEnd": 20523.5,
+        "workerStart": 20525.699999809265,
+        "workerEnd": 20526.199999809265
+      },
+      {
+        "cid": "7cbc0ffad65dd3b8",
+        "resourceKey": "7cbc0ffad65dd3b8-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 20690.599999904633,
+        "responseEnd": 20740.5,
+        "workerStart": 20742.900000095367,
+        "workerEnd": 20743.599999904633
+      },
+      {
+        "cid": "3977e156a08f50ea",
+        "resourceKey": "3977e156a08f50ea-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 20906.900000095367,
+        "responseEnd": 20957.900000095367,
+        "workerStart": 20959.900000095367,
+        "workerEnd": 20960.400000095367
+      },
+      {
+        "cid": "539ba1594531bdfc",
+        "resourceKey": "539ba1594531bdfc-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 21128.199999809265,
+        "responseEnd": 21181.300000190735,
+        "workerStart": 21183.300000190735,
+        "workerEnd": 21183.800000190735
+      },
+      {
+        "cid": "bbd31fecf07a2dd3",
+        "resourceKey": "bbd31fecf07a2dd3-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 21351.699999809265,
+        "responseEnd": 21405.900000095367,
+        "workerStart": 21407.900000095367,
+        "workerEnd": 21408.300000190735
+      },
+      {
+        "cid": "495d3b819c9173e6",
+        "resourceKey": "495d3b819c9173e6-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 21580.099999904633,
+        "responseEnd": 21630.699999809265,
+        "workerStart": 21632.800000190735,
+        "workerEnd": 21633.5
+      },
+      {
+        "cid": "6fc3436c1df66461",
+        "resourceKey": "6fc3436c1df66461-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 21804.199999809265,
+        "responseEnd": 21856.699999809265,
+        "workerStart": 21858.900000095367,
+        "workerEnd": 21859.300000190735
+      },
+      {
+        "cid": "8ddf9f6f26542d04",
+        "resourceKey": "8ddf9f6f26542d04-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 22025.400000095367,
+        "responseEnd": 22081.099999904633,
+        "workerStart": 22083.5,
+        "workerEnd": 22083.900000095367
+      },
+      {
+        "cid": "93a8e6fc09c1a355",
+        "resourceKey": "93a8e6fc09c1a355-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 22245.300000190735,
+        "responseEnd": 22249.699999809265,
+        "workerStart": 22299,
+        "workerEnd": 22299.300000190735
+      },
+      {
+        "cid": "2bcfa6ea9e7d7eb6",
+        "resourceKey": "2bcfa6ea9e7d7eb6-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 22461.199999809265,
+        "responseEnd": 22465.699999809265,
+        "workerStart": 22513.099999904633,
+        "workerEnd": 22513.5
+      },
+      {
+        "cid": "b44f377e04ed2450",
+        "resourceKey": "b44f377e04ed2450-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 22676.400000095367,
+        "responseEnd": 22728.099999904633,
+        "workerStart": 22730.5,
+        "workerEnd": 22730.900000095367
+      },
+      {
+        "cid": "e86d410af696cf3d",
+        "resourceKey": "e86d410af696cf3d-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 22891,
+        "responseEnd": 22942.300000190735,
+        "workerStart": 22944.300000190735,
+        "workerEnd": 22944.800000190735
+      },
+      {
+        "cid": "c45ec8f8481a63ce",
+        "resourceKey": "c45ec8f8481a63ce-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 23105.599999904633,
+        "responseEnd": 23158.699999809265,
+        "workerStart": 23161,
+        "workerEnd": 23161.5
+      },
+      {
+        "cid": "fc4ac0c744660de4",
+        "resourceKey": "fc4ac0c744660de4-t2-l1.500000e-3-a3.500000e-1.tess",
+        "resourceStart": 23322.599999904633,
+        "responseEnd": 23372.900000095367,
+        "workerStart": 23375.099999904633,
+        "workerEnd": 23375.599999904633
+      },
+      {
+        "cid": "2600ba9b6f029457",
+        "resourceKey": "2600ba9b6f029457-t2-l5.000000e-4-a3.500000e-1.tess",
+        "resourceStart": 23535.900000095367,
+        "responseEnd": 23540.199999809265,
+        "workerStart": 23587.400000095367,
+        "workerEnd": 23589.099999904633
+      }
+    ],
+    "responseEndToWorkerStartMs": {
+      "count": 37,
+      "median": 2.200000286102295,
+      "min": 1.5999999046325684,
+      "max": 49.30000019073486
+    },
+    "workerEndToNextResourceStartMs": {
+      "count": 36,
+      "median": 165.0,
+      "min": 160.09999990463257,
+      "max": 189.5
+    }
+  },
+  "boundsInvalidationEvidence": {
+    "qualification": "Read-only decoded cached L0/L1 bounds for first5 distinct profiled CIDs; no tessellation or cache writes. This shows one supported identity-invalidation input, not every React dependency.",
+    "pairs": [
+      {
+        "cid": "efe28be218a10d76",
+        "L0": {
+          "object": "433824ea5ae20b9669f3271bdd10f830325ba39ab5150f86f397acb17ee97ef2",
+          "bounds": {
+            "min": [
+              -18.068580627441406,
+              -259.29998779296875,
+              -7.932678699493408
+            ],
+            "max": [
+              16.299842834472656,
+              181.5625457763672,
+              43.293235778808594
+            ]
+          }
+        },
+        "L1": {
+          "object": "062fa8004b5dd6f2d889cb091e9488e16a189fc1e6d47314f82b30b444a970f1",
+          "bounds": {
+            "min": [
+              -18.067062377929688,
+              -259.296875,
+              -7.951031684875488
+            ],
+            "max": [
+              16.298646926879883,
+              181.5844268798828,
+              43.299983978271484
+            ]
+          }
+        },
+        "equal": false
+      },
+      {
+        "cid": "d90d45f8be8ef3db",
+        "L0": {
+          "object": "d902eea28f7ae7ad3d2ce7377c88e977cbbf43e2f07290adcb4cee9b1987101f",
+          "bounds": {
+            "min": [
+              -21.504859924316406,
+              -259.2260437011719,
+              -43.29962921142578
+            ],
+            "max": [
+              16.227792739868164,
+              181.4195098876953,
+              3.2206101417541504
+            ]
+          }
+        },
+        "L1": {
+          "object": "25e4a18e7d329f13c937560bcd441dbe4769f04f355cde7e6e2016f45a9cc210",
+          "bounds": {
+            "min": [
+              -21.501110076904297,
+              -259.2989196777344,
+              -43.29999923706055
+            ],
+            "max": [
+              16.299522399902344,
+              181.4300994873047,
+              3.2678003311157227
+            ]
+          }
+        },
+        "equal": false
+      },
+      {
+        "cid": "3977e156a08f50ea",
+        "L0": {
+          "object": "3268aa3cedda9e78f324de75b39fb681041cadcdbf8682e0e9ce902c82fcee05",
+          "bounds": {
+            "min": [
+              -37.33143997192383,
+              -259.29998779296875,
+              -5.013236999511719
+            ],
+            "max": [
+              -1.7001575231552124,
+              106.77146911621094,
+              43.293235778808594
+            ]
+          }
+        },
+        "L1": {
+          "object": "83c02f8bfece93a6052d633b4009052c94c6fc4a6dbaee451f5648f76035e523",
+          "bounds": {
+            "min": [
+              -37.334571838378906,
+              -259.296875,
+              -5.013236999511719
+            ],
+            "max": [
+              -1.7013529539108276,
+              106.77436065673828,
+              43.299747467041016
+            ]
+          }
+        },
+        "equal": false
+      },
+      {
+        "cid": "539ba1594531bdfc",
+        "L0": {
+          "object": "22d5747d1eb2a20b866fb091bfb8801cff2cc6509394ba9ca3f9fc7ca9f92584",
+          "bounds": {
+            "min": [
+              -39.01371765136719,
+              -259.2260437011719,
+              -43.29999923706055
+            ],
+            "max": [
+              -1.772207498550415,
+              106.13367462158203,
+              4.942376136779785
+            ]
+          }
+        },
+        "L1": {
+          "object": "317bb851df7260a61d44dbe01fb74396d3ddedcef6776a38a4e8a37ea255e7b9",
+          "bounds": {
+            "min": [
+              -39.02431869506836,
+              -259.2989196777344,
+              -43.29999923706055
+            ],
+            "max": [
+              -1.7004785537719727,
+              106.15750885009766,
+              5.005494117736816
+            ]
+          }
+        },
+        "equal": false
+      },
+      {
+        "cid": "bbd31fecf07a2dd3",
+        "L0": {
+          "object": "650846a06fa3d46c1f23758004c2ec8e419e5745d85850d890fb31ab4dfd91dc",
+          "bounds": {
+            "min": [
+              -51.341434478759766,
+              -218.3000030517578,
+              -7.938356399536133
+            ],
+            "max": [
+              -1.7001575231552124,
+              145.2818603515625,
+              42.08175277709961
+            ]
+          }
+        },
+        "L1": {
+          "object": "b0db10dcbb82f2099838e8ef4ce04270591ba3a4dc8fc5624a10de00006f0896",
+          "bounds": {
+            "min": [
+              -51.35319519042969,
+              -218.296875,
+              -7.9508843421936035
+            ],
+            "max": [
+              -1.7013529539108276,
+              145.30081176757812,
+              42.099735260009766
+            ]
+          }
+        },
+        "equal": false
+      }
+    ]
+  }
+}

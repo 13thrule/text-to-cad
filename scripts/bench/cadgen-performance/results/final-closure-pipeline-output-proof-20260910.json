@@ -1,0 +1,893 @@
+{
+  "complete": true,
+  "finalMonoAndSplitEveryActualOutputIdentical": true,
+  "helperSource": "from pathlib import Path\nimport json\nimport statistics\n\nROOT = Path('/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/scripts/bench/cadgen-performance/results')\nSUFFIX = 'closure-final-20260910'\nPAIRS = {\n    'mono': ('mono-after-unseen-cache-final-20260910.json', f'mono-after-unseen-{SUFFIX}.json', 'mono-before-unseen-final-20260910.json'),\n    'imported': ('imported-after-unseen-cache-final-20260910.json', f'imported-after-unseen-{SUFFIX}.json', 'imported-before-unseen-final-20260910.json'),\n    'split': ('planetary-split-after-cache-final-20260910.json', f'planetary-split-after-{SUFFIX}.json', 'planetary-split-before-novel-final-20260910.json'),\n}\n\n\ndef output_sha(row):\n    if row.get('actualRootStepSha256'):\n        return row['actualRootStepSha256']\n    values = list(row['actualOutputSha256'].values())\n    assert len(values) == 1, values\n    return values[0]\n\n\ndef median_rows(report, kind, novel):\n    return [row for row in report['runs'] if row['measured'] and row['variantKind'] == kind and row['novelEdit'] == novel]\n\n\ndef main():\n    reports = {}\n    proof = {'qualification': 'Current runtime actual emitted STEP hashes are compared with the prior validated current runtime, by call ordinal and exact run label. Baseline7aa emitted different STEP bytes; its geometric-equivalence qualification remains separate.', 'workloads': {}, 'summary': []}\n    for workload, (previous_name, current_name, before_name) in PAIRS.items():\n        previous, current, before = [json.loads((ROOT / name).read_text(encoding='utf-8')) for name in (previous_name, current_name, before_name)]\n        assert current['runtimeUnchangedDuringStudy'] and current['sourceRestored'] and current['inputClosureUnchangedAfterRestoration']\n        old_rows, rows = [data['runs'] for data in (previous, current)]\n        assert [row['run'] for row in old_rows] == [row['run'] for row in rows] and len(rows) == 32\n        checks = []\n        for ordinal, (previous_row, row) in enumerate(zip(old_rows, rows)):\n            name = row['run']\n            expected, actual = output_sha(previous_row), output_sha(row)\n            assert actual == expected, (workload, name, expected, actual)\n            assert row['exit'] == 0\n            checks.append({'ordinal': ordinal, 'run': name, 'expectedSha256': expected, 'actualSha256': actual, 'passed': True})\n        proof['workloads'][workload] = {'previousReport': previous_name, 'currentReport': current_name, 'baselineReport': before_name, 'sourceFingerprint': current['metadata']['sourceFingerprint'], 'callCount': len(rows), 'uniqueOutputVariants': len({output_sha(row) for row in rows}), 'actualOutputChecks': checks}\n        reports[workload] = current\n        for kind, novel in [('unchanged', False), ('geometry', False), ('placement', False), ('geometry', True), ('placement', True)]:\n            group = 'novelSummary' if novel else 'summary'\n            old_ms, now_ms, before_ms = [data[group][kind]['medianMs'] for data in (previous, current, before)]\n            selected = median_rows(current, kind, novel)\n            preview = [row['firstPreviewMs'] for row in selected if row['firstPreviewMs'] is not None]\n            proof['summary'].append({'workload': workload, 'kind': kind, 'novel': novel, 'beforeMs': before_ms, 'previousCurrentMs': old_ms, 'finalCurrentMs': now_ms, 'changeSincePreviousCurrentPercent': (now_ms/old_ms-1)*100, 'changeSinceBaselinePercent': (now_ms/before_ms-1)*100, 'finalPreviewMedianMs': statistics.median(preview) if preview else None})\n    fingerprints = {data['metadata']['sourceFingerprint'] for data in reports.values()}\n    assert len(fingerprints) == 1, fingerprints\n    mono = [(row['run'], output_sha(row)) for row in reports['mono']['runs']]\n    split = [(row['run'], output_sha(row)) for row in reports['split']['runs']]\n    assert mono == split\n    proof['finalMonoAndSplitEveryActualOutputIdentical'] = True\n    proof['unchangedSourceFingerprint'] = next(iter(fingerprints))\n    proof['complete'] = True\n    target = ROOT / 'final-closure-pipeline-output-proof-20260910.json'\n    assert not target.exists()\n    target.write_text(json.dumps(proof, indent=2, sort_keys=True) + '\\n', encoding='utf-8')\n    print(json.dumps({'proof': str(target), 'summary': proof['summary'], 'sourceFingerprint': proof['unchangedSourceFingerprint']}, indent=2))\n\n\nif __name__ == '__main__':\n    main()\n",
+  "qualification": "Current runtime actual emitted STEP hashes are compared with the prior validated current runtime, by call ordinal and exact run label. Baseline7aa emitted different STEP bytes; its geometric-equivalence qualification remains separate. Root-body stages are integer millisecond event readings; medians are descriptive. The earlier warm-daemon empty-store diagnostic used its own preceding runtime snapshot and is not part of this fingerprint check.",
+  "summary": [
+    {
+      "beforeMs": 18.81458330899477,
+      "changeSinceBaselinePercent": -15.111948046740908,
+      "changeSincePreviousCurrentPercent": 15.973810301598323,
+      "finalCurrentMs": 15.971333254128695,
+      "finalPreviewMedianMs": null,
+      "finalRootBodyMedianMs": null,
+      "kind": "unchanged",
+      "novel": false,
+      "previousCurrentMs": 13.77149997279048,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 1020.1665419153869,
+      "changeSinceBaselinePercent": -32.505554602279865,
+      "changeSincePreviousCurrentPercent": 10.518238577889205,
+      "finalCurrentMs": 688.5557495988905,
+      "finalPreviewMedianMs": 482.74958273395896,
+      "finalRootBodyMedianMs": 376.0,
+      "kind": "geometry",
+      "novel": false,
+      "previousCurrentMs": 623.0245418846607,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 939.1419589519501,
+      "changeSinceBaselinePercent": -26.915557281068146,
+      "changeSincePreviousCurrentPercent": 9.786521192667252,
+      "finalCurrentMs": 686.3666670396924,
+      "finalPreviewMedianMs": 482.9178750514984,
+      "finalRootBodyMedianMs": 370.0,
+      "kind": "placement",
+      "novel": false,
+      "previousCurrentMs": 625.1830002292991,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 942.9418332874775,
+      "changeSinceBaselinePercent": 0.9769867314712855,
+      "changeSincePreviousCurrentPercent": 10.172939422095428,
+      "finalCurrentMs": 952.1542498841882,
+      "finalPreviewMedianMs": 506.8265409208834,
+      "finalRootBodyMedianMs": 387.0,
+      "kind": "geometry",
+      "novel": true,
+      "previousCurrentMs": 864.2360409721732,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 930.4768750444055,
+      "changeSinceBaselinePercent": 2.2444314851877367,
+      "changeSincePreviousCurrentPercent": 13.326047630059112,
+      "finalCurrentMs": 951.360790990293,
+      "finalPreviewMedianMs": 496.18233274668455,
+      "finalRootBodyMedianMs": 379.0,
+      "kind": "placement",
+      "novel": true,
+      "previousCurrentMs": 839.4899591803551,
+      "workload": "mono"
+    },
+    {
+      "beforeMs": 15.704999677836895,
+      "changeSinceBaselinePercent": -27.801393751984726,
+      "changeSincePreviousCurrentPercent": 12.346826268002298,
+      "finalCurrentMs": 11.338790878653526,
+      "finalPreviewMedianMs": null,
+      "finalRootBodyMedianMs": null,
+      "kind": "unchanged",
+      "novel": false,
+      "previousCurrentMs": 10.09266683831811,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 867.9126668721437,
+      "changeSinceBaselinePercent": -55.33358679731576,
+      "changeSincePreviousCurrentPercent": 2.7070523194492546,
+      "finalCurrentMs": 387.6654580235481,
+      "finalPreviewMedianMs": 140.08599985390902,
+      "finalRootBodyMedianMs": 31.0,
+      "kind": "geometry",
+      "novel": false,
+      "previousCurrentMs": 377.447749953717,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 855.1492500118911,
+      "changeSinceBaselinePercent": -50.70606094149108,
+      "changeSincePreviousCurrentPercent": 0.1859856376709157,
+      "finalCurrentMs": 421.5367501601577,
+      "finalPreviewMedianMs": 167.86799998953938,
+      "finalRootBodyMedianMs": 59.0,
+      "kind": "placement",
+      "novel": false,
+      "previousCurrentMs": 420.7542077638209,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 926.8417907878757,
+      "changeSinceBaselinePercent": -29.871836629752245,
+      "changeSincePreviousCurrentPercent": 3.100561127205448,
+      "finalCurrentMs": 649.9771252274513,
+      "finalPreviewMedianMs": 153.22412503883243,
+      "finalRootBodyMedianMs": 44.0,
+      "kind": "geometry",
+      "novel": true,
+      "previousCurrentMs": 630.4302499629557,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 869.4669171236455,
+      "changeSinceBaselinePercent": -14.590410434677658,
+      "changeSincePreviousCurrentPercent": 11.761442519727927,
+      "finalCurrentMs": 742.6081253215671,
+      "finalPreviewMedianMs": 194.58629097789526,
+      "finalRootBodyMedianMs": 66.0,
+      "kind": "placement",
+      "novel": true,
+      "previousCurrentMs": 664.4582501612604,
+      "workload": "imported"
+    },
+    {
+      "beforeMs": 22.455834317952394,
+      "changeSinceBaselinePercent": -25.912350643213912,
+      "changeSincePreviousCurrentPercent": -0.3894264652081203,
+      "finalCurrentMs": 16.636999789625406,
+      "finalPreviewMedianMs": null,
+      "finalRootBodyMedianMs": null,
+      "kind": "unchanged",
+      "novel": false,
+      "previousCurrentMs": 16.70204196125269,
+      "workload": "split"
+    },
+    {
+      "beforeMs": 574.1972499527037,
+      "changeSinceBaselinePercent": -21.01009277826561,
+      "changeSincePreviousCurrentPercent": -11.530528882774838,
+      "finalCurrentMs": 453.557875007391,
+      "finalPreviewMedianMs": 254.51312493532896,
+      "finalRootBodyMedianMs": 119.0,
+      "kind": "geometry",
+      "novel": false,
+      "previousCurrentMs": 512.6716247759759,
+      "workload": "split"
+    },
+    {
+      "beforeMs": 537.3273342847824,
+      "changeSinceBaselinePercent": -29.376072725725788,
+      "changeSincePreviousCurrentPercent": -13.603053888707716,
+      "finalCurrentMs": 379.481665790081,
+      "finalPreviewMedianMs": 180.79504230991006,
+      "finalRootBodyMedianMs": 49.0,
+      "kind": "placement",
+      "novel": false,
+      "previousCurrentMs": 439.23041597008705,
+      "workload": "split"
+    },
+    {
+      "beforeMs": 597.4093331024051,
+      "changeSinceBaselinePercent": 14.890795318299288,
+      "changeSincePreviousCurrentPercent": -12.270131463302414,
+      "finalCurrentMs": 686.368334107101,
+      "finalPreviewMedianMs": 268.84579192847013,
+      "finalRootBodyMedianMs": 136.0,
+      "kind": "geometry",
+      "novel": true,
+      "previousCurrentMs": 782.3656247928739,
+      "workload": "split"
+    },
+    {
+      "beforeMs": 545.6634173169732,
+      "changeSinceBaselinePercent": 9.968461719580146,
+      "changeSincePreviousCurrentPercent": -6.314126835962219,
+      "finalCurrentMs": 600.0576661899686,
+      "finalPreviewMedianMs": 178.6812082864344,
+      "finalRootBodyMedianMs": 49.0,
+      "kind": "placement",
+      "novel": true,
+      "previousCurrentMs": 640.499624889344,
+      "workload": "split"
+    }
+  ],
+  "unchangedSourceFingerprint": "f28ff6af1be5d901aaff6006843a1268516ccfccea2bc41b1630b64823028150",
+  "workloads": {
+    "imported": {
+      "actualOutputChecks": [
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 0,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "expectedSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "ordinal": 1,
+          "passed": true,
+          "run": "prime-geometry"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 2,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "expectedSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "ordinal": 3,
+          "passed": true,
+          "run": "prime-placement"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 4,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 5,
+          "passed": true,
+          "run": "unchanged-1"
+        },
+        {
+          "actualSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "expectedSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "ordinal": 6,
+          "passed": true,
+          "run": "geometry-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 7,
+          "passed": true,
+          "run": "restore-geometry-1"
+        },
+        {
+          "actualSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "expectedSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "ordinal": 8,
+          "passed": true,
+          "run": "placement-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 9,
+          "passed": true,
+          "run": "restore-placement-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 10,
+          "passed": true,
+          "run": "unchanged-2"
+        },
+        {
+          "actualSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "expectedSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "ordinal": 11,
+          "passed": true,
+          "run": "geometry-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 12,
+          "passed": true,
+          "run": "restore-geometry-2"
+        },
+        {
+          "actualSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "expectedSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "ordinal": 13,
+          "passed": true,
+          "run": "placement-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 14,
+          "passed": true,
+          "run": "restore-placement-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 15,
+          "passed": true,
+          "run": "unchanged-3"
+        },
+        {
+          "actualSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "expectedSha256": "731db29fbc2ae21fa5df9ddf6348e083a017ba2375c768b84a9e0aabc432724a",
+          "ordinal": 16,
+          "passed": true,
+          "run": "geometry-3"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 17,
+          "passed": true,
+          "run": "restore-geometry-3"
+        },
+        {
+          "actualSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "expectedSha256": "8457792288f3984cf8317a3818a6fe2bbd8a7b2390fa431bde03e76a2970cd30",
+          "ordinal": 18,
+          "passed": true,
+          "run": "placement-3"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 19,
+          "passed": true,
+          "run": "restore-placement-3"
+        },
+        {
+          "actualSha256": "7f1c871e3f173b91977ca245bd2fdad8908de36c17d1c08e6c9a607ae94d4c66",
+          "expectedSha256": "7f1c871e3f173b91977ca245bd2fdad8908de36c17d1c08e6c9a607ae94d4c66",
+          "ordinal": 20,
+          "passed": true,
+          "run": "novel-geometry-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 21,
+          "passed": true,
+          "run": "restore-novel-geometry-1"
+        },
+        {
+          "actualSha256": "03ec53d6aa4c913e127207607b66310c9cbb5e9d1b985a6bce728c6b2e138b52",
+          "expectedSha256": "03ec53d6aa4c913e127207607b66310c9cbb5e9d1b985a6bce728c6b2e138b52",
+          "ordinal": 22,
+          "passed": true,
+          "run": "novel-geometry-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 23,
+          "passed": true,
+          "run": "restore-novel-geometry-2"
+        },
+        {
+          "actualSha256": "27d4c774b3c98cc95315c637f7e85b06e78cd5fde1eb58c18f2be2bc73e7954e",
+          "expectedSha256": "27d4c774b3c98cc95315c637f7e85b06e78cd5fde1eb58c18f2be2bc73e7954e",
+          "ordinal": 24,
+          "passed": true,
+          "run": "novel-geometry-3"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 25,
+          "passed": true,
+          "run": "restore-novel-geometry-3"
+        },
+        {
+          "actualSha256": "95568725591a9018ce5d548a4ffc3ae0c21976dbba58c10a29fe5d3f6a60cb53",
+          "expectedSha256": "95568725591a9018ce5d548a4ffc3ae0c21976dbba58c10a29fe5d3f6a60cb53",
+          "ordinal": 26,
+          "passed": true,
+          "run": "novel-placement-1"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 27,
+          "passed": true,
+          "run": "restore-novel-placement-1"
+        },
+        {
+          "actualSha256": "02da77fb67c72d6379dde2a4272fed56e51302cc93dfb1719220a07ae939473c",
+          "expectedSha256": "02da77fb67c72d6379dde2a4272fed56e51302cc93dfb1719220a07ae939473c",
+          "ordinal": 28,
+          "passed": true,
+          "run": "novel-placement-2"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 29,
+          "passed": true,
+          "run": "restore-novel-placement-2"
+        },
+        {
+          "actualSha256": "0a816af4b32e146ebf8f3f4a55d1926e5533720510eef757e23d3f178e5d48ab",
+          "expectedSha256": "0a816af4b32e146ebf8f3f4a55d1926e5533720510eef757e23d3f178e5d48ab",
+          "ordinal": 30,
+          "passed": true,
+          "run": "novel-placement-3"
+        },
+        {
+          "actualSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "expectedSha256": "1750dc61e08ba5429dfa773258cb0548acd0b57abb14a56a59221f57994dbf3d",
+          "ordinal": 31,
+          "passed": true,
+          "run": "restore-novel-placement-3"
+        }
+      ],
+      "baselineReport": "imported-before-unseen-final-20260910.json",
+      "callCount": 32,
+      "currentReport": "imported-after-unseen-closure-final-20260910.json",
+      "previousReport": "imported-after-unseen-cache-final-20260910.json",
+      "sourceFingerprint": "f28ff6af1be5d901aaff6006843a1268516ccfccea2bc41b1630b64823028150",
+      "uniqueOutputVariants": 9
+    },
+    "mono": {
+      "actualOutputChecks": [
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 0,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 1,
+          "passed": true,
+          "run": "prime-geometry"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 2,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 3,
+          "passed": true,
+          "run": "prime-placement"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 4,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 5,
+          "passed": true,
+          "run": "unchanged-1"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 6,
+          "passed": true,
+          "run": "geometry-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 7,
+          "passed": true,
+          "run": "restore-geometry-1"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 8,
+          "passed": true,
+          "run": "placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 9,
+          "passed": true,
+          "run": "restore-placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 10,
+          "passed": true,
+          "run": "unchanged-2"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 11,
+          "passed": true,
+          "run": "geometry-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 12,
+          "passed": true,
+          "run": "restore-geometry-2"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 13,
+          "passed": true,
+          "run": "placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 14,
+          "passed": true,
+          "run": "restore-placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 15,
+          "passed": true,
+          "run": "unchanged-3"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 16,
+          "passed": true,
+          "run": "geometry-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 17,
+          "passed": true,
+          "run": "restore-geometry-3"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 18,
+          "passed": true,
+          "run": "placement-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 19,
+          "passed": true,
+          "run": "restore-placement-3"
+        },
+        {
+          "actualSha256": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+          "expectedSha256": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+          "ordinal": 20,
+          "passed": true,
+          "run": "novel-geometry-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 21,
+          "passed": true,
+          "run": "restore-novel-geometry-1"
+        },
+        {
+          "actualSha256": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+          "expectedSha256": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+          "ordinal": 22,
+          "passed": true,
+          "run": "novel-geometry-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 23,
+          "passed": true,
+          "run": "restore-novel-geometry-2"
+        },
+        {
+          "actualSha256": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+          "expectedSha256": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+          "ordinal": 24,
+          "passed": true,
+          "run": "novel-geometry-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 25,
+          "passed": true,
+          "run": "restore-novel-geometry-3"
+        },
+        {
+          "actualSha256": "ff48468f93f8d36b2858fa81b01341dcf2ada4c35d7641da5cd0c06d2d560296",
+          "expectedSha256": "ff48468f93f8d36b2858fa81b01341dcf2ada4c35d7641da5cd0c06d2d560296",
+          "ordinal": 26,
+          "passed": true,
+          "run": "novel-placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 27,
+          "passed": true,
+          "run": "restore-novel-placement-1"
+        },
+        {
+          "actualSha256": "b4355917f7e4e3e2218ffe7fad40ae5dc6f517cb72ec3c4cc86c213e4427ad93",
+          "expectedSha256": "b4355917f7e4e3e2218ffe7fad40ae5dc6f517cb72ec3c4cc86c213e4427ad93",
+          "ordinal": 28,
+          "passed": true,
+          "run": "novel-placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 29,
+          "passed": true,
+          "run": "restore-novel-placement-2"
+        },
+        {
+          "actualSha256": "484f17d07dfdf78ceea294293c1c4cefdb1338ed7d1a4100bdf00ad944748062",
+          "expectedSha256": "484f17d07dfdf78ceea294293c1c4cefdb1338ed7d1a4100bdf00ad944748062",
+          "ordinal": 30,
+          "passed": true,
+          "run": "novel-placement-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 31,
+          "passed": true,
+          "run": "restore-novel-placement-3"
+        }
+      ],
+      "baselineReport": "mono-before-unseen-final-20260910.json",
+      "callCount": 32,
+      "currentReport": "mono-after-unseen-closure-final-20260910.json",
+      "previousReport": "mono-after-unseen-cache-final-20260910.json",
+      "sourceFingerprint": "f28ff6af1be5d901aaff6006843a1268516ccfccea2bc41b1630b64823028150",
+      "uniqueOutputVariants": 9
+    },
+    "split": {
+      "actualOutputChecks": [
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 0,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 1,
+          "passed": true,
+          "run": "prime-geometry"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 2,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 3,
+          "passed": true,
+          "run": "prime-placement"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 4,
+          "passed": true,
+          "run": "prime-baseline"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 5,
+          "passed": true,
+          "run": "unchanged-1"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 6,
+          "passed": true,
+          "run": "geometry-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 7,
+          "passed": true,
+          "run": "restore-geometry-1"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 8,
+          "passed": true,
+          "run": "placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 9,
+          "passed": true,
+          "run": "restore-placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 10,
+          "passed": true,
+          "run": "unchanged-2"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 11,
+          "passed": true,
+          "run": "geometry-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 12,
+          "passed": true,
+          "run": "restore-geometry-2"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 13,
+          "passed": true,
+          "run": "placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 14,
+          "passed": true,
+          "run": "restore-placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 15,
+          "passed": true,
+          "run": "unchanged-3"
+        },
+        {
+          "actualSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "expectedSha256": "92a88d7a46a191261d944c678ffaef566e2ac51d9035b8d32285adb6eed6c8fd",
+          "ordinal": 16,
+          "passed": true,
+          "run": "geometry-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 17,
+          "passed": true,
+          "run": "restore-geometry-3"
+        },
+        {
+          "actualSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "expectedSha256": "ace1b06b8254ec376bb6c869b93db9ced75f1f90fe6dfd7b0c626483f4c835b7",
+          "ordinal": 18,
+          "passed": true,
+          "run": "placement-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 19,
+          "passed": true,
+          "run": "restore-placement-3"
+        },
+        {
+          "actualSha256": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+          "expectedSha256": "e3f3dc073015ac65f2ac0debd4a40bc610b08e929c5ecce5ea7641d1cd61f22d",
+          "ordinal": 20,
+          "passed": true,
+          "run": "novel-geometry-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 21,
+          "passed": true,
+          "run": "restore-novel-geometry-1"
+        },
+        {
+          "actualSha256": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+          "expectedSha256": "0a80fe165fe18ff6ad505e9525b7c30bfbb9b457a43cdb8ef342b3ba9e69dc44",
+          "ordinal": 22,
+          "passed": true,
+          "run": "novel-geometry-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 23,
+          "passed": true,
+          "run": "restore-novel-geometry-2"
+        },
+        {
+          "actualSha256": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+          "expectedSha256": "0996cef1cf7230cdd2f662f18801916400a150053d3961847a11534fa561ea4a",
+          "ordinal": 24,
+          "passed": true,
+          "run": "novel-geometry-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 25,
+          "passed": true,
+          "run": "restore-novel-geometry-3"
+        },
+        {
+          "actualSha256": "ff48468f93f8d36b2858fa81b01341dcf2ada4c35d7641da5cd0c06d2d560296",
+          "expectedSha256": "ff48468f93f8d36b2858fa81b01341dcf2ada4c35d7641da5cd0c06d2d560296",
+          "ordinal": 26,
+          "passed": true,
+          "run": "novel-placement-1"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 27,
+          "passed": true,
+          "run": "restore-novel-placement-1"
+        },
+        {
+          "actualSha256": "b4355917f7e4e3e2218ffe7fad40ae5dc6f517cb72ec3c4cc86c213e4427ad93",
+          "expectedSha256": "b4355917f7e4e3e2218ffe7fad40ae5dc6f517cb72ec3c4cc86c213e4427ad93",
+          "ordinal": 28,
+          "passed": true,
+          "run": "novel-placement-2"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 29,
+          "passed": true,
+          "run": "restore-novel-placement-2"
+        },
+        {
+          "actualSha256": "484f17d07dfdf78ceea294293c1c4cefdb1338ed7d1a4100bdf00ad944748062",
+          "expectedSha256": "484f17d07dfdf78ceea294293c1c4cefdb1338ed7d1a4100bdf00ad944748062",
+          "ordinal": 30,
+          "passed": true,
+          "run": "novel-placement-3"
+        },
+        {
+          "actualSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "expectedSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+          "ordinal": 31,
+          "passed": true,
+          "run": "restore-novel-placement-3"
+        }
+      ],
+      "baselineReport": "planetary-split-before-novel-final-20260910.json",
+      "callCount": 32,
+      "currentReport": "planetary-split-after-closure-final-20260910.json",
+      "previousReport": "planetary-split-after-cache-final-20260910.json",
+      "sourceFingerprint": "f28ff6af1be5d901aaff6006843a1268516ccfccea2bc41b1630b64823028150",
+      "uniqueOutputVariants": 9
+    }
+  }
+}
