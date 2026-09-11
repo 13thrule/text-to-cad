@@ -196,6 +196,14 @@
       "archiveSha256": "af81d9778c77b359d3401527e903c1db433da39921ae899f4fd78fe2e2b4d4c3"
     },
     {
+      "path": "installed-wheel-viewer-9be4f5424-20260911.json",
+      "archive": "installed-wheel-viewer-9be4f5424-20260911.json.gz",
+      "bytes": 1162263,
+      "sha256": "825bad7b0f74a4c729b5427e1712cc4a20f1926d3a266d1858cba7708d3bbd74",
+      "archiveBytes": 390107,
+      "archiveSha256": "2cb7039dfc2f0c2c28bdd36ade899c9f512257a1ff5345f4e692010eb542e840"
+    },
+    {
       "path": "mesher-v2-final-curved-20260910.json",
       "archive": "mesher-v2-final-curved-20260910.json.gz",
       "bytes": 332703,

@@ -61,7 +61,13 @@ occurrences with the selected face and matching selectors, and delayed-reply
 rejection across a model switch. All reservations, staged buffers and workers
 drain. The restoration close-up and complete planetary smoke were visually
 reviewed. Existing user viewers remain running; private measurement instances
-closed. The new wheel's viewer assets still require their final packaging check.
+closed. The [viewer wheel check](results/installed-wheel-viewer-9be4f5424-20260911.json.gz)
+passes for `9be4f5424`: all 22 client assets match the source build, fresh staging,
+wheel, isolated installation and actual HTTP responses. A supplemental capture
+records module paths, hashes, import paths and kernel-free state inside the exact
+server process used for those HTTP checks. Both owned servers exited normally.
+This asset-only check does not replace full Python/export validation after
+subsequent backend changes.
 
 The [matched selection retention study](VIEWER-SELECTION-RETENTION-20260911.md)
 shows the same 246 detail adoptions retaining 9 workspace contexts instead of

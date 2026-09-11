@@ -155,6 +155,9 @@ last runtime changes.
   `8971f760d` installed wheel/source-free export checks pass, with 182 Python
   files and 29 runtime files matching source, wheel and installation. Later
   runtime changes require their relevant checks again.
+  The `9be4f5424` viewer also passes an isolated installed-wheel check: all
+  22 assets match source build, staging, wheel, installation and HTTP, with
+  module provenance captured inside the actual serving process.
   The medium repeated-assembly lifecycle already exercises selection, orbit,
   animation, file switches and six saved-file replacements with stable owned
   geometry/GPU allocation totals.
@@ -327,7 +330,7 @@ Model selection is informed by the [OpenAI model guidance](https://developers.op
 
 - [x] Extend the existing harness under `scripts/bench/viewer-memory/` and add durable build-stage measurements where needed.
 - [x] Measure unchanged builds, placement-only edits, one-component geometry edits and repeated imports of unchanged vendor STEP files separately.
-- [x] Measure cold and cached viewer loads, orbiting, selection, animation and model switching on the medium fixtures; large-hand acceptance remains open.
+- [x] Measure cold and cached viewer loads, orbiting, selection, animation and model switching on the medium fixtures. Earlier hand measurements remain historical evidence.
 - [x] Exercise repeated edits and model switches to detect retained memory; distinguish the measured resource plateau from proof about all browser heap allocations.
 
 Use the existing nine-part planetary assembly for routine development. Add an inexpensive assembly with many occurrences of a few components to expose draw-call and object-count costs, plus a curved component to exercise tessellation. Store CAD fixtures and generated artifacts under `models/`.
@@ -343,7 +346,8 @@ Record:
 
 Record the commit, fixture, hardware, rendering settings and cache state with every result. Keep startup and daemon IPC separate from in-process warm-build timings. Distinguish first browser paint from first model geometry.
 
-The large hand is a bounded milestone check using its existing artifacts, not an everyday rebuild. Routine development should use small and medium fixtures.
+Use small and medium fixtures for both iteration and remaining acceptance.
+The user stopped further large-hand testing; it is no longer a milestone gate.
 
 **Acceptance:** every expensive stage is attributable, results can be reproduced, and cold/warm comparisons describe the same workload and settings.
 
@@ -550,11 +554,13 @@ These are proposed targets to confirm on fixed reference hardware, not claims ab
 | Unchanged nine-part build | Under 50 ms, excluding startup |
 | Repeated vendor import | Zero text-STEP parsing |
 | Warm local-edit preview | Under 250 ms for the nine-part fixture |
-| Large-hand first geometry | Preserve approximately 5-second performance |
-| Large-hand full load | Beat the former 86–90-second baseline |
-| Large-hand memory | Under 2 GiB peak in the largest renderer, with headroom |
 | Orbiting | p95 frame time under 33 ms at agreed settings |
 | Repeated model switches | No continuing growth in retained resources |
+
+The original large-hand first-geometry, full-load and 2 GiB targets are retained
+only in the historical measurement reports. The user's September 11 direction
+replaces further hand acceptance runs with moderate assemblies; it does not
+establish those targets for later runtimes.
 
 - [x] Validate colors, assemblies, references, mirrored instances, clipping, deformation, animation, measurements and exports.
 - [x] Exercise the viewer, snapshots, video and the packaged wheel.
