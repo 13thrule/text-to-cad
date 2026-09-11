@@ -3,6 +3,7 @@
 // component mesh cache (design/unified-tessellation.md Phases 3-4).
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -18,10 +19,15 @@ function makePackage(t) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const packageDir = path.join(root, "pkg");
   fs.mkdirSync(path.join(packageDir, "components"), { recursive: true });
-  fs.copyFileSync(FIXTURE_SURF, path.join(packageDir, "components", "c0.surf"));
+  const surfBytes = fs.readFileSync(FIXTURE_SURF);
+  fs.writeFileSync(path.join(packageDir, "components", "c0.surf"), surfBytes);
+  const surfaceInput = createHash("sha256").update("mesh-export-fixture-c0").digest("hex");
+  const surfaceObject = createHash("sha256").update(surfBytes).digest("hex");
   const descriptor = {
     kind: "assembly-package",
-    components: { c0: { surf: "components/c0.surf" } },
+    components: {
+      c0: { surf: "components/c0.surf", surfaceInput, surfaceObject },
+    },
     occurrences: [
       { id: "o1.1", name: "gear", component: "c0",
         transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] },
@@ -51,7 +57,7 @@ function sandboxEnv(root) {
 
 // Where the CLI's tessellation cache lands under sandboxEnv(root).
 function meshCacheDir(root) {
-  return path.join(root, ".cache", "cadgen", "meshes");
+  return path.join(root, ".cache", "cadgen", "index", "mesh");
 }
 
 function runCli(cliArgs, env = {}) {
@@ -88,7 +94,7 @@ test("exports every format from one package, byte-deterministically", (t) => {
   }
   const cacheEntries = fs.readdirSync(meshCacheDir(root));
   assert.equal(cacheEntries.length, 1, "one unique component, one cache entry");
-  assert.match(cacheEntries[0], /^c0-t\d+-l[0-9.e+-]+-a[0-9.e+-]+\.tess$/);
+  assert.match(cacheEntries[0], /^[0-9a-f]{64}-t2-p4-l[0-9a-f]{16}-a[0-9a-f]{16}$/);
 });
 
 test("every occurrence lands in the mesh: distinct transforms, distinct colors", (t) => {

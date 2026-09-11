@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { tessellateComponent } from "./tessellate.js";
-import { decodeComponentTessellation, encodeComponentTessellation } from "./tessellationCache.js";
+import { decodeComponentTessellation, edgeClassesFromSurfIndex, encodeComponentTessellation } from "./tessellationCache.js";
+
+const SURFACE_INPUT = "1".repeat(64);
+const SURFACE_OBJECT = "2".repeat(64);
+const encodeV4 = (mesh, index, chordTolerance) => encodeComponentTessellation(mesh, {
+  surfaceInput: SURFACE_INPUT,
+  surfaceObject: SURFACE_OBJECT,
+  tessellation: { chordTolerance },
+  edgeClasses: edgeClassesFromSurfIndex(index),
+});
 
 // Analytic counterpart of the planetary carrier: a plate with three small
 // bores. Rational circle pcurves use Float32 coefficients, as SURF does, while
@@ -181,16 +190,16 @@ for (const chordTolerance of [0.003, 0.0015]) {
   test(`perforated plate: exact trim conformity remains closed and oriented at chord ${chordTolerance}`, () => {
     const { index, floats } = perforatedPlate();
     const mesh = tessellateComponent(index, floats, { chordTolerance });
-    const bytes = encodeComponentTessellation(mesh);
+    const bytes = encodeV4(mesh, index, chordTolerance);
     const decoded = decodeComponentTessellation(bytes).component;
     checkClosedOrientedMesh(decoded);
-    assert.deepEqual(encodeComponentTessellation(tessellateComponent(index, floats, { chordTolerance })), bytes);
+    assert.deepEqual(encodeV4(tessellateComponent(index, floats, { chordTolerance }), index, chordTolerance), bytes);
   });
   for (const kind of ["sphere", "cone", "torus"]) {
     test(`${kind}: periodic seams and singularities stay closed at chord ${chordTolerance}`, () => {
       const { index, floats } = periodicPrimitive(kind);
       const mesh = tessellateComponent(index, floats, { chordTolerance });
-      checkClosedOrientedMesh(decodeComponentTessellation(encodeComponentTessellation(mesh)).component);
+      checkClosedOrientedMesh(decodeComponentTessellation(encodeV4(mesh, index, chordTolerance)).component);
       if (kind === "sphere") {
         // Sample each edge midpoint and triangle centroid against the exact
         // sphere, including every facet adjacent to the collapsed pole rows.

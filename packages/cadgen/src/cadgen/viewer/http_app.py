@@ -21,6 +21,7 @@ preflight fail. Do not add them.
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import threading
@@ -33,7 +34,10 @@ from .content_types import content_type_for_static_asset
 from .encoding import UriError, strict_decode_uri_component
 from .scanner import path_relative
 from .store_paths import virtual_store_asset
-from .tess_cache import read_tess_cache_batch, read_tess_cache_entry, write_tess_cache_entry
+from .tess_cache import (
+    TESS_CACHE_METADATA_MAX_BYTES, parse_tess_cache_admission,
+    read_tess_cache_batch, read_tess_cache_entry, read_tess_cache_probe, write_tess_cache_entry,
+)
 
 __all__ = [
     "CadApp",
@@ -54,6 +58,7 @@ _LOOPBACK_NAMES = frozenset({"127.0.0.1", "localhost", "::1"})
 
 TESS_CACHE_ROUTE_PREFIX = "/__tess_cache/"
 TESS_CACHE_BATCH_PATH = "/__tess_cache/batch"
+TESS_CACHE_PROBE_PATH = "/__tess_cache/probe"
 
 _PACKAGE_DIR = str(Path(__file__).resolve().parent)
 
@@ -179,6 +184,9 @@ class CadApp:
     """
 
     def __init__(self, *, root: str, host: str, port: int, dist_dir: str = ""):
+        from .surfaces import SurfaceSubscribers
+
+        self.surface_subscribers = SurfaceSubscribers()
         self.backend = LocalAssetBackend(root)
         root_path = self.backend.root_path
         self.root_path = root_path
@@ -362,6 +370,22 @@ class CadApp:
             try:
                 if pathname == "/__cad/artifact":
                     self._handle_artifact_build(request, response, query)
+                elif pathname == "/__cad/surfaces":
+                    if int(request.headers.get("content-length") or 0) > 128 * 1024:
+                        response.send_empty(413, [("connection", "close")])
+                        return
+                    response.send_json(200, self.surface_subscribers.resolve(request.body()))
+                elif pathname == "/__cad/surfaces/cancel":
+                    if int(request.headers.get("content-length") or 0) > 128 * 1024:
+                        response.send_empty(413, [("connection", "close")])
+                        return
+                    payload = json.loads(request.body())
+                    if type(payload) is not dict or set(payload) != {"job"} or type(payload["job"]) is not str:
+                        raise ValueError("surface cancellation requires a subscriber token")
+                    self.surface_subscribers.cancel(payload["job"])
+                    response.send_empty(204)
+                elif pathname == TESS_CACHE_PROBE_PATH:
+                    self._handle_tess_probe(request, response)
                 elif pathname == TESS_CACHE_BATCH_PATH:
                     # Matched BEFORE the prefix branch: /__tess_cache/batch
                     # matches both.
@@ -455,7 +479,16 @@ class CadApp:
         ``file=/<tree>/components/<object>.surf``.
         """
         rel = str(query.get("file") or "").replace("\\", "/").lstrip("/")
-        payload, content_type = virtual_store_asset(rel)
+        if query.get("surfaceInput") is not None or query.get("object") is not None:
+            from .surfaces import pinned_surface_object
+
+            payload = pinned_surface_object(query.get("tree"), query.get("surfaceInput"), query.get("object"))
+            content_type = "application/octet-stream"
+        else:
+            producer = json.loads(query.get("surfaceProducer")) if query.get("surfaceProducer") else None
+            payload, content_type = virtual_store_asset(
+                rel, producer=producer, document_hash=query.get("documentHash"),
+            )
         if payload is None:
             response.send_json(404, {"error": "Not found"})
             return
@@ -489,7 +522,13 @@ class CadApp:
         The non-200 answers carry ONLY content-length: 0 — no content-type and
         no cache-control. A miss is an ordinary outcome here, not an error page.
         """
-        status, body = read_tess_cache_entry(request.path)
+        query = request.query
+        try:
+            digest, limit = parse_tess_cache_admission(query.get("object"), query.get("maxBytes"))
+        except (TypeError, ValueError):
+            response.send_empty(400)
+            return
+        status, body = read_tess_cache_entry(request.path, expected_object=digest, max_bytes=limit)
         if status != 200:
             response.send_empty(status)
             return
@@ -497,6 +536,16 @@ class CadApp:
 
     def _handle_tess_post(self, request, response):
         response.send_empty(write_tess_cache_entry(request.path, request.body()))
+
+    def _handle_tess_probe(self, request, response):
+        if int(request.headers.get("content-length") or 0) > TESS_CACHE_METADATA_MAX_BYTES:
+            response.send_empty(413, [("connection", "close")])
+            return
+        result = read_tess_cache_probe(request.body())
+        if result is None:
+            response.send_json(400, {"error": "bad tessellation probe request"})
+            return
+        response.send_json(200, result)
 
     def _handle_tess_batch(self, request, response):
         """One round trip for a whole assembly's hit set.
@@ -506,6 +555,9 @@ class CadApp:
         clean 400 and everything else must be a valid container — misses
         included, which ride as zero-length entries rather than errors.
         """
+        if int(request.headers.get("content-length") or 0) > TESS_CACHE_METADATA_MAX_BYTES:
+            response.send_empty(413, [("connection", "close")])
+            return
         container = read_tess_cache_batch(request.body())
         if container is None:
             response.send_json(400, {"error": "bad batch request"})

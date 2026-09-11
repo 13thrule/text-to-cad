@@ -145,14 +145,23 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, 
           currentLevel: component.level,
           level,
         });
-        const request = lodPayloadRequest(component, level);
-        return loadRenderSurfPayloadAtLevel(component.surfUrl, {
-          signal,
-          tessellation: lodTessellationForLevel(level),
-          identity: component.identity,
-          selectors: selectorsRef.current?.(cid) === true,
-          memoryEstimateBytes: workerTemporaryBytes,
-        }).then(payload => ({ ...payload, lodRequest: request })).finally(() => {
+        const load = () => {
+          const request = lodPayloadRequest(component, level);
+          return loadRenderSurfPayloadAtLevel(component.surfUrl, {
+            signal,
+            tessellation: lodTessellationForLevel(level),
+            identity: component.identity,
+            selectors: selectorsRef.current?.(cid) === true,
+            memoryEstimateBytes: workerTemporaryBytes,
+          }).then(payload => ({ ...payload, lodRequest: request }));
+        };
+        return load().catch(async error => {
+          if (signal.aborted || component.surfUrl || typeof component.resolveSurface !== "function") throw error;
+          const resolved = await component.resolveSurface(signal);
+          component.identity = resolved.identity;
+          component.surfUrl = resolved.surfUrl;
+          return load();
+        }).finally(() => {
           syncSurfWorkerMemory();
         });
       },

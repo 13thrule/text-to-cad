@@ -98,10 +98,11 @@ snapshot renderer and the node builders in `bin/`).
   A pool starts with one isolate and grows only for ready concurrent requests.
   Sequential viewport refinement reuses that isolate until the drain becomes
   idle; it does not create a maximum-size pool for each component.
-- **Revision reuse**: canonical store descriptors carry a full immutable SURF
-  object digest. Interactive caches may share that object across tree URLs
-  only with the same origin, component ID, effective tessellation and payload
-  version. Other URL inputs and snapshot source scopes remain isolated.
+- **Revision reuse**: canonical geometry trees contain no surface-producer
+  selection. A runtime view binds each component's opaque surface input to a
+  concrete immutable SURF object, and render/selector reuse requires that
+  exact binding plus the lossless tolerance pair and payload version. Other
+  snapshot source scopes remain isolated.
   Placement and appearance belong to each tree's occurrence composition.
   Viewport L0 is explicitly coarse; L1 preserves the canonical default mesh
   options and key. Changing viewport detail never changes export defaults.
@@ -154,19 +155,17 @@ docs/              # subsystem docs (render-pipeline.md)
 Contract mirrors that must stay in lockstep (each has a sync test):
 `lib/cadRefs.js` ↔ `cadgen/cad_ref_syntax.py`;
 `common/kinematicsRuntime.js` ↔ `cadgen/_internal/kinematics_fk.py`;
-tessellation cache keys ↔ `cadgen/_internal/cache_paths.py`;
-`apps/viewer/server/store_paths.py` ↔ `cadgen/_internal/`
-schema constants.
+tessellation v4 keys, headers and mesh-index records ↔ `cadgen/store/meshes.py`.
 
-Browser mesh-cache traffic is best effort and unrestricted in size, but it
-must reach its host without passing through a debugging transport: an
-intercepted request's body is handed to the driver as escaped text in one
-message, which a large tessellation overruns. `createHttpTessellationCacheProvider`
-therefore takes an `origin` for hosts whose cache is not on the page's own
-origin (the snapshot renderer's loopback asset server passes one; the viewer
-serves the cache itself and leaves it empty). Batched reads are split by key
-count and by the bytes the host returns per entry, so no single response has
-to be allocated whole.
+Browser mesh-cache reads start with a bounded metadata probe. The client admits
+the encoded object and conservative decoded size before fetching a body, binds
+that fetch to the probed object digest and byte limit, then verifies the v4
+header and content address before adoption. A validated warm entry carries the
+full surface-object provenance, so rendering does not need the SURF object or
+its derivation index to remain present. `createHttpTessellationCacheProvider`
+takes an `origin` for hosts whose cache is not on the page's own origin. TESB
+body groups remain bounded at 32 MiB; the Node export provider uses the same
+immutable `objects/` and `index/mesh/` layout as Python.
 
 Scene geometry is the tessellator's INDEXED output: a surf component's
 meshData shares the tessellation's vertex, normal and index buffers by

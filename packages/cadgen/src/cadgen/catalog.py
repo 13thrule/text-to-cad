@@ -348,10 +348,16 @@ def result_tree_for(entry_path: Path) -> str | None:
 def result_descriptor_for(entry_path: Path) -> dict | None:
     """The flattened tree (assembly.json; component refs as object hashes)
     behind a CAD artifact on disk, or None when it has no current tree."""
-    from cadgen.store.trees import flatten
+    from cadgen.store.trees import capture_tree
 
     tree = result_tree_for(entry_path)
-    return flatten(tree) if tree else None
+    if tree is None:
+        return None
+    try:
+        descriptor, _ = capture_tree(tree, retain_payloads=False)
+        return descriptor
+    except (OSError, ValueError):
+        return None
 
 
 def result_view_dir(entry_path: Path) -> Path:
@@ -363,10 +369,10 @@ def result_view_dir(entry_path: Path) -> Path:
     directories (``cadgen.store.view``)."""
     from cadgen.store.view import view_dir_for, views_root
 
-    tree = result_tree_for(entry_path)
-    if tree is None:
+    snapshot = result_snapshot_for(entry_path)
+    if snapshot is None:
         return views_root() / f"unbuilt-{artifact_path_key(entry_path)}"
-    return view_dir_for(tree)
+    return view_dir_for(snapshot[1], document_hash=snapshot[0])
 
 
 def build_scope(entry_path: Path) -> str:

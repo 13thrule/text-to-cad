@@ -5,9 +5,9 @@ A tree holds the geometry a model made itself (``components``, placed by its
 child are two links to one tree. Nothing of a child is copied::
 
     {
-      "kind": "tree",
+      "kind": "geometry-tree", "schemaVersion": 1,
       "label": "robot", "entryKind": "assembly",
-      "components": {"<cid>": {"surf": "<object>", "brep": "<object>", "contentHash": "…", "color": [...]}},
+      "components": {"<cid>": {"kind": "native", "codec": "bintools-v4", "brep": "<object>", "faceColors": {}, "contentHash": "…"}},
       "occurrences": [{"id": "o1.1", "name": "housing", "component": "<cid>", "transform": [16 floats]}],
       "links":       [{"id": "o1.2", "name": "arm", "tree": "<object>", "transform": [16 floats]}],
       "assembly": {"root": {"id": "o1", "name": "robot", "nodeType": "assembly", "children": [...]}},
@@ -29,63 +29,73 @@ join under a view directory becomes ``object_path(hash)``.
 
 from __future__ import annotations
 
+import copy
 import json
+import math
 from typing import Any
 
-from cadgen.store.objects import put_object, read_object
+from cadgen.store.objects import put_object, read_verified_object
 
-TREE_KIND = "tree"
+TREE_KIND = "geometry-tree"
+TREE_SCHEMA = 1
 FLAT_KIND = "assembly-package"
 
 IDENTITY_16 = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
 
 def put_tree(tree: dict[str, Any], *, repair: bool = False) -> str:
+    from cadgen._internal.component_package import canonical_json_bytes
+
     body = dict(tree)
     body["kind"] = TREE_KIND
-    data = json.dumps(body, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return put_object(data, repair=repair)
+    body["schemaVersion"] = TREE_SCHEMA
+    _validate_structure(body)
+    return put_object(canonical_json_bytes(body), repair=repair)
 
 
 def get_tree(tree_hash: str) -> dict[str, Any] | None:
     try:
-        data = json.loads(read_object(tree_hash).decode("utf-8"))
-    except (OSError, ValueError):
+        data = json.loads(read_verified_object(tree_hash))
+        _validate_structure(data)
+        return data
+    except (OSError, ValueError, TypeError, KeyError, OverflowError):
         return None
-    if not isinstance(data, dict) or data.get("kind") != TREE_KIND:
-        return None
-    return data
 
 
 def tree_objects(tree_hash: str, *, _seen: set[str] | None = None) -> set[str]:
-    """Every object hash a tree references, transitively (itself, its
-    components' surf/brep objects, its linked trees and theirs)."""
+    """Available verified closure, even when another required object is absent."""
     seen = _seen if _seen is not None else set()
-    if tree_hash in seen:
-        return seen
-    seen.add(tree_hash)
-    tree = get_tree(tree_hash)
-    if tree is None:
-        return seen
-    for entry in (tree.get("components") or {}).values():
-        for key in ("surf", "brep"):
-            digest = str((entry or {}).get(key) or "")
-            if digest:
-                seen.add(digest)
-    for link in tree.get("links") or []:
-        child = str((link or {}).get("tree") or "")
-        if child:
-            tree_objects(child, _seen=seen)
+    pending, visited = [tree_hash], set()
+    while pending:
+        digest = pending.pop()
+        if digest in visited:
+            continue
+        visited.add(digest)
+        tree = get_tree(digest)
+        if tree is None:
+            continue
+        seen.add(digest)
+        for entry in tree["components"].values():
+            if not isinstance(entry, dict):
+                continue
+            for field in ("brep", "eagerSurface"):
+                if entry.get(field):
+                    try:
+                        read_verified_object(entry[field])
+                    except (OSError, ValueError, TypeError):
+                        continue
+                    seen.add(entry[field])
+        pending.extend(link["tree"] for link in tree["links"])
     return seen
 
 
 def tree_complete(tree_hash: str) -> bool:
-    """Whether the tree object and every object it references exist."""
-    from cadgen.store.objects import has_object
-
-    if not has_object(tree_hash):
+    """Full verified geometry closure; disposable surfaces are not required."""
+    try:
+        capture_tree(tree_hash)
+        return True
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, OverflowError):
         return False
-    return all(has_object(digest) for digest in tree_objects(tree_hash))
 
 
 # --- transforms ---------------------------------------------------------------
@@ -265,3 +275,123 @@ def flatten_tree(
     if tree_hash is not None:
         memo[tree_hash] = json.loads(json.dumps(descriptor))
     return descriptor
+
+
+def _finite_number(value: Any) -> bool:
+    try:
+        return math.isfinite(value)
+    except (OverflowError, TypeError):
+        return False
+
+
+def _validate_structure(tree: Any, *, native: bool = False) -> None:
+    if type(tree) is not dict or tree.get("kind") != TREE_KIND or tree.get("schemaVersion") != TREE_SCHEMA:
+        raise ValueError("unsupported geometry tree schema")
+    if "surfaceProducer" in tree:
+        raise ValueError("geometry tree contains a surface producer")
+    if tree.get("units") != "mm" or tree.get("entryKind") not in {"part", "assembly"}:
+        raise ValueError("invalid geometry tree metadata")
+    if type(tree.get("components")) is not dict or type(tree.get("occurrences")) is not list or type(tree.get("links")) is not list:
+        raise ValueError("invalid geometry tree tables")
+    from cadgen.store.objects import is_object_hash
+    for link in tree["links"]:
+        if type(link) is not dict or not is_object_hash(link.get("tree")):
+            raise ValueError("invalid linked tree identity")
+    ids = set()
+    occurrence_ids = {row.get("id") for row in tree["occurrences"] if type(row) is dict and type(row.get("id")) is str}
+    for row in [*tree["occurrences"], *tree["links"]]:
+        if type(row) is not dict or type(row.get("id")) is not str or not row["id"] or row["id"] in ids:
+            raise ValueError("invalid or duplicate occurrence/link ID")
+        ids.add(row["id"])
+        transform = row.get("transform")
+        if type(transform) is not list or len(transform) != 16 or any(
+            type(value) not in (float, int) or not _finite_number(value) for value in transform
+        ) or transform[12:] != [0, 0, 0, 1]:
+            raise ValueError("invalid geometry transform")
+        if native:
+            from cadgen.store.materialize import _location_from_matrix
+            _location_from_matrix(transform)
+    for row in tree["occurrences"]:
+        if row.get("component") not in tree["components"]:
+            raise ValueError("unknown occurrence component")
+    root = (tree.get("assembly") or {}).get("root")
+    if type(root) is not dict:
+        raise ValueError("missing assembly root")
+    pending, seen = [root], set()
+    represented = set()
+    while pending:
+        node = pending.pop()
+        if type(node) is not dict or type(node.get("id")) is not str or not node["id"] or node["id"] in seen or node.get("nodeType") not in {"part", "assembly", "subassembly", "link"}:
+            raise ValueError("invalid assembly structure")
+        seen.add(node.get("id"))
+        children = node.get("children")
+        if type(children) is not list:
+            raise ValueError("invalid assembly children")
+        if node["id"] in ids:
+            if children or node["nodeType"] != ("part" if node["id"] in occurrence_ids else "link"):
+                raise ValueError("geometry occurrence is not an exact assembly leaf")
+            represented.add(node["id"])
+        if not children and node.get("id") not in ids:
+            raise ValueError("assembly leaf has no geometry")
+        pending.extend(children)
+    if represented != ids:
+        raise ValueError("geometry rows absent from assembly structure")
+
+def capture_tree(tree_hash: str, *, retain_payloads: bool = True) -> tuple[dict, dict[str, bytes]]:
+    """One verified graph snapshot with independently owned metadata.
+
+    Native consumers retain the complete immutable byte closure by default.
+    Metadata-only callers may discard payloads after the same full verification;
+    their returned payload map is empty, and every new call verifies disk anew.
+    """
+    from cadgen._internal.component_package import canonical_json_bytes, validate_geometry_component
+    from cadgen.store.surfaces import validate_surface_bytes
+
+    captured, memo, active = {}, {}, set()
+
+    def visit(digest):
+        if digest in memo:
+            return
+        if digest in active:
+            raise ValueError("cyclic geometry tree")
+        payload = read_verified_object(digest)
+        tree = json.loads(payload)
+        _validate_structure(tree)
+        if retain_payloads:
+            captured[digest] = payload
+        del payload
+        active.add(digest)
+        for cid, entry in tree["components"].items():
+            if type(entry) is not dict:
+                raise ValueError("invalid geometry component")
+            brep = read_verified_object(entry["brep"])
+            validate_geometry_component(entry, brep, cid=cid)
+            if retain_payloads:
+                captured[entry["brep"]] = brep
+            del brep
+            if entry["kind"] == "eager-only":
+                surf = read_verified_object(entry["eagerSurface"])
+                validate_surface_bytes(surf)
+                if retain_payloads:
+                    captured[entry["eagerSurface"]] = surf
+                del surf
+        for link in tree["links"]:
+            visit(link["tree"])
+        merged = dict(tree["components"])
+        for link in tree["links"]:
+            for cid, entry in memo[link["tree"]]["components"].items():
+                previous = merged.setdefault(cid, entry)
+                # Component-level display color is an occurrence fallback; all
+                # intrinsic identity/producer/required-object fields must agree.
+                a = {key: value for key, value in previous.items() if key != "color"}
+                b = {key: value for key, value in entry.items() if key != "color"}
+                if canonical_json_bytes(a) != canonical_json_bytes(b):
+                    raise ValueError("linked component identity conflict")
+        # Child descriptors are already verified and memoized, so the stock
+        # flattener cannot reread a root or escape this exact graph snapshot.
+        descriptor = flatten_tree(tree, tree_hash=digest, memo=memo)
+        memo[digest] = descriptor
+        active.remove(digest)
+
+    visit(tree_hash)
+    return copy.deepcopy(memo[tree_hash]), dict(captured)

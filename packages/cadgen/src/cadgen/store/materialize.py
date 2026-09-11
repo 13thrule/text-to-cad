@@ -55,8 +55,13 @@ class _ComponentIdentity:
 
     cid: str
     content_hash: str
-    surf: str
     brep: str
+    codec: str
+    face_colors: tuple[tuple[int, tuple[float, float, float, float]], ...]
+
+    def entry(self) -> dict[str, Any]:
+        return {"kind": "native", "codec": self.codec, "brep": self.brep,
+                "faceColors": dict(self.face_colors), "contentHash": self.content_hash}
 
 
 class _Partner:
@@ -382,16 +387,6 @@ def materialized_children(
 _BREP_BYTES_MEMO_CAPACITY = 64 * 1024 * 1024
 _BREP_BYTES_MEMO: OrderedDict[str, bytes] = OrderedDict()
 _BREP_BYTES_MEMO_SIZE = 0
-# SURF geometry indexes can be large even when they have no per-face colors.
-# Keep only immutable normalized color recipes, never the decoded JSON or any
-# native shape. Charge the retained recipe and bound entry count too; every
-# lookup still rereads and verifies the current object bytes.
-_SURF_COLOR_MEMO_CAPACITY = 4 * 1024 * 1024
-_SURF_COLOR_MEMO_MAX_ENTRIES = 1024
-_SURF_COLOR_MEMO: OrderedDict[
-    str, tuple[int, tuple[tuple[int, tuple[float, float, float, float]], ...]]
-] = OrderedDict()
-_SURF_COLOR_MEMO_SIZE = 0
 _SHAPE_MEMO_LOCK = threading.Lock()
 
 
@@ -400,12 +395,10 @@ def reset_memo() -> None:
 
     Active consumers own their reconstructed TShapes and remain valid.
     """
-    global _BREP_BYTES_MEMO_SIZE, _SURF_COLOR_MEMO_SIZE
+    global _BREP_BYTES_MEMO_SIZE
     with _SHAPE_MEMO_LOCK:
         _BREP_BYTES_MEMO.clear()
         _BREP_BYTES_MEMO_SIZE = 0
-        _SURF_COLOR_MEMO.clear()
-        _SURF_COLOR_MEMO_SIZE = 0
 
 
 def _bytes_for_object(digest: str) -> bytes:
@@ -445,67 +438,6 @@ def _bytes_for_object(digest: str) -> bytes:
             _old_digest, old_payload = _BREP_BYTES_MEMO.popitem(last=False)
             _BREP_BYTES_MEMO_SIZE -= len(old_payload)
     return payload
-
-
-def _face_colors_for_object(digest: str) -> dict[int, tuple[float, float, float, float]]:
-    """Private face colors from a verified current SURF byte snapshot.
-
-    A recipe hit skips JSON decoding, never object existence or digest checks.
-    Invalid normalization does not populate the memo. The cache owns only
-    immutable tuples; each caller receives a new dictionary.
-    """
-    from cadgen._internal.component_package import _normalized_face_colors
-    from cadgen._internal.surface_extract import read_surf
-
-    global _SURF_COLOR_MEMO_SIZE
-    payload = read_verified_object(digest)
-    with _SHAPE_MEMO_LOCK:
-        cached = _SURF_COLOR_MEMO.get(digest)
-        if cached is not None:
-            _SURF_COLOR_MEMO.move_to_end(digest)
-    if cached is not None:
-        return dict(cached[1])
-    index, _ = read_surf(payload)
-    colors: dict[int, tuple[float, float, float, float]] = {}
-    for face in index.get("faces") or []:
-        if face.get("color") is None:
-            continue
-        for ordinal, color in _normalized_face_colors({face.get("ord"): face["color"]}).items():
-            if ordinal in colors and colors[ordinal] != color:
-                raise ValueError(f"SURF {digest}: conflicting colors for face ordinal {ordinal}")
-            colors[ordinal] = color
-    recipe = tuple(sorted(colors.items()))
-    # Account for the retained tuples/scalars, including unusually large
-    # ordinals. Counting shared numbers more than once is conservative. The
-    # fixed allowance covers the key/value wrapper and ordered-map bookkeeping.
-    recipe_bytes = sys.getsizeof(recipe) + sum(
-        sys.getsizeof(row) + sys.getsizeof(row[0]) + sys.getsizeof(row[1])
-        + sum(sys.getsizeof(channel) for channel in row[1])
-        for row in recipe
-    )
-    charge = 512 + sys.getsizeof(digest) + recipe_bytes
-    if charge > _SURF_COLOR_MEMO_CAPACITY:
-        return colors
-    with _SHAPE_MEMO_LOCK:
-        existing = _SURF_COLOR_MEMO.get(digest)
-        if existing is not None:
-            _SURF_COLOR_MEMO.move_to_end(digest)
-            return dict(existing[1])
-        _SURF_COLOR_MEMO[digest] = (charge, recipe)
-        _SURF_COLOR_MEMO_SIZE += charge
-        while (
-            _SURF_COLOR_MEMO_SIZE > _SURF_COLOR_MEMO_CAPACITY
-            or len(_SURF_COLOR_MEMO) > _SURF_COLOR_MEMO_MAX_ENTRIES
-        ):
-            _old_digest, (old_size, _old_recipe) = _SURF_COLOR_MEMO.popitem(last=False)
-            _SURF_COLOR_MEMO_SIZE -= old_size
-    return colors
-
-
-def _shape_for_object(digest: str) -> Any:
-    from cadgen._internal.component_package import _build123d_shape_from_brep_bytes
-
-    return _build123d_shape_from_brep_bytes(_bytes_for_object(digest))
 
 
 def _location_from_matrix(matrix: list[float]):
@@ -559,20 +491,18 @@ def tree_tag(shape: Any) -> str | None:
 def materialize(tree_hash: str, *, label: str | None = None) -> Any:
     """A ``Compound`` for the tree. Raises FileNotFoundError when the tree or a
     component object is missing (the gate should have said stale)."""
-    from cadgen.store.trees import tree_complete
+    from cadgen.store.trees import capture_tree
+    from cadgen._internal.component_package import decode_geometry_component
 
-    if not tree_complete(tree_hash):
-        raise FileNotFoundError(f"tree or pinned component missing: {tree_hash}")
-    descriptor = flatten(tree_hash)
-    if descriptor is None:
-        raise FileNotFoundError(f"tree object missing: {tree_hash}")
-    return materialize_descriptor(descriptor, label=label, tree_hash=tree_hash)
+    descriptor, payloads = capture_tree(tree_hash)
+    return materialize_descriptor(descriptor, captured_objects=payloads, label=label, tree_hash=tree_hash)
 
 
 def materialize_descriptor(
     descriptor: dict[str, Any],
     *,
     shapes: dict[str, Any] | None = None,
+    captured_objects: dict[str, bytes] | None = None,
     label: str | None = None,
     tree_hash: str | None = None,
 ) -> Any:
@@ -581,19 +511,26 @@ def materialize_descriptor(
     ``shapes`` supplies unlocated build123d shapes by cid for components that
     are not in the store yet — the build's own, before it publishes them
     (``cadgen.store.build`` assembles the STEP it writes from exactly this);
-    every other component is read from its ``brep`` object and its face colors
-    from ``surf``. Each occurrence owns its metadata even when two components
+    every other component is read from its declared BREP codec and the
+    immutable intrinsic face-color recipe. Each occurrence owns its metadata even when two components
     share identical BREP bytes. The result is tagged as a materialized tree
     only when ``tree_hash`` names one."""
     from build123d import Compound
 
-    from cadgen._internal.component_package import _build123d_shape_from_topods, _normalized_face_colors
+    from cadgen._internal.component_package import (
+        _build123d_shape_from_topods, _normalized_face_colors, decode_geometry_component,
+        canonical_json_bytes, effective_face_colors, NativeUnavailable,
+    )
 
     components = descriptor.get("components") or {}
     shapes = dict(shapes or {})
     decoded_by_object: dict[str, Any] = {}
     face_colors_by_cid: dict[str, dict[int, tuple[float, float, float, float]]] = {}
     for cid, entry in components.items():
+        if entry.get("kind") == "eager-only":
+            raise NativeUnavailable("eager-only component has no admitted native representation")
+        if entry.get("kind") != "native":
+            raise ValueError("unsupported geometry component kind")
         if cid in shapes:
             # Unpublished own shapes have no SURF object yet. Their extraction
             # input is authoritative, and normalization takes a private copy.
@@ -606,7 +543,7 @@ def materialize_descriptor(
             raise FileNotFoundError(f"tree {tree_hash}: component {cid} has no brep object")
         shape = decoded_by_object.get(brep)
         if shape is None:
-            shape = _shape_for_object(brep)
+            shape = decode_geometry_component(entry, captured_objects[brep] if captured_objects is not None else _bytes_for_object(brep))
             decoded_by_object[brep] = shape
         else:
             # Distinct component inputs can share BREP bytes while owning
@@ -618,10 +555,10 @@ def materialize_descriptor(
 
             shape = _build123d_shape_from_topods(BRepBuilderAPI_Copy(shape.wrapped, False, False).Shape())
         shapes[cid] = shape
-        surf = str((entry or {}).get("surf") or "")
-        if not surf:
-            raise FileNotFoundError(f"tree {tree_hash}: component {cid} has no surf object")
-        face_colors_by_cid[cid] = _face_colors_for_object(surf)
+        colors = effective_face_colors(shape, entry["faceColors"])
+        if canonical_json_bytes(colors) != canonical_json_bytes(entry["faceColors"]):
+            raise ValueError("intrinsic recipe names an absent native face")
+        face_colors_by_cid[cid] = colors
 
     placed_by_id: dict[str, Any] = {}
     for occurrence in descriptor.get("occurrences") or []:
@@ -647,11 +584,11 @@ def materialize_descriptor(
             # The descriptor is authoritative, including an absent finish.
             child.__dict__.pop("cad_material", None)
         content_hash = str((components.get(cid) or {}).get("contentHash") or "")
-        surf = str((components.get(cid) or {}).get("surf") or "")
         brep = str((components.get(cid) or {}).get("brep") or "")
-        if content_hash and cid == content_hash[:16] and surf and brep:
+        if content_hash and cid == content_hash[:16] and brep and (components[cid].get("kind") == "native"):
             child.__dict__["__cadgen_component_identity__"] = _ComponentIdentity(
-                cid=cid, content_hash=content_hash, surf=surf, brep=brep,
+                cid=cid, content_hash=content_hash, brep=brep,
+                codec=components[cid]["codec"], face_colors=tuple(sorted(face_colors.items())),
             )
         else:
             child.__dict__.pop("__cadgen_component_identity__", None)

@@ -585,7 +585,9 @@ def _create_step_entry(repo_root, root_path, source_path, extension) -> dict:
         "kind": step_kind_from_topology(topology),
         # The tree hash identifies the render; an unbuilt document still gets a
         # deterministic URL the store route answers 404 for.
-        "url": _store_asset_url(tree or f"unbuilt-{artifact_path_key(source_path)}"),
+        "url": _store_asset_url(tree or f"unbuilt-{artifact_path_key(source_path)}") + (
+            f"&documentHash={document_hash}" if document_hash and tree else ""
+        ),
         "hash": tree if metadata else "",
         "documentHash": document_hash,
         "bytes": len(descriptor_body.encode("utf-8")),

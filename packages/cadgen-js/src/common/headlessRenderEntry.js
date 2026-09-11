@@ -299,7 +299,7 @@ if (typeof window !== "undefined") {
   window.__snapshotRenderSequenceFrame = captureHeadlessRenderSequenceFrame;
   window.__snapshotRenderSequenceDispose = disposeHeadlessRenderSequence;
   // The snapshot host (cadgen's snapshot driver) serves the shared component-
-  // tessellation cache (~/.cache/cadgen/meshes) on /__tess_cache/ from its
+  // tessellation object/index store on /__tess_cache/ from its
   // loopback asset server, so repeat snapshots — and any component an export
   // already tessellated — skip tessellation entirely, and a snapshot miss
   // warms the cache for later exports. Both directions are best-effort: a

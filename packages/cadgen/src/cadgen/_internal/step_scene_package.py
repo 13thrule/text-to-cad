@@ -17,7 +17,6 @@ have a canonical document tree.
 from __future__ import annotations
 
 import hashlib
-import io
 import json
 import os
 import sys
@@ -40,38 +39,8 @@ _IDENTITY_TRANSFORM = (
 )
 
 
-def _shape_from_brep(payload: bytes) -> Any | None:
-    from OCP.BinTools import BinTools
-    from OCP.TopoDS import TopoDS_Shape
-
-    shape = TopoDS_Shape()
-    try:
-        BinTools.Read_s(shape, io.BytesIO(payload))
-    except Exception:  # noqa: BLE001 - unreadable component object -> reparse the STEP instead
-        return None
-    return None if shape.IsNull() else shape
-
-
-def _face_colors_from_surf(payload: bytes, shape: Any) -> dict[int, ColorRGBA] | None:
-    """Hash-keyed per-face colors from the component's .surf index.
-
-    The surf keys colors by face ORDINAL (TopExp.MapShapes order), which the
-    BinTools round-trip preserves, so mapping ordinal -> loaded face -> hash
-    reproduces the scene loader's hash-keyed dict for downstream consumers
-    (3MF/GLB export materials)."""
-    from cadgen._internal.surface_extract import read_surf
-
-    try:
-        index, _ = read_surf(payload)
-    except Exception:  # noqa: BLE001 - unreadable surface metadata is a cache miss
-        return None
-    colors_by_ordinal: dict[int, ColorRGBA] = {}
-    for face in index.get("faces") or []:
-        color = face.get("color")
-        if isinstance(color, list) and len(color) == 4:
-            colors_by_ordinal[int(face.get("ord", 0))] = tuple(float(c) for c in color)
-    if not colors_by_ordinal:
-        return {}
+def _face_colors_from_recipe(recipe: dict, shape: Any) -> dict[int, ColorRGBA]:
+    """Map the geometry's intrinsic ordinal recipe onto its private topology."""
     from OCP.TopAbs import TopAbs_ShapeEnum
     from OCP.TopExp import TopExp
     from OCP.TopTools import TopTools_IndexedMapOfShape
@@ -79,9 +48,11 @@ def _face_colors_from_surf(payload: bytes, shape: Any) -> dict[int, ColorRGBA] |
     face_map = TopTools_IndexedMapOfShape()
     TopExp.MapShapes_s(shape, TopAbs_ShapeEnum.TopAbs_FACE, face_map)
     face_colors: dict[int, ColorRGBA] = {}
-    for ordinal, color in colors_by_ordinal.items():
-        if 1 <= ordinal <= face_map.Extent():
-            face_colors[_shape_hash(face_map.FindKey(ordinal))] = color
+    for raw_ordinal, color in recipe.items():
+        ordinal = int(raw_ordinal)
+        if not 1 <= ordinal <= face_map.Extent():
+            raise ValueError("geometry appearance names an absent native face")
+        face_colors[_shape_hash(face_map.FindKey(ordinal))] = tuple(float(value) for value in color)
     return face_colors
 
 
@@ -107,12 +78,21 @@ def lookup_document_scene(step_path: Path, *, step_hash: str) -> tuple[LoadedSte
     another writer may already have repaired.
     """
     from cadgen.store.records import tree_for_document_hash
+    from cadgen._internal.component_package import NativeUnavailable
 
     tree = tree_for_document_hash(step_hash)
     if not tree:
         return None, False
     try:
         scene = _scene_from_document_tree(step_path, step_hash=step_hash, tree_hash=tree)
+    except NativeUnavailable:
+        # A valid eager-only component promises display, not a native codec.
+        # Saved-document readers still have its exact bytes and may parse them.
+        # This is neither a corrupt closure nor permission to use a source tree.
+        payload = step_path.read_bytes()
+        if hashlib.sha256(payload).hexdigest() != step_hash:
+            return None, False
+        scene = _scene_from_selected_bytes(step_path, payload)
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         scene = None
     return scene, scene is None
@@ -124,12 +104,13 @@ def scene_from_render_package(step_path: Path, *, step_hash: str) -> LoadedStepS
 
 
 def _scene_from_document_tree(step_path: Path, *, step_hash: str, tree_hash: str) -> LoadedStepScene | None:
-    from cadgen.store.objects import read_verified_object
-    from cadgen.store.trees import TREE_KIND, flatten_tree
+    from cadgen._internal.component_package import decode_geometry_component
+    from cadgen.store.trees import TREE_KIND, capture_tree
 
     # Verify and flatten the SAME snapshot. Canonical byte-derived document
     # trees have no source links, so no second tree lookup may occur here.
-    tree = json.loads(read_verified_object(tree_hash))
+    descriptor, captured = capture_tree(tree_hash)
+    tree = json.loads(captured[tree_hash])
     if not isinstance(tree, dict) or tree.get("kind") != TREE_KIND or tree.get("links"):
         return None
     assembly = tree.get("assembly")
@@ -144,7 +125,6 @@ def _scene_from_document_tree(step_path: Path, *, step_hash: str, tree_hash: str
         if not isinstance(children, list):
             return None
         pending.extend(children)
-    descriptor = flatten_tree(tree, tree_hash=tree_hash)
     if not isinstance(descriptor, dict) or descriptor.get("kind") != "assembly-package":
         return None
     components = descriptor.get("components")
@@ -160,18 +140,16 @@ def _scene_from_document_tree(step_path: Path, *, step_hash: str, tree_hash: str
     for cid, entry in components.items():
         if not isinstance(entry, dict):
             return None
-        shape = _shape_from_brep(read_verified_object(str(entry.get("brep") or "")))
-        if shape is None:
-            return None
+        # Each CID gets fresh topology, even when color variants share one
+        # immutable BREP object. Nothing native survives this invocation.
+        shape = decode_geometry_component(entry, captured[entry["brep"]]).wrapped
         key = _shape_hash(shape)
         key_by_cid[str(cid)] = key
         prototype_shapes[key] = shape
         color = entry.get("color")
         if isinstance(color, list) and len(color) == 4:
             prototype_colors[key] = tuple(float(c) for c in color)
-        face_colors = _face_colors_from_surf(read_verified_object(str(entry.get("surf") or "")), shape)
-        if face_colors is None:
-            return None
+        face_colors = _face_colors_from_recipe(entry["faceColors"], shape)
         if face_colors:
             prototype_face_colors[key] = face_colors
 
@@ -262,6 +240,11 @@ def load_step_scene_exact(step_path: Path) -> LoadedStepScene:
     if not resolved_step_path.is_file():
         raise FileNotFoundError(f"STEP file does not exist: {resolved_step_path}")
     payload = resolved_step_path.read_bytes()
+    return _scene_from_selected_bytes(resolved_step_path, payload)
+
+
+def _scene_from_selected_bytes(resolved_step_path: Path, payload: bytes) -> LoadedStepScene:
+    """The one native parse of already-selected immutable STEP bytes."""
     step_hash = hashlib.sha256(payload).hexdigest()
     snapshot_path: Path | None = None
     try:
@@ -313,20 +296,12 @@ def load_step_scene_cached(step_path: Path) -> LoadedStepScene:
             _record_consumed_hash(resolved_step_path, step_hash)
             return from_package
 
-        # A document entry whose tree or component closure is incomplete must
-        # not make the compile worker's current-artifact gate take its reuse
-        # path. Dropping this derived pointer is recovery, not invalidation of
-        # any authored input; the compile republishes it atomically.
-        from cadgen.store.index import remove_entry
-
-        remove_entry("document", step_hash)
-
         from cadgen.daemon import broker
         from cadgen.daemon.executors import submit_compile
 
-        # A hash-valid object can still be unreadable (for example, a bad SURF
-        # container). Preserve that failed-closure verdict after removing its
-        # index pointer so compilation derives the canonical components again.
+        # Keep the previous index while repairing its closure. Forced compile
+        # bypasses the reuse gate and atomically replaces the complete result;
+        # deleting the pointer would race a writer that had already repaired it.
         job = submit_compile(resolved_step_path, force=damaged_document)
         with broker.yielded():
             code = job.wait()
@@ -348,10 +323,8 @@ def load_step_scene_cached(step_path: Path) -> LoadedStepScene:
             _record_consumed_hash(resolved_step_path, step_hash)
             return from_package
         # A replacement raced the submit: the worker correctly published the
-        # bytes it snapshotted. A concurrent waiter can also remove an entry
-        # after the job it joined published but before that job reported done;
-        # retry the same digest in that case rather than turning legal duplicate
-        # work into a correctness failure.
+        # bytes it snapshotted. A concurrent deletion of derived geometry can
+        # also race publication; retry boundedly while these bytes stay current.
         current_hash = hashlib.sha256(resolved_step_path.read_bytes()).hexdigest()
         attempts_by_hash[step_hash] = attempts_by_hash.get(step_hash, 0) + 1
         if current_hash == step_hash and attempts_by_hash[step_hash] >= 3:

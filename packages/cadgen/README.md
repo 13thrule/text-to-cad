@@ -46,6 +46,13 @@ allow artifact readers to inspect source or model records.
 Following edits keeps the authored preview after a successful STEP save, with
 the save status reported separately. Switching to the saved file resolves its
 actual bytes and corresponding topology and annotations.
+Native geometry completeness is separate from display-surface readiness.
+Canonical trees pin encoded BREP and effective intrinsic face colors; surface
+extraction is an artifact-only build-pool job selected by an attested producer.
+`read_step`, STEP re-emits and parent materialization do not wait for SURF.
+A first display or selector request still pays missing surface derivation.
+The exact input, codec and recovery boundaries are in [`STORE.md`](STORE.md).
+
 The authored tree is also the final result returned by decorated calls. A
 parent can consume a child's complete source result before that child's STEP
 save, but waits for every called child's declared outputs before saving itself.
@@ -90,9 +97,10 @@ that information is in the wrong place.
 
 There is no automatic GC: `cadgen store gc` is the only sweeper, and every
 object is immutable and idempotently written, so deletion never needs
-coordination — a racing reader re-misses and rebuilds. There are no locks:
-atomic writes, pins and the publish rule (`STORE.md` §5, §7) decide every
-concurrent outcome, and no reader ever waits on a build.
+coordination — a racing reader re-misses and rebuilds. Store correctness needs
+no lock protocol: atomic writes, pins and the publish rule (`STORE.md` §5, §7)
+decide concurrent outcomes. Saved-file readers never wait for a source model
+to finish; missing derived artifacts are resolved through the build pool.
 
 ### 3. One sidecar per artifact, and it belongs to that artifact alone
 
@@ -280,7 +288,7 @@ src/cadgen/
   viewer/                # the CAD Viewer's server: launcher (main),
                          #   routes (http_app), catalog (scanner), status
                          #   (artifact_status: not compiled / compiling /
-                         #   rendered / failed), build_progress (the daemon's
+                         #   compiled / failed), build_progress (the daemon's
                          #   job ledger, read over its socket)
   _runtime/              # BUILT JS (browser snapshot renderer, node
                          #   builders, the viewer client) — generated, never

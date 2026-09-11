@@ -8,7 +8,7 @@ export function lodPayloadRequest(component, level) {
 }
 
 export function matchesLodPayloadRequest(request, context, cid, level, url) {
-  const identity = context?.descriptor?.components?.[cid];
+  const identity = context?.componentIdentityByCid?.[cid] || context?.descriptor?.components?.[cid];
   return !!request && request.descriptor === context?.descriptor && request.file === context?.file &&
     request.cid === cid && !!request.baseMesh && context.componentMeshDataByCid?.[cid] === request.baseMesh &&
     normalizeLodLevel(context.componentLodLevelByCid?.[cid]) === normalizeLodLevel(request.baseLevel) && request.identity === identity && request.url === url &&

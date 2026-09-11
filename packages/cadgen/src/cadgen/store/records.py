@@ -52,8 +52,8 @@ from cadgen.store.index import (
 
 RECORD_KIND = "record"
 # Payload cutovers, not directory/name salts. Legacy mappings are misses.
-RECORD_SCHEMA_VERSION = 3
-DOCUMENT_SCHEMA_VERSION = 3
+RECORD_SCHEMA_VERSION = 4
+DOCUMENT_SCHEMA_VERSION = 4
 
 
 def read_record(model: Path | str) -> dict[str, Any] | None:
@@ -122,7 +122,10 @@ def _resolved(path: Path | str) -> str:
         return os.path.abspath(str(path))
 
 
-def note_document_tree(document_hash: str, tree: str, *, kind: str = "step") -> None:
+def note_document_tree(
+    document_hash: str, tree: str, *, kind: str = "step",
+    surface_producer: dict[str, Any] | None = None,
+) -> None:
     """``index/document/<sha256(bytes)>`` → the tree describing those bytes.
     Artifact → artifact; idempotent; atomic. Keeps the entry's mesh ledger when
     the tree is unchanged (those meshes were cut from this same tree)."""
@@ -135,19 +138,36 @@ def note_document_tree(document_hash: str, tree: str, *, kind: str = "step") -> 
     meshes = existing.get("meshes")
     if existing.get("schemaVersion") == DOCUMENT_SCHEMA_VERSION and isinstance(meshes, dict) and str(existing.get("tree") or "") == tree_hash:
         payload["meshes"] = meshes
+    from cadgen.store.surfaces import producer_fields
+    if surface_producer is not None:
+        # Attestation belongs to the worker or validated artifact response;
+        # lightweight readers must not import the kernel to persist its hint.
+        selected = producer_fields(surface_producer)
+        payload["surfaceProducer"] = selected
+    elif existing.get("schemaVersion") == DOCUMENT_SCHEMA_VERSION and existing.get("tree") == tree_hash:
+        try:
+            payload["surfaceProducer"] = producer_fields(existing.get("surfaceProducer"))
+        except (ValueError, TypeError):
+            pass
     write_entry("document", digest, payload)
 
 
+def document_entry_for_hash(document_hash: str) -> dict[str, Any] | None:
+    """One atomic selected tree/hint snapshot; geometry ignores optional hints."""
+    from cadgen.store.objects import is_object_hash
+
+    if not is_object_hash(document_hash):
+        return None
+    entry = read_entry("document", document_hash)
+    if not entry or entry.get("schemaVersion") != DOCUMENT_SCHEMA_VERSION or not is_object_hash(entry.get("tree")):
+        return None
+    return entry
+
+
 def tree_for_document_hash(document_hash: str) -> str | None:
-    """The tree a reader uses for a file with these bytes, or None (compile it)."""
-    digest = str(document_hash or "").strip()
-    if not digest:
-        return None
-    entry = read_entry("document", digest) or {}
-    if entry.get("schemaVersion") != DOCUMENT_SCHEMA_VERSION:
-        return None
-    tree_hash = str(entry.get("tree") or "").strip()
-    return tree_hash or None
+    """The tree a reader uses for these exact document bytes, or a cache miss."""
+    entry = document_entry_for_hash(str(document_hash or "").strip())
+    return entry["tree"] if entry else None
 
 
 def note_document_mesh(document_hash: str, variant_key: str, sha256: str) -> None:

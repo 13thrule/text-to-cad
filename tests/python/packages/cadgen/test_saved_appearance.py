@@ -181,38 +181,39 @@ class SavedAppearanceTest(unittest.TestCase):
             write_source_sidecar(invalid, {"appearance": {"occurrences": {"o1": {"opacity": False}}}})
         self.assertFalse(source_sidecar_path(invalid).exists())
 
-    def test_record_and_document_indexes_hard_cut_over_to_schema_three(self) -> None:
+    def test_record_and_document_indexes_hard_cut_over_to_schema_four(self) -> None:
+        current_tree = "c" * 64
         model = self.root / "model.step"
         model.write_bytes(b"model")
         write_entry(
             "model",
             model_key(model),
-            {"kind": "record", "schemaVersion": 2, "tree": "legacy-tree", "outputs": {}},
+            {"kind": "record", "schemaVersion": 3, "tree": "legacy-tree", "outputs": {}},
         )
         self.assertIsNone(read_record(model))
 
-        write_record(model, {"tree": "current-tree", "outputs": {}})
+        write_record(model, {"tree": current_tree, "outputs": {}})
         current_record = read_record(model)
         self.assertEqual(RECORD_SCHEMA_VERSION, current_record["schemaVersion"])
-        self.assertEqual(3, current_record["schemaVersion"])
-        self.assertEqual("current-tree", current_record["tree"])
+        self.assertEqual(4, current_record["schemaVersion"])
+        self.assertEqual(current_tree, current_record["tree"])
 
         document_hash = "d" * 64
         write_entry(
             "document",
             document_hash,
-            {"schemaVersion": 2, "tree": "legacy-tree", "kind": "step", "meshes": {"old": "mesh"}},
+            {"schemaVersion": 3, "tree": "legacy-tree", "kind": "step", "meshes": {"old": "mesh"}},
         )
         self.assertIsNone(tree_for_document_hash(document_hash))
         self.assertIsNone(document_mesh_sha(document_hash, "old"))
         note_document_mesh(document_hash, "new", "ignored")
-        self.assertEqual(2, read_entry("document", document_hash)["schemaVersion"])
+        self.assertEqual(3, read_entry("document", document_hash)["schemaVersion"])
 
-        note_document_tree(document_hash, "current-tree")
+        note_document_tree(document_hash, current_tree)
         current_document = read_entry("document", document_hash)
         self.assertEqual(DOCUMENT_SCHEMA_VERSION, current_document["schemaVersion"])
-        self.assertEqual(3, current_document["schemaVersion"])
-        self.assertEqual("current-tree", tree_for_document_hash(document_hash))
+        self.assertEqual(4, current_document["schemaVersion"])
+        self.assertEqual(current_tree, tree_for_document_hash(document_hash))
         self.assertNotIn("meshes", current_document)
         note_document_mesh(document_hash, "new", "current-mesh")
         self.assertEqual("current-mesh", document_mesh_sha(document_hash, "new"))

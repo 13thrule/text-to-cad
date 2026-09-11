@@ -82,9 +82,10 @@ class ComponentSchedulingParity(unittest.TestCase):
                         with mock.patch("cadgen.daemon.memory.component_worker_limit", side_effect=lambda count: count):
                             tree_hash, tree, stats = build_tree_from_compound(source, root_name="six-parts")
                     artifacts = {component[kind]: read_object(component[kind])
-                                 for component in tree["components"].values() for kind in ("surf", "brep")}
+                                 for component in tree["components"].values() for kind in ("brep",)}
                     outputs.append((tree_hash, tree, artifacts))
                     self.assertEqual(stats["components_built"], 6)
+                    self.assertFalse((root / mode / "index/surface").exists())
                 self.assertEqual([_shape_brep_bytes(part) for part in parts], original)
             self.assertEqual(outputs[0], outputs[1])
 

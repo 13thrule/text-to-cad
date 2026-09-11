@@ -125,6 +125,8 @@ class JobLedger:
     # --- lifecycle -------------------------------------------------------------
 
     def start(self, *, tool: str, subject: str, argv: list[str] | None = None, store_root: str = "", editing_producer: bool = True) -> dict[str, Any]:
+        if tool == "artifact":
+            subject, editing_producer = "", False
         subject = _real(subject) if subject else ""
         now = self._clock()
         sequence = next(self._ids)
@@ -136,7 +138,7 @@ class JobLedger:
             "tool": str(tool),
             "editingProducer": bool(editing_producer),
             "subject": subject,
-            "outputs": declared_outputs(subject, str(tool)),
+            "outputs": [] if tool == "artifact" else declared_outputs(subject, str(tool)),
             "argv": [str(a) for a in (argv or [])],
             "state": "submitted",
             "phase": None,
@@ -151,6 +153,20 @@ class JobLedger:
         with self._guard:
             self._jobs[job["id"]] = job
         return job
+
+    def start_artifact(self, request: dict, *, store_root: str, root_id=None, dependency=False) -> dict[str, Any]:
+        job = self.start(tool="artifact", subject="", store_root=store_root, editing_producer=False)
+        with self._guard:
+            job["artifact"] = copy.deepcopy(request)
+            job["rootId"] = root_id
+            job["dependency"] = bool(dependency)
+        return job
+
+    def record_artifact_result(self, job: dict[str, Any], result: dict) -> None:
+        with self._guard:
+            if job["tool"] == "artifact" and job.get("artifactResult") is None:
+                job["artifactResult"] = copy.deepcopy(result)
+                job["updatedAt"] = self._clock()
 
     def accept_editing_producer(self, job: dict[str, Any]) -> None:
         """Only a coalescing request that owns the work advances edit ordering."""

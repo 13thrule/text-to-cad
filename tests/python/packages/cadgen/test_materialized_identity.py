@@ -148,21 +148,24 @@ class MaterializedIdentityTest(unittest.TestCase):
 
     def test_absent_occurrence_material_does_not_leak_from_a_supplied_shape(self):
         from build123d import Solid
+        from cadgen._internal.component_package import prepare_geometry_component
         from cadgen.store.materialize import materialize_descriptor
 
         prototype = Solid.make_box(2, 3, 4)
         prototype.cad_material = {"roughness": 0.88}
+        entry = prepare_geometry_component(prototype)["entry"]
+        cid = entry["contentHash"][:16]
         descriptor = {
-            "components": {"box": {}},
+            "components": {cid: entry},
             "occurrences": [{
                 "id": "o1",
-                "component": "box",
+                "component": cid,
                 "name": "plain",
                 "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
             }],
         }
         plain = materialize_descriptor(
-            descriptor, shapes={"box": prototype}, tree_hash="plain-result"
+            descriptor, shapes={cid: prototype}, tree_hash="plain-result"
         )
         self.assertNotIn("cad_material", plain.__dict__)
         self.assertEqual(prototype.cad_material, {"roughness": 0.88})
@@ -413,8 +416,8 @@ class MaterializedIdentityTest(unittest.TestCase):
         moved = child.moved(Location((20, -3, 7), (11, 23, 37)))
         with mock.patch.object(
             component_package,
-            "_content_hash_and_bytes",
-            wraps=component_package._content_hash_and_bytes,
+            "prepare_geometry_component",
+            wraps=component_package.prepare_geometry_component,
         ) as identities:
             _result, descriptor, stats = build_tree_from_compound(moved, root_name="moved")
         self.assertEqual(set(descriptor["components"]), expected_components)
@@ -426,8 +429,8 @@ class MaterializedIdentityTest(unittest.TestCase):
         delattr(unverified, PARTNER_TAG)
         with mock.patch.object(
             component_package,
-            "_content_hash_and_bytes",
-            wraps=component_package._content_hash_and_bytes,
+            "prepare_geometry_component",
+            wraps=component_package.prepare_geometry_component,
         ) as fallback_identities:
             _result, _fallback, _stats = build_tree_from_compound(unverified, root_name="fallback")
         self.assertEqual(fallback_identities.call_count, len(expected_components))
@@ -444,8 +447,8 @@ class MaterializedIdentityTest(unittest.TestCase):
         BRep_Builder().UpdateVertex(child.vertices()[0].wrapped, gp_Pnt(0.2, 0, 0), 1e-7)
         with mock.patch.object(
             component_package,
-            "_content_hash_and_bytes",
-            wraps=component_package._content_hash_and_bytes,
+            "prepare_geometry_component",
+            wraps=component_package.prepare_geometry_component,
         ) as identities:
             _result, descriptor, _stats = build_tree_from_compound(child, root_name="mutated")
         self.assertEqual(identities.call_count, 1, "mutation did not take the canonical hash path")
@@ -462,7 +465,7 @@ class MaterializedIdentityTest(unittest.TestCase):
         _result, descriptor, stats = build_tree_from_compound(moved, root_name="moved", force=True)
         self.assertEqual(stats["components_built"], len(original))
         for cid, expected in original.items():
-            for key in ("contentHash", "brep", "surf"):
+            for key in ("contentHash", "brep", "codec", "faceColors"):
                 self.assertEqual(descriptor["components"][cid][key], expected[key])
 
     def test_moved_root_can_prepare_and_save_its_pinned_preview_components(self):
@@ -498,7 +501,7 @@ class MaterializedIdentityTest(unittest.TestCase):
             object_path(component["brep"]).unlink()
         moved = child.moved(Location((20, -3, 7), (11, 23, 37)))
         with mock.patch.object(
-            component_package, "_content_hash_and_bytes", wraps=component_package._content_hash_and_bytes,
+            component_package, "prepare_geometry_component", wraps=component_package.prepare_geometry_component,
         ) as identities:
             _result, descriptor, _stats = build_tree_from_compound(moved, root_name="recovered")
         self.assertEqual(identities.call_count, 1)
@@ -549,20 +552,23 @@ class MaterializedIdentityTest(unittest.TestCase):
     def test_repeated_native_keys_are_stable_and_ambiguous_removal_fails(self):
         from OCP.BRep import BRep_Builder
         from build123d import Compound, Solid
+        from cadgen._internal.component_package import prepare_geometry_component
         from cadgen.store.build import _walk_compound
         from cadgen.store.materialize import _native_children, _native_key, materialize_descriptor
         from cadgen.coordination import resolve
 
         prototype = Solid.make_box(2, 3, 4)
+        entry = prepare_geometry_component(prototype)["entry"]
+        cid = entry["contentHash"][:16]
         identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
         descriptor = {
-            "components": {"same": {}},
+            "components": {cid: entry},
             "occurrences": [
-                {"id": "a", "component": "same", "name": "first", "transform": identity},
-                {"id": "b", "component": "same", "name": "second", "transform": identity},
+                {"id": "a", "component": cid, "name": "first", "transform": identity},
+                {"id": "b", "component": cid, "name": "second", "transform": identity},
             ],
         }
-        child = materialize_descriptor(descriptor, shapes={"same": prototype}, tree_hash="test-pin")
+        child = materialize_descriptor(descriptor, shapes={cid: prototype}, tree_hash="test-pin")
         before = tuple(_native_key(node) for node in _native_children(child.wrapped))
         after = tuple(_native_key(node) for node in _native_children(child.wrapped))
         self.assertEqual(before, after)

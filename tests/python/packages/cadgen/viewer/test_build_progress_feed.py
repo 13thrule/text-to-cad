@@ -96,7 +96,7 @@ class ProgressFeed(unittest.TestCase):
     def test_a_published_tree_is_ready_even_with_an_older_finished_job_listed(self):
         seed_result(self.document)
         self.jobs = [job(self.script, [str(self.document)], "done", exit=0)]
-        self.assertEqual({"state": "rendered"}, self.status())
+        self.assertEqual({"state": "compiled"}, self.status())
 
     def test_a_failed_job_with_no_tree_is_failed(self):
         self.jobs = [job(self.script, [str(self.document)], "failed", exit=1)]
@@ -121,7 +121,7 @@ class ProgressFeed(unittest.TestCase):
         seed_result(self.document)
         self.jobs = [job(self.script, [str(self.document)], "failed", exit=1)]
         status = self.status()
-        self.assertEqual("rendered", status["state"])
+        self.assertEqual("compiled", status["state"])
         self.assertEqual(1, status["failed"]["exit"])
 
     def test_a_later_success_clears_an_earlier_failure(self):
@@ -130,7 +130,7 @@ class ProgressFeed(unittest.TestCase):
             job(self.script, [str(self.document)], "failed", id="job-1", exit=1, started=1.0),
             job(self.script, [str(self.document)], "done", id="job-2", exit=0, started=2.0),
         ]
-        self.assertEqual({"state": "rendered"}, self.status())
+        self.assertEqual({"state": "compiled"}, self.status())
 
     def test_a_job_for_another_document_is_not_this_documents_build(self):
         self.jobs = [job(str(self.root / "src" / "other.py"), [str(self.root / "STEP" / "other.step")], "building")]

@@ -938,7 +938,7 @@ def resolve_step_render_job(
     # tree, rather than resolving the mutable path again, keeps every component
     # URL and the sidecar binding on the same revision.
     document_hash, selected_tree = document_snapshot(source_path)
-    package_dir = view_dir_for(selected_tree)
+    package_dir = view_dir_for(selected_tree, document_hash=document_hash)
     if not package_dir.is_dir():
         raise SnapshotError(f"STEP/STP render input has no tree in the store: {package_dir}")
 

@@ -294,10 +294,7 @@ def _emit(
     """Read IN, re-path the scene to OUT, and run the ONE build pipeline."""
     from cadgen._internal.generation import _generate_part_outputs
     from cadgen._internal.step_scene_package import load_step_scene_exact
-    from cadgen.step_artifact_cli import (
-        _build_entry_spec,
-        _entries_by_step_path_for_repo,
-    )
+    from cadgen.step_artifact_cli import _build_entry_spec
 
     with logger.timed(f"load STEP {_display(document)}"):
         scene = load_step_scene_exact(document)
@@ -352,7 +349,7 @@ def _emit(
     ):
         _generate_part_outputs(
             spec,
-            entries_by_step_path=_entries_by_step_path_for_repo(Path.cwd().resolve(), spec),
+            entries_by_step_path={spec.step_path: spec},
             preloaded_scene=scene,
             require_step_file=False,
             force=force,

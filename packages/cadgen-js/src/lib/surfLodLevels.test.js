@@ -3,16 +3,17 @@
 // payloads (finer level -> more triangles), repeat requests at a level are
 // cache hits (one fetch per level), and every surf entry is LRU-bounded.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  loadRenderSurfPayloadAtLevel,
-  loadRenderSurfSelectorBundle,
+  loadRenderSurfPayloadAtLevel as loadPayload,
+  loadRenderSurfSelectorBundle as loadSelector,
   renderAssetCacheStats,
-  surfTessellationCacheKey,
+  surfTessellationCacheKey as cacheKey,
 } from "./renderAssetClient.js";
 import {
   LOD_DEFAULT_LEVEL,
@@ -21,6 +22,17 @@ import {
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SUN_GEAR = fs.readFileSync(path.join(HERE, "surf", "fixtures", "sun_gear.surf"));
+const SURFACE_OBJECT = createHash("sha256").update(SUN_GEAR).digest("hex");
+const identityFor = (url) => ({
+  surfaceInput: createHash("sha256").update(`test-surface-input:${url}`).digest("hex"),
+  surfaceObject: SURFACE_OBJECT,
+});
+const surfTessellationCacheKey = (url, tessellation, identity = identityFor(url)) =>
+  cacheKey(url, tessellation, identity);
+const loadRenderSurfPayloadAtLevel = (url, options = {}) =>
+  loadPayload(url, { identity: identityFor(url), ...options });
+const loadRenderSurfSelectorBundle = (url, options = {}) =>
+  loadSelector(url, { identity: identityFor(url), ...options });
 
 function surfArrayBuffer() {
   return SUN_GEAR.buffer.slice(
@@ -32,17 +44,17 @@ function surfArrayBuffer() {
 test("mesh identity includes component, effective tolerances, algorithm and payload", () => {
   const defaultKey = surfTessellationCacheKey("u.surf", undefined);
   assert.equal(defaultKey, surfTessellationCacheKey("u.surf", {}));
-  assert.match(defaultKey, /^u\.surf#mesh=anonymous-t\d+-l1\.500000e-3-a3\.500000e-1-p\d+$/);
+  assert.match(defaultKey, /^[0-9a-f]{64}-t2-p4-l[0-9a-f]{16}-a[0-9a-f]{16}-s[0-9a-f]{64}$/);
   const l1 = surfTessellationCacheKey("u.surf", { chordTolerance: 5e-4 });
-  assert.match(l1, /^u\.surf#mesh=anonymous-t\d+-l5\.000000e-4-a3\.500000e-1-p\d+$/);
+  assert.match(l1, /^[0-9a-f]{64}-t2-p4-l[0-9a-f]{16}-a[0-9a-f]{16}-s[0-9a-f]{64}$/);
   assert.notEqual(l1, surfTessellationCacheKey("u.surf", { chordTolerance: 1.5e-4 }));
   assert.notEqual(l1, surfTessellationCacheKey("u.surf", { chordTolerance: 5e-4, angleTolerance: 0.2 }));
   // 0.0005 and 5e-4 hit the same entry.
   assert.equal(l1, surfTessellationCacheKey("u.surf", { chordTolerance: 0.0005 }));
-  assert.match(
-    surfTessellationCacheKey("/pkg/components/abc123.surf", {}),
-    /#mesh=abc123-t\d+-/,
-    "content-addressed component identity participates in the key",
+  assert.equal(
+    surfTessellationCacheKey("/pkg/a.surf", {}, identityFor("same")),
+    surfTessellationCacheKey("/pkg/b.surf", {}, identityFor("same")),
+    "URL does not fork one immutable D/O identity",
   );
   assert.notEqual(
     surfTessellationCacheKey("u.surf", lodTessellationForLevel(0)),

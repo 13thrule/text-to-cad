@@ -14,7 +14,6 @@ from pathlib import Path
 from unittest import mock
 
 from cadgen.daemon import executors
-from cadgen.store.trees import put_tree
 from tests.python.support.tmp_root import generated_cad_directory
 
 
@@ -33,12 +32,17 @@ class SourceJobResults(unittest.TestCase):
     def event(self, model, tree):
         return executors.model_event(model, "building", sourceResult={"model": str(model), "tree": tree})
 
+    def geometry_tree(self):
+        from build123d import Solid
+        from cadgen.store.build import build_tree_from_compound
+        return build_tree_from_compound(Solid.make_box(1, 1, 1), root_name="child")[0]
+
     def test_result_is_available_before_completion_and_never_reads_a_newer_record(self):
         from cadgen.authoring import BuildFrame
         from cadgen.store.lazy import LazyCompound
 
         model = f"{self.root / 'child.py'}::child"
-        tree = put_tree({"components": {}, "occurrences": [], "links": []})
+        tree = self.geometry_tree()
         job = executors.Job(model)
         job._observe(self.event(model, tree))
         self.assertFalse(job.done)
@@ -64,7 +68,7 @@ class SourceJobResults(unittest.TestCase):
         from cadgen.store.objects import object_path
 
         model = f"{self.root / 'child.py'}::child"
-        tree = put_tree({"components": {}, "occurrences": [], "links": []})
+        tree = self.geometry_tree()
         job = executors.Job(model)
         job._observe(self.event(model, tree))
         object_path(tree).unlink()

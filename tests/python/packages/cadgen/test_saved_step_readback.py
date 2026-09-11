@@ -133,7 +133,7 @@ class SavedStepReadbackTest(unittest.TestCase):
         tree = get_tree(tree_hash)
         component = next(iter(tree["components"].values()))
         original = {digest: object_path(digest).read_bytes() for digest in tree_objects(tree_hash)}
-        for kind, digest in (("tree", tree_hash), ("brep", component["brep"]), ("surf", component["surf"])):
+        for kind, digest in (("tree", tree_hash), ("brep", component["brep"])):
             for damage in ("missing", "mismatched"):
                 with self.subTest(kind=kind, damage=damage):
                     path = object_path(digest)
@@ -150,18 +150,39 @@ class SavedStepReadbackTest(unittest.TestCase):
                         self.assertEqual(object_path(object_digest).read_bytes(), payload)
                         self.assertEqual(object_hash(payload), object_digest)
 
-    def test_unreadable_surf_with_valid_hash_is_a_miss_not_missing_face_colors(self):
+    def test_missing_or_unreadable_surface_never_blocks_native_face_colors(self):
         from cadgen._internal.step_scene_package import scene_from_render_package
-        from cadgen.store.objects import put_object
-        from cadgen.store.records import note_document_tree
-        from cadgen.store.trees import get_tree, put_tree
+        from cadgen.store import surfaces
+        from cadgen.store.index import write_entry
+        from cadgen.store.objects import object_path, put_object
+        from cadgen.store.trees import get_tree
 
         expected = self.seed()
-        bad_tree = get_tree(expected[2]["documentTree"])
-        next(iter(bad_tree["components"].values()))["surf"] = put_object(b"not a SURF container")
-        note_document_tree(expected[3], put_tree(bad_tree))
-        self.assertIsNone(scene_from_render_package(self.root / "part.step", step_hash=expected[3]))
-        self.assert_same_document(expected, self.build())
+        tree = expected[2]["documentTree"]
+        expected_colors = sorted(tuple(color) for entry in get_tree(tree)["components"].values()
+                                 for color in entry["faceColors"].values())
+        record = next(iter(surfaces.derive(tree).values()))
+        payload = object_path(record["object"]).read_bytes()
+        for damage in ("missing", "digest-mismatched", "hash-valid-unreadable"):
+            with self.subTest(damage=damage):
+                put_object(payload, repair=True)
+                write_entry("surface", record["surfaceInput"], record)
+                if damage == "missing":
+                    object_path(record["object"]).unlink()
+                elif damage == "digest-mismatched":
+                    object_path(record["object"]).write_bytes(b"corrupt surface")
+                else:
+                    write_entry("surface", record["surfaceInput"], {
+                        **record, "object": put_object(b"hash-valid unreadable SURF"),
+                    })
+                with mock.patch("cadgen._internal.step_scene_loader.load_step_scene", side_effect=AssertionError("native hit parsed STEP")), \
+                        mock.patch("cadgen._internal.surface_extract.extract_surface_component", side_effect=AssertionError("native read extracted SURF")):
+                    scene = scene_from_render_package(self.root / "part.step", step_hash=expected[3])
+                    self.assertIsNotNone(scene)
+                    actual_colors = sorted(color for recipe in scene.prototype_face_colors.values()
+                                           for color in recipe.values())
+                    self.assertEqual(actual_colors, expected_colors)
+                    self.assert_same_document(expected, self.build())
 
     def test_absent_document_index_does_not_reuse_damaged_component_objects(self):
         from cadgen._internal.step_scene_loader import load_step_scene
@@ -174,7 +195,7 @@ class SavedStepReadbackTest(unittest.TestCase):
         for force in (False, True):
             with self.subTest(force=force):
                 remove_entry("document", expected[3])
-                path = object_path(component["surf"])
+                path = object_path(component["brep"])
                 original = path.read_bytes()
                 path.write_bytes(b"corrupt component, no document index")
                 with mock.patch("cadgen._internal.step_scene_loader.load_step_scene", wraps=load_step_scene) as raw:
@@ -206,35 +227,40 @@ class SavedStepReadbackTest(unittest.TestCase):
 
     def test_linked_tree_is_rejected_before_flattening(self):
         from cadgen._internal.step_scene_package import scene_from_render_package
+        from cadgen.store.objects import put_object
         from cadgen.store.records import note_document_tree
-        from cadgen.store.trees import get_tree, put_tree
+        from cadgen.store.trees import get_tree
 
         expected = self.seed()
         bad_tree = get_tree(expected[2]["documentTree"])
         bad_tree["links"] = [{"id": "o1.1", "tree": expected[0]}]
-        note_document_tree(expected[3], put_tree(bad_tree))
+        # Deliberately malformed input bypasses the strict tree writer.
+        note_document_tree(expected[3], put_object(json.dumps(bad_tree).encode()))
         with mock.patch("cadgen.store.trees.flatten_tree", side_effect=AssertionError("linked document flattened")):
             self.assertIsNone(scene_from_render_package(self.root / "part.step", step_hash=expected[3]))
 
     def test_deleted_asset_between_tree_and_component_reads_reparses(self):
         from cadgen._internal.step_scene_loader import load_step_scene
-        from cadgen.store import objects
-        from cadgen.store.trees import get_tree
+        from cadgen.store import objects, trees
 
         expected = self.seed()
         tree_hash = expected[2]["documentTree"]
-        brep = next(iter(get_tree(tree_hash)["components"].values()))["brep"]
-        original = objects.read_verified_object
+        brep = next(iter(trees.get_tree(tree_hash)["components"].values()))["brep"]
+        original = trees.read_verified_object
+        deleted = False
 
         def delete_after_tree(digest):
+            nonlocal deleted
             data = original(digest)
-            if digest == tree_hash:
+            if digest == tree_hash and not deleted:
                 objects.object_path(brep).unlink(missing_ok=True)
+                deleted = True
             return data
 
-        with mock.patch.object(objects, "read_verified_object", side_effect=delete_after_tree), \
+        with mock.patch.object(trees, "read_verified_object", side_effect=delete_after_tree), \
                 mock.patch("cadgen._internal.step_scene_loader.load_step_scene", wraps=load_step_scene) as raw:
             repaired = self.build()
+        self.assertTrue(deleted)
         raw.assert_called_once()
         self.assert_same_document(expected, repaired)
 
@@ -301,13 +327,14 @@ class SavedStepReadbackTest(unittest.TestCase):
             import sys
             from pathlib import Path
             from unittest import mock
+            from cadgen._internal.component_package import _BREP_HEADERS, geometry_component_hash
             from cadgen._internal.step_scene_package import load_step_scene_cached
             from cadgen.daemon import executors
             from cadgen.step import compile
             from cadgen.store.index import write_entry
             from cadgen.store.objects import object_path, put_object, read_verified_object
             from cadgen.store.records import note_document_tree, tree_for_document_hash
-            from cadgen.store.trees import get_tree, put_tree, tree_objects
+            from cadgen.store.trees import get_tree, tree_objects
 
             assert sys._cadgen_saved_reader_guard
             step = Path(sys.argv[1])
@@ -316,7 +343,7 @@ class SavedStepReadbackTest(unittest.TestCase):
             original = {digest: read_verified_object(digest) for digest in tree_objects(tree_hash)}
             component = next(iter(get_tree(tree_hash)["components"].values()))
             cases = []
-            for kind, digest in (("tree", tree_hash), ("brep", component["brep"]), ("surf", component["surf"])):
+            for kind, digest in (("tree", tree_hash), ("brep", component["brep"])):
                 object_path(digest).write_bytes(b"damaged derived object")
                 with mock.patch.object(executors, "submit_compile", wraps=executors.submit_compile) as submitted:
                     scene = load_step_scene_cached(step)
@@ -326,25 +353,33 @@ class SavedStepReadbackTest(unittest.TestCase):
                 assert all(read_verified_object(key) == data for key, data in original.items())
                 assert step.read_bytes() == saved_bytes
                 cases.append(kind)
-            # Byte integrity alone cannot validate a SURF container. Keep the
-            # malformed object's valid address in both indexes to prove the
-            # reader carries its failed-closure verdict into compilation.
+            # Byte integrity and a matching codec header cannot certify native
+            # validity. Use an honestly hashed malformed BREP/tree to prove the
+            # reader carries its failed native verdict into compilation.
             bad_tree = get_tree(tree_hash)
-            cid = next(iter(bad_tree["components"]))
-            bad_component = bad_tree["components"][cid]
-            bad_component["surf"] = put_object(b"hash-valid but unreadable SURF")
-            write_entry("component", cid, {"surf": bad_component["surf"], "brep": bad_component["brep"]})
-            note_document_tree(step_hash, put_tree(bad_tree))
+            old_cid = next(iter(bad_tree["components"]))
+            bad_component = bad_tree["components"].pop(old_cid)
+            malformed = _BREP_HEADERS[bad_component["codec"]] + b"not a native shape"
+            bad_component["brep"] = put_object(malformed)
+            bad_component["contentHash"] = geometry_component_hash(
+                bad_component["codec"], malformed, bad_component["faceColors"])
+            cid = bad_component["contentHash"][:16]
+            bad_tree["components"][cid] = bad_component
+            for occurrence in bad_tree["occurrences"]:
+                if occurrence["component"] == old_cid:
+                    occurrence["component"] = cid
+            write_entry("component", cid, {"schemaVersion": 1, **bad_component})
+            note_document_tree(step_hash, put_object(json.dumps(bad_tree).encode()))
             with mock.patch.object(executors, "submit_compile", wraps=executors.submit_compile) as submitted:
                 assert load_step_scene_cached(step).step_hash == step_hash
             assert submitted.call_count == 1
             assert submitted.call_args.kwargs["force"] is True
             assert tree_for_document_hash(step_hash) == tree_hash
             assert all(read_verified_object(key) == data for key, data in original.items())
-            cases.append("unreadable-surf")
+            cases.append("unreadable-brep")
             # Force also bypasses a present document index and repairs existing
             # corrupt component bytes instead of an idempotent write keeping them.
-            object_path(component["surf"]).write_bytes(b"force must repair this")
+            object_path(component["brep"]).write_bytes(b"force must repair this")
             result = compile(step, force=True)
             assert result.ok and not result.skipped
             assert result.tree == tree_hash
@@ -367,7 +402,7 @@ class SavedStepReadbackTest(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         self.assertEqual(json.loads(completed.stdout.strip().splitlines()[-1]), {
-            "repaired": ["tree", "brep", "surf", "unreadable-surf"],
+            "repaired": ["tree", "brep", "unreadable-brep"],
             "forced": True, "codeIndexReadsForbidden": True,
         })
 

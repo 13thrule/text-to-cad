@@ -32,7 +32,7 @@ from hashlib import sha256
 from math import isfinite
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from cadgen.coordination import PHASE_RENDER, resolve as resolve_progress
 from cadgen.results import SnapshotFile, SnapshotResult, SnapshotTimings
@@ -1016,13 +1016,13 @@ def route_file(pathname: str, prefix: str, root: Path) -> Path:
 # --- shared component-tessellation cache (design/unified-tessellation.md) ----
 #
 # The snapshot page resolves component tessellations through the SAME disk
-# cache the mesh-export CLI uses (~/.cache/cadgen/meshes/<key>.tess; codec and
+# cache the mesh-export CLI uses (immutable objects plus index/mesh; codec and
 # key scheme in packages/cadgen-js/src/lib/surf/tessellationCache.js). The page
 # cannot touch the filesystem, so the host serves the cache: GET
 # /__tess_cache/<key>.tess is a read, POST is a best-effort write-back after
 # an in-page tessellation miss. CADGEN_MESH_CACHE=0 turns both directions
-# off. Entries are opaque bytes here: Python never decodes them, it only
-# stores and serves what the one JS codec produced.
+# off. Python validates the shared TESS input identity, header and content hash;
+# metadata probes and exact-object reads enforce admission before body transfer.
 #
 # TRANSPORT: bulk bytes must NOT go through Playwright at all. CDP serializes
 # every fulfilled body as base64 over the devtools pipe at ~20 MB/s, which made
@@ -1044,9 +1044,8 @@ def route_file(pathname: str, prefix: str, root: Path) -> Path:
 # transport, so start() raises instead of degrading.
 
 TESS_CACHE_ROUTE_PREFIX = "/__tess_cache/"
-# <cid>-t<tessellator-version>-l<chord>-a<angle>.tess with exponential-notation
-# tolerances (the key scheme's home is tessellationCache.js); anything else
-# (path separators, dots-runs, empty) is refused before touching disk.
+# The route's safe filename envelope. The store additionally requires the
+# current exact surface-input/algorithm/payload/binary64-tolerance key.
 TESS_CACHE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_-]*\.tess$")
 
 
@@ -1054,63 +1053,38 @@ def tessellation_cache_enabled() -> bool:
     return os.environ.get("CADGEN_MESH_CACHE") != "0"
 
 
-def read_tessellation_cache_entry(pathname: str) -> bytes | None:
+def read_tessellation_cache_entry(pathname: str, *, expected_object=None, max_bytes=None) -> bytes | None:
     """One entry's bytes, from the mesh index (``index/mesh`` -> object); None
     for a refused name, a miss, or a disabled cache."""
     from cadgen.viewer.tess_cache import read_tess_cache_entry
 
     if not tessellation_cache_enabled():
         return None
-    status, data = read_tess_cache_entry(pathname)
+    status, data = read_tess_cache_entry(pathname, expected_object=expected_object, max_bytes=max_bytes)
     return data if status == 200 else None
 
 
 def write_tessellation_cache_entry(pathname: str, body: bytes | None) -> bool:
-    """Best-effort write-back; False only for an invalid name (a 403)."""
+    """Best-effort write-back; False for an invalid or conflicting entry."""
     from cadgen.viewer.tess_cache import write_tess_cache_entry
 
-    return write_tess_cache_entry(pathname, body) != 403
+    return write_tess_cache_entry(pathname, body) == 204
 
 
-# POST /__tess_cache/batch: one round trip for N entries — a many-component
-# assembly otherwise pays ~2 requests per component. Request body is JSON
-# {"names": ["<key>.tess", ...]}; the response is the TESB container defined
-# in packages/cadgen-js/src/lib/surf/tessellationCache.js (that file is the
-# format's single home; Python only frames the opaque entry bytes): "TESB"
-# u32, version u32, count u32, then per entry u32 byteLength (0 = miss) +
-# bytes padded to a 4-byte boundary.
+# Probe small index facts, then request only admitted exact objects. The shared
+# TESB container stays unchanged; viewer.tess_cache owns both hosts' framing.
 TESS_CACHE_BATCH_PATH = "/__tess_cache/batch"
 TESS_CACHE_BATCH_MAGIC = 0x42534554  # "TESB" little-endian
 TESS_CACHE_BATCH_VERSION = 1
-TESS_CACHE_BATCH_MAX_NAMES = 4096
+TESS_CACHE_BATCH_MAX_NAMES = 256
+TESS_CACHE_PROBE_PATH = "/__tess_cache/probe"
 
 
 def read_tessellation_cache_batch(body: bytes | None) -> bytes | None:
-    """The TESB response for a batch request body, or None for a malformed
-    request (the route answers 400). Invalid names and read failures are
-    per-entry MISSES, never errors — the page's fallback is per-key gets."""
-    try:
-        names = json.loads((body or b"").decode("utf-8")).get("names")
-    except (ValueError, UnicodeDecodeError, AttributeError):
-        return None
-    if not isinstance(names, list) or len(names) > TESS_CACHE_BATCH_MAX_NAMES:
-        return None
-    entries: list[bytes] = []
-    for name in names:
-        entry = b""
-        if isinstance(name, str):
-            data = read_tessellation_cache_entry(f"{TESS_CACHE_ROUTE_PREFIX}{name}")
-            if data is not None:
-                entry = data
-        entries.append(entry)
-    parts = [struct.pack("<III", TESS_CACHE_BATCH_MAGIC, TESS_CACHE_BATCH_VERSION, len(entries))]
-    for entry in entries:
-        parts.append(struct.pack("<I", len(entry)))
-        parts.append(entry)
-        padding = (-len(entry)) % 4
-        if padding:
-            parts.append(b"\x00" * padding)
-    return b"".join(parts)
+    """One shared bounded exact-object TESB route for viewer and snapshots."""
+    from cadgen.viewer.tess_cache import read_tess_cache_batch
+
+    return read_tess_cache_batch(body)
 
 
 RENDER_ASSET_ROUTE_PREFIX = "/__render_asset/"
@@ -1157,6 +1131,7 @@ class SnapshotAssetServer:
             def _headers(self, status: int, content_type: str, length: int) -> None:
                 self.send_response(status)
                 self.send_header("access-control-allow-origin", "*")
+                self.send_header("access-control-expose-headers", "content-length")
                 self.send_header("cache-control", "no-store")
                 self.send_header("content-type", content_type)
                 self.send_header("content-length", str(length))
@@ -1176,9 +1151,22 @@ class SnapshotAssetServer:
                 self.end_headers()
 
             def do_GET(self) -> None:  # noqa: N802 - http.server naming
-                pathname = urlparse(self.path).path
+                parsed = urlparse(self.path)
+                pathname = parsed.path
                 if pathname.startswith(TESS_CACHE_ROUTE_PREFIX):
-                    body = read_tessellation_cache_entry(pathname)
+                    query = parse_qs(parsed.query)
+                    from cadgen.viewer.tess_cache import parse_tess_cache_admission
+
+                    try:
+                        digest, limit = parse_tess_cache_admission(
+                            query.get("object", [None])[0], query.get("maxBytes", [None])[0],
+                        )
+                    except (TypeError, ValueError):
+                        self._send(400)
+                        return
+                    body = read_tessellation_cache_entry(
+                        pathname, expected_object=digest, max_bytes=limit,
+                    )
                     if body is None:
                         self._send(404, b"miss", "text/plain; charset=utf-8")
                         return
@@ -1217,8 +1205,31 @@ class SnapshotAssetServer:
                 if not pathname.startswith(TESS_CACHE_ROUTE_PREFIX):
                     self._send(404, b"not found", "text/plain; charset=utf-8")
                     return
-                length = int(self.headers.get("content-length") or 0)
+                from cadgen.viewer.tess_cache import TESS_CACHE_METADATA_MAX_BYTES
+
+                try:
+                    length = int(self.headers.get("content-length") or 0)
+                    if length < 0 or self.headers.get("transfer-encoding"):
+                        raise ValueError("unsupported request framing")
+                except ValueError:
+                    self.close_connection = True
+                    self._send(400)
+                    return
+                maximum = TESS_CACHE_METADATA_MAX_BYTES if pathname in (TESS_CACHE_PROBE_PATH, TESS_CACHE_BATCH_PATH) else 256 * 1024 * 1024
+                if length > maximum:
+                    self.close_connection = True
+                    self._send(413, b"oversized cache request")
+                    return
                 body = self.rfile.read(length) if length > 0 else b""
+                if pathname == TESS_CACHE_PROBE_PATH:
+                    from cadgen.viewer.tess_cache import read_tess_cache_probe
+
+                    result = read_tess_cache_probe(body)
+                    if result is None:
+                        self._send(400, b"bad tessellation probe request")
+                        return
+                    self._send(200, json.dumps(result, separators=(",", ":")).encode(), "application/json")
+                    return
                 if pathname == TESS_CACHE_BATCH_PATH:
                     batch = read_tessellation_cache_batch(body)
                     if batch is None:
@@ -1226,8 +1237,9 @@ class SnapshotAssetServer:
                         return
                     self._send(200, batch)
                     return
-                accepted = write_tessellation_cache_entry(pathname, body)
-                self._send(204 if accepted else 403)
+                from cadgen.viewer.tess_cache import write_tess_cache_entry
+
+                self._send(write_tess_cache_entry(pathname, body))
 
         self.root_provider = root_provider
         self._httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)

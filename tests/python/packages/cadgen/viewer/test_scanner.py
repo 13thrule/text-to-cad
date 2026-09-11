@@ -163,11 +163,12 @@ class StoreResults(ScannerTestCase):
         self.write("a.step", "same bytes\n")
         self.write("sub/b.step", "same bytes\n")
         self.write("c.step", "other bytes\n")
-        a = self.package("a.step", {"kind": "assembly-package", "components": {}})
-        b = self.package("sub/b.step", {"kind": "assembly-package", "components": {}})
+        a = self.package("a.step", {"kind": "assembly-package", "components": {"c0": {}}})
+        b = self.package("sub/b.step", {"kind": "assembly-package", "components": {"c0": {}}})
         c = self.package("c.step", {"kind": "assembly-package", "components": {"c0": {}}})
         self.assertEqual(a, b, "one tree for one result")
-        self.assertNotEqual(a, c)
+        self.assertEqual(a, c, "different document bytes may describe the same geometry")
+        self.assertEqual(result_tree(os.path.join(self.root, "c.step")), c)
         self.assertEqual(result_tree(os.path.join(self.root, "a.step")), a)
         self.assertEqual(result_tree(os.path.join(self.root, "sub", "b.step")), b)
 
@@ -185,15 +186,15 @@ class StoreResults(ScannerTestCase):
 
     def test_the_store_file_param_names_the_tree_with_no_leading_slash(self):
         self.write("p.step", "x\n")
-        tree = self.package("p.step", {"kind": "assembly-package", "components": {}})
+        tree = self.package("p.step", {"kind": "assembly-package", "components": {"c0": {}}})
         entry = self.entry("p.step")
-        self.assertEqual(entry["url"], f"/__cad/store?file={tree}")
+        self.assertEqual(entry["url"], f"/__cad/store?file={tree}&documentHash={entry['documentHash']}")
 
     def test_hash_and_bytes_describe_the_flattened_tree_not_the_step(self):
         from cadgen.viewer.store_paths import result_descriptor
 
         self.write("p.step", "a much longer step body than the descriptor\n")
-        tree = self.package("p.step", {"kind": "assembly-package", "components": {}})
+        tree = self.package("p.step", {"kind": "assembly-package", "components": {"c0": {}}})
         entry = self.entry("p.step")
         self.assertEqual(entry["hash"], tree)
         self.assertEqual(entry["bytes"], len(json.dumps(result_descriptor(tree)).encode("utf-8")))
@@ -214,7 +215,7 @@ class StepKind(ScannerTestCase):
 
     def test_two_occurrences_make_an_assembly(self):
         self.assertEqual(
-            self._kind({"kind": "assembly-package", "occurrences": [{'id': 'o1.1', 'name': 'a', 'component': 'c0', 'transform': [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}, {'id': 'o1.2', 'name': 'b', 'component': 'c0', 'transform': [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 0, 0, 1]}]}), "assembly"
+            self._kind({"kind": "assembly-package", "occurrences": [{'id': 'o1.1', 'name': 'a', 'component': 'c0', 'transform': [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}, {'id': 'o1.2', 'name': 'b', 'component': 'c0', 'transform': [1, 0, 0, 10, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}]}), "assembly"
         )
 
     def test_a_root_object_alone_does_not_make_an_assembly(self):
@@ -238,7 +239,7 @@ class DescriptorGate(ScannerTestCase):
         return self.entry("g.step")
 
     def test_a_valid_package_publishes_both_urls(self):
-        entry = self._entry_with_sidecar({"kind": "assembly-package", "components": {}})
+        entry = self._entry_with_sidecar({"kind": "assembly-package", "components": {"c0": {}}})
         self.assertTrue(entry["sourceUrl"].startswith("/g.step.json?v="))
         self.assertEqual(entry["poseUrl"], entry["sourceUrl"])
 
@@ -258,7 +259,7 @@ class SidecarTruthiness(ScannerTestCase):
         self.write("s.step", "x\n")
         if sidecar_text is not None:
             self.sidecar("s.step", json.loads(sidecar_text))
-        self.package("s.step", {"kind": "assembly-package", "components": {}})
+        self.package("s.step", {"kind": "assembly-package", "components": {"c0": {}}})
         return self.entry("s.step")
 
 
@@ -279,7 +280,7 @@ class SidecarTruthiness(ScannerTestCase):
         self.package("finish.step", {
             "kind": "assembly-package",
             "components": {"cid": {}},
-            "occurrences": [{"id": "o1.1", "component": "cid"}],
+            "occurrences": [{"id": "o1.1", "name": "part", "component": "cid", "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}],
         })
         entry = self.entry("finish.step")
         self.assertIn("appearanceHash", entry)
@@ -302,7 +303,7 @@ class SidecarTruthiness(ScannerTestCase):
         self.package("race.step", {
             "kind": "assembly-package",
             "components": {"cid": {}},
-            "occurrences": [{"id": "o1.1", "component": "cid"}],
+            "occurrences": [{"id": "o1.1", "name": "part", "component": "cid", "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}],
         })
         original_asset_for_path = scanner.asset_for_path
 
@@ -358,14 +359,14 @@ class SidecarTruthiness(ScannerTestCase):
     def test_the_sidecar_suffix_is_appended_to_the_whole_name(self):
         self.write("u.STP", "x\n")
         self.sidecar("u.STP", {"kinematics": {}})
-        self.package("u.STP", {"kind": "assembly-package", "components": {}})
+        self.package("u.STP", {"kind": "assembly-package", "components": {"c0": {}}})
         self.assertTrue(self.entry("u.STP")["sourceUrl"].startswith("/u.STP.json?v="))
 
     def test_a_sidecar_for_different_step_bytes_reports_annotation_error(self):
         self.write("stale.step", "old\n")
         self.sidecar("stale.step", {"kinematics": {}})
         self.write("stale.step", "new\n")
-        self.package("stale.step", {"kind": "assembly-package", "components": {}})
+        self.package("stale.step", {"kind": "assembly-package", "components": {"c0": {}}})
 
         entry = self.entry("stale.step")
         self.assertIn("does not match stale.step sha256", entry["annotationError"])
@@ -380,7 +381,7 @@ class SidecarTruthiness(ScannerTestCase):
             "old.step.json",
             json.dumps({"schemaVersion": 6, "kinematics": {}}),
         )
-        self.package("old.step", {"kind": "assembly-package", "components": {}})
+        self.package("old.step", {"kind": "assembly-package", "components": {"c0": {}}})
 
         entry = self.entry("old.step")
         self.assertIn("unsupported sidecar schema 6 (expected 8)", entry["annotationError"])
@@ -392,7 +393,7 @@ class SidecarTruthiness(ScannerTestCase):
         self.sidecar("bad-finish.step", {
             "appearance": {"occurrences": {"o1.1": {"roughness": "glossy"}}}
         })
-        self.package("bad-finish.step", {"kind": "assembly-package", "components": {}})
+        self.package("bad-finish.step", {"kind": "assembly-package", "components": {"c0": {}}})
 
         entry = self.entry("bad-finish.step")
         self.assertIn("expected a finite number between 0 and 1", entry["annotationError"])

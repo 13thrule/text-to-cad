@@ -44,7 +44,7 @@ MODEL_TEXT = textwrap.dedent(
 
 class StoreCase(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = generated_cad_directory(prefix="store-case-")
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.previous = os.environ.get("CADGEN_CACHE_DIR")
@@ -74,14 +74,19 @@ class StoreCase(unittest.TestCase):
         from cadgen.store.objects import put_object
         from cadgen.store.trees import put_tree
 
-        digest = put_object(payload)
+        from build123d import Solid
+        from cadgen._internal.component_package import prepare_geometry_component
+        prepared = prepare_geometry_component(Solid.make_box(1, 2, 3 + sum(payload) / 1000))
+        entry = prepared["entry"]
+        digest = put_object(prepared["payload"])
+        cid = entry["contentHash"][:16]
         return put_tree(
             {
                 "label": label,
                 "entryKind": "part",
                 "units": "mm",
-                "components": {"c0": {"surf": digest, "brep": digest, "contentHash": "c0"}},
-                "occurrences": [{"id": "o1", "name": f"{label}_body", "component": "c0", "transform": IDENTITY}],
+                "components": {cid: entry},
+                "occurrences": [{"id": "o1", "name": f"{label}_body", "component": cid, "transform": IDENTITY}],
                 "links": [],
                 "assembly": {"root": {"id": "o1", "name": label, "nodeType": "part", "leafPartIds": ["o1"], "children": []}},
                 "stats": {"occurrenceCount": 1, "linkCount": 0},
@@ -173,7 +178,8 @@ class GateTruthTable(StoreCase):
         tree = self.tree_for("plate", payload=b"SURF\x02")
         self.record(script, tree=tree)
         self.assertIsNone(self.stale_clause(script))
-        object_path(hashlib.sha256(b"SURF\x02").hexdigest()).unlink()
+        from cadgen.store.trees import get_tree
+        object_path(next(iter(get_tree(tree)["components"].values()))["brep"]).unlink()
         self.assertEqual(self.stale_clause(script), 4)
 
     def test_clause_5_an_output_that_changed_on_disk(self) -> None:
@@ -451,7 +457,7 @@ class TreeFlattening(StoreCase):
         self.assertEqual(by_id["o1.1.2"]["name"], "pin_right")
         self.assertEqual(by_id["o1.1.1"]["transform"][3::4][:3], [-15, 10, 7])
         self.assertEqual(by_id["o1.1.2"]["transform"][3::4][:3], [15, 10, 7])
-        self.assertEqual(list(flat["components"]), ["c0"], "one shared component, stored once")
+        self.assertEqual(len(flat["components"]), 1, "one shared component, stored once")
         self.assertEqual(flat["assembly"]["root"]["children"][0]["nodeType"], "subassembly")
 
 
@@ -613,14 +619,15 @@ class TreeKind(StoreCase):
         from cadgen.store.trees import flatten, get_tree, put_tree, tree_kind, tree_kind_for
 
         child = self.tree_for("pin")
-        digest = put_object(b"SURF\x01")
+        child_entry = next(iter(get_tree(self.tree_for("arm", b"different"))["components"].values()))
+        cid = child_entry["contentHash"][:16]
         parent = put_tree(
             {
                 "label": "arm",
                 "entryKind": "part",  # the static inference's answer; the tree overrules it
                 "units": "mm",
-                "components": {"c1": {"surf": digest, "brep": digest, "contentHash": "c1"}},
-                "occurrences": [{"id": "o1.1", "name": "arm_body", "component": "c1", "transform": IDENTITY}],
+                "components": {cid: child_entry},
+                "occurrences": [{"id": "o1.1", "name": "arm_body", "component": cid, "transform": IDENTITY}],
                 "links": [{"id": "o1.2", "name": "pin", "tree": child, "transform": IDENTITY}],
                 "assembly": {"root": {"id": "o1", "name": "arm", "nodeType": "assembly", "children": [
                     {"id": "o1.1", "name": "arm_body", "nodeType": "part", "leafPartIds": ["o1.1"], "children": []},
@@ -657,6 +664,8 @@ class GcReachability(StoreCase):
             {
                 "label": "arm", "entryKind": "assembly", "units": "mm", "components": {}, "occurrences": [],
                 "links": [{"id": "o1.1", "name": "pin", "tree": pin, "transform": IDENTITY}],
+                "assembly": {"root": {"id": "o1", "name": "arm", "nodeType": "assembly", "children": [
+                    {"id": "o1.1", "nodeType": "link", "children": []}]}},
                 "stats": {"occurrenceCount": 0, "linkCount": 1},
             }
         )
@@ -671,7 +680,8 @@ class GcReachability(StoreCase):
         self.assertFalse(has_object(old_orphan))
         self.assertTrue(has_object(fresh_orphan), "within the grace window a build may still pin it")
         self.assertTrue(has_object(pin) and has_object(arm))
-        self.assertTrue(has_object(hashlib.sha256(b"SURF\x00").hexdigest()), "reachable through the link")
+        from cadgen.store.trees import get_tree
+        self.assertTrue(has_object(next(iter(get_tree(pin)["components"].values()))["brep"]), "reachable through the link")
 
 
 class LinkOrComponent(StoreCase):

@@ -225,7 +225,7 @@ class ReadyChildren(unittest.TestCase):
 
     def test_deleted_object_after_preparation_fails_on_exact_pin(self):
         late = self.child('late', tree=self.tree)
-        surf = next(iter(get_tree(self.tree)['components'].values()))['surf']
+        surf = next(iter(get_tree(self.tree)['components'].values()))['brep']
         first = self.child('first', job=Job(self.other, lambda: object_path(surf).unlink()))
         with nullcontext(), mock.patch('cadgen.store.records.read_record', side_effect=AssertionError('latest record')):
             with self.assertRaisesRegex(ChildBuildError, 'disappeared'):
@@ -235,16 +235,17 @@ class ReadyChildren(unittest.TestCase):
 
     def test_corruption_after_preparation_is_not_hidden_by_private_value(self):
         late = self.child('late', tree=self.tree)
-        surf = next(iter(get_tree(self.tree)['components'].values()))['surf']
+        surf = next(iter(get_tree(self.tree)['components'].values()))['brep']
         first = self.child('first', job=Job(self.other, lambda: object_path(surf).write_bytes(b'corrupt')))
         with nullcontext():
-            with self.assertRaisesRegex(ValueError, 'match'):
+            with self.assertRaisesRegex(ChildBuildError, 'disappeared'):
                 bd.Compound(obj=[first, late], children=[first, late])
-        self.assertEqual(self.stats['revalidationFallbacks'], 1)
+        self.assertEqual(self.stats['prepared'], 1)
+        self.assertEqual(self.stats['consumed'], 0)
 
     def test_failed_preparation_can_retry_same_repaired_object_in_order(self):
         late = self.child('late', tree=self.tree)
-        surf = next(iter(get_tree(self.tree)['components'].values()))['surf']
+        surf = next(iter(get_tree(self.tree)['components'].values()))['brep']
         payload = object_path(surf).read_bytes()
         object_path(surf).write_bytes(b'corrupt')
         first = self.child('first', job=Job(self.other, lambda: put_object(payload, repair=True)))
@@ -376,9 +377,9 @@ class ReadyChildren(unittest.TestCase):
         self.assertEqual(self.stats['maxPreparedBrepBytes'], 0)
         self.assertAlmostEqual(sum(s.volume for s in late.solids()), 24)
 
-    def test_surf_repaired_after_short_stat_still_obeys_actual_size_limit(self):
+    def test_brep_repaired_after_short_stat_still_obeys_actual_size_limit(self):
         entry = next(iter(get_tree(self.tree)['components'].values()))
-        surf = entry['surf']
+        surf = entry['brep']
         path = object_path(surf)
         payload = path.read_bytes()
         path.write_bytes(b'x')
@@ -394,11 +395,11 @@ class ReadyChildren(unittest.TestCase):
                 put_object(payload, repair=True)
             return value
         with mock.patch.object(Path, 'stat', stat_then_repair), \
-             mock.patch.object(candidate, '_MAX_SURF_BYTES', len(payload)-1), nullcontext():
+             mock.patch.object(candidate, '_MAX_BREP_BYTES', len(payload)-1), nullcontext():
             bd.Compound(obj=[first, late], children=[first, late])
         self.assertFalse(armed)
         self.assertEqual(self.stats['prepared'], 0)
-        self.assertEqual(self.stats['maxPreparedSurfBytes'], 0)
+        self.assertEqual(self.stats['maxPreparedBrepBytes'], 0)
         self.assertAlmostEqual(sum(s.volume for s in late.solids()), 24)
 
     def test_install_is_permanent_idempotent_and_inactive_outside_execution(self):

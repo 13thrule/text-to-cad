@@ -58,7 +58,9 @@ def _budget(tree: str):
     if len(payload) > _MAX_TREE_BYTES:
         return None
     data = json.loads(payload)
-    if data.get("kind") != "tree" or data.get("links"):
+    from cadgen.store.trees import _validate_structure
+    _validate_structure(data)
+    if data.get("links"):
         return None
     components = data.get("components") or {}
     occurrences = data.get("occurrences") or []
@@ -67,7 +69,8 @@ def _budget(tree: str):
     breps, surfs = set(), set()
     for entry in components.values():
         breps.add(entry["brep"])
-        surfs.add(entry["surf"])
+        if entry.get("eagerSurface"):
+            surfs.add(entry["eagerSurface"])
 
     def verified_size(digests, limit):
         total = 0
@@ -90,6 +93,9 @@ def _budget(tree: str):
     surf_bytes = verified_size(surfs, _MAX_SURF_BYTES)
     if surf_bytes is None:
         return None
+    from cadgen._internal.component_package import validate_geometry_component
+    for cid, entry in components.items():
+        validate_geometry_component(entry, read_verified_object(entry["brep"]), cid=cid)
     return brep_bytes, surf_bytes, (tree, *sorted(breps | surfs)), data
 
 

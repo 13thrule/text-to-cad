@@ -39,6 +39,11 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   compose in the effect records and nowhere else.
 - **Loud failure**: a missing entry, an unresolvable ref, or a failed
   compile surfaces as an alert — never a silently wrong scene.
+- **Geometry and display readiness are separate**: a `compiled` artifact owns
+  a complete immutable geometry tree. Display may still be waiting for an
+  exact surface derivation or tessellation. A validated warm tessellation can
+  render directly from its immutable object binding; selectors and a cache
+  miss resolve the pinned surface asynchronously without recompiling geometry.
 
 ## Launching
 
@@ -102,9 +107,9 @@ the build — detection only; it keeps serving.
   and its bound sidecar. A later successful no-op run without a new preview, or
   an expired preview with a validated saved result, uses the saved file instead.
   Complete displayed component arrays remain available while a replacement
-  stages or fails. An unchanged immutable surface at the same tessellation
-  reuses those arrays across revisions; placements and appearance come from
-  the new tree. Snapshot source isolation is unchanged.
+  stages or fails. Reuse requires the same runtime surface input, concrete
+  surface object and tessellation; placements and appearance come from the new
+  tree. Snapshot source isolation is unchanged.
 - Assemblies with at least 64 unique components start at a coarser display
   tessellation. Smaller assemblies keep the standard level, except an
   individually oversized component may start coarse if its estimate fits.

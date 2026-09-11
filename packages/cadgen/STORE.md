@@ -16,7 +16,7 @@ One word per concept; the code uses these words and no others.
 | **build** | running a model's function and publishing its result |
 | **store** | the whole cache, `~/.cache/cadgen/`: `objects/` + `index/` |
 | **object** | an immutable, content-addressed file in `objects/` — a component or a tree |
-| **component** | a leaf geometry object: one solid's `.brep` + `.surf` |
+| **component** | exact encoded BREP plus an immutable effective face-color recipe; display surfaces are derived separately |
 | **tree** | a model's result object: its own components + links, with placements, names, colors; its hash is the model's result identity |
 | **link** | a tree entry pointing at a child's tree hash, with placement and name |
 | **pin** | the child tree hash a parent resolved during a build (noun and verb) |
@@ -35,10 +35,11 @@ memo (bare), scope, blob. They do not appear in code or documentation.
 ```
 ~/.cache/cadgen/                      (CADGEN_CACHE_DIR overrides; else the platform cache dir)
   objects/ab/cdef…                    immutable, content-addressed, sharded like git
-  index/document/<sha256(file bytes)> ARTIFACT side: {schemaVersion, tree, kind, meshes} for a file's bytes
+  index/document/<sha256(file bytes)> ARTIFACT side: {schemaVersion, tree, kind, surfaceProducer?, meshes?} for a file's bytes
   index/model/<sha256(script::function)>  records (input-addressed, mutable, atomic)
   index/output/<sha256(output path)>  {model}: which script wrote the file at this path
-  index/component/<cid>               component entries → {surf, brep} object hashes
+  index/component/<cid>               geometry-input entries → encoded BREP and intrinsic recipe
+  index/surface/<surfaceInput>        attested extraction inputs → SURF object hash
   index/op/<sha256(op key)>           op-memo entries → object hash, or an inline value
   index/mesh/<key>                    tessellation entries → object hash
 ```
@@ -59,9 +60,10 @@ invalidate a consumer's private geometry.
 ### The two sides of the store — a law
 
 `objects/` is the **artifact side**: what geometry exists. `index/model`,
-`index/output`, `index/op`, `index/mesh`, `index/component` are the **code
-side**: what source produced it, what it depended on, what may be reused.
-`index/document` is the one artifact-side index: `sha256(file bytes)` → the
+`index/output` are the **code side**: what source produced a result and
+what it depended on. `index/op`, `index/component`, `index/surface` and
+`index/mesh` remember reusable derivations; surface and mesh jobs consume only
+immutable artifact inputs. `index/document` is the document lookup: `sha256(file bytes)` → the
 tree describing those bytes (plus a mesh ledger keyed by format × tolerances
 × pose × appearance — the bare mesh doors read and write it, and a script run notes its
 declared meshes there too, so the two front doors never redo each other's work). Three properties, each enforced by a
@@ -76,7 +78,7 @@ test:
    bytes, read `index/document`, read objects — and never open `index/model`
    or `index/output`. A miss is a compile job, never a refusal. The viewer
    reads no record at all — no exception: its status is artifact-side (not
-   compiled / compiling / rendered / failed) and it never learns which model
+   compiled / compiling / failed) and it never learns which model
    wrote a document. "Is this document behind its source" is `cadgen store
    why`'s and the build tree's question.
    Once selected, the tree and its document digest travel together. A reader
@@ -101,9 +103,9 @@ the store makes:
 - **Content-addressed** (`objects/`): the name is `sha256(bytes)`. Two kinds
   of object exist — a **component** (the `.brep` bytes, and separately the
   `.surf` bytes, of one solid) and a **tree** (JSON). Writing an object is
-  idempotent; an object is never rewritten or edited. A result is complete
-  when its tree object exists, and nothing references a tree until it does,
-  so a half-written result cannot exist.
+  idempotent; valid bytes are never changed. Geometry completeness requires
+  the entire verified required closure before publication. Display readiness
+  is separate and disposable. A repair may restore bytes at their exact hash.
 - **Input-addressed** (`index/`): the name is derived from what PRODUCED the
   entry (a script path, a kernel operation's inputs, a surface × tolerance),
   and the entry is a small JSON file pointing at objects or recording facts.
@@ -129,7 +131,7 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   "entryKind": "assembly",
   "units": "mm",
   "components": {
-    "0c5932ad05ce64a6": {"surf": "c1a8623b…", "brep": "ebe7552f…", "contentHash": "0c5932ad…"}
+    "0c5932ad05ce64a6": {"kind": "native", "codec": "bintools-v4", "brep": "ebe7552f…", "faceColors": {}, "contentHash": "0c5932ad…"}
   },
   "occurrences": [
     {"id": "o1.1", "name": "bar", "component": "0c5932ad05ce64a6", "transform": [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]}
@@ -149,8 +151,8 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
 ```
 
 - `components` are geometry this model created itself, keyed by component id
-  (`cid`, a hash of the component extraction inputs); each names the `.surf` and
-  `.brep` objects. A model result contains the exact authored source geometry,
+  (`cid`, the first 16 hexadecimal characters of the complete geometry-input
+  hash); each names its encoded `.brep`, declared codec and intrinsic recipe. A model result contains the exact authored source geometry,
   reconstructed from canonical BREP bytes. It is the same result on a miss,
   RAM/disk reuse, a top-level return, and a child call, independent of STEP
   declarations or an attached UI. OCCT's STEP translation can change geometry,
@@ -160,12 +162,38 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   trees. Two placements of one child are two links to one tree. Transforms
   are 16 numbers, row-major, translation in the fourth column, in the
   parent's frame.
-  Component input v2 includes the exact unlocated BREP, extraction schema and
-  normalized face-ordinal RGBA map, because SURF carries those face colors.
-  Every legacy component input misses, including uncolored entries that could
-  have reused a colored SURF. Different face-color variants still share the
-  same immutable BREP object; uniform occurrence color and PBR stay outside
-  the component input.
+  Geometry input v3 hashes the closed component kind, declared codec, exact
+  unlocated BREP bytes and effective positive face-ordinal RGBA recipe. Absent
+  native face ordinals are removed before hashing. JSON ordinal keys are
+  converted to strings before canonical sorting, so round trips past ordinal9
+  preserve the same identity. Uniform color and PBR remain occurrence metadata.
+  Extractor, native runtime and surface readiness never enter a native component
+  or geometry tree identity.
+
+  Native components are privately decoded before publication. BinTools v4
+  retains the existing decoded native semantics and original payload while
+  checking exact point-bearing vertex records and referenced placements. Known
+  point-parameter loss falls back to pinned BinTools v3, then BRepTools ASCIIv3;
+  both alternates require full original native bytes and their own byte fixed
+  point. Declared headers are checked before decoding. This is a specific
+  known-hazard fence, not an equivalence claim for every possible native state.
+  If no codec passes, an explicit `eager-only` component pins the required
+  `eagerSurface` in its geometry identity. Native access raises
+  `NativeUnavailable`; a saved-file reader may privately reparse its exact
+  selected STEP bytes. Authored child pins never substitute a saved document.
+
+  `store.surfaces.request_view` captures a runtime producer separately from the
+  tree. The producer contains extraction scheme19, SURF format2 and the actual
+  loaded build123d/OCP/distribution versions. Its full input digest includes
+  every geometry/appearance/producer field. Unknown versions cannot create a
+  shared persistent namespace. `derive` runs in an artifact job, privately
+  decodes only captured inputs, verifies the SURF container and writes the
+  immutable object before the surface index. Expected output conflicts fail;
+  no source, model record, latest child or live authored shape is consulted.
+  Geometry reads, STEP re-emits and parent materialization do not derive SURF.
+  First display or selector demand pays that work when its disposable result
+  is absent; faster native reads do not imply faster first display.
+
 - `assembly.root` is the grouping the author's compound expressed; a link
   appears in it as a node of type `link`.
 
@@ -185,7 +213,7 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
 
   Saved readback may reconstruct a private scene from that document index
   when the freshly emitted STEP has an already-seen exact digest. It verifies
-  one snapshot of the root tree and every consumed BREP/SURF object against
+  one snapshot of the root tree and every required BREP/eager-surface object against
   its content address; document trees containing source links are rejected.
   Missing, unreadable or damaged objects cause a raw STEP parse. New output
   bytes and forced builds also use the raw parser. Both paths retain the same
@@ -204,16 +232,16 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   geometry while retaining their own finishes. Appearance-sensitive exports
   include the normalized appearance digest in their variant, including absence.
 
-  Model records and document mappings use payload schema 3.
-  Schema 2 model records used STEP-translated own components and are misses.
-  Schema 2 document mappings are also misses: exact bounds now reuse a
-  translation-independent derivation, whose final floating-point rounding can
-  change the canonical tree. Component identities and SURF objects are unchanged.
-  Old entries are
-  misses; no directory or document-byte key is salted. Rebuild authored outputs
-  to write schema-8 annotations. Legacy cache-only finishes cannot be recovered
-  after the cache and source are lost, and are never guessed from another
-  file's document entry. Old sidecar schemas fail with a regeneration message.
+  Model records and document mappings use payload schema4; prior schemas are
+  misses, with no directory or document-byte-key salts. Trees use only geometry
+  schema1; there is no optional old-tree decoder. Document indexes may carry an
+  optional exact loaded `surfaceProducer` hint outside the tree. A same-tree
+  rewrite preserves a valid hint and external mesh ledger; a tree replacement
+  drops both unless an attested producer is supplied. A reader selects tree and
+  hint from one atomic record snapshot. Geometry ignores absent or invalid
+  hints. A prepared warm view can use a valid prior producer without importing
+  the kernel; its concrete TESS provenance remains valid after SURF deletion.
+
 - Consumers that speak the older flat shape (the viewer client, the Node
   exporters) read a **flattened** tree: `cadgen.store.trees.flatten` expands
   links recursively (ids rebased — a child's `o1.2` under link `o1.3` becomes
@@ -234,7 +262,7 @@ A real one (`link_robot`: a base, two placements of `link_arm`, one of
 ```json
 {
   "kind": "record",
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "model": "/abs/models/assemblies/src/link_robot/link_robot.py::link_robot",
   "script": "/abs/models/assemblies/src/link_robot/link_robot.py",
   "function": "link_robot",
@@ -424,13 +452,11 @@ Decided mechanically from the returned geometry and occurrence metadata.
   private topology, preventing XCAF from overwriting another variant's styles.
   Every occurrence owns its face-color and PBR maps. New byte-cache entries
   require a matching content digest; a hit still requires the object to exist
-  on disk. A separate LRU retains immutable normalized SURF face-color recipes,
-  bounded by 4 MiB of accounted recipe memory and 1,024 entries. Unretained
-  SURF payloads do not consume that recipe budget. Every
-  recipe lookup rereads and verifies the complete current SURF payload; a hit
-  skips only JSON parsing and normalization. Each exposure receives a private
-  dictionary. Clearing the memos releases retained bytes and recipes, leaving
-  active consumers' shapes and appearance maps valid.
+  on disk. Complete tree capture verifies every required object on each new
+  materialization. Intrinsic recipes live in the immutable geometry tree;
+  no SURF read or surface-recipe cache is needed. Each exposure receives a
+  private dictionary. Clearing the byte memo leaves active consumers' shapes
+  and appearance maps valid.
 - When the parent's result is written, every tagged child whose native
   partner, geometry and descendant metadata still match its original baseline
   becomes a **link**. Everything else — geometry the parent made, a sub-shape
@@ -450,7 +476,7 @@ Decided mechanically from the returned geometry and occurrence metadata.
   occurrences fail explicitly instead of discarding geometry or guessing labels.
 - A directly returned materialized root carries its component addresses through
   clean placement after that same full integrity check. Packaging reuses the
-  pinned BREP/SURF objects instead of deriving their identity a second time.
+  pinned encoded BREP and intrinsic recipe instead of deriving their identity a second time.
   Forced extraction uses the pinned canonical bytes; deleted pinned assets
   cause an ordinary identity derivation from the owned geometry. No pointer-only
   shortcut bypasses the native mutation check.
@@ -484,7 +510,7 @@ Decided mechanically from the returned geometry and occurrence metadata.
   corrupt, unsupported or invalid inputs use the ordinary whole-document path;
   forced builds bypass this reuse.
 - The internal source publisher may capture that complete descriptor and its
-  verified tree/BREP/SURF bytes plus normalized face-color recipes before its
+  verified tree/BREP bytes plus normalized intrinsic face-color recipes before its
   callback. Every unique BREP and exact native placement is validated privately
   before publication even when numeric bounds hit; scalar cache entries never
   certify native validity. These same owned prototypes supply bounds misses and
@@ -497,7 +523,7 @@ Decided mechanically from the returned geometry and occurrence metadata.
   document does. Arbitrary direct preview callbacks retain the ordinary order.
 - Admission allows at most 64 occurrences, 16 components, 32 trees and depth 32;
   aggregate tree bytes and the flattened descriptor each have a 64 KiB limit.
-  BREP bytes are limited to 768 KiB, SURF bytes to 4 MiB, and retained appearance
+  BREP bytes are limited to 768 KiB, required eager-only SURF bytes to 4 MiB, and retained appearance
   recipes to 256 KiB. This bounds additional encoded payload/recipe retention to
   5.125 MiB, plus bounded Python structures and invocation-owned native shapes;
   it is not a native allocator RSS guarantee. No native shape enters an op
@@ -709,12 +735,11 @@ OCCT operation may grow between RSS samples. Where RSS cannot be enumerated,
 reservations still apply. Transient execution receives extraction-pool sizing,
 but has no daemon-wide aggregate process budget. CPU slot counts remain upper
 bounds, and extraction concurrency also fits the parent worker allowance.
-Component extraction defaults to inline work when the missing components'
-serialized BREP payloads total at most 768 KiB, avoiding fresh interpreter
-startup for small batches. Both schedules reconstruct private shapes from
-the same bytes. Larger or unknown payloads retain the existing worker-count
-policy; an explicit `CADGEN_COMPONENT_WORKERS` value retains its requested
-concurrency under the existing work-count and memory caps.
+Geometry publication no longer starts extraction subprocesses for native
+components. Surface requests use the shared artifact-job admission and one
+private derivation per requested component; they have no model binding,
+declared output or editing-producer order. Their time and memory remain real
+work, charged when a display or selector first requires them.
 
 **Browser resources.** Disposable decoded meshes, selectors, BVHs, GPU buffers,
 textures and worker work may have byte budgets and be reclaimed when unused.
@@ -770,7 +795,7 @@ The original attachment-triggered force starts preparation; anytree still
 performs its own validation, attachment and error rollback. Nested constructors,
 arbitrary iterators, subclasses and child reparenting keep ordinary forcing.
 Admission permits at most eight small unlinked trees,
-with 768 KiB of verified BREP bytes and 4 MiB of verified SURF bytes in total;
+with 768 KiB of verified BREP bytes and 4 MiB of required eager-only SURF bytes in total;
 tree size and component/occurrence counts are also bounded. These limit extra
 work and retention, not native allocator RSS. No native cache or thread is added.
 
@@ -868,8 +893,13 @@ supersession does not cancel their exports.
   `tree or components missing`, `never written: <path>`, `output missing:
   <path>`, `output changed: <path>`.
 - Resolve a tree: `cadgen.store.trees.get_tree(hash)`; flattened with
-  `flatten(hash)`. Components: `tree["components"]`, each with its `surf` and
-  `brep` object hashes under `objects/ab/cdef…`.
+  `capture_tree(hash)` for an owned verified flattened view and byte closure.
+  Metadata-only consumers use `capture_tree(hash, retain_payloads=False)` to
+  perform the same complete verification while releasing each raw object after
+  reading it. This changes retained memory, not completeness; a later request
+  verifies the closure again.
+  Components carry `brep`, `codec` and `faceColors`; display SURF resolves
+  separately through `store.surfaces` and `index/surface`.
 - `cadgen store info` sizes the store. `cadgen store gc --dry-run` lists what
   a sweep would remove.
 - **Resets, smallest first.** `python model.py --force` rebuilds one model

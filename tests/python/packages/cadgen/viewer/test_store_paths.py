@@ -77,18 +77,20 @@ class DelegatesToCadgen(unittest.TestCase):
                 descriptor = store_paths.result_descriptor(tree)
                 self.assertEqual(descriptor["kind"], "assembly-package")
                 (component,) = descriptor["components"].values()
-                self.assertTrue(component["surf"].startswith("components/"))
-                self.assertTrue(store_paths.component_object_present(component["surfObject"]))
+                self.assertEqual(component["kind"], "native")
+                self.assertTrue(store_paths.component_object_present(component["brep"]))
+                self.assertNotIn("surf", component)
 
     def test_the_virtual_store_asset_serves_the_tree_and_its_components(self) -> None:
-        tree = seed_result(self.probes[0], surf=b"SURF\x00\x01")
-        body, content_type = store_paths.virtual_store_asset(f"{tree}/assembly.json")
+        tree = seed_result(self.probes[0])
+        body, content_type = store_paths.virtual_store_asset(f"{tree}/assembly.json", document_hash=catalog.artifact_file_hash(Path(self.probes[0])))
         self.assertEqual(content_type, "application/json")
         self.assertIn(b'"kind": "assembly-package"', body)
         descriptor = store_paths.result_descriptor(tree)
-        (component,) = descriptor["components"].values()
-        payload, content_type = store_paths.virtual_store_asset(f"{tree}/{component['surf']}")
-        self.assertEqual(Path(payload).read_bytes(), b"SURF\x00\x01")
+        from cadgen.store.objects import read_verified_object
+        cid, component = next(iter(descriptor["components"].items()))
+        payload, content_type = store_paths.virtual_store_asset(f"{tree}/components/{cid}.brep")
+        self.assertEqual(Path(payload).read_bytes(), read_verified_object(component["brep"]))
         self.assertEqual(content_type, "application/octet-stream")
         for bad in ("", "/etc/hosts", f"{tree}/../x", f"{tree}/components/nope.surf", "zz/assembly.json"):
             with self.subTest(bad=bad):

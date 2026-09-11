@@ -40,7 +40,7 @@ import {
 // reported ratio is monotonic only within a single run and carrying it across a handoff is what
 // made the bar jump backwards.
 
-const READY = { status: "rendered", error: "", progress: null, advisory: null };
+const READY = { status: "compiled", error: "", progress: null, advisory: null };
 
 function isAbortError(error) {
   return error?.name === "AbortError" || /abort/i.test(String(error?.message || ""));
@@ -49,7 +49,7 @@ function isAbortError(error) {
 export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {}) {
   const activeRef = String(enabled ? fileRef || "" : "").trim();
   const key = activeRef ? `${activeRef}:${freshnessKey}` : "";
-  const [state, setState] = useState({ key: "", status: "rendered", error: "", progress: null });
+  const [state, setState] = useState({ key: "", status: "compiled", error: "", progress: null });
   const requestSeqRef = useRef(0);
 
   useEffect(() => {
@@ -145,7 +145,7 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
         }
         const action = artifactActionFor(status);
         if (action === ARTIFACT_ACTION_READY) {
-          // Ready may carry advisory flags (stale package rendered as-is, generator
+          // Ready may carry advisory flags (stale package compiled as-is, generator
           // busy elsewhere); keep them for the file sheet's status section.
           settle({ ...READY, advisory: artifactAdvisoryFor(status) });
           return;
@@ -181,7 +181,7 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
           pollTimer = window.setTimeout(pollProgress, ARTIFACT_PROGRESS_FIRST_POLL_MS);
           return;
         }
-        settle(result?.ok && result.state === "rendered"
+        settle(result?.ok && result.state === "compiled"
           ? { ...READY, advisory: artifactAdvisoryFor(result) }
           : { status: "failed", error: String(result?.error || "Compiling the document failed.") });
       } catch (error) {

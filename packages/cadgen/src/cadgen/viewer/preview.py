@@ -10,9 +10,11 @@ continue to resolve the bytes on disk.
 from __future__ import annotations
 
 import copy
+import json
 import os
 import time
 from pathlib import Path
+from urllib.parse import urlencode
 
 from cadgen.store.paths import store_root
 from cadgen.store.trees import get_tree, tree_complete
@@ -86,6 +88,14 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
         }
         if output_key == "preview":
             result[output_key]["kinematics"] = copy.deepcopy(payload.get("kinematics"))
+            if payload.get("surfaceProducer") is not None:
+                from cadgen.store.surfaces import producer_fields
+
+                selected_producer = producer_fields(payload["surfaceProducer"])
+                result[output_key]["surfaceProducer"] = selected_producer
+                result[output_key]["url"] += "&" + urlencode({
+                    "surfaceProducer": json.dumps(selected_producer, sort_keys=True, separators=(",", ":")),
+                })
             module = Path(file_path).with_suffix(Path(file_path).suffix + ".js")
             if module.is_file():
                 from .encoding import local_asset_url_for_path
@@ -103,4 +113,5 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
                 result["error"] = "The saved file has changed since this build completed"
             else:
                 result[output_key]["documentHash"] = digest
+                result[output_key]["url"] += "&documentHash=" + digest
     return result

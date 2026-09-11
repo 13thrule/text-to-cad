@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -35,7 +36,15 @@ from cadgen import build123d as bd
 
 @step
 def {name}():
-    import time; time.sleep(0.3)
+    import time
+    from pathlib import Path
+    # Hold this real execution slot until the controller observes a queued
+    # sibling. Cold-worker startup must not decide whether contention exists.
+    deadline = time.monotonic() + 180
+    while not Path(__file__).with_name(".fanout-release").exists():
+        if time.monotonic() >= deadline:
+            raise RuntimeError("fanout release barrier was not opened")
+        time.sleep(0.01)
     return bd.Box({size}, 4.0, 2.0)
 
 
@@ -191,8 +200,60 @@ class _Executor(unittest.TestCase):
     def _events(self, stderr: str) -> list[dict]:
         return [json.loads(line) for line in stderr.splitlines() if line.startswith("{")]
 
+    def _run_queued_fanout(self) -> tuple[int, str, str]:
+        release = self.src / ".fanout-release"
+        release.unlink(missing_ok=True)
+        queued = threading.Event()
+        output: list[str] = []
+        errors: list[str] = []
+        leaves = {f"leaf_{i:02d}" for i in range(LEAVES)}
+        proc = subprocess.Popen(
+            [sys.executable, "fanout.py", "--json"], cwd=str(self.src), env=self.env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        )
+
+        def collect(stream, lines, *, events=False):
+            for line in stream:
+                lines.append(line)
+                if events and line.startswith("{"):
+                    try:
+                        event = json.loads(line)
+                    except ValueError:
+                        continue
+                    if event.get("state") == "queued" and Path(event.get("model", "")).stem in leaves:
+                        queued.set()
+
+        readers = [
+            threading.Thread(target=collect, args=(proc.stdout, output), daemon=True),
+            threading.Thread(target=collect, args=(proc.stderr, errors), kwargs={"events": True}, daemon=True),
+        ]
+        for reader in readers:
+            reader.start()
+        try:
+            deadline = time.monotonic() + 120
+            while not queued.wait(0.05) and proc.poll() is None and time.monotonic() < deadline:
+                pass
+            # Even on failure, unblock the leaves so ownership can unwind.
+            release.touch()
+            proc.wait(timeout=900)
+        finally:
+            release.touch()
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=5)
+            for reader in readers:
+                reader.join(timeout=5)
+            proc.stdout.close()
+            proc.stderr.close()
+        self.assertTrue(queued.is_set(), "no leaf queued before the bounded barrier opened:\n" + "".join(errors))
+        return proc.returncode, "".join(output), "".join(errors)
+
     def test_a_fanout_of_leaves_never_exceeds_the_limit(self):
-        code, out, err = self._run("fanout.py")
+        code, out, err = self._run_queued_fanout()
         self.assertEqual(code, 0, err)
         self.assertIn('"outcome":"built"', out)
         events = self._events(err)

@@ -74,7 +74,12 @@ self.addEventListener("message", async (event) => {
     // header is complete, a render-only request also skips the .surf fetch and
     // parse. A corrupt/version-drifted entry, or one missing the header fields,
     // is an ordinary miss.
-    const cached = message.cachedEntry ? decodeComponentTessellation(message.cachedEntry) : null;
+    const cacheIdentity = message.cacheIdentity || {};
+    const cached = message.cachedEntry ? decodeComponentTessellation(message.cachedEntry, {
+      surfaceInput: cacheIdentity.surfaceInput,
+      surfaceObject: cacheIdentity.surfaceObject,
+      tessellation: message.tessellation || {},
+    }) : null;
     const cachedIndex = surfIndexFromCacheEntry(cached);
     let index = cachedIndex;
     let floats = null;
@@ -98,6 +103,9 @@ self.addEventListener("message", async (event) => {
     // (transfer detaches their buffers).
     const entryBytes = ((!cached && message.wantEntry) || (cached && !cachedIndex))
       ? encodeComponentTessellation(component, {
+        surfaceInput: cacheIdentity.surfaceInput,
+        surfaceObject: cacheIdentity.surfaceObject,
+        tessellation: message.tessellation || {},
         partColor: Array.isArray(index.partColor) ? index.partColor : null,
         edgeClasses: edgeClassesFromSurfIndex(index),
       })

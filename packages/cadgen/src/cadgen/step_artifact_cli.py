@@ -20,7 +20,7 @@ from cadgen._internal.generation import (
 )
 from cadgen.coordination import PHASE_GENERATE, STEP_PACKAGE, ProgressEvent, artifact_build
 from cadgen.metadata import normalize_mesh_numeric
-from cadgen.catalog import build_scope, result_view_dir
+from cadgen.catalog import build_scope
 from cadgen.render import relative_to_cwd
 from cadgen._internal.step_scene import LoadedStepScene, step_file_hash
 from cadgen._internal.step_scene_package import load_step_scene_exact
@@ -152,43 +152,32 @@ def _existing_result_payload(spec: EntrySpec, artifact: StepTopologyArtifact) ->
 
 
 def _current_artifact_for_spec(spec: EntrySpec) -> StepTopologyArtifact | None:
-    if not _existing_topology_artifact_matches_spec_without_scene(spec):
+    # A compile completes when its native geometry is available. Display
+    # derivations belong to their consumers and must never run in this gate.
+    if not (
+        _existing_topology_artifact_matches_spec_without_scene(spec)
+        and _generated_assembly_glb_closure_current(spec)
+        and _assembly_glb_package_current(spec)
+    ):
         return None
-    package_dir = result_view_dir(spec.entry_path)
-    # A tree is a DIRECTORY, and validate_step_topology_artifact() gates on
-    # `.is_file()` (step_targets.py) -- so routing a tree through it always raised
-    # missing_glb, this whole fast path returned None, and EVERY build re-ran the generator.
-    # The assembly.json comparison above (_package_descriptor_matches_spec) IS the tree's
-    # freshness gate; there is nothing further to validate. Packages carry no whole-assembly
-    # selector topology either -- it is extracted on demand -- so require_selector cannot be
-    # satisfied from the tree and must not be asked of it.
-    from cadgen._internal.component_package import is_assembly_package, read_package_descriptor
+    from cadgen.catalog import result_snapshot_for
+    from cadgen.store.objects import object_path
+    from cadgen.store.trees import capture_tree
 
-    if is_assembly_package(package_dir):
-        # _package_descriptor_matches_spec (above) compares kind/stepHash/mesh options but
-        # NOT the generator's source closure, so it alone would serve a stale package after
-        # an edited generator. These are the same two predicates the CLI's currency gate
-        # uses (generation.py's "is current; not rebuilt" path), so the two entry
-        # points cannot disagree about what "current" means:
-        #   closure  -- generated models re-hash the recorded import reach; imported ones
-        #               return True and rely on the stepHash gate above.
-        #   package  -- the assembly.json's referenced components are all present on disk.
-        if not (
-            _generated_assembly_glb_closure_current(spec) and _assembly_glb_package_current(spec)
-        ):
-            return None
-        manifest = read_package_descriptor(package_dir)
-        if not isinstance(manifest, dict):
-            return None
-        return StepTopologyArtifact(
-            cad_path=spec.cad_ref,
-            source_path=spec.source_path,
-            step_path=spec.step_path,
-            artifact_path=package_dir,
-            manifest=manifest,
-        )
-    # No view directory -> nothing current (the tree IS the only artifact form).
-    return None
+    snapshot = result_snapshot_for(spec.entry_path)
+    if snapshot is None:
+        return None
+    try:
+        manifest, _ = capture_tree(snapshot[1])
+    except (OSError, ValueError):
+        return None
+    return StepTopologyArtifact(
+        cad_path=spec.cad_ref,
+        source_path=spec.source_path,
+        step_path=spec.step_path,
+        artifact_path=object_path(snapshot[1]),
+        manifest=manifest,
+    )
 
 
 def _with_declared_exports(
@@ -345,15 +334,8 @@ def build_step_artifact(
                 logger=logger,
             )
 
-    # The progress record covers the WHOLE build, not just the generator run: the
-    # meshing is the long part, and a viewer polling during it must see a build.
-    #
-    # Progress keys by the MODEL PATH, never by the content-keyed view directory. A rebuild
-    # changes the document's content key mid-build, and no reader could know the new key
-    # in advance: the viewer's progress reader derives its record from the model path it
-    # is polling (cadgen.viewer.store_paths.build_scope). `package_dir` stays because the
-    # RESULT payloads name the tree; only the progress identity is path-keyed.
-    package_dir = result_view_dir(existing_spec.entry_path) if existing_spec.entry_path else None
+    # Progress covers generation and declared outputs. Its scope is the model
+    # path, which remains stable while a rebuild changes the result's tree.
     scope = build_scope(existing_spec.entry_path) if existing_spec.entry_path else None
     # This builds exactly what a model-script run builds, and reported nothing while doing it:
     # the sidecar went to the viewer and a terminal caller watched a silent process.

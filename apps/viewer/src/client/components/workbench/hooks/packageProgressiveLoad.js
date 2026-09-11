@@ -272,10 +272,10 @@ export function orderComponentsForProgressiveLoad(descriptor) {
 /**
  * createProgressivePackageLoader({
  *   descriptor,                        // the assembly.json package descriptor
- *   loadComponent(cid, component, { estimatedBytes }), // -> Promise<meshData> (loadRenderSurf)
+ *   loadComponent(cid, component, { estimatedBytes, cacheProbe }), // -> Promise<meshData>
  *   concurrency,
  *   isCurrent(),                       // false once the request is superseded or aborted
- *   sizeHint?(cid, component),         // -> Promise<fetched byte length | null> before admission
+ *   sizeHint?(cid, component),         // -> Promise<number|{sourceBytes,cacheProbe}> before admission
  *   maxInFlightBytes?,                 // estimated decoded bytes in flight (PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES)
  *   sourceExpansionRatio?,             // conservative decoded/source estimate floor for this concrete tier
  *   retainedComponent?(cid, component),// already-owned exact meshData, bypassing decode admission
@@ -419,11 +419,16 @@ export function createProgressivePackageLoader({
     let lastRecoveryEpoch = -1;
     while (true) {
       if (!active()) throw abortError();
+      const sourceBytes = hint && typeof hint === "object" ? hint.sourceBytes : hint;
+      const cacheProbe = hint && typeof hint === "object" ? hint.cacheProbe : null;
       const configuredRatio = typeof sourceExpansionRatio === "function"
-        ? sourceExpansionRatio(cid, component, hint)
+        ? sourceExpansionRatio(cid, component, sourceBytes)
         : sourceExpansionRatio;
       const estimator = estimatorFor(configuredRatio);
-      const estimate = estimator.estimate(hint);
+      const cachedBytes = Number(cacheProbe?.byteLength) + Number(cacheProbe?.decodedBytes);
+      const estimate = cacheProbe && Number.isSafeInteger(cachedBytes) && cachedBytes > 0
+        ? cachedBytes
+        : estimator.estimate(sourceBytes);
       if (!canAdmit(estimate)) {
         if (cancelled) throw abortError();
         if (inFlight === 0) {
@@ -446,13 +451,13 @@ export function createProgressivePackageLoader({
       }
       let reservation = { ok: true, token: null };
       if (typeof reserveLoad === "function") {
-        reservation = reserveLoad({ cid, estimatedBytes: estimate }) || { ok: false };
+        reservation = reserveLoad({ cid, estimatedBytes: estimate, cacheProbe }) || { ok: false };
       }
       if (reservation.ok !== false) {
         inFlight += 1;
         inFlightBytes += estimate;
         peakInFlight = Math.max(peakInFlight, inFlight);
-        return { estimate, estimator, reservation: reservation.token };
+        return { estimate, estimator, reservation: reservation.token, sourceBytes, cacheProbe };
       }
       if (inFlight > 0) {
         await new Promise((resolve) => waiters.push(resolve));
@@ -517,10 +522,14 @@ export function createProgressivePackageLoader({
     }
     let hint = null;
     if (typeof sizeHint === "function") {
+      // Optional metadata probes handle ordinary misses themselves. A thrown
+      // error is cancellation, an invalid immutable binding, or failed surface
+      // derivation and must fence sibling lanes like a decode failure.
       try {
         hint = await sizeHint(cid, component);
-      } catch {
-        hint = null;
+      } catch (error) {
+        markFailed(error);
+        throw error;
       }
     }
     if (!active()) {
@@ -532,7 +541,10 @@ export function createProgressivePackageLoader({
       if (!active()) {
         stop();
       }
-      meshData = await loadComponent(cid, component, { estimatedBytes: admission.estimate });
+      meshData = await loadComponent(cid, component, {
+        estimatedBytes: admission.estimate,
+        cacheProbe: admission.cacheProbe,
+      });
       if (!active()) {
         stop();
       }
@@ -561,7 +573,7 @@ export function createProgressivePackageLoader({
         detail,
       );
     }
-    admission.estimator.observe(hint, decodedBytes);
+    if (!admission.cacheProbe) admission.estimator.observe(admission.sourceBytes, decodedBytes);
     loadedByCid[cid] = meshData;
     loaded += 1;
     retainedBytes += decodedBytes;

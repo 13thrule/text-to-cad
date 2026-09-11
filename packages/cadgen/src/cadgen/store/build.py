@@ -1,7 +1,7 @@
 """Build a model's TREE from its returned geometry.
 
 Walks the compound a model returned. Every leaf becomes a content-addressed
-**component** (exact ``.brep`` + render ``.surf``, each an object); every
+**component** (encoded ``.brep`` plus an intrinsic face-color recipe); every
 subtree that is a child model's materialized geometry, found intact, becomes a
 **link** to that child's tree. The decision is mechanical (§Tree in STORE.md):
 
@@ -12,11 +12,10 @@ subtree that is a child model's materialized geometry, found intact, becomes a
   child (``housing() - holes``: a new TShape), a mirrored child (a new TShape)
   → the model's own components. No error path.
 
-Component extraction is the existing surface extractor; missing components are
-extracted in a process pool from their BREP payloads, exactly as before, into a
-scratch directory that is then ingested into ``objects/``. Reuse is by cid
-through ``index/component/<cid>`` (cid → the pair of object hashes): a cid seen
-before costs nothing.
+Each native component is privately decoded and validated before publication.
+Surface extraction is a separate artifact derivation and never delays native
+geometry readiness. A component without an admitted native codec explicitly
+pins its eager surface; no later producer receives the original live shape.
 
 A model's final result contains its authored source geometry, reconstructed
 from canonical BREP bytes, whether it declares STEP or only meshes. A STEP
@@ -50,24 +49,8 @@ from cadgen.store.materialize import (
     _location_from_matrix,
     materialized_children,
 )
-from cadgen.store.objects import has_object, put_object_from_file, read_object, read_verified_object
+from cadgen.store.objects import has_object, put_object, read_verified_object
 from cadgen.store.trees import put_tree
-
-
-def _component_index(cid: str, *, verify: bool = False) -> tuple[str, str] | None:
-    entry = read_entry("component", cid)
-    if not entry:
-        return None
-    surf, brep = str(entry.get("surf") or ""), str(entry.get("brep") or "")
-    if surf and brep and has_object(surf) and has_object(brep):
-        if verify:
-            try:
-                read_verified_object(surf)
-                read_verified_object(brep)
-            except (OSError, ValueError):
-                return None
-        return surf, brep
-    return None
 
 
 def _tagged_intact(node: Any) -> str | None:
@@ -130,7 +113,7 @@ class _Walk:
     components: dict[str, dict[str, Any]] = field(default_factory=dict)
     shapes: dict[str, Any] = field(default_factory=dict)
     brep_bytes_by_cid: dict[str, bytes] = field(default_factory=dict)
-    known_components: dict[str, tuple[str, str]] = field(default_factory=dict)
+    prepared: dict[str, dict[str, Any]] = field(default_factory=dict)
     root: dict[str, Any] = field(default_factory=dict)
 
     def draft_tree(self, *, root_name: str) -> dict[str, Any]:
@@ -185,7 +168,7 @@ def _document_walk(
     from build123d import Compound
 
     from cadgen._internal.component_package import (
-        _build123d_shape_from_topods, _component_id, _content_hash_and_bytes, _normalized_face_colors,
+        _build123d_shape_from_topods, _component_id, prepare_geometry_component, _normalized_face_colors,
     )
     from cadgen._internal.step_scene_loader import _selector_id
     from cadgen._internal.step_scene_mesh import _face_colors_by_ordinal, scene_occurrence_shape
@@ -223,7 +206,8 @@ def _document_walk(
             face_colors = _normalized_face_colors(
                 _face_colors_by_ordinal(prototype, raw_colors) if raw_colors else None
             )
-            content_hash, brep = _content_hash_and_bytes(prototype, face_colors=face_colors)
+            prepared = prepare_geometry_component(prototype, face_colors=face_colors)
+            content_hash = prepared["entry"]["contentHash"]
             cid = _component_id(content_hash)
             prototype_cids[key] = cid
             if cid not in walk.shapes:
@@ -231,8 +215,9 @@ def _document_walk(
                 if face_colors:
                     shape.cad_face_ordinal_colors = face_colors
                 walk.shapes[cid] = shape
-                walk.brep_bytes_by_cid[cid] = brep
-                meta: dict[str, Any] = {"contentHash": content_hash}
+                walk.prepared[cid] = prepared
+                walk.brep_bytes_by_cid[cid] = prepared["payload"]
+                meta: dict[str, Any] = dict(prepared["entry"])
                 color = scene.prototype_colors.get(key)
                 if color is not None:
                     meta["color"] = [float(c) for c in color]
@@ -308,7 +293,7 @@ def _walk_compound(compound: Any, *, root_name: str, progress: Any) -> _Walk:
 
     from cadgen._internal.component_package import (
         _component_id,
-        _content_hash_and_bytes,
+        prepare_geometry_component,
         _normalized_face_colors,
         _occurrence_color,
         _occurrence_material,
@@ -331,34 +316,35 @@ def _walk_compound(compound: Any, *, root_name: str, progress: Any) -> _Walk:
         identity: _ComponentIdentity | None = None,
     ) -> dict[str, Any]:
         face_colors = _normalized_face_colors(getattr(node, "cad_face_ordinal_colors", None))
-        if identity is not None and not (has_object(identity.brep) and has_object(identity.surf)):
-            # The live shape can rebuild a deleted object, but its placement
-            # representation may serialize differently from the pinned bytes.
-            # Derive that identity again rather than aliasing it to a lost pin.
-            identity = None
         if identity is not None:
-            content_hash = identity.content_hash
+            try:
+                from cadgen._internal.component_package import validate_geometry_component
+                validate_geometry_component(identity.entry(), read_verified_object(identity.brep), cid=identity.cid)
+            except (OSError, ValueError, TypeError):
+                # A lost or damaged pin cannot certify newly serialized geometry.
+                identity = None
+        if identity is not None:
             cid = identity.cid
-            walk.known_components.setdefault(cid, (identity.surf, identity.brep))
+            entry_meta = identity.entry()
         else:
             try:
                 memo_key = (node.wrapped.TShape(), int(node.wrapped.Orientation()), tuple(face_colors.items()))
-                content_hash = hash_memo.get(memo_key)
-                if content_hash is None:
-                    content_hash, brep = _content_hash_and_bytes(node, face_colors=face_colors)
-                    hash_memo[memo_key] = content_hash
-                    brep_bytes_by_cid.setdefault(_component_id(content_hash), brep)
+                cid = hash_memo.get(memo_key)
             except TypeError:
-                content_hash, brep = _content_hash_and_bytes(node, face_colors=face_colors)
-                brep_bytes_by_cid.setdefault(_component_id(content_hash), brep)
-            cid = _component_id(content_hash)
+                memo_key, cid = None, None
+            if cid is None:
+                prepared = prepare_geometry_component(node, face_colors=face_colors)
+                entry_meta = dict(prepared["entry"])
+                cid = _component_id(entry_meta["contentHash"])
+                previous = walk.prepared.setdefault(cid, prepared)
+                if previous["entry"]["contentHash"] != entry_meta["contentHash"]:
+                    raise ValueError("short component ID collision")
+                brep_bytes_by_cid.setdefault(cid, prepared["payload"])
+                if memo_key is not None:
+                    hash_memo[memo_key] = cid
+            else:
+                entry_meta = dict(walk.prepared[cid]["entry"])
         shapes.setdefault(cid, node)
-        entry_meta: dict[str, Any] = {"contentHash": content_hash}
-        if identity is not None:
-            # The document is materialized from this draft before publication.
-            # Carried components have no new serialization in own_shapes, so
-            # their complete pinned assets must already be in the descriptor.
-            entry_meta.update(surf=identity.surf, brep=identity.brep)
         node_color = getattr(node, "color", None)
         if node_color is not None:
             try:
@@ -514,99 +500,37 @@ def _publish_tree(
     descriptor_bounds: bool = False,
     bbox_override: dict[str, list[float]] | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
-    """Build the walk's missing components, ingest them, write the tree object."""
-    from cadgen._internal.component_package import (
-        PAYLOAD_UNREADABLE,
-        _build_component_surf_worker,
-        _component_build_worker_count,
-        _bbox_from_shape,
-        _shape_brep_bytes,
-        _normalized_face_colors,
-        _write_component_artifacts_atomic,
-    )
+    """Publish verified geometry inputs before any disposable surface work."""
+    from cadgen._internal.component_package import _bbox_from_shape, validate_geometry_component
 
-    occurrences = walk.occurrences
-    links = walk.links
-    components = walk.components
-    shapes = walk.shapes
-    brep_bytes_by_cid = walk.brep_bytes_by_cid
-    known_components = walk.known_components
-    root = walk.root
-
-    # --- components: reuse by cid, extract the rest, ingest as objects -------------
-    built: list[str] = []
-    reused: list[str] = []
-    missing: list[tuple[str, Any]] = []
-    resolved: dict[str, tuple[str, str]] = {}
-    for cid, shape in shapes.items():
-        indexed = None if force else _component_index(cid, verify=repair_objects)
-        if indexed is not None:
-            resolved[cid] = indexed
+    occurrences, links = walk.occurrences, walk.links
+    components, root = walk.components, walk.root
+    built, reused = [], []
+    progress.phase(PHASE_COMPONENTS, total=len(components))
+    for cid, entry in components.items():
+        prepared = walk.prepared.get(cid)
+        payload = prepared["payload"] if prepared is not None else read_verified_object(entry["brep"])
+        validate_geometry_component(entry, payload, cid=cid)
+        ready = not force
+        for field in ("brep", "eagerSurface"):
+            if not entry.get(field):
+                continue
+            try:
+                read_verified_object(entry[field])
+            except (OSError, ValueError):
+                ready = False
+        if ready:
             reused.append(cid)
-        elif not force and cid in known_components:
-            surf, brep = known_components[cid]
-            if has_object(surf) and has_object(brep):
-                resolved[cid] = (surf, brep)
-                reused.append(cid)
-                # The pinned tree remains enough to recover a deleted derived
-                # component index without decoding or extracting its geometry.
-                write_entry("component", cid, {"surf": surf, "brep": brep})
-            else:
-                missing.append((cid, shape))
         else:
-            missing.append((cid, shape))
-
-    with tempfile.TemporaryDirectory(prefix="cadgen-components-") as scratch_str:
-        scratch = Path(scratch_str)
-        payloads = [
-            (
-                (
-                    read_object(known_components[cid][1])
-                    if cid in known_components
-                    else brep_bytes_by_cid.get(cid) or _shape_brep_bytes(shape)
-                ),
-                cid,
-                str(scratch / f"{cid}.surf"),
-                _normalized_face_colors(getattr(shape, "cad_face_ordinal_colors", None)),
-            )
-            for cid, shape in missing
-        ]
-        workers = _component_build_worker_count(
-            len(payloads), payload_bytes=sum(len(args[0]) for args in payloads),
-        )
-        progress.phase(PHASE_COMPONENTS, total=len(payloads))
-        if workers > 1 and payloads:
-            import multiprocessing
-            from concurrent.futures import ProcessPoolExecutor, as_completed
-
-            with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as pool:
-                futures = {pool.submit(_build_component_surf_worker, args): args[1] for args in payloads}
-                errors_by_cid: dict[str, str | None] = {}
-                for future in as_completed(futures):
-                    built_cid, error = future.result()
-                    errors_by_cid[built_cid] = error
-                    progress.advance(detail=built_cid)
-            results = [(cid, errors_by_cid[cid]) for _p, cid, *_r in payloads]
-        else:
-            results = []
-            for args in payloads:
-                results.append(_build_component_surf_worker(args))
-                progress.advance(detail=args[1])
-        shapes_by_cid = dict(missing)
-        for cid, error in results:
-            if error is not None and error.startswith(PAYLOAD_UNREADABLE):
-                _write_component_artifacts_atomic(shapes_by_cid[cid], scratch / f"{cid}.surf", cad_ref=cid)
-            elif error is not None:
-                raise RuntimeError(f"component {cid} build failed: {error}")
-            surf_obj = put_object_from_file(scratch / f"{cid}.surf", repair=repair_objects)
-            brep_obj = put_object_from_file(scratch / f"{cid}.brep", repair=repair_objects)
-            write_entry("component", cid, {"surf": surf_obj, "brep": brep_obj})
-            resolved[cid] = (surf_obj, brep_obj)
+            # Capture owns these exact bytes; repair does not ask the live
+            # authored shape or a newer child result to replace this input.
+            put_object(payload, repair=True)
+            if entry.get("eagerSurface"):
+                surface = prepared["surface"] if prepared is not None else read_verified_object(entry["eagerSurface"])
+                put_object(surface, repair=True)
             built.append(cid)
-
-    for cid, (surf_obj, brep_obj) in resolved.items():
-        components[cid]["surf"] = surf_obj
-        components[cid]["brep"] = brep_obj
+        write_entry("component", cid, {"schemaVersion": 1, **entry})
+        progress.advance(detail=cid)
 
     progress.phase(PHASE_FINALIZE)
     tree: dict[str, Any] = dict(extra or {})
@@ -622,7 +546,11 @@ def _publish_tree(
     )
     from cadgen.store.trees import tree_kind
 
+    from cadgen.store.trees import TREE_KIND, TREE_SCHEMA, _validate_structure
+    tree["kind"] = TREE_KIND
+    tree["schemaVersion"] = TREE_SCHEMA
     tree["entryKind"] = tree_kind(tree)
+    _validate_structure(tree, native=True)
     bbox = bbox_override
     if bbox is None and descriptor_bounds and not force:
         from cadgen.store._descriptor_bounds import try_bounds
@@ -879,7 +807,7 @@ def build_tree_through_step(
     from contextlib import nullcontext
 
     from cadgen._internal.component_package import (
-        _build123d_shape_from_brep_bytes,
+        decode_geometry_component,
         _normalized_face_colors,
     )
     from cadgen._internal.step_scene_loader import _selector_id, load_step_scene
@@ -915,11 +843,12 @@ def build_tree_through_step(
     # The document, assembled the way materialize() assembles a published tree
     # so the bytes do not depend on whether the tree existed yet.
     own_shapes: dict[str, Any] = {}
-    for cid, brep in walk.brep_bytes_by_cid.items():
-        shape = _build123d_shape_from_brep_bytes(brep)
-        face_colors = _normalized_face_colors(getattr(walk.shapes.get(cid), "cad_face_ordinal_colors", None))
-        if face_colors:
-            shape.cad_face_ordinal_colors = face_colors
+    for cid, prepared in walk.prepared.items():
+        shape = prepared["shape"]
+        if shape is None:
+            # Authored pins have no saved-document substitute. The explicit
+            # eager-only exception is handled only at saved-file reader doors.
+            shape = decode_geometry_component(prepared["entry"], prepared["payload"])
         own_shapes[cid] = shape
     descriptor = snapshot.descriptor() if snapshot is not None else flatten_tree(walk.draft_tree(root_name=root_name))
     document = None

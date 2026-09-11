@@ -1,12 +1,9 @@
-// The worker client's cache identity rule: only a content-addressed component
-// surf (components/<cid>.surf) may key the shared tessellation cache — an
-// arbitrary .surf path has no stable identity and caching it by name would
-// collide across models.
+// Worker cache reuse requires the backend-prepared surface input and the exact
+// resolved surface object. URL spelling never participates in that identity.
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  cidFromSurfUrl,
   loadSurfComponentInWorker,
   reclaimIdleSurfWorkers,
   releaseSurfWorkerPool,
@@ -15,51 +12,10 @@ import {
 } from "./surfWorkerClient.js";
 import { setTessellationCacheProvider } from "./tessellationCache.js";
 
-test("cidFromSurfUrl accepts only components/<cid>.surf", () => {
-  assert.equal(
-    cidFromSurfUrl("/__cad/models/__cadgen__/models/x.step/components/abc123.surf"),
-    "abc123",
-  );
-  assert.equal(cidFromSurfUrl("http://h/pkg/components/deadbeef.surf?v=1#frag"), "deadbeef");
-  assert.equal(cidFromSurfUrl("/pkg/components/upper%2Bcase.surf"), "upper+case");
-  assert.equal(cidFromSurfUrl("/pkg/other/abc.surf"), "", "non-components dir");
-  assert.equal(cidFromSurfUrl("/components/abc.notsurf"), "", "wrong extension");
-  assert.equal(cidFromSurfUrl("abc.surf"), "", "no components parent");
-  assert.equal(cidFromSurfUrl(""), "");
-});
-
-test("cidFromSurfUrl reads the viewer's query-form asset URLs", () => {
-  // The viewer serves package components through /__cad/asset?file=<abs path>.
-  // The first release parsed only path-form URLs, which disabled the entire
-  // shared-cache integration in the real client (no reads, no write-backs).
-  assert.equal(
-    cidFromSurfUrl(
-      "/__cad/asset?file=%2Fabs%2Fmodels%2F__cadgen__%2Fmodels%2Fx.step%2Fcomponents%2Fc384534572a08e23.surf&v=abc123",
-    ),
-    "c384534572a08e23",
-  );
-  assert.equal(
-    cidFromSurfUrl("/__cad/asset?v=1&file=/plain/pkg/components/deadbeef.surf"),
-    "deadbeef",
-    "unencoded file param, param order independent",
-  );
-  assert.equal(
-    cidFromSurfUrl("/__cad/asset?file=/pkg/components/abc.surf#frag"),
-    "abc",
-    "fragment stripped before query parse",
-  );
-  assert.equal(
-    cidFromSurfUrl("/__cad/asset?file=/pkg/other/abc.surf"),
-    "",
-    "query form still requires a components/ parent",
-  );
-  assert.equal(
-    cidFromSurfUrl("/__cad/asset?file=/pkg/components/assembly.json"),
-    "",
-    "query form still requires the .surf extension",
-  );
-  assert.equal(cidFromSurfUrl("/__cad/asset?other=/pkg/components/abc.surf"), "", "no file param");
-});
+const CACHE_IDENTITY = {
+  surfaceInput: "d".repeat(64),
+  surfaceObject: "e".repeat(64),
+};
 
 test("loadSurfComponentInWorker returns null where Workers do not exist (node)", () => {
   assert.equal(loadSurfComponentInWorker("/pkg/components/abc.surf"), null);
@@ -390,8 +346,8 @@ test("reclaimIdleSurfWorkers returns idle capacity without disturbing active or 
     terminate() { terminated.push(this); }
   }
   setTessellationCacheProvider({
-    get: () => new Promise((resolve) => { resolveCache = resolve; }),
-    async put() {},
+    probeMany: () => new Promise((resolve) => { resolveCache = resolve; }),
+    async getProbed() { return null; },
   });
   t.after(() => setTessellationCacheProvider(null));
   const savedWorker = globalThis.Worker;
@@ -399,7 +355,9 @@ test("reclaimIdleSurfWorkers returns idle capacity without disturbing active or 
   try {
     const first = loadSurfComponentInWorker("http://x/not-cached-first.surf");
     const second = loadSurfComponentInWorker("http://x/not-cached-second.surf");
-    const queued = loadSurfComponentInWorker("http://x/components/cache-wait.surf");
+    const queued = loadSurfComponentInWorker("http://x/components/cache-wait.surf", {
+      identity: CACHE_IDENTITY,
+    });
     const initialWorkers = [...created];
     const activeWorkers = initialWorkers.filter((worker) => worker.messages.length > 0);
     assert.equal(activeWorkers.length, 2);
@@ -464,14 +422,15 @@ test("idle reclamation keeps one progress slot for requests waiting on cache rea
     terminate() { terminated.push(this); }
   }
   setTessellationCacheProvider({
-    get: () => new Promise((resolve) => { resolveCache = resolve; }),
-    async put() {},
+    probeMany: () => new Promise((resolve) => { resolveCache = resolve; }),
+    async getProbed() { return null; },
   });
   t.after(() => setTessellationCacheProvider(null));
   const savedWorker = globalThis.Worker;
   globalThis.Worker = FakeWorker;
   try {
     const waiting = loadSurfComponentInWorker("http://x/components/cache-only.surf", {
+      identity: CACHE_IDENTITY,
       memoryEstimateBytes: 73,
     });
     const reclaimed = reclaimIdleSurfWorkers();
@@ -667,14 +626,17 @@ test("a pending warm-cache lookup does not occupy a worker slot", async (t) => {
   }
   let resolveCache;
   setTessellationCacheProvider({
-    get: () => new Promise((resolve) => { resolveCache = resolve; }),
+    probeMany: () => new Promise((resolve) => { resolveCache = resolve; }),
+    async getProbed() { return null; },
     async put() {},
   });
   t.after(() => setTessellationCacheProvider(null));
   const savedWorker = globalThis.Worker;
   globalThis.Worker = FakeWorker;
   try {
-    const awaitingCache = loadSurfComponentInWorker("http://x/components/cached.surf");
+    const awaitingCache = loadSurfComponentInWorker("http://x/components/cached.surf", {
+      identity: CACHE_IDENTITY,
+    });
     assert.equal(created.some((worker) => worker.messages.length > 0), false);
     const ready = loadSurfComponentInWorker("http://x/not-content-addressed.surf");
     const readyWorker = created.find((worker) => worker.messages.length > 0);
@@ -685,7 +647,7 @@ test("a pending warm-cache lookup does not occupy a worker slot", async (t) => {
     });
     assert.deepEqual((await ready).meshData.parts, ["ready"]);
 
-    resolveCache(null);
+    resolveCache(new Map());
     await new Promise((resolve) => setTimeout(resolve, 0));
     const cachedWorker = created.find((worker) =>
       worker.messages.some((message) => message.url.endsWith("cached.surf")));

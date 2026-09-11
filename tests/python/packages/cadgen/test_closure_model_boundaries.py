@@ -44,6 +44,11 @@ class ModelClosureBoundaries(unittest.TestCase):
         self.addCleanup(forget_model_files)
         self.family = self.write("family.py", FAMILY)
 
+    def geometry_tree(self, label):
+        from build123d import Solid
+        from cadgen.store.build import build_tree_from_compound
+        return build_tree_from_compound(Solid.make_box(1, 1, 1), root_name=label)[0]
+
     def write(self, name, source):
         path = self.root / name
         path.write_text(textwrap.dedent(source).strip() + "\n", encoding="utf-8")
@@ -153,9 +158,8 @@ class ModelClosureBoundaries(unittest.TestCase):
     def test_dynamic_helper_edit_is_stale_even_after_the_child_rebuilds_identically(self):
         from cadgen.store.gate import stale
         from cadgen.store.records import read_record
-        from cadgen.store.trees import put_tree
 
-        child_tree = put_tree({"label": "child", "components": {}, "links": []})
+        child_tree = self.geometry_tree("child")
         left = self.record(self.family, "left", tree=child_tree)
         parent_script = self.parent(
             "from cadgen import build123d as bd",
@@ -176,10 +180,9 @@ class ModelClosureBoundaries(unittest.TestCase):
     def assert_alias_helper_edit_is_stale(self, family, imports, alias, helper_expression):
         from cadgen.store.gate import stale
         from cadgen.store.records import read_record
-        from cadgen.store.trees import put_tree
 
         family.write_text(FAMILY, encoding="utf-8")
-        child_tree = put_tree({"label": "child", "components": {}, "links": []})
+        child_tree = self.geometry_tree("child")
         left = self.record(family, "left", tree=child_tree)
         parent_script = self.parent(
             imports,
@@ -211,9 +214,8 @@ class ModelClosureBoundaries(unittest.TestCase):
     def test_static_module_model_call_keeps_an_exact_result_only_dependency(self):
         from cadgen.store.gate import stale
         from cadgen.store.records import read_record
-        from cadgen.store.trees import put_tree
 
-        child_tree = put_tree({"label": "child", "components": {}, "links": []})
+        child_tree = self.geometry_tree("child")
         left = self.record(self.family, "left", tree=child_tree)
         script = self.parent("import family as parts", body="return parts.left()")
         parent = self.record(script, "parent", tree=child_tree, children=[(left, child_tree)])
@@ -267,15 +269,14 @@ class ModelClosureBoundaries(unittest.TestCase):
         from cadgen.store.gate import stale
         from cadgen.store.index import model_ref
         from cadgen.store.records import read_record
-        from cadgen.store.trees import put_tree
 
         own = build_closure(self.family, executed=self.executed(self.family),
                             children=[str(self.family) + "::left"])
         self.assertEqual(own.files, ("family.py",), "a same-file child cannot remove the caller's own source")
         # Empty artifact graphs suffice for a gate/closure test; no CAD body or
         # kernel operation runs. Tree identity distinguishes the two results.
-        left_tree = put_tree({"label": "left", "components": {}, "links": []})
-        right_tree = put_tree({"label": "right", "components": {}, "links": []})
+        left_tree = self.geometry_tree("left")
+        right_tree = self.geometry_tree("right")
         left = self.record(self.family, "left", tree=left_tree)
         right = self.record(self.family, "right", tree=right_tree)
         parent_script = self.parent("from family import left")

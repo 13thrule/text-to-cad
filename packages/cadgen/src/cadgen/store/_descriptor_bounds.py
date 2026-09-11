@@ -176,16 +176,11 @@ class Snapshot:
             _read(digest, len(payload))
 
     def capture_appearance(self) -> Snapshot:
-        """Resolve exactly the existing private SURF recipes before callback.
-
-        The ordinary helper re-verifies each current SURF address, so its
-        normalized recipe corresponds to the same captured immutable payload.
-        Only bounded immutable tuples outlive this method.
-        """
-        from cadgen.store.materialize import _face_colors_for_object
+        """Own the captured intrinsic recipes before callback, without SURF reads."""
+        from cadgen._internal.component_package import _normalized_face_colors
         colors, retained = [], 0
         for cid, entry in self.descriptor()["components"].items():
-            recipe = tuple(sorted(_face_colors_for_object(entry["surf"]).items()))
+            recipe = tuple(sorted(_normalized_face_colors(entry["faceColors"]).items()))
             retained += 256 + sys.getsizeof(recipe) + sum(
                 sys.getsizeof(row) + sys.getsizeof(row[0]) + sys.getsizeof(row[1])
                 + sum(sys.getsizeof(channel) for channel in row[1]) for row in recipe
@@ -203,21 +198,27 @@ class Snapshot:
         """
         from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
         from cadgen._internal.component_package import (
-            _build123d_shape_from_brep_bytes,
-            _build123d_shape_from_topods,
+            decode_geometry_component,
+            _build123d_shape_from_topods, effective_face_colors, canonical_json_bytes, NativeUnavailable,
         )
         from cadgen.store.materialize import _location_from_matrix
         descriptor, payloads, colors = self.descriptor(), dict(self.objects), dict(self.face_colors)
         shapes, decoded = {}, {}
         for cid, entry in descriptor["components"].items():
+            if entry.get("kind") == "eager-only":
+                raise NativeUnavailable("eager-only component has no admitted native representation")
+            if entry.get("kind") != "native":
+                raise ValueError("unsupported geometry component kind")
             brep = entry["brep"]
             shape = decoded.get(brep)
             if shape is None:
-                shape = _build123d_shape_from_brep_bytes(payloads[brep])
+                shape = decode_geometry_component(entry, payloads[brep])
                 decoded[brep] = shape
             else:
                 shape = _build123d_shape_from_topods(BRepBuilderAPI_Copy(shape.wrapped, False, False).Shape())
             recipe = dict(colors[cid])
+            if canonical_json_bytes(effective_face_colors(shape, recipe)) != canonical_json_bytes(recipe):
+                raise ValueError("intrinsic recipe names an absent native face")
             if recipe:
                 shape.cad_face_ordinal_colors = recipe
             shapes[cid] = shape
@@ -232,6 +233,7 @@ class Snapshot:
         from cadgen._internal import component_package as cp, op_memo
         from cadgen.store.materialize import _location_from_matrix
         payloads, breps = dict(self.objects), dict(self.component_breps)
+        entries = self.descriptor()["components"]
         boxes = []
         for cid, transform in self.occurrences:
             brep = breps[cid]
@@ -239,7 +241,7 @@ class Snapshot:
             def compute():
                 private = (
                     shapes[cid] if shapes is not None
-                    else cp._build123d_shape_from_brep_bytes(payloads[brep])
+                    else cp.decode_geometry_component(entries[cid], payloads[brep])
                 )
                 placed = private.moved(_location_from_matrix(list(transform)))
                 box = cp._bbox_from_shape(placed)
@@ -317,11 +319,14 @@ def capture_links(draft: dict[str, Any]) -> Snapshot:
             raise Ineligible("tree graph limit")
         active.add(digest)
         tree = json.loads(read(digest, "tree"))
-        if tree.get("kind") != "tree":
-            raise Ineligible("not a tree")
-        for entry in tree.get("components", {}).values():
-            read(entry["brep"], "brep")
-            read(entry["surf"], "surf")
+        from cadgen.store.trees import _validate_structure
+        from cadgen._internal.component_package import validate_geometry_component
+        from cadgen.store.surfaces import validate_surface_bytes
+        _validate_structure(tree)
+        for cid, entry in tree.get("components", {}).items():
+            validate_geometry_component(entry, read(entry["brep"], "brep"), cid=cid)
+            if entry.get("eagerSurface"):
+                validate_surface_bytes(read(entry["eagerSurface"], "surf"))
         for link in tree.get("links", []):
             visit(link["tree"], depth + 1)
         flatten_checked(tree, digest)

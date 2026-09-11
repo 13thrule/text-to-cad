@@ -25,49 +25,6 @@ let dispatching = false;
 let dispatchRequested = false;
 const UNKNOWN_WORKER_MEMORY_ESTIMATE_BYTES = 128 * 1024 * 1024;
 
-// A component surf under a package's components/ dir is CONTENT-ADDRESSED —
-// its stem is the cid the shared tessellation cache keys on. Anything else
-// (arbitrary .surf paths) has no stable identity and must not be cached.
-//
-// Two URL shapes carry component surfs: the PATH form the snapshot host and
-// package-relative routes serve (…/components/<cid>.surf) and the QUERY form
-// the viewer's asset route serves (/__cad/asset?file=<abs path ending in
-// components/<cid>.surf>&v=…). The first release of this function parsed only
-// the path form, which silently disabled the entire shared-cache integration
-// in the real viewer client — every component URL there is query-form, so
-// `cacheable` was always false and no cache read or write-back ever ran.
-function cidFromComponentPath(pathLike, { decode = false } = {}) {
-  const segments = String(pathLike || "").split("/").filter(Boolean);
-  if (segments.length < 2 || segments[segments.length - 2] !== "components") {
-    return "";
-  }
-  let name = segments[segments.length - 1];
-  if (decode) {
-    try {
-      name = decodeURIComponent(name);
-    } catch {
-      // keep the raw name; a malformed escape must not throw picking offline
-    }
-  }
-  return name.toLowerCase().endsWith(".surf") ? name.slice(0, -5) : "";
-}
-
-export function cidFromSurfUrl(url) {
-  const withoutFragment = String(url || "").split("#", 1)[0];
-  const queryIndex = withoutFragment.indexOf("?");
-  const pathnamePart = queryIndex === -1 ? withoutFragment : withoutFragment.slice(0, queryIndex);
-  const fromPath = cidFromComponentPath(pathnamePart, { decode: true });
-  if (fromPath) {
-    return fromPath;
-  }
-  if (queryIndex === -1) {
-    return "";
-  }
-  // URLSearchParams decodes the `file` value, so its segments are plain.
-  const file = new URLSearchParams(withoutFragment.slice(queryIndex + 1)).get("file");
-  return file ? cidFromComponentPath(file) : "";
-}
-
 function makeAbortError() {
   if (typeof DOMException === "function") {
     return new DOMException("The operation was aborted.", "AbortError");
@@ -415,6 +372,7 @@ export function releaseSurfWorkerPoolWhenIdle() {
 export function loadSurfComponentInWorker(url, {
   signal,
   tessellation,
+  identity,
   capabilities: rawCapabilities,
   memoryEstimateBytes,
 } = {}) {
@@ -432,10 +390,11 @@ export function loadSurfComponentInWorker(url, {
   // against the host's /__tess_cache/ routes); the worker cannot reach it, so
   // the entry bytes ride the request in (transferred, hit = tessellation
   // skipped) and a miss rides back out as freshly encoded bytes to write
-  // back. Everything is best-effort: no provider, no cid (a non-package
-  // surf), or debug options mean the message carries nothing extra.
-  const cid = cidFromSurfUrl(url);
-  const cacheable = Boolean(cid)
+  // back. Everything is best-effort: no provider, no exact surface identity,
+  // or debug options mean the message carries nothing extra.
+  const surfaceInput = String(identity?.surfaceInput || "");
+  const surfaceObject = String(identity?.surfaceObject || "");
+  const cacheable = Boolean(surfaceInput && surfaceObject)
     && tessellationCacheProviderRegistered()
     && tessellationOptionsCacheable(tessellation || {});
   return new Promise((resolve, reject) => {
@@ -468,7 +427,7 @@ export function loadSurfComponentInWorker(url, {
       message: null,
       transfer: null,
       writeBack: cacheable
-        ? (entryBytes) => { writeBackEntryBytes(cid, tessellation || {}, entryBytes); }
+        ? (entryBytes) => { writeBackEntryBytes(surfaceInput, tessellation || {}, entryBytes); }
         : null,
     });
     signal?.addEventListener?.("abort", abort, { once: true });
@@ -483,6 +442,7 @@ export function loadSurfComponentInWorker(url, {
         url,
         capabilities,
         ...(tessellation ? { tessellation } : {}),
+        ...(cacheable ? { cacheIdentity: { surfaceInput, surfaceObject } } : {}),
         ...(cachedEntry ? { cachedEntry } : {}),
         ...(cacheable ? { wantEntry: !cachedEntry } : {}),
       };
@@ -493,7 +453,10 @@ export function loadSurfComponentInWorker(url, {
       dispatchQueuedRequests();
     };
     if (cacheable) {
-      getCachedEntryBytes(cid, tessellation || {}).then(post, () => post(null));
+      getCachedEntryBytes(surfaceInput, tessellation || {}, {
+        signal,
+        probe: identity?.tessellationProbe || null,
+      }).then(post, () => post(null));
     } else {
       post(null);
     }

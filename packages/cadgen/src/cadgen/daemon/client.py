@@ -263,19 +263,62 @@ def run_nested(
     return _run_with_retry(payload, on_stream=on_stream, on_event=on_event)
 
 
-def _run_with_retry(payload: dict, *, on_stream=None, on_event=None) -> int | None:
+def artifact_payload(request: dict, *, store_root: str, dependency: bool = False) -> dict:
+    """Capture a structured source-free request on the calling thread."""
+    from cadgen.daemon.artifacts import normalize_request, store_path
+
+    payload = _request_payload("artifact", [], None, None, store_root=store_path(store_root),
+                               root_id=os.environ.get("CADGEN_ROOT_ID"), dependency=dependency)
+    payload["artifact"] = normalize_request(request)
+    return payload
+
+
+def run_artifact(payload: dict, *, subscriber=None):
+    """Run exactly this artifact request; protocol failure never replays cold."""
+    from cadgen.daemon.artifacts import ArtifactJobError, validate_result
+
+    results, chunks = [], []
+
+    def receive(value):
+        if results:
+            raise ArtifactJobError("artifact worker returned more than one result")
+        results.append(validate_result(payload["artifact"], value))
+
+    def connected(conn):
+        if subscriber is not None:
+            subscriber._bind_detach(conn.close if conn is not None else None)
+
+    code = _run_with_retry(payload, on_stream=chunks.append, on_artifact_result=receive, strict=True,
+                           on_connection=connected, cancelled=(lambda: subscriber.detached) if subscriber is not None else None)
+    if code is None or code != 0 or not results:
+        detail = "".join(chunks).strip()
+        raise ArtifactJobError("artifact request failed or lost its protocol; no cold retry" + (f": {detail}" if detail else ""))
+    return results[0]
+
+
+def _run_with_retry(payload: dict, *, on_stream=None, on_event=None,
+                    on_artifact_result=None, strict: bool = False, on_connection=None, cancelled=None) -> int | None:
     address = daemon_address()
     for attempt in range(2):
+        if cancelled is not None and cancelled():
+            return None
         conn = _connect_or_spawn(address)
         if conn is None:
             return None
         try:
-            outcome = _run_request(conn, payload, on_stream=on_stream, on_event=on_event)
+            if on_connection is not None:
+                on_connection(conn)
+            kwargs = {"on_stream": on_stream, "on_event": on_event}
+            if strict or on_artifact_result is not None:
+                kwargs.update(on_artifact_result=on_artifact_result, strict=strict, cancelled=cancelled)
+            outcome = _run_request(conn, payload, **kwargs)
         finally:
             try:
                 conn.close()
             except OSError:
                 pass
+            if on_connection is not None:
+                on_connection(None)
         if outcome is _RESTART and attempt == 0:
             continue  # stale daemon exited; respawn once and retry
         return outcome if isinstance(outcome, int) else None
@@ -471,7 +514,8 @@ def worker_died_message(payload: dict, death: dict) -> str:
 
 
 def _run_request(
-    channel: transport.Channel, payload: dict, *, on_stream=None, on_event=None
+    channel: transport.Channel, payload: dict, *, on_stream=None, on_event=None,
+    on_artifact_result=None, strict: bool = False, cancelled=None,
 ) -> int | object | None:
     """Send one request and stream the response; int exit code, ``_RESTART``, or
     ``None`` on any protocol fault.
@@ -479,15 +523,25 @@ def _run_request(
     Stream frames go to the process's own stdout/stderr unless ``on_stream`` is
     given (a nested child build captures them); ``event`` frames — the build
     tree's model transitions — go to ``on_event``."""
+    if cancelled is not None and cancelled():
+        return None
     if not _send_json(channel, payload):
         return None
     # Applies per frame, not to the whole request: a daemon that is streaming output keeps
     # resetting it, so only genuine silence trips the deadline.
     timeout = request_timeout() or None
     streams = {"stdout": sys.stdout, "stderr": sys.stderr}
+    observed_work = False
+    deadline = time.monotonic() + timeout if timeout else None
     while True:
-        message = _recv_json(channel, timeout)
+        if cancelled is not None and cancelled():
+            return None
+        message = _recv_json(channel, .1 if strict else timeout)
         if message is _TIMED_OUT:
+            if strict:
+                if deadline is not None and time.monotonic() >= deadline:
+                    return None
+                continue
             # Silent past the deadline: either the daemon is wedged, or it is still
             # grinding through a queued build we cannot see. Either way, fall back to
             # a cold in-process run so THIS invocation still completes. Say so on
@@ -501,11 +555,22 @@ def _run_request(
             return None
         if message is None:
             return None  # closed without an exit frame
+        deadline = time.monotonic() + timeout if timeout else None
         if message.get("restart"):
+            if strict and observed_work:
+                return None  # an uncertain completed/partial operation cannot replay
             return _RESTART
         if "exit" in message:
             return int(message["exit"])
+        if "artifactResult" in message:
+            if on_artifact_result is None:
+                return None
+            on_artifact_result(message["artifactResult"])
+            observed_work = True
+            continue
         if "event" in message:
+            if strict:
+                return None
             if on_event is not None and isinstance(message["event"], dict):
                 on_event(message["event"])
             continue
@@ -513,7 +578,9 @@ def _run_request(
             # The worker running this job is gone. The supervisor follows with the exit
             # frame; this is the one place the loss is explained, and it is never a
             # silent cold retry -- the caller's job may have run for half an hour.
-            text = worker_died_message(payload, message["workerDied"] or {})
+            text = (f"artifact worker died: {message['workerDied']}; no retry\n" if strict
+                    else worker_died_message(payload, message["workerDied"] or {}))
+            observed_work = True
             if on_stream is not None:
                 on_stream(text)
             else:
@@ -524,6 +591,7 @@ def _run_request(
         stream = message.get("stream")
         if stream not in streams or not isinstance(data, str):
             return None
+        observed_work = observed_work or bool(data)
         if on_stream is not None:
             on_stream(data)
             continue

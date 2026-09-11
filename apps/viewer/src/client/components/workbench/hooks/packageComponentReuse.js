@@ -1,8 +1,6 @@
 import { surfTessellationCacheKey } from "cadgen-js/lib/renderAssetClient.js";
 import { lodTessellationForLevel, normalizeLodLevel } from "cadgen-js/lib/surf/lodPolicy.js";
 
-import { resolvePackageAssetUrl } from "./packageAssetUrl.js";
-
 export function matchingDisplayedPackageContext(displayed, meshState, file) {
   const expectedFile = String(file || "");
   if (!displayed?.complete || !meshState?.assemblyInteractionReady) return null;
@@ -15,9 +13,9 @@ export function matchingDisplayedPackageContext(displayed, meshState, file) {
 }
 
 // Keep decoded geometry that is still visible alive across an atomic revision
-// swap. Matching uses the render client's concrete immutable identity (source,
-// full surfObject, cid and exact tessellation), never the display LOD label by
-// itself. Composition applies the new descriptor's placements and appearance.
+// swap. D already binds the exact geometry and surface producer. The prior
+// runtime ticket supplies O when the new geometry descriptor intentionally
+// omits display artifacts; an explicit new O must still agree.
 export function retainedComponentMeshesForRevision({
   previous,
   descriptor,
@@ -29,23 +27,18 @@ export function retainedComponentMeshesForRevision({
   const retained = {};
   for (const [cid, component] of Object.entries(descriptor.components || {})) {
     const oldComponent = previous.descriptor.components?.[cid];
+    const oldIdentity = previous.componentIdentityByCid?.[cid] || oldComponent;
     const meshData = previous.componentMeshDataByCid?.[cid];
-    if (!oldComponent?.surf || !component?.surf || !meshData) continue;
+    if (!oldComponent?.surfaceInput || oldComponent.surfaceInput !== component?.surfaceInput
+        || !oldIdentity?.surfaceObject || !meshData) continue;
     const level = normalizeLodLevel(
       previous.componentLodLevelByCid?.[cid] ?? meshData.lodLevel,
     );
     if (meshData.lodLevel != null && normalizeLodLevel(meshData.lodLevel) !== level) continue;
     const tessellation = lodTessellationForLevel(level);
-    const oldKey = surfTessellationCacheKey(
-      resolvePackageAssetUrl(previous.meshUrl, oldComponent.surf),
-      tessellation,
-      oldComponent,
-    );
-    const nextKey = surfTessellationCacheKey(
-      resolvePackageAssetUrl(meshUrl, component.surf),
-      tessellation,
-      component,
-    );
+    const nextIdentity = { ...component, surfaceObject: component.surfaceObject || oldIdentity.surfaceObject };
+    const oldKey = surfTessellationCacheKey("", tessellation, oldIdentity);
+    const nextKey = surfTessellationCacheKey("", tessellation, nextIdentity);
     if (oldKey === nextKey) retained[cid] = meshData;
   }
   return retained;

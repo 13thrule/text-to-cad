@@ -159,9 +159,11 @@ class ProviderTests(DescriptorFixture, unittest.TestCase):
         try:
             path.write_bytes(b"wrong bytes")
             self.assertIsNone(bounds.try_bounds(build._walk_compound(shape, root_name="root", progress=build.resolve_progress(None)).draft_tree(root_name="root")))
-            # The ordinary path already owns its document from verified RAM
-            # bytes; the provider must not introduce wrong cached extrema.
-            self.assertEqual(expected, self.result(build.build_tree_through_step, shape))
+            # Existing consumers still own valid native geometry, but a new
+            # publication must not certify a hash-corrupt required closure.
+            for function in (ordinary_build, build.build_tree_through_step):
+                with self.assertRaisesRegex(RuntimeError, "disappeared before publication"):
+                    self.result(function, shape)
         finally: path.write_bytes(data)
         for digest, payload in snapshot.objects:
             path = object_path(digest)
@@ -197,7 +199,7 @@ class ProviderTests(DescriptorFixture, unittest.TestCase):
         desc = snapshot.descriptor(); desc["components"].update({f"fake-{i}": {} for i in range(17)})
         with self.assertRaises(bounds.Ineligible): bounds._ordered(desc)
         draft = build._walk_compound(self.parent(), root_name="root", progress=build.resolve_progress(None)).draft_tree(root_name="root")
-        for limit in ("MAX_TREE_BYTES", "MAX_BREP_BYTES", "MAX_SURF_BYTES"):
+        for limit in ("MAX_TREE_BYTES", "MAX_BREP_BYTES"):
             with mock.patch.object(bounds, limit, 1), mock.patch.object(bounds.Snapshot, "bounds", side_effect=AssertionError("native work after admission denial")):
                 self.assertIsNone(bounds.try_bounds(draft))
 
@@ -307,8 +309,8 @@ class LifecycleTests(DescriptorFixture, unittest.TestCase):
         snapshot = self.snapshot(self.parent()).capture_appearance()
         original = snapshot.descriptor()
         first = snapshot.materialize("root")
-        with mock.patch.object(mat, "_shape_for_object", side_effect=AssertionError("object lookup")), \
-             mock.patch.object(mat, "_face_colors_for_object", side_effect=AssertionError("SURF lookup")), \
+        with mock.patch.object(mat, "_bytes_for_object", side_effect=AssertionError("object lookup")), \
+             mock.patch("cadgen._internal.surface_extract.read_surf", side_effect=AssertionError("SURF lookup")), \
              mock.patch("cadgen.store.trees.get_tree", side_effect=AssertionError("tree lookup")):
             second = snapshot.materialize("root")
         self.assertEqual(cp._shape_brep_bytes(first), cp._shape_brep_bytes(second))
@@ -377,9 +379,17 @@ class LifecycleTests(DescriptorFixture, unittest.TestCase):
                 for link in walk.links:
                     tree = copy.deepcopy(get_tree(link["tree"]))
                     if invalid == "brep":
-                        digest = put_object(b"not a native BREP representation")
-                        for entry in tree["components"].values():
+                        payload = cp._BREP_HEADERS["bintools-v4"] + b"not a native BREP representation"
+                        digest = put_object(payload)
+                        remap, entries = {}, {}
+                        for cid, entry in tree["components"].items():
                             entry["brep"] = digest
+                            entry["contentHash"] = cp.geometry_component_hash(entry["codec"], payload, entry["faceColors"])
+                            remap[cid] = entry["contentHash"][:16]
+                            entries[remap[cid]] = entry
+                        tree["components"] = entries
+                        for occurrence in tree["occurrences"]:
+                            occurrence["component"] = remap[occurrence["component"]]
                     else:
                         for occurrence in tree["occurrences"]:
                             occurrence["transform"] = [0.] * 15 + [1.]
@@ -401,7 +411,7 @@ class LifecycleTests(DescriptorFixture, unittest.TestCase):
                             # Verify actual disk entries skip native work; this is
                             # precisely the scalar-hit state that must not certify
                             # native bytes or gp_Trsf validity for publication.
-                            with mock.patch.object(cp, "_build123d_shape_from_brep_bytes", side_effect=AssertionError("warm bounds decoded")):
+                            with mock.patch.object(cp, "decode_geometry_component", side_effect=AssertionError("warm bounds decoded")):
                                 self.assertEqual(snapshot.bounds(), {"min": [-1.] * 3, "max": [1.] * 3})
                         failures = []
                         for module, function in ((build, ordinary_build), (build, self.deferred)):

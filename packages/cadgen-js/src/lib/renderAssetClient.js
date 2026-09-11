@@ -12,19 +12,17 @@ import { buildMeshDataFrom3MfBuffer } from "./render/threeMfMeshData.js";
 import { loadGlbMeshDataInWorker } from "./render/glbMeshWorkerClient.js";
 import { loadStlMeshDataInWorker } from "./render/stlMeshWorkerClient.js";
 import {
-  cidFromSurfUrl,
   reclaimIdleSurfWorkers as reclaimIdleSurfWorkerPool,
   releaseSurfWorkerPoolWhenIdle,
   surfWorkerMemoryStats as surfWorkerMemoryStatsFromPool,
 } from "./surf/surfWorkerClient.js";
 import {
-  TESS_CACHE_VERSION,
+  resolvedTessellationIdentity,
   tessellationCacheKey,
 } from "./surf/tessellationCache.js";
 import {
   assertAssetSourceScope,
   assetSourceScopeMatches,
-  renderAssetSourceScope,
   releaseAssetSourceScope
 } from "./renderAssetSourceScope.js";
 
@@ -749,34 +747,12 @@ export function renderAssetCacheStats({ excludeBuffers = [] } = {}) {
   return stats;
 }
 
-function immutableSurfAssetKey(url, identity) {
-  // Only a canonical store view carries this immutable-object guarantee.
-  // Other hosts/formats and scoped snapshot jobs retain their URL identity.
-  // A tree revision changes placements/appearance without changing a SURF
-  // object; its full digest lets those revisions share the same decoded mesh.
-  const digest = String(identity?.surfObject || "").toLowerCase();
-  if (renderAssetSourceScope() || !/^[0-9a-f]{64}$/.test(digest)) return url;
-  try {
-    const base = typeof location !== "undefined" ? location.href : "http://cadgen-relative.invalid/";
-    const parsed = new URL(url, base);
-    if (!["http:", "https:"].includes(parsed.protocol) || parsed.pathname !== "/__cad/store") return url;
-    if (parsed.searchParams.getAll("file").length !== 1) return url;
-    const match = (parsed.searchParams.get("file") || "")
-      .match(/^\/?[0-9a-f]{64}\/components\/([0-9a-f]{16}|[0-9a-f]{64})\.surf$/i);
-    if (!match) return url;
-    parsed.searchParams.delete("file");
-    parsed.searchParams.delete("v"); // the full object digest supersedes tree revision hints
-    parsed.searchParams.sort();
-    const origin = parsed.origin === "http://cadgen-relative.invalid" ? "" : parsed.origin;
-    return `${origin}${parsed.pathname}?${parsed.searchParams}#surf=${digest}&cid=${match[1].toLowerCase()}`;
-  } catch {
-    return url;
-  }
-}
-
-export function surfTessellationCacheKey(url, tessellation, identity) {
-  const cid = cidFromSurfUrl(url) || "anonymous";
-  return `${immutableSurfAssetKey(url, identity)}#mesh=${tessellationCacheKey(cid, tessellation || {})}-p${TESS_CACHE_VERSION}`;
+export function surfTessellationCacheKey(_url, tessellation, identity) {
+  return resolvedTessellationIdentity(
+    String(identity?.surfaceInput || ""),
+    String(identity?.surfaceObject || ""),
+    tessellation || {},
+  );
 }
 
 // Drop browser-cache references for an obsolete concrete surf level after its
@@ -816,7 +792,7 @@ function capabilityCacheKey(capabilities) {
   return `${capabilities.render ? "r" : ""}${capabilities.selectors ? "s" : ""}`;
 }
 
-async function loadSurfPayloadInline(url, { signal, tessellation, capabilities } = {}) {
+async function loadSurfPayloadInline(url, { signal, tessellation, identity, capabilities } = {}) {
   const [
     { parseSurf },
     {
@@ -834,8 +810,12 @@ async function loadSurfPayloadInline(url, { signal, tessellation, capabilities }
     import("./surf/surfMeshData.js"),
     import("./surf/surfSelectorBundle.js"),
   ]);
-  const cid = cidFromSurfUrl(url);
-  const cached = await getCachedComponentEntry(cid, tessellation || {});
+  const surfaceInput = String(identity?.surfaceInput || "");
+  const surfaceObject = String(identity?.surfaceObject || "");
+  const cached = await getCachedComponentEntry(surfaceInput, tessellation || {}, {
+    signal,
+    probe: identity?.tessellationProbe || null,
+  });
   const cachedIndex = surfIndexFromCacheEntry(cached);
   // Render-only cache hits are complete without the exact-surface container.
   // Selectors need its topology tables; incomplete older entries do too.
@@ -844,6 +824,7 @@ async function loadSurfPayloadInline(url, { signal, tessellation, capabilities }
       meshData: buildMeshDataFromSurf(cachedIndex, null, { component: cached.component }),
     };
   }
+  if (!url) throw new Error("Exact SURF bytes are not ready for this component");
   const buffer = await loadRenderArrayBuffer(url, { signal });
   assertNotGitLfsPointer(buffer, url, "SURF render asset");
   const { index, floats } = parseSurf(buffer);
@@ -852,7 +833,7 @@ async function loadSurfPayloadInline(url, { signal, tessellation, capabilities }
   // skipped) or a write-back; no provider tessellates exactly as before.
   const component = cached?.component || tessellateComponent(index, floats, tessellation || {});
   if (!cached || !cachedIndex) {
-    await writeBackComponentEntry(cid, tessellation || {}, component, index);
+    await writeBackComponentEntry(surfaceInput, surfaceObject, tessellation || {}, component, index);
   }
   return {
     ...(capabilities.render ? { meshData: buildMeshDataFromSurf(index, floats, { component }) } : {}),
@@ -873,6 +854,7 @@ async function loadSurfPayload(url, {
     const workerPayload = loadSurfComponentInWorker(url, {
       signal,
       tessellation,
+      identity,
       capabilities,
       memoryEstimateBytes,
     });
@@ -882,7 +864,7 @@ async function loadSurfPayload(url, {
       // the compatibility path for environments where Workers never started.
       return workerPayload;
     }
-    return loadSurfPayloadInline(url, { signal, tessellation, capabilities });
+    return loadSurfPayloadInline(url, { signal, tessellation, identity, capabilities });
   }, { cachePending: !signal });
   finalizeCached(surfPayloadCache, cacheKey, payload);
   retainSurfEntry(surfPayloadCache, cacheKey);

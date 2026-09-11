@@ -17,10 +17,9 @@
 //   2. EDGE COHERENCE: clicking the same model edge at different points along
 //      it reports THE SAME edge reference, and its highlight is one connected
 //      region (<= 2 components tolerated for antialiasing splits).
-//   3. Both gates run cache-COLD (this component's tessellation-cache entries
-//      moved aside) and cache-WARM (entries written back by the cold pass) —
-//      the warm pass exercises the decode/hit path in the real client, which
-//      the cidFromSurfUrl query-form fix made reachable for the first time.
+//   3. Both gates run cache-COLD (mesh indexes moved aside) and cache-WARM
+//      (entries written back by the cold pass). The warm pass exercises the
+//      metadata probe, exact-object fetch and v4 decode path in the real client.
 //   4. A LOD-off pass (kill switch) pins the non-LOD path.
 //
 // Reads the REAL framebuffer via page.screenshot() (see e2e-format-sweep.mjs).
@@ -41,9 +40,6 @@ const { chromium } = require("playwright");
 const { PNG } = require("pngjs");
 
 const PART_FILE = "examples/STEP/cam_follower_roller.step";
-// The roller's single component cid (its tessellation-cache key prefix). Read it
-// back from the package descriptor if the model's geometry ever changes.
-const PART_CID = "9ba0d8efa0e308c1";
 const FACE_CONTIGUITY_MIN = 0.97;
 
 function parseArgs(argv) {
@@ -73,13 +69,13 @@ if (!fs.existsSync(path.join(args.dir, PART_FILE))) {
 // (~/.cache/cadgen/packages/<stepHash>-v<N>), not beside the artifact, and the viewer
 // resolves them on demand. Building the model script is what fills the store.
 
-// ---- cache staging: cold pass = this component's entries moved aside -------
+// ---- cache staging: cold pass = immutable mesh indexes moved aside ----------
 function meshCacheDir() {
   const override = (process.env.CADGEN_CACHE_DIR || "").trim();
   const base = override
     || (process.env.XDG_CACHE_HOME ? path.join(process.env.XDG_CACHE_HOME, "cadgen") : "")
     || path.join(os.homedir(), ".cache", "cadgen");
-  return path.join(base, "meshes");
+  return path.join(base, "index", "mesh");
 }
 
 function stageColdCache() {
@@ -88,10 +84,8 @@ function stageColdCache() {
   let moved = 0;
   if (fs.existsSync(dir)) {
     for (const name of fs.readdirSync(dir)) {
-      if (name.startsWith(`${PART_CID}-`)) {
-        fs.renameSync(path.join(dir, name), path.join(parked, name));
-        moved += 1;
-      }
+      fs.renameSync(path.join(dir, name), path.join(parked, name));
+      moved += 1;
     }
   }
   return { parked, moved };
@@ -100,7 +94,7 @@ function stageColdCache() {
 function cacheEntryCount() {
   const dir = meshCacheDir();
   if (!fs.existsSync(dir)) return 0;
-  return fs.readdirSync(dir).filter((name) => name.startsWith(`${PART_CID}-`)).length;
+  return fs.readdirSync(dir).length;
 }
 
 // ---- pixel analysis ---------------------------------------------------------
@@ -321,13 +315,13 @@ try {
   if (wantsPass("cold")) {
     // COLD pass (LOD on): entries parked aside, tessellates fresh, writes back.
     const { parked, moved } = stageColdCache();
-    console.log(`e2e-part-picking: parked ${moved} cache entrie(s) for ${PART_CID} -> ${parked}`);
+    console.log(`e2e-part-picking: parked ${moved} mesh index entrie(s) -> ${parked}`);
     const page = await openPart(browser, { lod: true });
     await runGate(page, { tag: "cold+lod", expectLod: true });
     await page.close();
     const written = cacheEntryCount();
     if (written < 1) {
-      fail("cold pass wrote no cache entries — the client cache integration is dead again (cidFromSurfUrl?)");
+      fail("cold pass wrote no mesh indexes — the client cache integration is inactive");
     }
     console.log(`  cold pass wrote ${written} cache entrie(s) — client cache integration alive`);
   }

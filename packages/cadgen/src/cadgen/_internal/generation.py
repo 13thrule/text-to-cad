@@ -171,36 +171,12 @@ def _package_descriptor_matches_spec(
     spec: EntrySpec,
     selector_options: SelectorOptions | None = None,
 ) -> bool | None:
-    """assembly.json-based freshness for a view directory.
+    """Geometry-only currency, with source provenance for explicit builds.
 
-    Returns None when the entry's artifact is not a tree (caller falls back
-    to the monolith-GLB validator). Packages carry no embedded selector/edge
-    views (selector topology is extracted on demand), so routing them through
-    the monolith validator always failed and every build re-ran the generator plus
-    the full-scene mesh; validate against the assembly.json instead.
-
-    Content keying does most of the gating BY CONSTRUCTION: the tree key is
-    ``<sha256(document)>-v<schemaVersion>``, so a tree that resolves at all
-    has the right schema and belongs to exactly these bytes — the old
-    schema-version and stepHash gates all collapsed into the key. What
-    remains is what the key cannot answer: provenance direction (sidecar vs
-    spec), and — once a scene has been loaded and the caller can say what edge
-    classes it wants — whether the tree was built with those classes. The
-    source-closure gate stays the sanctioned asymmetry in the SAFE direction:
-    generated outputs are detached from their code, so the viewer never checks
-    source currency — here it survives purely as the explicit-build no-op
-    gate, where being stricter can only make a requested build do real work,
-    never trigger a needless one.
-
-    Without ``selector_options`` the caller cannot say what it wants, and
-    nothing can be inferred: the edge classes are a pure function of the STEP
-    bytes, which the key already pins, so re-deriving an expectation from the
-    assembly.json would only compare it against itself. All that is checkable
-    there is that the assembly.json IS one — that it records the classes at all.
-    The mesh comparison that used to live here weighed the assembly.json's
-    recorded deflection numbers against freshly resolved ones; no tessellator
-    ever read either, so the only thing a mismatch could trigger was a rebuild
-    that rewrote them.
+    The saved byte digest selects a complete native tree. Display derivatives
+    do not participate. Generated builds additionally check their provenance
+    and source closure; artifact readers never do. Edge visibility policy, when
+    explicitly requested, remains descriptor metadata rather than a mesh job.
     """
     from cadgen.catalog import result_descriptor_for
 
@@ -455,6 +431,14 @@ def _generate_part_outputs(
             if key in package_provenance
         }
         from cadgen.daemon import executors
+        from cadgen.store.surfaces import producer_identity
+
+        # The worker can attest its actual display producer without deriving
+        # SURF. Unknown display capability never prevents native publication.
+        try:
+            surface_producer = producer_identity()
+        except ValueError:
+            surface_producer = None
 
         def tree_kinematics(result_hash: str):
             declaration = getattr(scene, "kinematics", None)
@@ -485,6 +469,7 @@ def _generate_part_outputs(
                     preview={
                         "output": str(spec.step_path.expanduser().resolve()),
                         "tree": result_hash, "kinematics": tree_kinematics(result_hash),
+                        **({"surfaceProducer": surface_producer} if surface_producer is not None else {}),
                     },
                 ))
             wait_children = getattr(scene, "wait_child_outputs", None)
@@ -663,7 +648,7 @@ def _generate_part_outputs(
         # (a reader's one lookup; STORE.md §2). Code side: which model wrote each
         # output path (the badge's question, never a reader's).
         if document_tree_hash and record.get("stepHash"):
-            note_document_tree(str(record["stepHash"]), document_tree_hash)
+            note_document_tree(str(record["stepHash"]), document_tree_hash, surface_producer=surface_producer)
         if generated:
             if staged_step is not None:
                 from cadgen.catalog import seed_artifact_hash

@@ -37,12 +37,7 @@ class ComponentFaceColorIdentityTest(unittest.TestCase):
         return shape
 
     def faces(self, component):
-        from cadgen._internal.surface_extract import read_surf
-        from cadgen.store.objects import read_object
-
-        index, _ = read_surf(read_object(component["surf"]))
-        return {int(face["ord"]): tuple(face["color"])
-                for face in index["faces"] if face.get("color") is not None}
+        return {int(ordinal): tuple(color) for ordinal, color in component["faceColors"].items()}
 
     def test_normalized_input_rekeys_legacy_colorless_components_but_keeps_brep_bytes(self):
         from build123d import Location
@@ -136,11 +131,12 @@ class ComponentFaceColorIdentityTest(unittest.TestCase):
         red, blue = self.box({1: RED}), self.box({1: BLUE}).moved(Location((8, 0, 0)))
         repeated = red.moved(Location((16, 0, 0)))
         tree, _, _ = build_tree_from_compound(Compound(children=[red, blue, repeated]), root_name="colors")
-        with mock.patch.object(materialization, "_shape_for_object", wraps=materialization._shape_for_object) as decoded:
+        from cadgen._internal import component_package
+        with mock.patch.object(component_package, "decode_geometry_component", wraps=component_package.decode_geometry_component) as decoded:
             with mock.patch.object(surface_extract, "read_surf", wraps=surface_extract.read_surf) as surfaces:
                 first = materialization.materialize(tree)
         self.assertEqual(decoded.call_count, 1)
-        self.assertEqual(surfaces.call_count, 2)
+        self.assertEqual(surfaces.call_count, 0)
         self.assertEqual([child.cad_face_ordinal_colors for child in first.children], [{1: RED}, {1: BLUE}, {1: RED}])
         second = materialization.materialize(tree)
         first.children[0].cad_face_ordinal_colors[1] = BLUE

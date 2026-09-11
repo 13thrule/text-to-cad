@@ -6,7 +6,11 @@ import { buildMeshDataFromSurf } from "../lib/surf/surfMeshData.js";
 import { parseSurf } from "../lib/surf/container.js";
 import { tessellateComponent } from "../lib/surf/tessellate.js";
 import {
-  getCachedComponentEntries,
+  TESS_BATCH_MAX_BYTES,
+  decodeComponentTessellation,
+  getCachedEntryBytes,
+  getCachedEntryBytesMany,
+  probeCachedTessellationEntries,
   surfIndexFromCacheEntry,
   writeBackComponentEntry,
 } from "../lib/surf/tessellationCache.js";
@@ -236,23 +240,68 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
   const components = isObject(descriptor.components) ? descriptor.components : {};
   const componentMeshDataByCid = {};
   const cids = Object.keys(components);
-  // ONE batched round trip resolves the whole hit set against the shared
-  // component cache (provider getMany -> POST /__tess_cache/batch). A v3
-  // entry carries the surf index fields render meshData needs, so a hit
-  // skips the .surf fetch entirely — on a 563-component warm model this
-  // replaces ~2 requests per component with one request total. No provider,
-  // batch-less host, or older entries degrade to the miss path below.
-  const cachedEntries = await getCachedComponentEntries(cids, tessellation);
+  const inputs = cids.map((cid) => String(components[cid]?.surfaceInput || ""));
+  const probes = await probeCachedTessellationEntries(inputs, tessellation);
   const misses = [];
+
+  // Probe metadata is tiny. Full bodies are fetched only in admitted TESB
+  // groups whose observed framing stays under the host's 32 MiB bound. Each
+  // group is decoded, copied into render-owned arrays and dropped before the
+  // next group, so a warm assembly never retains all raw cache bodies beside
+  // the final mesh.
+  const groups = [];
+  let group = [];
+  let framedBytes = 12;
+  const flush = () => {
+    if (group.length) groups.push(group);
+    group = [];
+    framedBytes = 12;
+  };
   for (const cid of cids) {
-    const decoded = cachedEntries.get(cid);
-    const surrogateIndex = decoded ? surfIndexFromCacheEntry(decoded) : null;
-    if (decoded && surrogateIndex) {
-      componentMeshDataByCid[cid] = buildMeshDataFromSurf(surrogateIndex, null, {
+    const component = components[cid];
+    const surfaceInput = String(component?.surfaceInput || "");
+    const surfaceObject = String(component?.surfaceObject || "");
+    const probe = probes.get(surfaceInput);
+    if (!probe || (surfaceObject && probe.surfaceObject !== surfaceObject)) {
+      misses.push(cid);
+      continue;
+    }
+    const entryBytes = 4 + ((probe.byteLength + 3) & ~3);
+    if (group.length && framedBytes + entryBytes > TESS_BATCH_MAX_BYTES) flush();
+    group.push({ cid, surfaceInput, surfaceObject, probe });
+    framedBytes += entryBytes;
+    if (framedBytes >= TESS_BATCH_MAX_BYTES || entryBytes + 12 > TESS_BATCH_MAX_BYTES) flush();
+  }
+  flush();
+
+  for (const entries of groups) {
+    let bodies;
+    if (entries.length === 1 && entries[0].probe.byteLength + 16 > TESS_BATCH_MAX_BYTES) {
+      const entry = entries[0];
+      bodies = [await getCachedEntryBytes(entry.surfaceInput, tessellation, { probe: entry.probe })];
+    } else {
+      const maxBytes = 12 + entries.reduce(
+        (sum, entry) => sum + 4 + ((entry.probe.byteLength + 3) & ~3),
+        0,
+      );
+      bodies = await getCachedEntryBytesMany(entries.map((entry) => entry.probe), { maxBytes });
+    }
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      const decoded = decodeComponentTessellation(bodies?.[index], {
+        surfaceInput: entry.surfaceInput,
+        surfaceObject: entry.probe.surfaceObject,
+        tessellationInput: entry.probe.tessellationInput,
+        tessellation,
+      });
+      const surrogateIndex = decoded ? surfIndexFromCacheEntry(decoded) : null;
+      if (!decoded || !surrogateIndex) {
+        misses.push(entry.cid);
+        continue;
+      }
+      componentMeshDataByCid[entry.cid] = buildMeshDataFromSurf(surrogateIndex, null, {
         component: decoded.component,
       });
-    } else {
-      misses.push(cid);
     }
   }
   // Misses load through a small pool: tessellation is CPU-bound and
@@ -262,6 +311,9 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
   // waits with the CPU work; 6 matches the browser's per-host connection
   // budget.
   const loadComponent = async (cid) => {
+    const descriptorComponent = components[cid];
+    const surfaceInput = String(descriptorComponent?.surfaceInput || "");
+    const surfaceObject = String(descriptorComponent?.surfaceObject || "");
     const url = String(componentUrls[cid] || "").trim();
     if (!url) {
       throw new Error(`Assembly package component ${cid} has no resolved URL`);
@@ -270,19 +322,8 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
     // points at the component GLB; its .surf sibling shares the stem.
     const surfUrl = url.replace(/\.glb(?=$|[?#])/, ".surf");
     const { index, floats } = parseSurf(await fetchComponentGlbBuffer(surfUrl, cid));
-    // A decoded entry without the surf-index header (a writer that had no
-    // index in hand) still spares the tessellation; a true miss tessellates
-    // and writes back — the batch above already answered for every cid, so
-    // re-asking the provider per key would only repeat the lookup that
-    // just missed.
-    const decoded = cachedEntries.get(cid) || null;
-    let component;
-    if (decoded) {
-      component = decoded.component;
-    } else {
-      component = tessellateComponent(index, floats, tessellation);
-      await writeBackComponentEntry(cid, tessellation, component, index);
-    }
+    const component = tessellateComponent(index, floats, tessellation);
+    await writeBackComponentEntry(surfaceInput, surfaceObject, tessellation, component, index);
     componentMeshDataByCid[cid] = buildMeshDataFromSurf(index, floats, { component });
   };
   const POOL = 6;

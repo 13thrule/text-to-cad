@@ -46,6 +46,7 @@ class TreeLinkIntegrity(unittest.TestCase):
         missing = "a" * 64
         parent = put_tree({
             "label": "parent",
+            "units": "mm", "entryKind": "assembly",
             "components": {},
             "occurrences": [],
             "links": [{"id": "o1.1", "name": "missing", "tree": missing, "transform": IDENTITY}],
@@ -67,13 +68,14 @@ class TreeLinkIntegrity(unittest.TestCase):
 
     def test_link_color_applies_only_where_the_child_has_no_authored_color(self) -> None:
         from cadgen.store.trees import flatten, put_tree
+        from tests.python.support.store_fixtures import seed_result
 
         red = [1.0, 0.0, 0.0, 1.0]
         green = [0.0, 1.0, 0.0, 1.0]
         blue = [0.0, 0.0, 1.0, 1.0]
-        child = put_tree({
-            "label": "child",
-            "components": {
+        fixture = self.store.parent / "color-fixture.step"
+        fixture.write_bytes(b"geometry fixture input")
+        child = seed_result(fixture, {"label": "child", "components": {
                 "plain": {},
                 "component-colored": {"color": green},
                 "occurrence-colored": {},
@@ -89,7 +91,6 @@ class TreeLinkIntegrity(unittest.TestCase):
                     "transform": IDENTITY, "color": blue,
                 },
             ],
-            "links": [],
             "assembly": {
                 "root": {
                     "id": "o1", "name": "child", "nodeType": "assembly",
@@ -104,6 +105,7 @@ class TreeLinkIntegrity(unittest.TestCase):
         })
         parent = put_tree({
             "label": "parent",
+            "units": "mm", "entryKind": "assembly",
             "components": {},
             "occurrences": [],
             "links": [
@@ -124,7 +126,8 @@ class TreeLinkIntegrity(unittest.TestCase):
         by_name = {occurrence["name"]: occurrence for occurrence in descriptor["occurrences"]}
         self.assertEqual(by_name["plain"]["color"], red)
         self.assertNotIn("color", by_name["component-colored"])
-        self.assertEqual(descriptor["components"]["component-colored"]["color"], green)
+        colored_cid = by_name["component-colored"]["component"]
+        self.assertEqual(descriptor["components"][colored_cid]["color"], green)
         self.assertEqual(by_name["occurrence-colored"]["color"], blue)
 
     def test_recolored_part_link_overrides_its_old_color_through_materialize_and_step(self) -> None:

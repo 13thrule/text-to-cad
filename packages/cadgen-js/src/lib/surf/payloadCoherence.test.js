@@ -33,6 +33,8 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURES = ["sun_gear", "cam_follower_roller"];
 const FACE_RUN_COLUMNS = 5; // occurrenceRow, primitiveIndex, triangleStart, triangleCount, faceRow
+const SURFACE_INPUT = "3".repeat(64);
+const SURFACE_OBJECT = "4".repeat(64);
 
 function loadFixture(name) {
   const buffer = fs.readFileSync(path.join(HERE, "fixtures", `${name}.surf`));
@@ -127,6 +129,8 @@ for (const fixture of FIXTURES) {
     const { index, floats } = loadFixture(fixture);
     const fresh = tessellateComponent(index, floats, {});
     const entry = encodeComponentTessellation(fresh, {
+      surfaceInput: SURFACE_INPUT,
+      surfaceObject: SURFACE_OBJECT,
       partColor: Array.isArray(index.partColor) ? index.partColor : null,
       edgeClasses: edgeClassesFromSurfIndex(index),
     });
@@ -155,12 +159,14 @@ for (const fixture of FIXTURES) {
     const { index, floats } = loadFixture(fixture);
     const fresh = tessellateComponent(index, floats, {});
     const entry = encodeComponentTessellation(fresh, {
+      surfaceInput: SURFACE_INPUT,
+      surfaceObject: SURFACE_OBJECT,
       partColor: Array.isArray(index.partColor) ? index.partColor : null,
       edgeClasses: edgeClassesFromSurfIndex(index),
     });
     const decoded = decodeComponentTessellation(entry);
     const surrogate = surfIndexFromCacheEntry(decoded);
-    assert.ok(surrogate, "v3 entry yields a surrogate index");
+    assert.ok(surrogate, "v4 entry yields a surrogate index");
     const meshSurrogate = buildMeshDataFromSurf(surrogate, null, { component: decoded.component });
     const meshReal = buildMeshDataFromSurf(index, floats, { component: fresh });
     for (const key of ["vertices", "indices", "cadEdgePositions", "cadEdgeIndices"]) {

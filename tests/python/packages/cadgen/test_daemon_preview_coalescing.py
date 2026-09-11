@@ -14,7 +14,6 @@ from unittest import mock
 from cadgen.daemon import server
 from cadgen.daemon.broker import Broker
 from cadgen.daemon.jobs import JobLedger
-from cadgen.store.trees import put_tree
 from cadgen.viewer.preview import preview_status
 from tests.python.support.tmp_root import generated_cad_directory
 
@@ -105,7 +104,10 @@ class CoalescedPreviewRequests(unittest.TestCase):
         env = mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(self.store)})
         env.start()
         self.addCleanup(env.stop)
-        self.tree = put_tree({"components": {}, "occurrences": [], "links": []})
+        from build123d import Box
+        from cadgen.store.build import build_tree_from_compound
+
+        self.tree = build_tree_from_compound(Box(1, 1, 1), root_name="part")[0]
         self.ledger, self.broker = JobLedger(), Broker()
 
     def request(self, *, closure="same source", coalesce=True):

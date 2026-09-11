@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cadgen.store.trees import put_tree
+from cadgen.store.trees import get_tree, put_tree
+from cadgen.store.objects import put_object
 from cadgen.viewer.backend import ForbiddenAssetError
 from cadgen.viewer.preview import preview_status
 from tests.python.support.tmp_root import generated_cad_directory
@@ -22,7 +23,17 @@ class EditingPreviewTests(unittest.TestCase):
         env = mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": self.store})
         env.start()
         self.addCleanup(env.stop)
-        self.tree = put_tree({"components": {}, "occurrences": [], "links": []})
+        from build123d import Solid
+        from cadgen.store.build import build_tree_from_compound
+        self.tree = build_tree_from_compound(Solid.make_box(1, 1, 1), root_name="preview")[0]
+
+    def missing_tree(self):
+        tree = get_tree(self.tree)
+        tree["components"][next(iter(tree["components"]))]["brep"] = "f" * 64
+        # Corrupt persistence is injected as raw CAS bytes, bypassing the
+        # writer's validation deliberately to exercise a reader's refusal.
+        import json
+        return put_object(json.dumps(tree).encode())
 
     def job(self, revision=1, **extra):
         return {"id": f"epoch:job-{revision}", "epoch": "epoch", "sequence": revision,
@@ -80,7 +91,7 @@ class EditingPreviewTests(unittest.TestCase):
         self.assertEqual(result["state"], "disconnected")
 
     def test_missing_component_does_not_publish_an_incomplete_preview(self):
-        missing = put_tree({"components": {"c": {"surf": "a" * 64, "brep": "b" * 64}}})
+        missing = self.missing_tree()
         result = preview_status(str(self.root), self.output, jobs=[self.job(
             previews={self.output: {"tree": missing}})])
         self.assertNotIn("preview", result)
@@ -94,7 +105,7 @@ class EditingPreviewTests(unittest.TestCase):
         Path(self.output).write_bytes(b"saved document")
         digest = artifact_file_hash(Path(self.output))
         note_document_tree(digest, self.tree)
-        missing = put_tree({"components": {"c": {"surf": "a" * 64, "brep": "b" * 64}}})
+        missing = self.missing_tree()
         job = self.job(state="done", previews={self.output: {"tree": missing}},
                        savedResults={self.output: {"tree": self.tree, "documentHash": digest}})
         with mock.patch("cadgen.store.records.read_record", side_effect=AssertionError("model read")), \

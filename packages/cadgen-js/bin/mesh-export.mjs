@@ -124,8 +124,15 @@ function fail(message) {
 }
 
 function tessellationForComponent(packageDir, cid, entry, options) {
-  const key = tessellationCacheKey(cid, options);
-  const cached = decodeComponentTessellation(readCachedTessellationBytes(key));
+  const surfaceInput = String(entry?.surfaceInput || "");
+  const surfaceObject = String(entry?.surfaceObject || "");
+  const key = tessellationCacheKey(surfaceInput, options);
+  const cached = decodeComponentTessellation(readCachedTessellationBytes(key), {
+    surfaceInput,
+    surfaceObject,
+    tessellationInput: key,
+    tessellation: options,
+  });
   if (cached) {
     return { ...cached.component, partColor: cached.partColor };
   }
@@ -140,6 +147,9 @@ function tessellationForComponent(packageDir, cid, entry, options) {
   writeCachedTessellationBytes(
     key,
     encodeComponentTessellation(component, {
+      surfaceInput,
+      surfaceObject,
+      tessellation: options,
       partColor,
       edgeClasses: edgeClassesFromSurfIndex(index),
     }),

@@ -234,6 +234,51 @@ test("same-file complete revision replacement publishes atomically and accounts 
   assert.equal(shouldRetainCompleteSameFileMesh({ ...current, assemblyInteractionReady: false }, { file: "gear.step", kind: "assembly" }, "new"), false);
 });
 
+test("producer replacement fences old replies and swaps only a complete new view", async () => {
+  const descriptor = makeDescriptor({ componentCount: 4, occurrenceCount: 4 });
+  const priorScene = { view: "old" };
+  let displayedScene = priorScene;
+  const stalePublishes = [];
+  let releaseStale;
+  const staleReply = new Promise((resolve) => { releaseStale = resolve; });
+  const oldLoader = createProgressivePackageLoader({
+    descriptor,
+    concurrency: 2,
+    maxComponents: 1,
+    loadComponent: async (cid) => {
+      if (cid === "c0") throw new Error("replacement-view");
+      await staleReply;
+      return fakeComponent(cid);
+    },
+    onPublish: (publication) => stalePublishes.push(publication),
+  });
+  const oldRun = oldLoader.run();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  releaseStale();
+  await assert.rejects(oldRun, /replacement-view/);
+  assert.deepEqual(stalePublishes, [], "an old-view sibling cannot publish after replacement starts");
+  assert.equal(displayedScene, priorScene);
+
+  const replacementPublishes = [];
+  await createProgressivePackageLoader({
+    descriptor,
+    concurrency: 2,
+    publishIntermediate: false,
+    loadComponent: async (cid) => {
+      assert.equal(displayedScene, priorScene, "the prior scene stays visible while the new view stages");
+      return fakeComponent(cid);
+    },
+    onPublish: (publication) => {
+      replacementPublishes.push(publication);
+      displayedScene = publication.meshData;
+    },
+  }).run();
+  assert.equal(replacementPublishes.length, 1);
+  assert.equal(replacementPublishes[0].final, true);
+  assert.equal(replacementPublishes[0].loaded, 4);
+  assert.notEqual(displayedScene, priorScene);
+});
+
 test("progressive growth keeps already displayed occurrence and leaf metadata", async () => {
   const descriptor = makeDescriptor({ componentCount: 4, occurrenceCount: 8 });
   let previous = null;

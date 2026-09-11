@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +8,29 @@ import test from "node:test";
 
 import { RENDER_TESSELLATION_FLOORS, loadSource, normalizeRenderTessellation } from "./source.js";
 import { renderAssetSourceScope } from "../lib/renderAssetSourceScope.js";
-import { setTessellationCacheProvider } from "../lib/surf/tessellationCache.js";
+import {
+  setTessellationCacheProvider, tessellationPayloadFacts, validateTessellationProbeRow,
+} from "../lib/surf/tessellationCache.js";
+
+function memoryTessellationProvider(requested = []) {
+  const rows = new Map();
+  const bodies = new Map();
+  return {
+    async probeMany(keys) {
+      requested.push(...keys);
+      return keys.map((key) => rows.get(key) || null);
+    },
+    async getProbed(row) { return bodies.get(row.object) || null; },
+    async getManyProbed(probes) { return probes.map((row) => bodies.get(row.object) || null); },
+    async put(key, bytes) {
+      const facts = tessellationPayloadFacts(bytes, { tessellationInput: key });
+      const object = createHash("sha256").update(bytes).digest("hex");
+      rows.set(key, validateTessellationProbeRow({ schemaVersion: 1, object, ...facts }));
+      bodies.set(object, bytes);
+      return true;
+    },
+  };
+}
 
 // Composition coverage for the scoping of render asset caches.
 //
@@ -96,16 +119,14 @@ test("macro tessellation changes the rendered surface and uses its own cache ent
   const oldFetch = globalThis.fetch;
   let fetches = 0;
   globalThis.fetch = async () => { fetches += 1; return new Response(bytes); };
-  const entries = new Map();
   const requested = [];
-  setTessellationCacheProvider({
-    get: async (key) => entries.get(key) || null,
-    getMany: async (keys) => { requested.push(...keys); return keys.map((key) => entries.get(key) || null); },
-    put: async (key, value) => { entries.set(key, value); }
-  });
+  setTessellationCacheProvider(memoryTessellationProvider(requested));
   t.after(() => { globalThis.fetch = oldFetch; setTessellationCacheProvider(null); });
   const base = { kind: "step", package: {
-    descriptor: { components: { roller: {} },
+    descriptor: { components: { roller: {
+      surfaceInput: "d".repeat(64),
+      surfaceObject: createHash("sha256").update(bytes).digest("hex"),
+    } },
       occurrences: [{ id: "o1.1", name: "roller", component: "roller" }],
       assembly: { root: { id: "o1", name: "macro", nodeType: "assembly", children: [
         { id: "o1.1", name: "roller", nodeType: "part", children: [] }
@@ -127,15 +148,14 @@ test("snapshot package appearance composes through the shared source resolver", 
   const bytes = fs.readFileSync(new URL("../lib/surf/fixtures/cam_follower_roller.surf", import.meta.url));
   const oldFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(bytes);
-  setTessellationCacheProvider({
-    get: async () => null,
-    getMany: async () => [],
-    put: async () => {}
-  });
+  setTessellationCacheProvider(memoryTessellationProvider());
   t.after(() => { globalThis.fetch = oldFetch; setTessellationCacheProvider(null); });
   const descriptor = {
     kind: "assembly-package",
-    components: { "appearance-cid": {} },
+    components: { "appearance-cid": {
+      surfaceInput: "e".repeat(64),
+      surfaceObject: createHash("sha256").update(bytes).digest("hex"),
+    } },
     occurrences: [{ id: "o1.1", name: "roller", component: "appearance-cid" }],
     assembly: { root: { id: "o1", name: "appearance", nodeType: "assembly", children: [
       { id: "o1.1", name: "roller", nodeType: "part", children: [] }

@@ -16,6 +16,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from cadgen.viewer import handler as handler_module
 from cadgen.viewer.http_app import create_cad_app, host_is_allowed, hostname_only
@@ -236,7 +237,7 @@ class ArtifactBuildPayload(HttpLayerTestCase):
     event that changes this entry's URL, and one payload cannot honestly
     describe two moments.
 
-    An ``.stl`` is the subject on purpose — ``build_artifact`` answers "rendered"
+    An ``.stl`` is the subject on purpose — ``build_artifact`` answers "compiled"
     for an unowned entry without touching the kernel, so this pins the payload
     shape rather than exercising a compile.
     """
@@ -253,7 +254,7 @@ class ArtifactBuildPayload(HttpLayerTestCase):
         )
         self.assertEqual(status, 200, body[:400])
         payload = json_module.loads(body)
-        self.assertEqual(payload["state"], "rendered")
+        self.assertEqual(payload["state"], "compiled")
         entry = next(
             e for e in payload["catalog"]["entries"] if e["rootRelativeFile"] == "part.stl"
         )
@@ -531,6 +532,20 @@ class KeepAlive(HttpLayerTestCase):
 
 
 class RequestBodies(HttpLayerTestCase):
+    def test_tess_metadata_cap_precedes_body_read_and_closes_the_connection(self):
+        from cadgen.viewer.tess_cache import TESS_CACHE_METADATA_MAX_BYTES
+
+        for path, limit in (("/__tess_cache/probe", TESS_CACHE_METADATA_MAX_BYTES),
+                            ("/__tess_cache/batch", TESS_CACHE_METADATA_MAX_BYTES),
+                            ("/__cad/surfaces", 128 * 1024), ("/__cad/surfaces/cancel", 128 * 1024)):
+            with self.subTest(path=path):
+                raw = self.fixture.raw(
+                    f"POST {path} HTTP/1.1\r\nHost: 127.0.0.1\r\n"
+                    f"x-cadgen-viewer: 1\r\nContent-Length: {limit + 1}\r\n\r\n".encode()
+                )
+                self.assertIn(b"413", raw.split(b"\r\n")[0])
+                self.assertIn(b"connection: close", raw.lower())
+
     def test_a_chunked_body_is_refused_deliberately(self):
         # The stdlib decodes no chunked framing at all. Silently mangling a
         # /__tess_cache/batch body would demote the client's provider to
@@ -556,6 +571,38 @@ class RequestBodies(HttpLayerTestCase):
 
 
 class EveryRouteAnswersForReal(HttpLayerTestCase):
+    def test_tess_get_requires_exact_object_and_admitted_size_before_read(self):
+        from urllib.parse import urlencode
+
+        digest = "ab" * 32
+        for object_hash, limit in ((None, None), (digest, None), (None, "1"), (digest.upper(), "1"),
+                                   (" " + digest, "1"), (digest, "0"), (digest, "-1"),
+                                   (digest, "1.5"), (digest, "9007199254740992")):
+            query = urlencode({key: value for key, value in (("object", object_hash), ("maxBytes", limit)) if value is not None})
+            with self.subTest(object_hash=object_hash, limit=limit), mock.patch(
+                "cadgen.viewer.http_app.read_tess_cache_entry", side_effect=AssertionError("unadmitted cache read"),
+            ):
+                status, _, _ = self.fixture.request("GET", f"/__tess_cache/a.tess?{query}")
+            self.assertEqual(status, 400)
+
+    def test_tess_get_uses_the_probed_object_and_byte_limit(self):
+        import base64
+        import json
+        from cadgen.store import meshes
+        from tests.python.support.tessellation import tessellation_fixture
+
+        fixture = tessellation_fixture()
+        payload = base64.b64decode(fixture["bytes"])
+        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(Path(self.fixture.root) / "store"), "CADGEN_MESH_CACHE": "1"}):
+            row = meshes.write(fixture["key"], payload)
+            status, _, body = self.fixture.request("POST", "/__tess_cache/probe", headers={"x-cadgen-viewer": "1"},
+                                                 body=json.dumps({"tessellationInputs": [fixture["key"]]}).encode())
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body)["entries"][fixture["key"]], row)
+            route = f"/__tess_cache/{fixture['key']}.tess?object={row['object']}&maxBytes={row['byteLength']}"
+            status, _, body = self.fixture.request("GET", route)
+            self.assertEqual((status, body), (200, payload))
+
     def test_no_route_reports_itself_as_unported(self):
         # This class used to list the routes still awaiting their step, each
         # answering 501 with a distinctive body so a missing route could never

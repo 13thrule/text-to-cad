@@ -20,7 +20,7 @@ MESH_TESSELLATION_VERSION = 2
 
 # "document" is the ARTIFACT side (sha256 of a file's bytes → its tree); every
 # other kind is the code/dependency side. STORE.md §2, the law.
-INDEX_KINDS = ("model", "document", "output", "component", "op", "mesh")
+INDEX_KINDS = ("model", "document", "output", "component", "surface", "op", "mesh")
 
 
 def store_root() -> Path:

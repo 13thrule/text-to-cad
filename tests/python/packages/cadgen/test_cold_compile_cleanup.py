@@ -124,6 +124,18 @@ class ColdCompileCleanupTest(unittest.TestCase):
                         self.assertEqual(tree_for_document_hash(digest), tree)
                         self.assertEqual(document.read_bytes(), original_bytes)
 
+    def test_cold_and_warm_native_compile_never_prepare_display_surfaces(self):
+        from cadgen._internal import surface_extract, step_scene_package
+        document = self.document(nested=True)
+        with mock.patch.object(surface_extract, "extract_surface_component", side_effect=AssertionError("display work in native compile")), \
+             mock.patch("cadgen.store.view.view_dir_for", side_effect=AssertionError("display view in native compile")):
+            first = self.compile(document)
+            with mock.patch.object(step_scene_package, "_load_step_scene_text", side_effect=AssertionError("warm compile reparsed STEP")):
+                second = self.compile(document)
+        self.assertEqual(second["tree"], first["tree"])
+        self.assertTrue(second["skipped"])
+        self.assertFalse((self.root / "store/index/surface").exists())
+
     def test_discarded_composition_preserves_prototype_bytes_and_canonical_result(self):
         from cadgen._internal.component_package import _shape_brep_bytes
         from cadgen._internal.step_scene_mesh import scene_to_build123d_compound
@@ -275,7 +287,7 @@ class ColdCompileCleanupTest(unittest.TestCase):
         result = self.compile(document)
         expected = self.snapshot(result["tree"])
         component = next(iter(get_tree(result["tree"])["components"].values()))
-        for key in ("brep", "surf"):
+        for key in ("brep",):
             object_path(component[key]).write_bytes(b"corrupt canonical object")
             repaired = self.compile(document, force=True)
             self.assertEqual(expected, self.snapshot(repaired["tree"]))

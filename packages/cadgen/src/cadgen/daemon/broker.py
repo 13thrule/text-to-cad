@@ -73,7 +73,7 @@ class Broker:
         # losing a waiting subscriber never cancels canonical work another
         # subscriber still needs, while losing the owner plus its last consumer
         # leaves the worker eligible for cancellation by the supervisor.
-        self._inflight: dict[tuple[str, str, str], dict[str, Any]] = {}
+        self._inflight: dict[tuple[str, ...], dict[str, Any]] = {}
         self._coalesced = 0
 
     # slots -------------------------------------------------------------------------
@@ -118,6 +118,15 @@ class Broker:
         makes late completion unable to finish a replacement producer.
         """
         key = (os.path.realpath(store_root) if store_root else "", model, closure)
+        return self._claim_key(key)
+
+    def claim_artifact_entry(self, request: dict, *, store_root: str) -> tuple[bool, dict[str, Any]]:
+        from cadgen.daemon.artifacts import normalize_request, request_key, store_path
+
+        request = normalize_request(request)
+        return self._claim_key(("artifact", store_path(store_root), request_key(request), ""), artifact=True)
+
+    def _claim_key(self, key: tuple[str, ...], *, artifact: bool = False) -> tuple[bool, dict[str, Any]]:
         with self._cv:
             entry = self._inflight.get(key)
             if entry is not None and not entry["done"].is_set():
@@ -130,6 +139,7 @@ class Broker:
                 "done": threading.Event(),
                 "exit": None,
                 "result": None,
+                "artifact": artifact,
                 "ownerActive": True,
                 "consumers": 0,
                 "orphaned": threading.Event(),
@@ -139,11 +149,20 @@ class Broker:
 
     def publish_result(self, entry: dict[str, Any], event: dict) -> None:
         """Retain this producer's source result for present and late consumers."""
-        if not isinstance(event.get("sourceResult"), dict):
+        if entry.get("artifact") or not isinstance(event.get("sourceResult"), dict):
             return
         with self._cv:
             if entry["result"] is None and not entry["done"].is_set():
                 entry["result"] = copy.deepcopy(event)
+                self._cv.notify_all()
+
+    def publish_artifact_result(self, entry: dict[str, Any], result: dict) -> None:
+        """Retain typed artifact output without manufacturing a source event."""
+        if not entry.get("artifact"):
+            return
+        with self._cv:
+            if entry["result"] is None and not entry["done"].is_set():
+                entry["result"] = {"artifactResult": copy.deepcopy(result)}
                 self._cv.notify_all()
 
     def wait_update(self, entry: dict[str, Any], *, result_seen: bool, timeout: float = .1) -> tuple[dict | None, bool, int]:
@@ -263,31 +282,47 @@ class Broker:
         closure = str(request.get("closure") or "")
         op = request.get("op")
         if op == "claim":
-            owned, entry = self.claim_entry(model, closure, store_root=str(request.get("store_root") or ""))
+            if "artifact" in request:
+                owned, entry = self.claim_artifact_entry(request["artifact"], store_root=request.get("store_root"))
+            else:
+                owned, entry = self.claim_entry(model, closure, store_root=str(request.get("store_root") or ""))
             if owned:
-                _send(conn, {"inflight": "yours"})
                 # The claimer reports the outcome on this same connection; if it dies
                 # first, the attached parties are released with a failure.
                 code = 1
                 try:
-                    while raw := conn.recv(None):
+                    _send(conn, {"inflight": "yours"})
+                    while True:
+                        if entry.get("artifact") and self.orphaned(entry):
+                            _send(conn, {"orphaned": True})
+                            break
+                        raw = conn.recv(.1 if entry.get("artifact") else None)
+                        if raw is None:
+                            continue
+                        if not raw:
+                            break
                         payload = json.loads(raw.decode("utf-8"))
+                        if payload.get("ownerDetached") is True and entry.get("artifact"):
+                            self.abandon(entry)
                         if isinstance(payload.get("event"), dict):
                             self.publish_result(entry, payload["event"])
+                        if isinstance(payload.get("artifactResult"), dict):
+                            self.publish_artifact_result(entry, payload["artifactResult"])
                         if "exit" in payload:
                             code = int(payload["exit"])
                             break
                 except (OSError, ValueError):
                     pass
-                self.finish_entry(entry, code)
+                finally:
+                    self.finish_entry(entry, code)
                 return
-            _send(conn, {"inflight": "attached"})
             try:
+                _send(conn, {"inflight": "attached"})
                 result_seen = False
                 while True:
                     event, done, code = self.wait_update(entry, result_seen=result_seen)
                     if event is not None:
-                        _send(conn, {"event": event})
+                        _send(conn, event if entry.get("artifact") else {"event": event})
                         result_seen = True
                     if done:
                         _send(conn, {"exit": code})
@@ -383,8 +418,9 @@ def _endpoint() -> tuple[str, bytes] | None:
     return None
 
 
-def _open(request: dict) -> transport.Channel | None:
-    endpoint = _endpoint()
+def _open(request: dict, *, endpoint: tuple[str, bytes] | None = None) -> transport.Channel | None:
+    explicit_endpoint = endpoint is not None
+    endpoint = endpoint if endpoint is not None else _endpoint()
     if endpoint is None:
         return None
     address, key = endpoint
@@ -394,7 +430,7 @@ def _open(request: dict) -> transport.Channel | None:
         return None
     try:
         payload = dict(request)
-        if BROKER_ADDRESS_VAR not in os.environ:
+        if not explicit_endpoint and BROKER_ADDRESS_VAR not in os.environ:
             from cadgen.daemon.client import compute_version_token
 
             payload["token"] = compute_version_token()
@@ -408,30 +444,41 @@ def _open(request: dict) -> transport.Channel | None:
 class Lease:
     """A held slot. ``release()`` closes the connection, which is the release."""
 
-    def __init__(self, conn: transport.Channel, label: str) -> None:
+    def __init__(self, conn: transport.Channel, label: str, *, required=False, endpoint=None) -> None:
         self._conn = conn
         self.label = label
+        self.required = required
+        self.endpoint = endpoint
 
     def release(self) -> None:
         with contextlib.suppress(OSError):
             self._conn.close()
 
 
-def acquire_slot(label: str, *, on_queued: Callable[[], None] | None = None) -> Lease | None:
+def acquire_slot(label: str, *, on_queued: Callable[[], None] | None = None,
+                 required: bool = False, endpoint=None) -> Lease | None:
     """Block until the broker grants a slot. None when there is no broker."""
-    conn = _open({"kind": "slot", "op": "acquire", "label": label})
+    conn = _open({"kind": "slot", "op": "acquire", "label": label}, endpoint=endpoint)
     if conn is None:
+        if required:
+            raise RuntimeError("artifact CPU broker is unavailable; work was not run")
         return None
     # A grant that does not arrive at once means we are queued: say so once.
-    raw = conn.recv(0.05)
-    if raw is None:
-        if on_queued is not None:
-            on_queued()
-        raw = conn.recv(None)
-    if not raw:
+    try:
+        raw = conn.recv(0.05)
+        if raw is None:
+            if on_queued is not None:
+                on_queued()
+            raw = conn.recv(None)
+        granted = bool(raw) and (not required or json.loads(raw.decode("utf-8")) == {"slot": "granted"})
+    except (OSError, ValueError):
+        granted = False
+    if not granted:
         conn.close()
+        if required:
+            raise RuntimeError("artifact CPU broker did not grant a lease; work was not run")
         return None
-    return Lease(conn, label)
+    return Lease(conn, label, required=required, endpoint=endpoint)
 
 
 _CURRENT = threading.local()
@@ -442,9 +489,10 @@ def current_lease() -> Lease | None:
 
 
 @contextlib.contextmanager
-def held(label: str, *, on_queued: Callable[[], None] | None = None) -> Iterator[Lease | None]:
+def held(label: str, *, on_queued: Callable[[], None] | None = None,
+         required: bool = False, endpoint=None) -> Iterator[Lease | None]:
     """Run the block holding a job slot (or none, when no broker is reachable)."""
-    lease = acquire_slot(label, on_queued=on_queued)
+    lease = acquire_slot(label, on_queued=on_queued, required=required, endpoint=endpoint)
     previous = current_lease()
     _CURRENT.lease = lease
     try:
@@ -469,7 +517,25 @@ def yielded() -> Iterator[None]:
     try:
         yield
     finally:
-        _CURRENT.lease = acquire_slot(lease.label)
+        _CURRENT.lease = acquire_slot(lease.label, required=lease.required, endpoint=lease.endpoint)
+
+
+def claim_artifact(request: dict, *, store_root: str, endpoint=None) -> tuple[str, transport.Channel]:
+    from cadgen.daemon.artifacts import ArtifactJobError, normalize_request, store_path
+
+    conn = _open({"kind": "inflight", "op": "claim", "artifact": normalize_request(request),
+                  "store_root": store_path(store_root)}, endpoint=endpoint)
+    if conn is None:
+        raise ArtifactJobError("artifact broker unavailable; no unaccounted retry")
+    try:
+        raw = conn.recv(30.0)
+        answer = json.loads(raw.decode("utf-8")) if raw else None
+        if not isinstance(answer, dict) or answer.get("inflight") not in {"yours", "attached"}:
+            raise ArtifactJobError("artifact broker returned no valid claim")
+        return answer["inflight"], conn
+    except BaseException:
+        conn.close()
+        raise
 
 
 def claim_inflight(model: str, closure: str, *, store_root: str = "") -> tuple[str, transport.Channel] | None:
@@ -495,10 +561,14 @@ def claim_inflight(model: str, closure: str, *, store_root: str = "") -> tuple[s
     return str(answer), conn
 
 
-def report_done(conn: transport.Channel, code: int) -> None:
-    with contextlib.suppress(OSError):
+def report_done(conn: transport.Channel, code: int, *, required: bool = False) -> None:
+    try:
         _send(conn, {"exit": int(code)})
-    conn.close()
+    except OSError:
+        if required:
+            raise
+    finally:
+        conn.close()
 
 
 def report_result(conn: transport.Channel, event: dict) -> None:
@@ -506,15 +576,35 @@ def report_result(conn: transport.Channel, event: dict) -> None:
         _send(conn, {"event": event})
 
 
-def wait_attached(conn: transport.Channel, *, on_event: Callable[[dict], None] | None = None) -> int:
+def report_artifact_result(conn: transport.Channel, result: dict) -> None:
+    # A failed result publication is a failed operation, never a lost success
+    # silently reported to consumers that attached to this producer.
+    _send(conn, {"artifactResult": result})
+
+
+def detach_artifact_owner(conn: transport.Channel) -> None:
+    _send(conn, {"ownerDetached": True})
+
+
+def wait_attached(conn: transport.Channel, *, on_event: Callable[[dict], None] | None = None,
+                  on_artifact_result: Callable[[dict], None] | None = None, cancelled=None) -> int:
     try:
-        while raw := conn.recv(None):
+        while True:
+            if cancelled is not None and cancelled():
+                return 1
+            raw = conn.recv(.1 if cancelled is not None else None)
+            if raw is None:
+                continue
+            if not raw:
+                break
             frame = json.loads(raw.decode("utf-8"))
             if isinstance(frame.get("event"), dict) and on_event is not None:
                 on_event(frame["event"])
+            if isinstance(frame.get("artifactResult"), dict) and on_artifact_result is not None:
+                on_artifact_result(frame["artifactResult"])
             if "exit" in frame:
                 return int(frame["exit"])
-    except (OSError, ValueError):
+    except (OSError, ValueError, TypeError):
         pass
     finally:
         conn.close()

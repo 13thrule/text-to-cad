@@ -186,7 +186,7 @@ def _wait_for_inflight_consumer(conn: transport.Channel, entry: dict) -> int | N
         event, done, code = _BROKER.wait_update(entry, result_seen=result_seen)
         try:
             if event is not None:
-                _send(conn, {"event": event})
+                _send(conn, event if entry.get("artifact") else {"event": event})
                 result_seen = True
         except OSError:
             return None
@@ -281,28 +281,51 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
 
     tool = request.get("tool")
     argv = request.get("argv")
+    is_artifact = tool == "artifact"
 
-    if tool not in _TOOL_IMPORTS or not isinstance(argv, list):
+    if (tool not in _TOOL_IMPORTS and not is_artifact) or not isinstance(argv, list):
         with send_lock:
             _send(conn, {"stream": "stderr", "data": f"cadgen-daemon: invalid request for tool {tool!r}\n"})
             _send(conn, {"exit": 1})
         return
 
+    if is_artifact:
+        from cadgen.daemon.artifacts import normalize_request, store_path
+
+        try:
+            if argv:
+                raise ValueError("artifact requests have no argv or source subject")
+            if not isinstance(request.get("store_root"), str) or not request["store_root"]:
+                raise ValueError("artifact requests require an explicit store_root")
+            artifact = normalize_request(request.get("artifact"))
+            root = store_path(request.get("store_root"))
+        except (ValueError, TypeError, OSError) as exc:
+            _send(conn, {"stream": "stderr", "data": f"invalid artifact request: {exc}\n"})
+            _send(conn, {"exit": 1})
+            return
+        request = {**request, "artifact": artifact, "store_root": root}
+
     cwd = str(request.get("cwd") or "")
-    model = _script_path(argv, cwd)
+    model = "" if is_artifact else _script_path(argv, cwd)
     # What in-flight coalescing keys on: the model, or for a compile job the imported
     # document (which binds no worker -- it borrows a spare -- but two compiles of one
     # file are still one job).
-    subject = model or _document_path(argv, cwd)
+    subject = "" if is_artifact else model or _document_path(argv, cwd)
     closure = str(request.get("closure") or "")
-    job = _JOBS.adopt(
-        _JOBS.start(tool=tool, subject=subject, argv=argv, store_root=str(request.get("store_root") or ""),
-                    editing_producer=not bool(subject and closure and request.get("coalesce"))),
-        subject=subject, tool=tool, argv=argv,
-    )
+    if is_artifact:
+        job = _JOBS.start_artifact(artifact, store_root=root, root_id=request.get("root_id"), dependency=request.get("dependency"))
+    else:
+        job = _JOBS.adopt(
+            _JOBS.start(tool=tool, subject=subject, argv=argv, store_root=str(request.get("store_root") or ""),
+                        editing_producer=not bool(subject and closure and request.get("coalesce"))),
+            subject=subject, tool=tool, argv=argv,
+        )
     inflight = None
-    if subject and closure and request.get("coalesce"):
-        owns_work, inflight = _BROKER.claim_entry(subject, closure, store_root=str(request.get("store_root") or ""))
+    if is_artifact or (subject and closure and request.get("coalesce")):
+        if is_artifact:
+            owns_work, inflight = _BROKER.claim_artifact_entry(artifact, store_root=root)
+        else:
+            owns_work, inflight = _BROKER.claim_entry(subject, closure, store_root=str(request.get("store_root") or ""))
         if not owns_work:
             # Identical source is already building: attach, relay its exit, run nothing.
             _log(f"{tool} {model}: coalesced onto the job in flight")
@@ -313,11 +336,14 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
             if code is None:
                 _JOBS.finish(job, 1, error="client disconnected")
                 return
+            if is_artifact and inflight.get("result") is not None:
+                _JOBS.record_artifact_result(job, inflight["result"]["artifactResult"])
             _JOBS.finish(job, code)
             with contextlib.suppress(OSError), send_lock:
                 _send(conn, {"exit": code})
             return
-        _JOBS.accept_editing_producer(job)
+        if not is_artifact:
+            _JOBS.accept_editing_producer(job)
     try:
         worker = _POOL.acquire(model, dependency=bool(request.get("dependency")))
     except (pool_mod.WorkerGone, pool_mod.MemoryAdmissionError) as exc:
@@ -349,7 +375,7 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
     relay_connected = True
     try:
         worker.send({
-            "kind": "run",
+            "kind": "artifact" if is_artifact else "run",
             "tool": tool,
             "prog": request.get("prog"),
             "argv": [str(a) for a in argv],
@@ -358,6 +384,7 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
             "store_root": request.get("store_root"),
             "root_id": request.get("root_id"),
             "job_id": job["id"],
+            **({"artifact": artifact} if is_artifact else {}),
         })
         for frame in worker.frames(silence_timeout=WORKER_SILENCE_TIMEOUT_SECONDS):
             if "exit" in frame:
@@ -365,7 +392,22 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
                 break
             if frame.get("stream") == "stderr":
                 stderr_tail.append(str(frame.get("data") or ""))
-            _JOBS.observe(frame)
+            if not is_artifact:
+                _JOBS.observe(frame)
+            if is_artifact:
+                if "event" in frame:
+                    raise OSError("artifact worker emitted a source event")
+                if "artifactResult" in frame:
+                    from cadgen.daemon.artifacts import validate_result
+
+                    try:
+                        validate_result(artifact, frame["artifactResult"])
+                        if inflight.get("result") is not None:
+                            raise ValueError("duplicate artifact result")
+                    except (ValueError, RuntimeError, TypeError) as exc:
+                        raise OSError(f"invalid artifact worker result: {exc}") from exc
+                    _JOBS.record_artifact_result(job, frame["artifactResult"])
+                    _BROKER.publish_artifact_result(inflight, frame["artifactResult"])
             event = frame.get("event")
             if inflight is not None and isinstance(event, dict) and event.get("job") == job["id"]:
                 _BROKER.publish_result(inflight, event)
@@ -402,6 +444,9 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
         watchdog.join(timeout=CLIENT_LIVENESS_INTERVAL_SECONDS + 1.0)
         # A killed worker is not reusable; release() drops it and the pool respawns.
         _POOL.release(worker, healthy=healthy and worker.alive())
+        if is_artifact and exit_code == 0 and inflight.get("result") is None:
+            exit_code = 1
+            stderr_tail.append("artifact worker completed without an artifact result")
         reason = failure_message("".join(stderr_tail))[0] if exit_code != 0 else None
         _JOBS.finish(job, exit_code, error=reason or None)
         if inflight is not None:

@@ -14,17 +14,18 @@ import {
   loadRenderDisplayEdgeBundle,
   loadRenderSelectorBundle,
   loadRenderTopologyIndex,
-  loadRenderSurf,
-  loadRenderSurfSelectorBundle,
+  loadRenderSurf as loadSurf,
+  loadRenderSurfSelectorBundle as loadSurfSelectors,
   peekRenderJson,
   peekRenderSdf,
   renderAssetCacheStats,
   reclaimIdleSurfWorkers,
   releaseSurfWorkers,
   surfWorkerMemoryStats,
-  releaseRenderSurfLevel,
+  releaseRenderSurfLevel as releaseSurfLevel,
   configureSurfLeash
 } from "./renderAssetClient.js";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +38,42 @@ import {
   edgeClassesFromSurfIndex,
   encodeComponentTessellation,
   setTessellationCacheProvider,
+  tessellationCacheKey,
+  tessellationPayloadFacts,
+  validateTessellationProbeRow,
 } from "./surf/tessellationCache.js";
+
+const identityForSurfTest = (url) => ({
+  surfaceInput: createHash("sha256").update(`render-client-test:${url}`).digest("hex"),
+  surfaceObject: "a".repeat(64),
+});
+const loadRenderSurf = (url, options = {}) => loadSurf(url, {
+  identity: identityForSurfTest(url), ...options,
+});
+const loadRenderSurfSelectorBundle = (url, options = {}) => loadSurfSelectors(url, {
+  identity: identityForSurfTest(url), ...options,
+});
+const releaseRenderSurfLevel = (url, options = {}) => releaseSurfLevel(url, {
+  identity: identityForSurfTest(url), ...options,
+});
+
+function memoryCacheProvider(initialKey, initialBytes, { onGet, onPut } = {}) {
+  const rows = new Map();
+  const bodies = new Map();
+  const store = (key, bytes) => {
+    const facts = tessellationPayloadFacts(bytes, { tessellationInput: key });
+    const object = createHash("sha256").update(bytes).digest("hex");
+    const row = validateTessellationProbeRow({ schemaVersion: 1, object, ...facts });
+    rows.set(key, row);
+    bodies.set(object, bytes);
+  };
+  if (initialKey && initialBytes) store(initialKey, initialBytes);
+  return {
+    async probeMany(keys) { return keys.map((key) => rows.get(key) || null); },
+    async getProbed(row) { onGet?.(); return bodies.get(row.object) || null; },
+    async put(key, bytes) { onPut?.(); store(key, bytes); return true; },
+  };
+}
 
 class FakeElement {
   constructor(tagName, attributes = {}, children = [], text = "") {
@@ -628,11 +664,14 @@ test("cached surf display skips the surf fetch and constructs selectors on first
   const surfBuffer = surfBytes.buffer.slice(surfBytes.byteOffset, surfBytes.byteOffset + surfBytes.byteLength);
   const { index, floats } = parseSurf(surfBuffer);
   const component = tessellateComponent(index, floats);
+  const url = `https://cache.test/cached/components/cached-${Date.now()}.surf`;
+  const identity = identityForSurfTest(url);
   const entry = encodeComponentTessellation(component, {
+    surfaceInput: identity.surfaceInput,
+    surfaceObject: identity.surfaceObject,
     partColor: index.partColor,
     edgeClasses: edgeClassesFromSurfIndex(index),
   });
-  const url = `https://cache.test/cached/components/cached-${Date.now()}.surf`;
   let fetches = 0;
   let gets = 0;
   const originalFetch = globalThis.fetch;
@@ -640,13 +679,9 @@ test("cached surf display skips the surf fetch and constructs selectors on first
     fetches += 1;
     return new Response(surfBuffer.slice(0), { status: 200 });
   };
-  setTessellationCacheProvider({
-    async get() {
-      gets += 1;
-      return entry.slice();
-    },
-    async put() {},
-  });
+  setTessellationCacheProvider(memoryCacheProvider(
+    tessellationCacheKey(identity.surfaceInput), entry.slice(), { onGet: () => { gets += 1; } },
+  ));
   t.after(() => {
     globalThis.fetch = originalFetch;
     setTessellationCacheProvider(null);
@@ -671,12 +706,19 @@ test("cached surf display skips the surf fetch and constructs selectors on first
   assert.equal(bundle.manifest.edges[0][5], index.edges[0].length, "exact stored edge length survives");
 });
 
-test("cached display with missing optional header falls back to surf and upgrades the entry", async (t) => {
+test("cached display with a corrupt v4 body falls back to surf and repairs the entry", async (t) => {
   const surfBytes = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "surf/fixtures/sun_gear.surf"));
   const surfBuffer = surfBytes.buffer.slice(surfBytes.byteOffset, surfBytes.byteOffset + surfBytes.byteLength);
   const { index, floats } = parseSurf(surfBuffer);
-  let stored = encodeComponentTessellation(tessellateComponent(index, floats));
   const url = `https://cache.test/incomplete/components/incomplete-${Date.now()}.surf`;
+  const identity = identityForSurfTest(url);
+  const valid = encodeComponentTessellation(tessellateComponent(index, floats), {
+    surfaceInput: identity.surfaceInput,
+    surfaceObject: identity.surfaceObject,
+    edgeClasses: edgeClassesFromSurfIndex(index),
+  });
+  const stored = valid.slice();
+  new DataView(stored.buffer, stored.byteOffset, stored.byteLength).setUint32(4, 3, true);
   let fetches = 0;
   let puts = 0;
   const originalFetch = globalThis.fetch;
@@ -684,13 +726,16 @@ test("cached display with missing optional header falls back to surf and upgrade
     fetches += 1;
     return new Response(surfBuffer.slice(0), { status: 200 });
   };
-  setTessellationCacheProvider({
-    async get() { return stored.slice(); },
-    async put(_key, bytes) {
-      puts += 1;
-      stored = bytes.slice();
-    },
+  const provider = memoryCacheProvider(tessellationCacheKey(identity.surfaceInput), valid, {
+    onPut: () => { puts += 1; },
   });
+  const originalGet = provider.getProbed;
+  let first = true;
+  provider.getProbed = async (row, options) => {
+    if (first) { first = false; return stored; }
+    return originalGet(row, options);
+  };
+  setTessellationCacheProvider(provider);
   t.after(() => {
     globalThis.fetch = originalFetch;
     setTessellationCacheProvider(null);
@@ -698,7 +743,7 @@ test("cached display with missing optional header falls back to surf and upgrade
 
   const meshData = await loadRenderSurf(url);
   assert.ok(meshData.indices.length > 0);
-  assert.equal(fetches, 1, "incomplete display metadata is a recoverable miss");
+  assert.equal(fetches, 1, "corrupt cache bytes are a recoverable miss");
   assert.equal(puts, 1, "the complete display entry replaces the incomplete one");
 });
 

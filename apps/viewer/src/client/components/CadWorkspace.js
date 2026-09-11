@@ -1416,7 +1416,7 @@ export default function CadWorkspace({
   );
   const selectedEntry = useMemo(
     () => {
-      const base = editingPreview.entry || (!catalogSelectedEntry || selectedArtifact.status === "rendered" ||
+      const base = editingPreview.entry || (!catalogSelectedEntry || selectedArtifact.status === "compiled" ||
         (followEdits && entryHasMesh(catalogSelectedEntry))
         ? catalogSelectedEntry
         : entryWithoutRenderAssets(catalogSelectedEntry));

@@ -309,7 +309,7 @@ def _view_for_tree(tree_hash: str, *, document_hash: str) -> Path:
 
     from cadgen.store.view import export_view
 
-    view_dir = export_view(tree_hash)
+    view_dir = export_view(tree_hash, document_hash=document_hash)
     # This is an owned, temporary export input, not a persistent tree. Carry
     # the exact document selection with its view; a later path read may name
     # a different revision and must not rekey this geometry's export ledger.
