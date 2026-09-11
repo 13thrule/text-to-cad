@@ -483,25 +483,9 @@ function customThemePreview(themeSettings) {
   };
 }
 
-// Tracks the OS light/dark preference so the System entry can name the preset it
-// currently resolves to.
-export function useSystemDefaultThemePresetId() {
-  const [prefersDark, setPrefersDark] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return undefined;
-    }
-    let query;
-    try {
-      query = window.matchMedia("(prefers-color-scheme: dark)");
-    } catch {
-      return undefined;
-    }
-    const sync = () => setPrefersDark(query.matches === true);
-    sync();
-    query.addEventListener?.("change", sync);
-    return () => query.removeEventListener?.("change", sync);
-  }, []);
+// The System entry follows the app's resolved color mode. This may differ from
+// the OS preference when the user has explicitly selected Light or Dark.
+export function useSystemDefaultThemePresetId({ prefersDark = false } = {}) {
   return resolveSystemThemePresetId({ prefersDark });
 }
 
@@ -513,9 +497,10 @@ export function useSystemDefaultThemePresetId() {
 function ThemePresetSection({
   themeSettings,
   themeId = DEFAULT_THEME_ID,
+  prefersDark = false,
   onSelectTheme
 }) {
-  const systemPresetId = useSystemDefaultThemePresetId();
+  const systemPresetId = useSystemDefaultThemePresetId({ prefersDark });
   const systemPreset = getThemePresetById(systemPresetId);
   const options = useMemo(() => [
     {
@@ -875,6 +860,7 @@ export function buildDisplaySettingsTab(props) {
 function ThemeSettingsContent({
   themeSettings,
   themeId = DEFAULT_THEME_ID,
+  prefersDark = false,
   resolvedColorSchemeMode = THEME_COLOR_MODES.LIGHT,
   onSelectTheme,
   updateThemeSettings
@@ -1031,6 +1017,7 @@ function ThemeSettingsContent({
       <ThemePresetSection
         themeSettings={themeSettings}
         themeId={themeId}
+        prefersDark={prefersDark}
         onSelectTheme={onSelectTheme}
       />
 
@@ -1609,6 +1596,7 @@ export function ThemeEditorPanel({
   onStartResize,
   themeSettings,
   themeId = DEFAULT_THEME_ID,
+  prefersDark = false,
   resolvedColorSchemeMode = THEME_COLOR_MODES.LIGHT,
   onSelectTheme,
   updateThemeSettings
@@ -1631,6 +1619,7 @@ export function ThemeEditorPanel({
         <ThemeSettingsContent
           themeSettings={themeSettings}
           themeId={themeId}
+          prefersDark={prefersDark}
           resolvedColorSchemeMode={resolvedColorSchemeMode}
           onSelectTheme={onSelectTheme}
           updateThemeSettings={updateThemeSettings}

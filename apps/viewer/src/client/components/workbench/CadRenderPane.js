@@ -607,7 +607,7 @@ export default function CadRenderPane({
         >
           <Alert
             variant="destructive"
-            className="cad-glass-popover pointer-events-auto w-full max-w-xl min-w-0 p-4 text-center shadow-lg"
+            className="bg-popover pointer-events-auto w-full max-w-xl min-w-0 p-4 text-center shadow-lg"
           >
             <p className="col-start-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-destructive">
               {missingFileOutsideRoot ? "Outside this viewer's root" : "File does not exist"}
@@ -640,7 +640,7 @@ export default function CadRenderPane({
             aria-label={viewerAlertIconLabel}
             title={viewerAlertIconLabel}
             className={cn(
-              "cad-glass-popover pointer-events-auto flex w-full max-w-sm min-w-0 flex-col items-center gap-2 rounded-md border px-4 py-3 text-center shadow-md",
+              "bg-popover pointer-events-auto flex w-full max-w-sm min-w-0 flex-col items-center gap-2 rounded-md border px-4 py-3 text-center shadow-md",
               viewportIssueMeta.borderClassName
             )}
           >
@@ -673,7 +673,7 @@ export default function CadRenderPane({
         <div className="pointer-events-none absolute z-20 flex justify-center px-4" style={modelViewportBottomOverlayStyle}>
           <Alert
             role="status"
-            className="cad-glass-popover w-auto px-3 py-1.5 text-[11px] font-medium text-popover-foreground shadow-sm"
+            className="bg-popover w-auto px-3 py-1.5 text-[11px] font-medium text-popover-foreground shadow-sm"
           >
             STEP changed. Updating/regenerating references...
           </Alert>
@@ -683,7 +683,7 @@ export default function CadRenderPane({
         <div className="pointer-events-none absolute z-20 flex justify-center px-4" style={modelViewportBottomOverlayStyle}>
           <Alert
             role="status"
-            className="cad-glass-popover w-auto px-3 py-1.5 text-[11px] font-medium text-popover-foreground shadow-sm"
+            className="bg-popover w-auto px-3 py-1.5 text-[11px] font-medium text-popover-foreground shadow-sm"
           >
             Preparing selectable topology...
           </Alert>

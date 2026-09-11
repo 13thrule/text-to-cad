@@ -249,7 +249,7 @@ const CAMERA_TRANSITION_EASING = Object.freeze({
 const AUTO_ZOOM_PADDING = DEFAULT_AUTO_ZOOM_PADDING;
 const CAD_COORDINATE_SYSTEM = "cad-z-up-v1";
 const ROBOT_COORDINATE_SYSTEM = "cad-z-up-robot-framing-v2";
-const DISPLAY_TOOLBAR_CLASSES = "cad-glass-surface pointer-events-auto absolute z-30 inline-flex h-8 w-fit items-center gap-0.5 rounded-md border border-sidebar-border p-1 text-sidebar-foreground shadow-sm";
+const DISPLAY_TOOLBAR_CLASSES = "bg-sidebar pointer-events-auto absolute z-30 inline-flex h-8 w-fit items-center gap-0.5 rounded-md border border-sidebar-border p-1 text-sidebar-foreground shadow-sm";
 const DISPLAY_TOOLBAR_BUTTON_CLASSES = "grid size-6 shrink-0 place-items-center rounded-sm text-sidebar-foreground/70 transition hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/45 disabled:pointer-events-none disabled:opacity-50";
 const VIEW_PLANE_CONTROL_SIZE = "7.5rem";
 const VIEW_PLANE_CONTROL_GAP = "0.5rem";
@@ -5195,7 +5195,7 @@ const CadViewer = forwardRef(function CadViewer({
         activateDefaultViewPlane={activateDefaultViewPlane}
       />
       {error ? (
-        <p className="cad-glass-popover pointer-events-none absolute left-4 top-24 z-20 rounded-[10px] border border-[var(--ui-error-bg)] px-4 py-3 text-sm text-[var(--ui-error-text)] shadow-[var(--ui-shadow-soft)] sm:top-20">
+        <p className="bg-popover pointer-events-none absolute left-4 top-24 z-20 rounded-[10px] border border-[var(--ui-error-bg)] px-4 py-3 text-sm text-[var(--ui-error-text)] shadow-[var(--ui-shadow-soft)] sm:top-20">
           {error}
         </p>
       ) : null}

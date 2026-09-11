@@ -45,6 +45,29 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   render directly from its immutable object binding; selectors and a cache
   miss resolve the pinned surface asynchronously without recompiling geometry.
 
+## Themes
+
+App appearance and CAD scene themes are independent. The app follows its saved
+light/dark/system preference; System uses the live OS preference. Selecting a
+scene preset never changes panel colors. The UI uses neutral light and charcoal
+dark tokens with opaque panels and menus in `src/client/styles/globals.css`.
+
+The **System** scene chooses Light or Dark from the resolved app appearance and
+matches the document's `--background`. Explicit **Light**, **Dark**, **Cinematic**
+and **Custom** scenes retain their own backgrounds. Theme settings belong to
+the scene; the app resolves System before passing settings to the shared runtime.
+CLI snapshots have no app preference and use the settings supplied to them.
+
+These presets and theme semantics were ported from
+[PR #369](https://github.com/earthtojake/text-to-cad/pull/369), reviewed at
+`7f6d5b3939cda5d044c89ba54f2190f131428475`. Dark changes from blue slate to
+neutral charcoal; Light's scene values already matched. The port includes the
+opaque chrome and independent appearance behavior, with corrected cross-tab
+preference handling, System picker resolution and initial OS preference. It
+aligns the no-stylesheet fallback with the current charcoal token and lets a
+transparent canvas reveal the app background. It excludes
+the PR's desktop host, package migration and canvas layout changes.
+
 ## Launching
 
 All commands run from this app's directory. Dev (Vite serves the client

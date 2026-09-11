@@ -69,15 +69,18 @@ import { useCadWorkspaceShortcuts } from "./workbench/hooks/useCadWorkspaceShort
 import {
   applyColorSchemeToDocument,
   DARK_COLOR_SCHEME_ID,
-  LIGHT_COLOR_SCHEME_ID
+  readColorSchemePreference,
+  resolveColorSchemeMode
 } from "@/ui/colorScheme";
+import { useSystemPrefersDark } from "@/ui/useSystemPrefersDark";
+import { useChromeBackdropColor } from "@/ui/useChromeBackdropColor";
+import { sceneBackdropEdgeColor } from "../workbench/chromeBackdrop.js";
+import { resolveCadThemeSettings } from "../workbench/cadTheme.js";
 import {
   CUSTOM_THEME_ID,
   getThemePresetIdForSettings,
-  inferThemeSettingsSceneTone,
   normalizeThemeSettings,
-  resolveThemeSettingsBackdropColor,
-  resolveThemeSettingsForColorMode
+  resolveThemeSettingsForId
 } from "cadgen-js/lib/themeSettings";
 import {
   displayModeForcesEdges,
@@ -1070,6 +1073,16 @@ export default function CadWorkspace({
   catalogRefreshing = false,
   catalogError = "",
 }) {
+  // Scene presets do not change the app's chrome. System follows this
+  // independently persisted preference, resolved against the live OS mode.
+  const systemPrefersDark = useSystemPrefersDark();
+  const [colorSchemePreference, setColorSchemePreference] = useState(readColorSchemePreference);
+  const resolvedColorSchemeMode = resolveColorSchemeMode(colorSchemePreference, {
+    prefersDark: systemPrefersDark
+  });
+  const uiPrefersDark = resolvedColorSchemeMode === DARK_COLOR_SCHEME_ID;
+  const themeReadOptions = useMemo(() => ({ prefersDark: uiPrefersDark }), [uiPrefersDark]);
+  const chromeBackdropColor = useChromeBackdropColor(uiPrefersDark);
   const manifestEntries = Array.isArray(manifestEntriesProp) ? manifestEntriesProp : [];
   const catalogEntries = manifestEntries;
   const explicitFileParam = readCadParam();
@@ -1150,7 +1163,21 @@ export default function CadWorkspace({
   const [viewerRuntimeAlert, setViewerRuntimeAlert] = useState(null);
   // One active theme id plus at most one custom settings blob. Presets are
   // read-only; editing anything moves the active theme to "custom".
-  const [themeState, setThemeState] = useState(() => readDirectoryThemeSettingsState());
+  const [themeState, setThemeState] = useState(() => readDirectoryThemeSettingsState(themeReadOptions));
+  const themeReadOptionsRef = useRef(themeReadOptions);
+  useEffect(() => {
+    if (themeReadOptionsRef.current === themeReadOptions) return;
+    themeReadOptionsRef.current = themeReadOptions;
+    // Re-resolve the current choice, preserving edits that have not reached
+    // the debounced directory-session persistence yet.
+    setThemeState(current => ({
+      ...current,
+      settings: resolveThemeSettingsForId(current.themeId, {
+        custom: current.custom,
+        ...themeReadOptions
+      })
+    }));
+  }, [themeReadOptions]);
   const themeSettings = themeState.settings;
   const themeId = themeState.themeId;
   const [themeEditing, setThemeEditing] = useState(false);
@@ -1182,9 +1209,13 @@ export default function CadWorkspace({
   // re-mesh from these; the URL carries the package version, so a rebuild refetches.
   const drawingGeometryCacheRef = useRef(new Map());
   const [drawingGeometry, setDrawingGeometry] = useState(null);
-  const resolvedThemeSettings = useMemo(
-    () => resolveThemeSettingsForColorMode(themeSettings, { prefersDark: false }),
-    [themeSettings]
+  const resolvedThemeSettings = useMemo(() => resolveCadThemeSettings(themeSettings, themeId, {
+    prefersDark: uiPrefersDark,
+    chromeBackdropColor
+  }), [chromeBackdropColor, themeId, themeSettings, uiPrefersDark]);
+  const sceneBackdrop = useMemo(
+    () => sceneBackdropEdgeColor(resolvedThemeSettings.background, chromeBackdropColor),
+    [chromeBackdropColor, resolvedThemeSettings]
   );
   const resolvedDisplayEdgeSettings = useMemo(() => {
     // Edge theme — colour, opacity, thickness — is fixed, not a user
@@ -1201,13 +1232,6 @@ export default function CadWorkspace({
     }
     return normalizeDisplayEdgeSettings();
   }, [resolvedThemeSettings]);
-  // App light/dark is inferred from the active theme's dominant background color
-  // (not a user preference). The nav/sidebars float over the transparent
-  // viewport, so their contrast must track whatever canvas sits behind them.
-  const cadWorkspaceGlassTone = useMemo(() => inferThemeSettingsSceneTone(resolvedThemeSettings), [resolvedThemeSettings]);
-  const resolvedColorSchemeMode = cadWorkspaceGlassTone === "dark"
-    ? DARK_COLOR_SCHEME_ID
-    : LIGHT_COLOR_SCHEME_ID;
   const updateDisplaySettings = useCallback((nextValue) => {
     setDisplaySettings((current) => normalizeDisplaySettings(
       typeof nextValue === "function" ? nextValue(current) : nextValue
@@ -2831,8 +2855,8 @@ export default function CadWorkspace({
   // theme wholesale. The custom slot is kept so the user can flip back to it.
   const selectTheme = useCallback((nextThemeId) => {
     writeThemeState(nextThemeId, { onWriteError: handlePersistenceWriteError });
-    setThemeState(readThemeSettingsState());
-  }, [handlePersistenceWriteError]);
+    setThemeState(readThemeSettingsState(themeReadOptions));
+  }, [handlePersistenceWriteError, themeReadOptions]);
 
   // Any settings edit lands in the single custom slot and makes it active,
   // unless it happens to reproduce a preset exactly.
@@ -3723,27 +3747,10 @@ export default function CadWorkspace({
   }, [flushActiveFileSession]);
 
   useEffect(() => {
-    applyColorSchemeToDocument(resolvedColorSchemeMode, document.documentElement);
-  }, [resolvedColorSchemeMode]);
-
-  useEffect(() => {
-    document.documentElement.dataset.glassTone = cadWorkspaceGlassTone;
-    return () => {
-      delete document.documentElement.dataset.glassTone;
-    };
-  }, [cadWorkspaceGlassTone]);
-
-  // Glass chrome (navbar, toolbars, popovers) tints toward the active scene
-  // backdrop so the UI blends with whichever theme is selected.
-  useEffect(() => {
-    document.documentElement.style.setProperty(
-      "--cad-scene-backdrop",
-      resolveThemeSettingsBackdropColor(resolvedThemeSettings)
-    );
-    return () => {
-      document.documentElement.style.removeProperty("--cad-scene-backdrop");
-    };
-  }, [resolvedThemeSettings]);
+    applyColorSchemeToDocument(colorSchemePreference, document.documentElement, {
+      prefersDark: systemPrefersDark
+    });
+  }, [colorSchemePreference, systemPrefersDark]);
 
   useEffect(() => {
     const handleStorage = (event) => {
@@ -3751,8 +3758,12 @@ export default function CadWorkspace({
       if (action === CAD_DIRECTORY_STORAGE_EVENT_ACTION.IGNORE) {
         return;
       }
+      if (action === CAD_DIRECTORY_STORAGE_EVENT_ACTION.COLOR_SCHEME) {
+        setColorSchemePreference(readColorSchemePreference());
+        return;
+      }
       try {
-        setThemeState(readThemeSettingsState());
+        setThemeState(readThemeSettingsState(themeReadOptions));
       } catch (error) {
         console.warn("Failed to sync theme from another tab", error);
       }
@@ -3762,7 +3773,7 @@ export default function CadWorkspace({
     return () => {
       window.removeEventListener("storage", handleStorage);
     };
-  }, []);
+  }, [themeReadOptions]);
 
   useEffect(() => {
     selectedReferenceIdsRef.current = selectedReferenceIds;
@@ -7193,11 +7204,14 @@ export default function CadWorkspace({
       onOpenChange={handleSidebarOpenChange}
       mobileOpen={effectiveSidebarOpen}
       onMobileOpenChange={handleSidebarOpenChange}
-      data-glass-tone={cadWorkspaceGlassTone}
       style={{ "--sidebar-width": `${sidebarShellWidth}px` }}
       className="relative h-svh overflow-hidden bg-transparent"
     >
-      <div className="fixed inset-0 z-0">
+      <div
+        className="fixed inset-0 z-0"
+        data-cad-scene-backdrop={sceneBackdrop}
+        style={{ backgroundColor: sceneBackdrop }}
+      >
         <CadRenderPane
           viewerRef={viewerRef}
           renderFormat={effectiveRenderFormat}
@@ -7627,6 +7641,7 @@ export default function CadWorkspace({
                 themeSettings={themeSettings}
                 themeId={themeId}
                 resolvedColorSchemeMode={resolvedColorSchemeMode}
+                prefersDark={uiPrefersDark}
                 onSelectTheme={selectTheme}
                 updateThemeSettings={updateThemeSettings}
               />
