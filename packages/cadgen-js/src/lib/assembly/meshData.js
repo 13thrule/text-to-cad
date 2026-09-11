@@ -375,9 +375,11 @@ function boundsForTransformedBox(box, matrix) {
   return Number.isFinite(min[0]) ? { min, max } : (box || null);
 }
 
-// Process-local composition ownership. Reuse is explicitly scoped to the same
-// immutable descriptor; a new revision's placement/appearance gets fresh rows.
-// Weak keys cannot keep an obsolete composition or its component arrays alive.
+// Process-local composition ownership. A caller may carry the immediately
+// preceding same-file composition into a replacement revision. Rows cross that
+// boundary only when every descriptor input consumed below is equal and the
+// exact component/source-part objects are still live. Weak keys cannot keep an
+// obsolete composition or its component arrays alive.
 const composedPackageInputs = new WeakMap();
 
 function equalVector(left, right) {
@@ -390,6 +392,43 @@ function equalBounds(left, right) {
     && equalVector(left.min, right.min) && equalVector(left.max, right.max));
 }
 
+function equalJsonValue(left, right) {
+  if (left === right && (!left || typeof left !== "object")) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => equalJsonValue(value, right[index]));
+  }
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => key === rightKeys[index]
+      && equalJsonValue(left[key], right[key]));
+}
+
+function snapshotJsonValue(value) {
+  if (Array.isArray(value)) return value.map(snapshotJsonValue);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.keys(value).map((key) => [key, snapshotJsonValue(value[key])]));
+}
+
+// Compare the complete occurrence record, rather than a hand-picked set of
+// currently rendered keys. Descriptors are closed JSON data; this conservative
+// rule makes a future consumed field invalidate reuse automatically. Numeric
+// transform normalization still belongs to row construction, but byte/value
+// differences here deliberately take the safe fresh-row path.
+function equalOccurrenceInput(left, right) {
+  return equalJsonValue(left, right);
+}
+
+// Internal provenance seam for cadScene's zero-work exact-row branch. Object
+// identity alone is not proof because buildModel also accepts mutable public
+// mesh data; the current composed result must explicitly own this row.
+export function composedPackageOwnsPartRow(meshData, part) {
+  return composedPackageInputs.get(meshData)?.parts?.has(part) === true;
+}
+
 function equalAssemblyLeaf(previous, part) {
   return previous.componentId === part?.componentId
     && previous.color === part?.color
@@ -400,11 +439,17 @@ function equalAssemblyLeaf(previous, part) {
 
 export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid, { previous = null } = {}) {
   const priorInputs = previous && composedPackageInputs.get(previous);
-  const reuse = priorInputs?.descriptor === descriptor ? priorInputs : null;
+  const reuse = priorInputs || null;
   const partsByOccurrence = new Map();
+  const partsById = new Map();
   const occurrences = Array.isArray(descriptor?.occurrences) ? descriptor.occurrences : [];
   if (!occurrences.length) {
     throw new Error("Assembly tree has no occurrences");
+  }
+  const occurrenceIdCounts = new Map();
+  for (const occurrence of occurrences) {
+    const id = String(occurrence?.id || "").trim();
+    if (id) occurrenceIdCounts.set(id, (occurrenceIdCounts.get(id) || 0) + 1);
   }
 
   const placements = [];
@@ -442,18 +487,23 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid,
 
   const parts = [];
   for (const { occurrence, componentMeshData, sourceParts } of placements) {
-    const prior = reuse?.partsByOccurrence.get(occurrence);
+    const occurrenceId = String(occurrence?.id || "").trim();
+    const prior = reuse?.partsByOccurrence.get(occurrence)
+      || (occurrenceId && occurrenceIdCounts.get(occurrenceId) === 1
+        ? reuse?.partsById.get(occurrenceId)
+        : null);
     if (prior?.part.sourceMesh === componentMeshData && prior.sourceParts === sourceParts
-      && prior.lodLevel === componentMeshData.lodLevel) {
+      && prior.lodLevel === componentMeshData.lodLevel
+      && equalOccurrenceInput(prior.occurrenceSnapshot, occurrence)) {
       parts.push(prior.part);
       partsByOccurrence.set(occurrence, prior);
+      if (occurrenceIdCounts.get(occurrenceId) === 1) partsById.set(occurrenceId, prior);
       continue;
     }
     // Component geometry loads in CAD units (mm) and the occurrence transform is authored in
     // mm, so it places each (local-frame) component directly. Applied as the Mesh matrix.
     const matrix = toTransformArray(occurrence?.transform);
     const mirrored = matrixDeterminant3(matrix) < 0;
-    const occurrenceId = String(occurrence?.id || "").trim();
     const cid = String(occurrence?.component || "").trim();
     const overrideColor = toVectorArray(occurrence?.color);
     // Optional per-occurrence PBR overrides (descriptor "material") and
@@ -461,7 +511,7 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid,
     // alpha by design, so opacity must ride separately.
     const overrideMaterial =
       occurrence?.material && typeof occurrence.material === "object" && !Array.isArray(occurrence.material)
-        ? occurrence.material
+        ? snapshotJsonValue(occurrence.material)
         : null;
     // NB: toVectorArray keeps only RGB, so alpha must come from the raw
     // descriptor color array.
@@ -524,7 +574,14 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid,
       edgeIndexCount: 0
     };
     parts.push(part);
-    partsByOccurrence.set(occurrence, { part, sourceParts, lodLevel: componentMeshData.lodLevel });
+    const entry = {
+      occurrenceSnapshot: snapshotJsonValue(occurrence),
+      part,
+      sourceParts,
+      lodLevel: componentMeshData.lodLevel
+    };
+    partsByOccurrence.set(occurrence, entry);
+    if (occurrenceId && occurrenceIdCounts.get(occurrenceId) === 1) partsById.set(occurrenceId, entry);
   }
 
   const assemblyRoot = buildPackageAssemblyRoot(descriptor, parts, reuse ? previous.assemblyRoot : null);
@@ -546,7 +603,7 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid,
     partTransformsBaked: false,
     has_source_colors: false
   };
-  composedPackageInputs.set(composed, { descriptor, partsByOccurrence });
+  composedPackageInputs.set(composed, { partsByOccurrence, partsById, parts: new Set(parts) });
   return composed;
 }
 
@@ -560,14 +617,6 @@ function enrichPackageAssemblyNode(node, partById, previous = null) {
     : previous?.children || [];
   const nodeType = String(node?.nodeType || "").trim() || (children.length ? "subassembly" : "part");
   const id = String(node?.id || "").trim();
-  // Tessellation changes triangle ranges and buffers, but usually leaves tree
-  // metadata identical. Preserve those objects (and their leaf-ID arrays) so
-  // tree consumers do not allocate a new full assembly on every LOD swap.
-  if (previous && previous.children.length === children.length
-    && children.every((child, index) => child === previous.children[index])
-    && (nodeType !== "part" || equalAssemblyLeaf(previous, partById.get(id)))) {
-    return previous;
-  }
   const name = String(node?.name || node?.label || id).trim();
   const declaredLeafIds = Array.isArray(node?.leafPartIds)
     ? node.leafPartIds.map((leafId) => String(leafId || "").trim()).filter(Boolean)
@@ -577,6 +626,17 @@ function enrichPackageAssemblyNode(node, partById, previous = null) {
     : (children.length
       ? children.flatMap((child) => child.leafPartIds)
       : (id ? [id] : []));
+  // Tessellation changes triangle ranges and buffers, but usually leaves tree
+  // metadata identical. Preserve those objects (and their leaf-ID arrays) so
+  // tree consumers do not allocate a new full assembly on every LOD swap.
+  if (previous && previous.children.length === children.length
+    && children.every((child, index) => child === previous.children[index])
+    && previous.id === id && previous.occurrenceId === id
+    && previous.name === name && previous.label === name && previous.nodeType === nodeType
+    && equalVector(previous.leafPartIds, leafPartIds)
+    && (nodeType !== "part" || equalAssemblyLeaf(previous, partById.get(id)))) {
+    return previous;
+  }
   const out = { id, occurrenceId: id, name, label: name, nodeType, leafPartIds, children };
   if (nodeType === "part") {
     // Enrich the leaf with its composed render part (transform/bounds/color drive highlighting).

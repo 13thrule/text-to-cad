@@ -37,7 +37,25 @@ test("a failed hydration is terminal only for the selected concrete mesh hash", 
     ...target,
     selectedMeshMatches: false,
     hydrationFailed: false,
+    failedTargetFile: "hand.step",
+    failedTargetHash: "tree-a",
+  }), false, "a retained predecessor does not retry the exact failed target");
+  assert.equal(shouldStartMeshLoad({
+    ...target,
+    entryHash: "tree-b",
+    selectedMeshMatches: false,
+    hydrationFailed: false,
+    failedTargetFile: "hand.step",
+    failedTargetHash: "tree-a",
   }), true, "a different selected hash starts a new revision");
+  assert.equal(shouldStartMeshLoad({
+    ...target,
+    entryFile: "other.step",
+    selectedMeshMatches: false,
+    hydrationFailed: false,
+    failedTargetFile: "hand.step",
+    failedTargetHash: "tree-a",
+  }), true, "the same opaque hash in another file is a different target");
   assert.equal(shouldStartMeshLoad({
     ...target,
     selectedMeshMatches: true,

@@ -637,7 +637,8 @@ export function useCadAssets({
       meshData,
       assemblyStructureReady: true,
       assemblyInteractionReady: true,
-      assemblyBackgroundError: ""
+      assemblyBackgroundError: "",
+      assemblyBackgroundErrorMeshHash: ""
     };
   }, [getAssemblyMeshHash]);
   // Defined after applyComponentLodPayload, consumed by it through a ref.
@@ -653,7 +654,8 @@ export function useCadAssets({
       meshData: previewMeshData,
       assemblyStructureReady: !!previewMeshData.assemblyRoot,
       assemblyInteractionReady: false,
-      assemblyBackgroundError: ""
+      assemblyBackgroundError: "",
+      assemblyBackgroundErrorMeshHash: ""
     };
   }, [getAssemblyMeshHash]);
 
@@ -937,6 +939,12 @@ export function useCadAssets({
           }
           const loader = createProgressivePackageLoader({
             descriptor: packageDescriptor,
+            // Atomic same-file revisions keep the old complete composition on
+            // screen while staging. Seed the new composer from that exact
+            // predecessor so unchanged occurrence rows and tree branches can
+            // cross the revision boundary. The request-local loader is the only
+            // added owner; failure clears it and success drops it with the load.
+            initialComposition: previousCompleteLodPackage?.meshData || null,
             concurrency: packageComponentLoadConcurrency(),
             sourceExpansionRatio: (cid) => (
               initialPlanByCid.get(cid) || defaultInitialPlan
@@ -1265,7 +1273,8 @@ export function useCadAssets({
           }
           return {
             ...current,
-            assemblyBackgroundError: err instanceof Error ? err.message : String(err)
+            assemblyBackgroundError: err instanceof Error ? err.message : String(err),
+            assemblyBackgroundErrorMeshHash: targetMeshHash
           };
         });
         setStatus(ASSET_STATUS.READY);

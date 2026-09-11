@@ -303,7 +303,11 @@ import {
 import {
   normalizeStepModuleParameterValues
 } from "cadgen-js/common/stepModule";
-import { meshStateIsComplete, tolerantAnimationClip } from "./workbench/hooks/packageProgressiveLoad.js";
+import {
+  meshStateIsComplete,
+  shouldRetainCompleteSameFileMesh,
+  tolerantAnimationClip
+} from "./workbench/hooks/packageProgressiveLoad.js";
 import { meshLoadErrorForViewer, shouldStartMeshLoad } from "./workbench/hooks/meshLoadTarget.js";
 import {
   kinematicsModuleDefinitionFromSidecar,
@@ -1537,6 +1541,22 @@ export default function CadWorkspace({
     !!selectedEntry &&
     meshState.file === fileKey(selectedEntry) &&
     meshState.meshHash === selectedMeshHash;
+  // useCadAssets retains the complete scene while a same-file STEP revision
+  // stages. Keep that predecessor renderable across the short entry-hash gap;
+  // reference matching remains hash-strict below, so its stale topology cannot
+  // be picked while the replacement geometry/selectors are loading.
+  const retainingPreviousStepMesh =
+    selectedEntryHasMesh &&
+    !!selectedMeshHash &&
+    selectedEntrySourceFormat === RENDER_FORMAT.STEP &&
+    !selectedStepModuleUrl &&
+    !selectedRenderModuleUrl &&
+    shouldRetainCompleteSameFileMesh(meshState, selectedEntry, selectedMeshHash);
+  const retainedPreviousStepMeshError = retainingPreviousStepMesh &&
+    meshState?.assemblyBackgroundErrorMeshHash === selectedMeshHash
+    ? String(meshState?.assemblyBackgroundError || "").trim()
+    : "";
+  const stepInteractionBlocked = stepUpdateInProgress || retainingPreviousStepMesh;
   const selectedAssemblyStructureReady =
     selectedEntry?.kind === "assembly" &&
     selectedMeshMatches &&
@@ -1547,8 +1567,8 @@ export default function CadWorkspace({
     !!meshState?.assemblyInteractionReady;
   const selectedAssemblyHydrationFailed =
     selectedEntry?.kind === "assembly" &&
-    selectedMeshMatches &&
-    !!meshState?.assemblyBackgroundError;
+    !!meshState?.assemblyBackgroundError &&
+    (selectedMeshMatches || !!retainedPreviousStepMeshError);
   const selectedUrdfMatches =
     !!urdfState &&
     !!selectedEntry &&
@@ -1873,7 +1893,7 @@ export default function CadWorkspace({
   }, [selectedUrdfData, selectedUrdfJointValues, selectedUrdfMeshGeometryResult]);
   const selectedMeshData = selectedEntryContentKind === VIEWPORT_CONTENT.ROBOT
     ? selectedUrdfPreview.meshData
-    : selectedMeshMatches
+    : (selectedMeshMatches || retainingPreviousStepMesh)
       ? meshState.meshData
       : null;
   const selectedAnimationClipList = useMemo(
@@ -2544,7 +2564,8 @@ export default function CadWorkspace({
     !selectedEntryIsDrawingDocument &&
     (selectedStepArtifactRenderPending || !artifactBlocksRender) &&
     status !== ASSET_STATUS.ERROR &&
-    (!selectedMeshMatches || status === ASSET_STATUS.LOADING || selectedStepModuleLoading);
+    ((!selectedMeshMatches && !retainedPreviousStepMeshError) ||
+      status === ASSET_STATUS.LOADING || selectedStepModuleLoading);
   // DXF has no arm -- it renders its baked preview through the mesh path like everything
   // else.
   const viewerLoading = {
@@ -3813,10 +3834,14 @@ export default function CadWorkspace({
       setStepUpdateInProgress(false);
       return;
     }
+    if (retainedPreviousStepMeshError) {
+      setStepUpdateInProgress(false);
+      return;
+    }
     if (selectedMeshMatches && status !== ASSET_STATUS.LOADING) {
       setStepUpdateInProgress(false);
     }
-  }, [selectedEntry, selectedMeshMatches, status, stepUpdateInProgress]);
+  }, [retainedPreviousStepMeshError, selectedEntry, selectedMeshMatches, status, stepUpdateInProgress]);
 
   useEffect(() => {
     drawingStrokesRef.current = drawingStrokes;
@@ -4022,6 +4047,8 @@ export default function CadWorkspace({
       isAssembly: isAssemblyView,
       interactionReady: selectedAssemblyInteractionReady,
       hydrationFailed: selectedAssemblyHydrationFailed,
+      failedTargetFile: meshState?.file,
+      failedTargetHash: meshState?.assemblyBackgroundErrorMeshHash,
     })) {
       return;
     }
@@ -4037,6 +4064,8 @@ export default function CadWorkspace({
     meshLoadInProgress,
     meshLoadTargetFile,
     meshLoadTargetHash,
+    meshState?.file,
+    meshState?.assemblyBackgroundErrorMeshHash,
     selectedAssemblyHydrationFailed,
     selectedAssemblyInteractionReady,
     selectedEntry,
@@ -4124,7 +4153,9 @@ export default function CadWorkspace({
     selectedEntryHasDisplayEdges &&
     displayEdgeState.fileRef === fileKey(selectedEntry) &&
     displayEdgeState.displayEdgeHash === entryAssetHash(selectedEntry, "displayEdgeTopology");
-  const selectedDisplayEdgeRuntime = selectedDisplayEdgesMatch ? displayEdgeState?.displayEdgeRuntime || null : null;
+  const selectedDisplayEdgeRuntime = selectedDisplayEdgesMatch && !retainingPreviousStepMesh
+    ? displayEdgeState?.displayEdgeRuntime || null
+    : null;
   const selectedStepPartRootActive = !isAssemblyView && selectedPartIds.includes(STEP_MODEL_ROOT_ID);
   const plainStepReferencePickingEnabled =
     effectiveRenderFormat === RENDER_FORMAT.STEP &&
@@ -4472,7 +4503,7 @@ export default function CadWorkspace({
     () => buildStepTreeCopyReferenceMap(displayStepTreeRoot),
     [displayStepTreeRoot]
   );
-  const effectiveSelectorRuntime = selectedSelectorRuntime;
+  const effectiveSelectorRuntime = retainingPreviousStepMesh ? null : selectedSelectorRuntime;
 
   const effectiveActiveReferenceMap = useMemo(() => {
     const map = new Map(activeReferenceMap);
@@ -4535,7 +4566,7 @@ export default function CadWorkspace({
   ]);
 
   const viewerPickableReferences = useMemo(() => {
-    if (stepModuleTreeSelectionDisabled) {
+    if (stepInteractionBlocked || stepModuleTreeSelectionDisabled) {
       return [];
     }
     if (isAssemblyView) {
@@ -4551,6 +4582,7 @@ export default function CadWorkspace({
     assemblyStepTreeTopologyReferences,
     effectiveVisibleReferences,
     isAssemblyView,
+    stepInteractionBlocked,
     stepModuleTreeSelectionDisabled,
     visibleStepTreeTopologyReferenceIdSet
   ]);
@@ -4574,6 +4606,7 @@ export default function CadWorkspace({
   const measureModeActive = supportsMeasure &&
     tabToolMode === TAB_TOOL_MODE.MEASURE &&
     Boolean(selectedMeshData) &&
+    !stepInteractionBlocked &&
     !viewerLoading;
   const [measureRulerState, setMeasureRulerState] = useState(null);
   const [activeMeasureId, setActiveMeasureId] = useState("");
@@ -4664,8 +4697,9 @@ export default function CadWorkspace({
     !viewerInAssemblyMode &&
     !selectedTopologyDeferredByCost &&
     !referenceSelectionUnavailable &&
+    !retainedPreviousStepMeshError &&
     (
-      stepUpdateInProgress ||
+      stepInteractionBlocked ||
       referenceSelectionStatus === REFERENCE_STATUS.IDLE ||
       referenceSelectionStatus === REFERENCE_STATUS.LOADING ||
       !effectiveSelectorRuntime
@@ -5352,7 +5386,7 @@ export default function CadWorkspace({
   ]);
 
   const toggleReferenceSelection = useCallback((referenceId, { multiSelect = false, source = "viewer" } = {}) => {
-    if (stepUpdateInProgress || stepModuleTreeSelectionDisabled) {
+    if (stepInteractionBlocked || stepModuleTreeSelectionDisabled) {
       return;
     }
     if (source !== "viewer") {
@@ -5403,8 +5437,8 @@ export default function CadWorkspace({
     isAssemblyView,
     referencePartId,
     revealStepTreeNode,
-    stepModuleTreeSelectionDisabled,
-    stepUpdateInProgress
+    stepInteractionBlocked,
+    stepModuleTreeSelectionDisabled
   ]);
 
   const clearReferenceSelection = useCallback(() => {
@@ -5425,8 +5459,10 @@ export default function CadWorkspace({
 
   const handleCopySelection = useCallback(async () => {
     setScreenshotStatus("");
-    if (stepUpdateInProgress) {
-      setCopyStatus("STEP update in progress. Please wait.");
+    if (stepInteractionBlocked) {
+      setCopyStatus(retainedPreviousStepMeshError
+        ? "Selection unavailable because the STEP update failed."
+        : "STEP update in progress. Please wait.");
       return;
     }
     const selectedReferencesForCopy = selectedReferenceIdsRef.current
@@ -5515,10 +5551,11 @@ export default function CadWorkspace({
     displayStepTreeRoot,
     effectiveActiveReferenceMap,
     selectedEntry,
+    retainedPreviousStepMeshError,
     setScreenshotStatus,
     stepTreeCopyReferenceMap,
     stepTreeRoot,
-    stepUpdateInProgress
+    stepInteractionBlocked
   ]);
 
   const toggleStepTreeNode = useCallback((nodeId) => {
@@ -5583,7 +5620,7 @@ export default function CadWorkspace({
   }, []);
 
   const togglePartSelection = useCallback((partId, { multiSelect = false, renderPartId = "", source = "viewer" } = {}) => {
-    if (stepUpdateInProgress || stepModuleTreeSelectionDisabled) {
+    if (stepInteractionBlocked || stepModuleTreeSelectionDisabled) {
       return selectedPartIdsRef.current;
     }
     if (source !== "viewer") {
@@ -5642,8 +5679,8 @@ export default function CadWorkspace({
     renderPartIdForAssemblySelection,
     validAssemblySelectionIdSet,
     viewerSelectableAssemblyNodeIdSet,
+    stepInteractionBlocked,
     stepModuleTreeSelectionDisabled,
-    stepUpdateInProgress
   ]);
 
   const selectStepTreeNode = useCallback((nodeId, { multiSelect = false } = {}) => {
@@ -6030,7 +6067,7 @@ export default function CadWorkspace({
   }, []);
 
   const handleModelHoverChange = useCallback((referenceId) => {
-    if (stepModuleTreeSelectionDisabled) {
+    if (stepInteractionBlocked || stepModuleTreeSelectionDisabled) {
       setHoveredModelReferenceId("");
       setHoveredModelPartId("");
       return;
@@ -6059,11 +6096,12 @@ export default function CadWorkspace({
     isViewerTopologyReference,
     viewerInAssemblyMode,
     resolvePickedAssemblyPartId,
+    stepInteractionBlocked,
     stepModuleTreeSelectionDisabled
   ]);
 
   const handleModelReferenceActivate = useCallback((referenceId, { multiSelect = false } = {}) => {
-    if (stepUpdateInProgress || stepModuleTreeSelectionDisabled) {
+    if (stepInteractionBlocked || stepModuleTreeSelectionDisabled) {
       return;
     }
     // A newer gesture supersedes any click waiting for selector topology. If
@@ -6113,7 +6151,7 @@ export default function CadWorkspace({
     selectedEntry,
     selectedEntryHasReferences,
     selectedReferencesMatch,
-    stepUpdateInProgress,
+    stepInteractionBlocked,
     toggleReferenceSelection,
     togglePartSelection,
     viewerInAssemblyMode,
@@ -6141,7 +6179,7 @@ export default function CadWorkspace({
   }, [handleModelReferenceActivate, selectedEntry, selectedReferencesMatch]);
 
   const handleModelReferenceDoubleActivate = useCallback((referenceId) => {
-    if (stepUpdateInProgress || stepModuleTreeSelectionDisabled || !isAssemblyView) {
+    if (stepInteractionBlocked || stepModuleTreeSelectionDisabled || !isAssemblyView) {
       return;
     }
     const pickedPartId = String(referenceId || "").trim();
@@ -6175,8 +6213,8 @@ export default function CadWorkspace({
     viewerInAssemblyMode,
     isAssemblyView,
     resolvePickedAssemblyPartId,
+    stepInteractionBlocked,
     stepModuleTreeSelectionDisabled,
-    stepUpdateInProgress
   ]);
 
   const closeViewerContextMenu = useCallback(() => {
@@ -6235,7 +6273,7 @@ export default function CadWorkspace({
   ]);
 
   const handleModelReferenceContext = useCallback((referenceId, { clientX = 0, clientY = 0 } = {}) => {
-    if (stepUpdateInProgress || stepModuleTreeSelectionDisabled) {
+    if (stepInteractionBlocked || stepModuleTreeSelectionDisabled) {
       setViewerContextMenu(null);
       return;
     }
@@ -6418,12 +6456,18 @@ export default function CadWorkspace({
     selectedEntry,
     stepTreeCopyReferenceMap,
     expandedStepTreeNodeIds,
+    stepInteractionBlocked,
     stepModuleTreeSelectionDisabled,
-    stepUpdateInProgress,
     viewerInAssemblyMode
   ]);
 
   const copyViewerContextMenuReference = useCallback(async (menu) => {
+    if (stepInteractionBlocked) {
+      setCopyStatus(retainedPreviousStepMeshError
+        ? "Selection unavailable because the STEP update failed."
+        : "STEP update in progress. Please wait.");
+      return;
+    }
     const copyText = String(menu?.copyText || "")
       .split("\n")
       .map((line) => canonicalCadRefCopyText(line))
@@ -6439,9 +6483,15 @@ export default function CadWorkspace({
     } catch (error) {
       setCopyStatus(error instanceof Error ? error.message : "Failed to copy reference");
     }
-  }, []);
+  }, [retainedPreviousStepMeshError, stepInteractionBlocked]);
 
   const copyStepTreeContextMenuReference = useCallback(async (id, { topology = false } = {}) => {
+    if (stepInteractionBlocked) {
+      setCopyStatus(retainedPreviousStepMeshError
+        ? "Selection unavailable because the STEP update failed."
+        : "STEP update in progress. Please wait.");
+      return;
+    }
     const normalizedId = String(id || "").trim();
     if (!normalizedId) {
       setCopyStatus("No selector ref is available for this node");
@@ -6508,7 +6558,9 @@ export default function CadWorkspace({
     displayStepTreeRoot,
     effectiveActiveReferenceMap,
     isAssemblyView,
+    retainedPreviousStepMeshError,
     selectedEntry,
+    stepInteractionBlocked,
     stepTreeCopyReferenceMap,
     stepTreeRoot
   ]);
@@ -7167,6 +7219,7 @@ export default function CadWorkspace({
           previewMode={previewMode}
           viewportFrameInsets={viewportFrameInsets}
           viewerLoading={viewerLoading}
+          retainingPreviousStepMesh={retainingPreviousStepMesh}
           viewerAlert={viewerAlert}
           stepUpdateInProgress={effectiveRenderFormat === RENDER_FORMAT.STEP && stepUpdateInProgress}
           referenceSelectionPending={referenceSelectionPending}
@@ -7392,8 +7445,12 @@ export default function CadWorkspace({
                 onClearSelection={clearAssemblySelection}
                 onHoverTreeNode={setHoveredListPartId}
                 onHoverReferenceNode={setHoveredListReferenceId}
-                treeSelectionDisabled={stepModuleTreeSelectionDisabled}
-                treeSelectionDisabledReason={stepModuleTreeSelectionDisabledReason}
+                treeSelectionDisabled={stepInteractionBlocked || stepModuleTreeSelectionDisabled}
+                treeSelectionDisabledReason={stepInteractionBlocked
+                  ? (retainedPreviousStepMeshError
+                    ? "Selection is unavailable because the STEP update failed."
+                    : "STEP update in progress. Please wait.")
+                  : stepModuleTreeSelectionDisabledReason}
                 onTogglePartVisibility={togglePartVisibility}
                 hideOtherSelectedParts={handleHideOtherSelectedParts}
                 hideAllParts={handleHideAllParts}

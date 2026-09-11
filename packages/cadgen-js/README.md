@@ -63,6 +63,13 @@ snapshot renderer and the node builders in `bin/`).
   metadata across detail swaps; changed triangle ranges, bounds, placements and
   appearance still produce the corresponding new records. Its private weak
   ownership metadata never enters saved geometry or cache identity.
+  Complete same-file revisions can also seed from the prior composition.
+  Detached occurrence snapshots detect in-place descriptor or material edits;
+  only rows proven to belong to the current composition may skip scene work.
+  A static delta requires the same last-applied render context and no dynamic
+  pose, animation or clip. Changed components update their own records, while
+  unchanged occurrence geometry and selectors retain their owners. Arbitrary
+  mutable caller meshes keep normal reconciliation.
   Detail publications retain compatible surface instance sets and their original
   occurrence slots. Only changed membership or render passes replace those sets;
   selected, hidden and deformed occurrences keep inactive slots until eligible

@@ -12,6 +12,10 @@ export function staticSceneResetEligible({ source, renderFormat, parameters, ani
       || record?.effectDeformation || record?.tubeDeformationState?.active || record?.tubeGpuState?.active);
 }
 
+export function sceneSourceAlreadyPlaced(runtime, source) {
+  return Boolean(runtime?.cadScene && runtime.cadScene.source === source);
+}
+
 export function createStaticSceneReset() {
   let renderToken = null;
   let previousEligible = false;

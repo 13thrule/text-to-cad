@@ -919,10 +919,13 @@ export function useViewerPicking({
     }
 
     function pickActivationReference(clientX, clientY, pointerType = "") {
-      if (canHoverWithPointer(pointerType)) {
-        return String(hoverState.hoveredReferenceId || "").trim() || pickReferenceAtPosition(clientX, clientY, { hover: true });
-      }
-      return pickReferenceAtPosition(clientX, clientY);
+      // Activation is infrequent and must resolve the coordinates of this
+      // gesture. The cached hover can belong to a previous point or even the
+      // selector runtime retired by a live scene replacement when pointer-down
+      // arrives before the next hover frame.
+      return String(pickReferenceAtPosition(clientX, clientY, {
+        hover: canHoverWithPointer(pointerType)
+      }) || "").trim();
     }
 
     function isCoarsePointer(pointerType = "") {
@@ -1266,11 +1269,11 @@ export function useViewerPicking({
       pointerDown.x = event.clientX;
       pointerDown.y = event.clientY;
       pointerDown.pointerType = event.pointerType || "";
-      pointerDown.referenceId = String(
-        canHoverWithPointer(pointerDown.pointerType)
-          ? (hoverState.hoveredReferenceId || pickReferenceAtPosition(event.clientX, event.clientY, { hover: true }) || "")
-          : (pickReferenceAtPosition(event.clientX, event.clientY) || "")
-      ).trim();
+      // OrbitControls may clear hover before pointer-up; retain the fresh
+      // pointer-down raycast rather than the earlier hover frame.
+      pointerDown.referenceId = pickActivationReference(
+        event.clientX, event.clientY, pointerDown.pointerType,
+      );
     }
 
     function handlePointerUp(event) {
@@ -1376,6 +1379,7 @@ export function useViewerPicking({
     previewMode,
     runtimeRef,
     sceneMountRef,
+    selectorRuntime,
     suppressTopologyPicking,
     viewerReadyTick
   ]);

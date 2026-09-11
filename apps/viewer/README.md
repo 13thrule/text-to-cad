@@ -99,6 +99,16 @@ the build — detection only; it keeps serving.
   Run the model normally; existing decorators need no new imports. The daemon
   must be running for live updates. The prior model stays visible while the
   next request builds; save errors or a disconnected feed remain visible.
+  Updates arrive through a held request that wakes when this output's build
+  ledger changes. Unrelated jobs do not wake the tab. The server admits 32
+  waiters independently of kernel workers; excess tabs retry every 500 ms.
+  An idle heartbeat revalidates saved bytes and missing geometry;
+  closing or switching the tab cancels the request.
+  Complete plain STEP assemblies also remain visible while replacement meshes
+  load. Selection, measurements and reference copying wait for matching new
+  geometry. A failed replacement preserves the view and reports its error;
+  only that file/hash stops retrying automatically. STEP pose/render modules
+  use their normal loading path, without a promise to retain the previous pose.
   Restarting the daemon expires the ephemeral session, and rerunning the model
   reconnects it. Source files hold authored changes; there is no hidden durable
   preview document. Every explicit model run still waits for declared outputs.

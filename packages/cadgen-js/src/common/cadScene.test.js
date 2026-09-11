@@ -27,6 +27,7 @@ import { applySceneState } from "./applySceneState.js";
 import { applyPartVisualState as applyViewerPartVisualState } from "../lib/viewer/partVisualState.js";
 import { syncRuntimeStepClipPlane } from "../lib/viewer/modelRuntime.js";
 import { applyMaterialSettingsToRecord as applyViewerMaterialSettings } from "../lib/viewer/surfaceMaterials.js";
+import { buildComposedPackageMeshData } from "../lib/assembly/meshData.js";
 
 function sampleMeshData() {
   return {
@@ -1230,6 +1231,163 @@ test("update({ source }) reconciles records across publishes into the state a on
   assert.equal(secondO2.edgeInstance.set.readSlot(secondO2.edgeInstance.slot).highlighted, true);
   assert.equal(secondO2.material.emissiveIntensity, oneShot.displayRecords[2].material.emissiveIntensity);
   oneShot.dispose();
+  scene.dispose();
+});
+
+test("static revision adoption touches only changed immutable rows and preserves picking and resource ownership", () => {
+  const componentA = surfComponentMeshData();
+  const componentB = surfComponentMeshData();
+  const descriptor = (moved = -1, material = null) => {
+    const occurrences = Array.from({ length: 24 }, (_, index) => ({
+      id: `o${index}`,
+      name: `part ${index}`,
+      component: index % 2 ? "b" : "a",
+      transform: [1, 0, 0, index === moved ? 80 : index * 2, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+      ...(index === moved && material ? { material } : {})
+    }));
+    return { kind: "assembly-package", entryKind: "assembly", components: { a: {}, b: {} }, occurrences,
+      assembly: { root: { id: "root", name: "root", nodeType: "assembly",
+        children: occurrences.map(({ id, name }) => ({ id, name, nodeType: "part", children: [] })) } } };
+  };
+  const components = { a: componentA, b: componentB };
+  let source = buildComposedPackageMeshData(descriptor(), components);
+  const selection = { selectedPartIds: ["o0"], hoveredPartId: "o1" };
+  let faceIdBuilds = 0;
+  const faceIdsForPart = (part) => { faceIdBuilds += 1; return [`face:${part.id}`]; };
+  const scene = buildModel(THREE, source, {
+    renderPartsIndividually: true,
+    selection,
+    callbacks: { faceIdsForPart }
+  });
+  assert.equal(faceIdBuilds, 24);
+  const unchanged = scene.displayRecords[2];
+  const changed = scene.displayRecords[7];
+  const unchangedPart = source.parts[2];
+  const unchangedMatrix = unchanged.mesh.matrix.clone();
+  const unchangedFaceIds = unchanged.mesh.userData.faceIds;
+  const unchangedSet = unchanged.surfaceInstance.set;
+  const ownedBefore = scene.runtime.ownedGeometries.size;
+  let unchangedColorWrites = 0;
+  const copy = unchanged.material.color.copy.bind(unchanged.material.color);
+  unchanged.material.color.copy = (...args) => { unchangedColorWrites += 1; return copy(...args); };
+
+  const placedDescriptor = descriptor(7);
+  const placed = buildComposedPackageMeshData(placedDescriptor, components, { previous: source });
+  assert.equal(placed.parts[2], unchangedPart);
+  scene.update({ source: placed, selection, callbacks: { faceIdsForPart } });
+  source = placed;
+  assert.equal(scene.displayRecords[2], unchanged);
+  assert.equal(scene.displayRecords[7], changed, "placement keeps the occurrence record and its picking identity");
+  assert.equal(changed.mesh.matrix.elements[12], 80);
+  assert.equal(unchanged.mesh.userData.faceIds, unchangedFaceIds);
+  assert.equal(faceIdBuilds, 24, "placement-only adoption rebuilds no picking records");
+  assert.deepEqual(unchanged.mesh.matrix.elements, unchangedMatrix.elements);
+  assert.equal(unchangedColorWrites, 0, "unchanged material and visual passes are skipped");
+  assert.equal(unchanged.surfaceInstance.set, unchangedSet);
+  assert.equal(scene.runtime.ownedGeometries.size, ownedBefore);
+
+  const appeared = buildComposedPackageMeshData(descriptor(7, { roughness: 0.17, metalness: 0.83 }), components, { previous: source });
+  scene.update({ source: appeared, selection });
+  source = appeared;
+  assert.equal(scene.displayRecords[7], changed);
+  assert.equal(changed.material.roughness, 0.17);
+  assert.equal(changed.material.metalness, 0.83);
+  assert.equal(unchangedColorWrites, 0);
+
+  const replacementA = { ...componentA, vertices: new Float32Array(componentA.vertices),
+    parts: componentA.parts.map((part) => ({ ...part })) };
+  const replaced = buildComposedPackageMeshData(descriptor(7, { roughness: 0.17, metalness: 0.83 }),
+    { a: replacementA, b: componentB }, { previous: source });
+  const retainedB = scene.displayRecords[1];
+  scene.update({ source: replaced, selection });
+  assert.equal(scene.displayRecords[1], retainedB, "the untouched component keeps its record and resources");
+  assert.notEqual(scene.displayRecords[0], unchanged, "the replaced component receives exact new geometry");
+  assert.equal(scene.displayRecords[0].geometry.attributes.position.array, replacementA.vertices);
+  assert.equal(faceIdBuilds, 36, "only the replaced component's occurrences rebuild picking records");
+  assert.equal(scene.runtime.ownedGeometries.size, 2, "replacement retires the old component owner without growth");
+  assert.equal(scene.runtime.cadSurfaceInstanceSets.size, 2);
+
+  // A simultaneous contextual change cannot take the selective path.
+  let contextualWrites = 0;
+  const retainedColor = retainedB.material.color.copy.bind(retainedB.material.color);
+  retainedB.material.color.copy = (...args) => { contextualWrites += 1; return retainedColor(...args); };
+  const sameRows = buildComposedPackageMeshData(structuredClone(descriptor(7, { roughness: 0.17, metalness: 0.83 })),
+    { a: replacementA, b: componentB }, { previous: replaced });
+  scene.update({ source: sameRows, selection: { selectedPartIds: ["o1"] } });
+  assert.ok(contextualWrites > 0, "selection changes remain observable on exact retained rows");
+  scene.dispose();
+  assert.equal(scene.runtime.ownedGeometries.size, 0);
+  assert.equal(scene.runtime.cadSurfaceInstanceSets.size, 0);
+});
+
+test("exact source-part identity skips work only for rows owned by the current composer result", () => {
+  const component = surfComponentMeshData();
+  const descriptor = {
+    kind: "assembly-package",
+    entryKind: "assembly",
+    components: { a: {} },
+    occurrences: [{
+      id: "o1",
+      component: "a",
+      transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    }],
+    assembly: { root: { id: "root", nodeType: "assembly", children: [{ id: "o1", nodeType: "part", children: [] }] } }
+  };
+  const composed = buildComposedPackageMeshData(descriptor, { a: component });
+  const scene = buildModel(THREE, composed, { renderPartsIndividually: true });
+  const record = scene.displayRecords[0];
+  const sameMutablePart = composed.parts[0];
+  sameMutablePart.transform[3] = 37;
+  sameMutablePart.material = { roughness: 0.14, metalness: 0.72 };
+  // A spread object is ordinary public mesh data. It has the same row identity
+  // but no composer ownership proof for that row in this exact source context.
+  const rawReplacement = { ...composed, parts: composed.parts };
+  scene.update({ source: rawReplacement });
+  assert.equal(scene.displayRecords[0], record);
+  assert.equal(record.mesh.matrix.elements[12], 37);
+  assert.equal(record.material.roughness, 0.14);
+  assert.equal(record.material.metalness, 0.72);
+  scene.dispose();
+});
+
+test("mutable public mesh rows observe replacement parent geometry and topology", () => {
+  const source = sampleMeshData();
+  const scene = buildModel(THREE, source, { renderPartsIndividually: true });
+  const firstRecord = scene.displayRecords[0];
+  const vertices = new Float32Array(source.vertices);
+  vertices[0] = 0.25;
+  const indices = new Uint32Array(source.indices);
+  [indices[0], indices[1]] = [indices[1], indices[0]];
+  const replacement = { ...source, vertices, indices, parts: source.parts };
+  scene.update({ source: replacement });
+  assert.notEqual(scene.displayRecords[0], firstRecord, "same part objects do not prove immutable parent buffers");
+  assert.equal(scene.displayRecords[0].geometry.attributes.position.array[0], 0.25);
+  assert.deepEqual([...scene.displayRecords[0].geometry.index.array], [1, 0, 2]);
+  scene.dispose();
+});
+
+test("in-place mutable settings changes are compared with the last applied snapshot", () => {
+  const component = surfComponentMeshData();
+  const descriptor = {
+    kind: "assembly-package",
+    entryKind: "assembly",
+    components: { a: {} },
+    occurrences: [{ id: "o1", component: "a", transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }],
+    assembly: { root: { id: "root", nodeType: "assembly", children: [{ id: "o1", nodeType: "part", children: [] }] } }
+  };
+  const materialSettings = { roughness: 0.22, metalness: 0.1, opacity: 1, defaultColor: "#445566" };
+  const source = buildComposedPackageMeshData(descriptor, { a: component });
+  const scene = buildModel(THREE, source, { renderPartsIndividually: true, materialSettings });
+  const record = scene.displayRecords[0];
+  assert.equal(record.material.roughness, 0.22);
+  materialSettings.roughness = 0.81;
+  materialSettings.defaultColor = "#bb6633";
+  const retained = buildComposedPackageMeshData(structuredClone(descriptor), { a: component }, { previous: source });
+  assert.equal(retained.parts[0], source.parts[0]);
+  scene.update({ source: retained, materialSettings });
+  assert.equal(scene.displayRecords[0], record);
+  assert.equal(record.material.roughness, 0.81);
+  assert.equal(record.material.color.getHexString(), "bb6633");
   scene.dispose();
 });
 

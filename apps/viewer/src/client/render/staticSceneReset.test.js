@@ -8,7 +8,11 @@ import { resetStepModuleRecordEffects } from "cadgen-js/common/stepModuleEffects
 import { applyPartVisualState } from "cadgen-js/lib/viewer/partVisualState.js";
 import { applyDisplayRecordTransform, syncRuntimeStepClipPlane } from "cadgen-js/lib/viewer/modelRuntime.js";
 import { syncTopologyDisplayEdgeLine } from "cadgen-js/lib/viewer/topologyDisplayEdgeLine.js";
-import { createStaticSceneReset, staticSceneResetEligible } from "./staticSceneReset.js";
+import {
+  createStaticSceneReset,
+  sceneSourceAlreadyPlaced,
+  staticSceneResetEligible
+} from "./staticSceneReset.js";
 
 function receiptFixture() {
   const source = { partTransformsBaked: false, parts: [{}] };
@@ -65,6 +69,18 @@ test("first load, repeated layout setup, invalidation and unmount retain ordinar
   tracker.complete(next, input); tracker.reset(); assert.equal(tracker.consume(next, input), false);
   tracker.beginRender({}, true); tracker.complete(next, input);
   assert.equal(tracker.consume(next, input), false, "an old effect cannot stamp a newer render");
+});
+
+test("placement follow-up skips an exact adopted package but keeps posed wrappers live", () => {
+  const adopted = { parts: [] };
+  const geometrySource = { vertices: new Float32Array(0) };
+  const posed = { geometrySource, parts: [] };
+  const runtime = { cadScene: { source: adopted } };
+  assert.equal(sceneSourceAlreadyPlaced(runtime, adopted), true);
+  assert.equal(sceneSourceAlreadyPlaced(runtime, posed), false);
+  runtime.cadScene.source = geometrySource;
+  assert.equal(sceneSourceAlreadyPlaced(runtime, posed), false, "wrapper placement remains distinct from retained geometry");
+  assert.equal(sceneSourceAlreadyPlaced(null, adopted), false);
 });
 
 test("eligibility excludes merged, robot/drawing, active and residual dynamic states", () => {

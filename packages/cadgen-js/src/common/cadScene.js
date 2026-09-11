@@ -62,6 +62,7 @@ import {
   normalizeSceneScaleMode,
   VIEWER_SCENE_SCALE
 } from "../lib/viewer/sceneScale.js";
+import { composedPackageOwnsPartRow } from "../lib/assembly/meshData.js";
 
 export { CAD_DISPLAY_MODE, normalizeDisplayMode };
 export { applyDisplayRecordTransform } from "./displayRecordTransform.js";
@@ -2177,32 +2178,48 @@ function reconcileDisplayRecords(THREE, runtime, meshData, settings) {
     }
   }
   const records = [];
+  const dirtyRecords = [];
   for (const part of renderParts) {
-    const geometryEntry = buildPartGeometryEntry(THREE, meshData, part, recomputeNormals);
-    if (!geometryEntry) {
-      continue;
-    }
     const partId = String(part?.id || part?.occurrenceId || `part:${records.length}`);
     const fillIndex = partFillIndexMap.get(part) ?? records.length;
-    const baseTransform = displayTransformForPart(meshData, part);
     const queue = available.get(partId);
     const candidate = queue?.length ? queue.shift() : null;
+    // The composer proves exact immutable row reuse. Preserve the complete
+    // record without even looking up geometry or rebuilding a Matrix4; only a
+    // changed deterministic fill slot needs a later material refresh.
+    if (candidate?.sourcePart === part && composedPackageOwnsPartRow(meshData, part)) {
+      if (candidate.fillIndex !== fillIndex) {
+        candidate.fillIndex = fillIndex;
+        dirtyRecords.push(candidate);
+      }
+      records.push(candidate);
+      continue;
+    }
+    const geometryEntry = buildPartGeometryEntry(THREE, meshData, part, recomputeNormals);
+    if (!geometryEntry) {
+      if (candidate) disposeDisplayRecord(candidate);
+      continue;
+    }
+    const baseTransform = displayTransformForPart(meshData, part);
     if (candidate && recordAdoptsPart(THREE, candidate, part, geometryEntry, meshData)) {
       adoptDisplayRecordPart(THREE, candidate, part, { fillIndex, baseTransform, bounds: context.bounds });
       records.push(candidate);
+      dirtyRecords.push(candidate);
       continue;
     }
     if (candidate) {
       disposeDisplayRecord(candidate);
     }
-    records.push(createDisplayRecord(THREE, runtime, meshData, settings, {
+    const record = createDisplayRecord(THREE, runtime, meshData, settings, {
       part,
       geometryEntry,
       fillIndex,
       baseTransform,
       recordIndex: records.length,
       ...context
-    }));
+    });
+    records.push(record);
+    dirtyRecords.push(record);
   }
   for (const queue of available.values()) {
     for (const record of queue) {
@@ -2211,7 +2228,29 @@ function reconcileDisplayRecords(THREE, runtime, meshData, settings) {
   }
   syncRecordGeometryOwnership(runtime, records);
   disposeEmptyCadEdgeInstanceSets(runtime);
-  return records;
+  return { records, dirtyRecords };
+}
+
+function recordsHaveStaticSourceState(records) {
+  return !records.some((record) => record?.effectMatrix || record?.effectStyle
+    || record?.effectVisible != null || record?.effectHighlighted || record?.explodedViewMatrix
+    || record?.effectDeformation || record?.tubeDeformationState?.active || record?.tubeGpuState?.active);
+}
+
+function staticMutableStateKey(settings) {
+  if (settings.stepParameters || settings.callbacks?.animation) return null;
+  try {
+    return JSON.stringify({
+      materialSettings: settings.materialSettings,
+      baseTheme: settings.baseTheme,
+      scale: settings.scale,
+      selection: settings.selection,
+      clip: settings.clip,
+      modelOffset: settings.modelOffset || null
+    });
+  } catch {
+    return null;
+  }
 }
 
 // The settings that decide how records are BUILT (materials, edge style, mode);
@@ -2356,6 +2395,10 @@ export function buildModel(THREE, source, settings = {}) {
   let currentSettings = normalized;
   let currentSignature = "";
   let currentPartsKey = "";
+  // A serialized snapshot of the state that was actually applied. Keeping the
+  // snapshot instead of recomputing currentSettings catches callers mutating a
+  // settings object in place between updates.
+  let appliedStaticStateKey = null;
   let activeParameters = null;
   let activeParameterSetup = false;
 
@@ -2389,15 +2432,17 @@ export function buildModel(THREE, source, settings = {}) {
     // The mutable-state reconciler below retires only sets whose records or
     // render pass changed, preserving unaffected upload buffers and materials.
     setRuntimeTheme(runtime, nextSettings);
-    const records = reconcileDisplayRecords(THREE, runtime, meshData, nextSettings);
-    if (!records) {
+    const result = reconcileDisplayRecords(THREE, runtime, meshData, nextSettings);
+    if (!result) {
       rebuild(nextSettings);
-      return;
+      return null;
     }
+    const { records } = result;
     runtime.displayRecords = records;
     runtime.records = records;
     syncRuntimeBounds();
     currentPartsKey = renderPartsKey(meshData, runtime.theme, nextSettings);
+    return result;
   };
 
   // External pose/selection passes mutate the same records without publishing
@@ -2447,6 +2492,34 @@ export function buildModel(THREE, source, settings = {}) {
     });
     syncSurfaceInstances();
     syncClip(runtime, nextSettings.clip, runtime.bounds, nextSettings.modelOffset || modelGroup.position);
+    appliedStaticStateKey = staticMutableStateKey(nextSettings);
+  };
+
+  // A same-file static revision with identical contextual settings needs work
+  // only on rows whose immutable source changed. This deliberately excludes
+  // clipping (its plane depends on whole-model bounds), modules, animation and
+  // externally posed/exploded records. Surface-instance reconciliation still
+  // runs so changed membership, transforms and materials publish atomically.
+  const applyStaticSourceDelta = (nextSettings, dirtyRecords) => {
+    setRuntimeTheme(runtime, nextSettings);
+    for (const record of dirtyRecords) {
+      applyMaterialSettingsToRecord(THREE, record, runtime.materialSettings, {
+        baseTheme: runtime.baseTheme,
+        displayMode: runtime.displayMode
+      });
+      applyDisplayRecordTransform(THREE, record);
+    }
+    runtime.bounds = runtime.baseBounds;
+    runtime.modelBounds = runtime.bounds;
+    runtime.modelRadius = centerAndRadiusFromBounds(THREE, runtime.bounds, runtime.scale).radius;
+    applyPartVisualState(THREE, dirtyRecords, {
+      baseTheme: runtime.baseTheme,
+      edgeSettings: runtime.edgeSettings,
+      ...nextSettings.selection,
+      showEdges: nextSettings.selection?.showEdges !== false
+    });
+    syncSurfaceInstances();
+    appliedStaticStateKey = staticMutableStateKey(nextSettings);
   };
 
   const api = {
@@ -2503,17 +2576,24 @@ export function buildModel(THREE, source, settings = {}) {
         delete mergedSettings.materialSettings;
       }
       currentSettings = normalizeSettings(mergedSettings);
+      const nextStaticKey = staticMutableStateKey(currentSettings);
       if (sourceChanged) {
         activeSource = Object.hasOwn(nextSettings, "source") ? nextSource : nextMeshData;
         meshData = filterMeshDataForSelection(meshDataFromSource(activeSource), currentSettings.filterSelection);
       }
       const nextSignature = settingsSignature(meshData, currentSettings.theme, currentSettings);
+      let reconciliation = null;
       if (nextSignature !== currentSignature) {
         rebuild(currentSettings);
       } else if (sourceChanged || renderPartsKey(meshData, currentSettings.theme, currentSettings) !== currentPartsKey) {
-        reconcile(currentSettings);
+        reconciliation = reconcile(currentSettings);
       }
-      applyMutableState(currentSettings);
+      const staticDelta = sourceChanged && reconciliation
+        && appliedStaticStateKey !== null && appliedStaticStateKey === nextStaticKey
+        && currentSettings.clip?.enabled !== true
+        && recordsHaveStaticSourceState(runtime.displayRecords);
+      if (staticDelta) applyStaticSourceDelta(currentSettings, reconciliation.dirtyRecords);
+      else applyMutableState(currentSettings);
       return api;
     },
     // `releaseGpu: false` keeps the components' GPU buffers and BVHs for a

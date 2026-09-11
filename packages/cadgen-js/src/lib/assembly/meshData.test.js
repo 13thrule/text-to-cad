@@ -536,12 +536,70 @@ test("new descriptor appearance, mirror and placement cannot reuse previous occu
     material: { roughness: 0.25 }, transform: [-1, 0, 0, 12, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] };
   const after = buildComposedPackageMeshData(edited, { a, b }, { previous: before });
   assert.notEqual(after.parts[0], before.parts[0]);
+  assert.equal(after.parts[1], before.parts[1], "unchanged rows cross an immutable revision boundary");
+  assert.equal(after.parts[2], before.parts[2]);
+  assert.equal(after.assemblyRoot.children[1], before.assemblyRoot.children[1], "unchanged tree branches cross the revision");
   assert.equal(after.parts[0].mirrored, true);
   assert.equal(after.parts[0].color, "#ff0000");
   assert.equal(after.parts[0].opacity, 0.5);
   assert.deepEqual(after.parts[0].material, { roughness: 0.25 });
   assert.deepEqual(after.parts[0].bounds, { min: [11, 0, 0], max: [12, 1, 0] });
   assert.equal(before.parts[0].mirrored, false);
+});
+
+test("cross-revision reuse conservatively invalidates any occurrence, component topology, or tree metadata change", () => {
+  const { descriptor, a, b } = reuseFixture();
+  const before = buildComposedPackageMeshData(descriptor, { a, b });
+
+  const futureAppearance = structuredClone(descriptor);
+  futureAppearance.occurrences[0].futureAppearance = { coating: "oxide", layers: [1, 2] };
+  const appearance = buildComposedPackageMeshData(futureAppearance, { a, b }, { previous: before });
+  assert.notEqual(appearance.parts[0], before.parts[0], "unknown future consumed keys take the safe fresh-row path");
+  assert.equal(appearance.parts[1], before.parts[1]);
+
+  const renamedTree = structuredClone(descriptor);
+  renamedTree.assembly.root.children[1].name = "renamed only in the structure tree";
+  const renamed = buildComposedPackageMeshData(renamedTree, { a, b }, { previous: before });
+  assert.equal(renamed.parts[1], before.parts[1], "tree-only metadata does not rebuild the render row");
+  assert.notEqual(renamed.assemblyRoot.children[1], before.assemblyRoot.children[1]);
+  assert.equal(renamed.assemblyRoot.children[1].name, "renamed only in the structure tree");
+
+  const changedTopology = { ...b, parts: b.parts.map((part) => ({ ...part, triangleCount: 7 })) };
+  const topology = buildComposedPackageMeshData(structuredClone(descriptor), { a, b: changedTopology }, { previous: before });
+  assert.notEqual(topology.parts[1], before.parts[1], "selector triangle ranges follow the exact component parts array");
+  assert.equal(topology.parts[0], before.parts[0]);
+
+  const partial = buildComposedPackageMeshData(structuredClone(descriptor), { a }, { previous: before });
+  assert.deepEqual(partial.parts.map((part) => part.id), ["first", "repeat"]);
+  assert.equal(partial.parts[0], before.parts[0]);
+  assert.equal(partial.parts[1], before.parts[2]);
+  assert.deepEqual(partial.missingComponentIds, ["b"]);
+});
+
+test("duplicate occurrence ids never borrow a prior row by id", () => {
+  const { descriptor, a, b } = reuseFixture();
+  const before = buildComposedPackageMeshData(descriptor, { a, b });
+  const duplicate = structuredClone(descriptor);
+  duplicate.occurrences[1].id = duplicate.occurrences[0].id;
+  duplicate.assembly.root.children[1].id = duplicate.occurrences[0].id;
+  const after = buildComposedPackageMeshData(duplicate, { a, b }, { previous: before });
+  assert.notEqual(after.parts[0], before.parts[0]);
+  assert.notEqual(after.parts[1], before.parts[0]);
+});
+
+test("mutating the same descriptor object cannot masquerade as an immutable occurrence revision", () => {
+  const { descriptor, a, b } = reuseFixture();
+  descriptor.occurrences[0].material = { roughness: 0.42 };
+  const before = buildComposedPackageMeshData(descriptor, { a, b });
+  descriptor.occurrences[0].transform = [...descriptor.occurrences[0].transform];
+  descriptor.occurrences[0].transform[3] = 91;
+  descriptor.occurrences[0].material.roughness = 0.19;
+  const after = buildComposedPackageMeshData(descriptor, { a, b }, { previous: before });
+  assert.notEqual(after.parts[0], before.parts[0]);
+  assert.equal(after.parts[0].transform[3], 91);
+  assert.equal(after.parts[0].material.roughness, 0.19);
+  assert.equal(before.parts[0].material.roughness, 0.42, "descriptor mutation cannot alter the displayed predecessor");
+  assert.equal(after.parts[1], before.parts[1]);
 });
 
 test("composed package drives a per-occurrence override colour through the material (hex, not vertex baking)", () => {

@@ -279,6 +279,7 @@ export function orderComponentsForProgressiveLoad(descriptor) {
  *   maxInFlightBytes?,                 // estimated decoded bytes in flight (PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES)
  *   sourceExpansionRatio?,             // conservative decoded/source estimate floor for this concrete tier
  *   retainedComponent?(cid, component),// already-owned exact meshData, bypassing decode admission
+ *   initialComposition?,               // immediately preceding same-file composition
  *   reserveLoad?({ cid, estimatedBytes }) -> { ok, token?, detail? },
  *   releaseLoad?(token), onMemoryLimitation?(detail),
  *   recoverMemoryPressure?(detail),    // one bounded reclaim attempt after admitted work drains
@@ -308,6 +309,7 @@ export function createProgressivePackageLoader({
   maxInFlightBytes = PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
   sourceExpansionRatio = 0,
   retainedComponent = null,
+  initialComposition = null,
   reserveLoad = null,
   releaseLoad = null,
   recoverMemoryPressure = null,
@@ -330,7 +332,7 @@ export function createProgressivePackageLoader({
   let publishes = 0;
   let publishedFinal = false;
   let retainedBytes = 0;
-  let previousComposition = null;
+  let previousComposition = initialComposition;
 
   function notifyRetained() {
     onRetainedChange?.({ loaded, total, retainedBytes });

@@ -56,11 +56,14 @@ export function editingPreviewEntry(state, catalogEntry) {
   // Follow edits remains on the authored tree after this revision's STEP save.
   // The saved catalog is selected only for a completed revision which had no
   // matching preview (a no-op), or when the server says that preview's object
-  // graph is gone. In both cases the catalog must first prove the exact saved
-  // tree and document-byte identities; otherwise the last usable view stays.
-  const savedMatchesCatalog = state.saved &&
-    catalogEntry?.hash === state.saved.tree &&
-    catalogEntry?.documentHash === state.saved.documentHash;
+  // graph is gone. If the latest save failed, an earlier validated saved
+  // result can still recover that expired preview. In all cases the catalog
+  // must prove the exact saved tree and document-byte identities; a merely
+  // pending revision must not displace the previous usable preview.
+  const savedFallback = state.saved || (state.previewUnavailable ? state.retainedSaved : null);
+  const savedMatchesCatalog = savedFallback &&
+    catalogEntry?.hash === savedFallback.tree &&
+    catalogEntry?.documentHash === savedFallback.documentHash;
   if (savedMatchesCatalog && (
     state.previewUnavailable === true || state.preview.revision !== state.revision
   )) return null;

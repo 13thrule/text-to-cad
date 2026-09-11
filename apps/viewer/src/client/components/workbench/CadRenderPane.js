@@ -266,6 +266,7 @@ export default function CadRenderPane({
   previewMode,
   viewportFrameInsets,
   viewerLoading,
+  retainingPreviousStepMesh = false,
   viewerAlert,
   stepUpdateInProgress,
   referenceSelectionPending = false,
@@ -521,8 +522,8 @@ export default function CadRenderPane({
         viewPlaneOffsetBottom="1rem"
         compactViewPlane={false}
         viewportFrameInsets={viewportFrameInsets}
-        isLoading={viewerLoading}
-        pickMode={!hasTopology && !hasParts && !measureModeActive
+        isLoading={viewerLoading && !retainingPreviousStepMesh}
+        pickMode={retainingPreviousStepMesh || (!hasTopology && !hasParts && !measureModeActive)
           ? VIEWER_PICK_MODE.NONE
           : viewerPickModeForRenderPane({
             panToolActive,
@@ -545,19 +546,19 @@ export default function CadRenderPane({
           : (renderPartsIndividually
             || Boolean(stepParameters?.definition)
             || Boolean(resolvedStepAnimation?.clip))}
-        pickableParts={hasParts ? assemblyParts : EMPTY_LIST}
+        pickableParts={hasParts && !retainingPreviousStepMesh ? assemblyParts : EMPTY_LIST}
         hiddenPartIds={hasParts ? hiddenPartIds : []}
         selectedPartIds={hasParts ? selectedPartIds : []}
         hoveredPartId={hasParts ? hoveredPartId : ""}
-        hoveredReferenceId={hasTopology ? hoveredReferenceId : ""}
-        selectedReferenceIds={hasTopology ? selectedReferenceIds : []}
-        selectorRuntime={hasTopology ? selectorRuntime : null}
-        displayEdgeRuntime={hasTopology ? displayEdgeRuntime : null}
+        hoveredReferenceId={hasTopology && !retainingPreviousStepMesh ? hoveredReferenceId : ""}
+        selectedReferenceIds={hasTopology && !retainingPreviousStepMesh ? selectedReferenceIds : []}
+        selectorRuntime={hasTopology && !retainingPreviousStepMesh ? selectorRuntime : null}
+        displayEdgeRuntime={hasTopology && !retainingPreviousStepMesh ? displayEdgeRuntime : null}
         stepParameters={capabilities.params === PARAMETER_SOURCE.SIDECAR ? stepParameters : null}
         stepAnimation={capabilities.params === PARAMETER_SOURCE.SIDECAR ? resolvedStepAnimation : null}
-        pickableFaces={hasTopology ? pickableFaces : []}
-        pickableEdges={hasTopology ? pickableEdges : []}
-        pickableVertices={hasTopology ? pickableVertices : []}
+        pickableFaces={hasTopology && !retainingPreviousStepMesh ? pickableFaces : []}
+        pickableEdges={hasTopology && !retainingPreviousStepMesh ? pickableEdges : []}
+        pickableVertices={hasTopology && !retainingPreviousStepMesh ? pickableVertices : []}
         focusedPartId={hasParts ? focusedPartIds : ""}
         boundsAnimationActive={cadViewerBoundsAnimationActive}
         drawingEnabled={drawEnabled && drawToolActive}

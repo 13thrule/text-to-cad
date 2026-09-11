@@ -127,7 +127,11 @@ import { scheduleRuntimeRaycastBvh } from "cadgen-js/lib/viewer/raycastBvh";
 import { renderMemoryAccounting } from "../render/renderMemoryAccounting";
 import { viewerMemoryPolicy } from "../render/viewerMemoryPolicy.js";
 import { inactiveExplodedViewNeedsReset } from "../render/explodedViewLifecycle.js";
-import { createStaticSceneReset, staticSceneResetEligible } from "../render/staticSceneReset.js";
+import {
+  createStaticSceneReset,
+  sceneSourceAlreadyPlaced,
+  staticSceneResetEligible
+} from "../render/staticSceneReset.js";
 import { sampleLodCamera, resampleLodAfterViewportResize } from "../render/lodCameraSample.js";
 import {
   buildSurfaceLinePositions,
@@ -4160,6 +4164,16 @@ const CadViewer = forwardRef(function CadViewer({
       !Array.isArray(runtime.displayRecords) ||
       !runtime.displayRecords.length
     ) {
+      return;
+    }
+    // Component-package revisions already adopted this exact wrapper through
+    // cadScene.update in the scene-sync effect above. That adoption applied
+    // the changed record transforms and the same effect refreshed bounds,
+    // lighting, floor and stage. Repeating this loop touched every occurrence
+    // after an otherwise selective update. Posed wrappers (URDF/SDF) retain a
+    // stable geometrySource, so their scene-sync effect does not run and their
+    // distinct meshData wrapper still reaches the placement path below.
+    if (sceneSourceAlreadyPlaced(runtime, meshData)) {
       return;
     }
 

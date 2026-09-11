@@ -16,9 +16,17 @@ export function shouldStartMeshLoad({
   isAssembly,
   interactionReady,
   hydrationFailed,
+  failedTargetFile,
+  failedTargetHash,
   ...target
 } = {}) {
   if (meshLoadTargetsEntry(target)) return false;
+  if (
+    !selectedMeshMatches &&
+    String(failedTargetFile || "") === String(target.entryFile || "") &&
+    String(target.entryHash || "") &&
+    String(failedTargetHash || "") === String(target.entryHash || "")
+  ) return false;
   if (selectedMeshMatches && (!isAssembly || interactionReady || hydrationFailed)) return false;
   return true;
 }

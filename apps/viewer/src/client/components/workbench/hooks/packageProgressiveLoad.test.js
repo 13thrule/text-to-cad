@@ -234,6 +234,55 @@ test("same-file complete revision replacement publishes atomically and accounts 
   assert.equal(shouldRetainCompleteSameFileMesh({ ...current, assemblyInteractionReady: false }, { file: "gear.step", kind: "assembly" }, "new"), false);
 });
 
+test("atomic same-file revision carries unchanged occurrence and tree identity through final publication", async () => {
+  const beforeDescriptor = makeDescriptor({ componentCount: 2, occurrenceCount: 24,
+    transformFor: (index) => translation(index, 0, 0) });
+  const components = { c0: fakeComponent("c0"), c1: fakeComponent("c1") };
+  const before = buildComposedPackageMeshData(beforeDescriptor, components);
+  const afterDescriptor = structuredClone(beforeDescriptor);
+  afterDescriptor.occurrences[7].transform = translation(70, 4, 0);
+  let final = null;
+  const loader = createProgressivePackageLoader({
+    descriptor: afterDescriptor,
+    initialComposition: before,
+    retainedComponent: (cid) => components[cid],
+    loadComponent: async () => { throw new Error("retained components must not decode"); },
+    publishIntermediate: false,
+    onPublish: (publication) => { final = publication; }
+  });
+  await loader.run();
+  assert.ok(final?.final);
+  for (let index = 0; index < before.parts.length; index += 1) {
+    if (index === 7) assert.notEqual(final.meshData.parts[index], before.parts[index]);
+    else assert.equal(final.meshData.parts[index], before.parts[index]);
+  }
+  assert.notEqual(final.meshData.assemblyRoot.children[7], before.assemblyRoot.children[7]);
+  assert.equal(final.meshData.assemblyRoot.children[8], before.assemblyRoot.children[8]);
+  assert.equal(final.meshData.parts[7].transform[3], 70);
+  assert.deepEqual(final.meshData.parts[7].bounds, { min: [70, 4, 0], max: [71, 5, 0] });
+});
+
+test("failed atomic revision drops staged ownership without mutating or publishing its retained predecessor", async () => {
+  const beforeDescriptor = makeDescriptor({ componentCount: 2, occurrenceCount: 4 });
+  const components = { c0: fakeComponent("c0"), c1: fakeComponent("c1") };
+  const before = buildComposedPackageMeshData(beforeDescriptor, components);
+  const afterDescriptor = structuredClone(beforeDescriptor);
+  afterDescriptor.occurrences[0].transform = translation(44, 0, 0);
+  let publications = 0;
+  const loader = createProgressivePackageLoader({
+    descriptor: afterDescriptor,
+    initialComposition: before,
+    retainedComponent: (cid) => cid === "c0" ? components.c0 : null,
+    loadComponent: async () => { throw new Error("replacement decode failed"); },
+    publishIntermediate: false,
+    onPublish: () => { publications += 1; }
+  });
+  await assert.rejects(loader.run(), /replacement decode failed/);
+  assert.equal(publications, 0);
+  assert.equal(loader.retainedComponentCount(), 0, "failure releases request-local staged component references");
+  assert.equal(before.parts[0].transform[3], 0, "the displayed predecessor remains immutable after rollback");
+});
+
 test("producer replacement fences old replies and swaps only a complete new view", async () => {
   const descriptor = makeDescriptor({ componentCount: 4, occurrenceCount: 4 });
   const priorScene = { view: "old" };

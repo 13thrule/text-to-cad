@@ -97,3 +97,23 @@ test("failed saves and stale missing-preview events cannot displace the visible 
   assert.equal(stale, failed);
   assert.equal(stale.previewUnavailable, false);
 });
+
+test("an expired failed preview recovers an earlier saved result only from its exact catalog identity", () => {
+  const saved = { tree: "saved-1", documentHash: "bytes-1" };
+  const entry = { file: "/part.step", hash: saved.tree, documentHash: saved.documentHash };
+  const first = reduceEditingPreview(initialEditingPreview(), update(1, "preview-1", { saved }));
+  const pending = reduceEditingPreview(first, update(2));
+  assert.equal(editingPreviewEntry(pending, entry).hash, "preview-1");
+  const next = reduceEditingPreview(pending, update(2, "preview-2"));
+  const failed = reduceEditingPreview(next, update(2, null, { state: "failed", error: "Disk full" }));
+  assert.equal(failed.saved, null);
+  assert.deepEqual(failed.retainedSaved, saved);
+  assert.equal(editingPreviewEntry(failed, entry).hash, "preview-2");
+  const expired = reduceEditingPreview(failed, update(2, null, {
+    state: "failed", error: "Preview geometry is no longer available in the cache", previewUnavailable: true,
+  }));
+  assert.equal(editingPreviewEntry(expired, { ...entry, hash: "another-tree" }).hash, "preview-2");
+  assert.equal(editingPreviewEntry(expired, { ...entry, documentHash: "changed-bytes" }).hash, "preview-2");
+  assert.equal(editingPreviewEntry(expired, entry), null);
+  assert.equal(editingPreviewLabel(expired, false), "Preview geometry is no longer available in the cache");
+});
