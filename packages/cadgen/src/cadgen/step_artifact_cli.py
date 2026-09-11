@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 from typing import Callable
@@ -15,6 +15,7 @@ from cadgen._internal.generation import (
     _entry_spec_from_source,
     _generate_part_outputs,
     _generated_assembly_glb_closure_current,
+    _manifest_records_edge_visibility_classes,
     _produce_declared_mesh_exports,
     run_script_generator,
 )
@@ -30,6 +31,14 @@ from cadgen.step_targets import (
     StepTopologyArtifact,
     StepTopologyArtifactError,
 )
+
+
+@dataclass(frozen=True, kw_only=True)
+class _ImportedArtifactSnapshot(StepTopologyArtifact):
+    """One verified imported selection, owned only by this currency check."""
+
+    document_hash: str
+    tree: str
 
 
 def _relative_to_base(repo_root: Path, path: Path) -> str:
@@ -130,17 +139,34 @@ def _generated_result_payload(spec: EntrySpec, scene: LoadedStepScene, stats: di
     )
 
 
-def _existing_result_payload(spec: EntrySpec, artifact: StepTopologyArtifact) -> dict[str, object]:
+def _existing_result_payload(spec: EntrySpec, artifact: StepTopologyArtifact) -> dict[str, object] | None:
     from cadgen._internal.source_sidecar import read_source_sidecar
 
     # Bind declarations to the bytes beside the sidecar, not the topology
     # manifest's remembered digest. The document may have been replaced after
     # that artifact was produced.
     step_hash = step_file_hash(spec.step_path)
+    if isinstance(artifact, _ImportedArtifactSnapshot) and step_hash != artifact.document_hash:
+        return None
     sidecar = read_source_sidecar(spec.step_path, document_hash=step_hash) or {}
     source_kind = "python" if sidecar else "step"
     source_hash = str(sidecar.get("sourceHash") or "")
     stats = artifact.manifest.get("stats")
+    if isinstance(artifact, _ImportedArtifactSnapshot):
+        # capture_tree already classified this exact root before flattening.
+        # Do not select a newer document index or reopen the tree for its kind.
+        payload: dict[str, object] = {
+            "ok": True,
+            "document": relative_to_cwd(spec.step_path),
+            "tree": artifact.tree,
+            "entryKind": artifact.kind,
+            "sourceKind": source_kind,
+            "stats": stats if isinstance(stats, dict) else {},
+            "skipped": True,
+        }
+        if source_hash:
+            payload["sourceHash"] = source_hash
+        return payload
     return _result_payload(
         spec,
         source_kind=source_kind,
@@ -152,6 +178,32 @@ def _existing_result_payload(spec: EntrySpec, artifact: StepTopologyArtifact) ->
 
 
 def _current_artifact_for_spec(spec: EntrySpec) -> StepTopologyArtifact | None:
+    if spec.source == "imported":
+        from cadgen.catalog import result_snapshot_for
+        from cadgen.store.objects import object_path
+        from cadgen.store.trees import capture_tree
+
+        if spec.step_path is None or not spec.step_path.is_file():
+            return None
+        snapshot = result_snapshot_for(spec.entry_path)
+        if snapshot is None:
+            return None
+        try:
+            manifest, _ = capture_tree(snapshot[1], retain_payloads=False)
+        except (OSError, ValueError):
+            return None
+        if not _manifest_records_edge_visibility_classes(manifest):
+            return None
+        return _ImportedArtifactSnapshot(
+            cad_path=spec.cad_ref,
+            source_path=spec.source_path,
+            step_path=spec.step_path,
+            artifact_path=object_path(snapshot[1]),
+            manifest=manifest,
+            document_hash=snapshot[0],
+            tree=snapshot[1],
+        )
+
     # A compile completes when its native geometry is available. Display
     # derivations belong to their consumers and must never run in this gate.
     if not (
@@ -328,11 +380,9 @@ def build_step_artifact(
     if not force:
         existing_artifact = _current_artifact_for_spec(existing_spec)
         if existing_artifact is not None:
-            return _with_declared_exports(
-                _existing_result_payload(existing_spec, existing_artifact),
-                existing_spec,
-                logger=logger,
-            )
+            payload = _existing_result_payload(existing_spec, existing_artifact)
+            if payload is not None:
+                return _with_declared_exports(payload, existing_spec, logger=logger)
 
     # Progress covers generation and declared outputs. Its scope is the model
     # path, which remains stable while a rebuild changes the result's tree.
@@ -355,11 +405,9 @@ def build_step_artifact(
         if progress.skipped:
             artifact = _current_artifact_for_spec(existing_spec)
             if artifact is not None:
-                return _with_declared_exports(
-                    _existing_result_payload(existing_spec, artifact),
-                    existing_spec,
-                    logger=logger,
-                )
+                payload = _existing_result_payload(existing_spec, artifact)
+                if payload is not None:
+                    return _with_declared_exports(payload, existing_spec, logger=logger)
         import contextlib
 
         with contextlib.ExitStack() as slot:
