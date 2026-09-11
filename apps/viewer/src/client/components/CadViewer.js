@@ -1736,6 +1736,7 @@ const CadViewer = forwardRef(function CadViewer({
   meshSourceAdoptionRef.current = onMeshSourceAdoption;
 
   const viewerAlertChangeRef = useRef(onViewerAlertChange);
+  const sceneUpdateAlertRef = useRef(null);
   // The last { title, message } the scene-effects pass raised, so it can be
   // deduplicated across frames and cleared when a pass runs clean.
   const sceneEffectsAlertRef = useRef(null);
@@ -4078,6 +4079,13 @@ const CadViewer = forwardRef(function CadViewer({
     if (meshSourceAdoptionRef.current?.(meshData, adopted) === false) {
       throw new Error("The displayed detail does not match its requested component occurrences.");
     }
+    if (adopted && sceneUpdateAlertRef.current) {
+      const recoveredAlert = sceneUpdateAlertRef.current;
+      sceneUpdateAlertRef.current = null;
+      // Clear this failure only after real adoption, preserving any newer
+      // environment or animation alert that replaced it during recovery.
+      viewerAlertChangeRef.current?.(current => current === recoveredAlert ? null : current);
+    }
     } catch (error) {
       staticSceneResetRef.current.invalidate();
       if (error?.failedCadScene) {
@@ -4096,15 +4104,17 @@ const CadViewer = forwardRef(function CadViewer({
         recovery = meshSourceAdoptionRef.current?.(meshData, false, { disposed: true, recover: true });
       } catch (cleanupError) {
         meshSourceAdoptionRef.current?.(meshData, false, { cleanupFailed: true });
-        viewerAlertChangeRef.current?.({ severity: "error", title: "Scene cleanup failed",
-          message: "Detail work has stopped because scene ownership could not be released. Reload the viewer." });
+        sceneUpdateAlertRef.current = { severity: "error", title: "Scene cleanup failed",
+          message: "Detail work has stopped because scene ownership could not be released. Reload the viewer." };
+        viewerAlertChangeRef.current?.(sceneUpdateAlertRef.current);
         setError(cleanupError instanceof Error ? cleanupError.message : String(cleanupError));
         return;
       }
-      viewerAlertChangeRef.current?.({ severity: "error", title: "Detail update failed",
+      sceneUpdateAlertRef.current = { severity: "error", title: "Detail update failed",
         message: recovery?.recovering
           ? "The partial scene was cleared. The previous view is being restored; reload if restoration fails."
-          : "The scene was cleared after the display failed. Reload the model to continue." });
+          : "The scene was cleared after the display failed. Reload the model to continue." };
+      viewerAlertChangeRef.current?.(sceneUpdateAlertRef.current);
       setError(error instanceof Error ? error.message : String(error));
     }
   }, [
