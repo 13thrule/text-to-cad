@@ -33,6 +33,7 @@ import secrets
 import stat
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -247,6 +248,8 @@ class Channel:
 
     def __init__(self, conn) -> None:
         self._conn = conn
+        self._close_guard = threading.Lock()
+        self._closed = False
 
     def send(self, payload: bytes) -> None:
         self._conn.send_bytes(payload)
@@ -273,6 +276,16 @@ class Channel:
             return b""
 
     def close(self) -> None:
+        # Connection.close() is idempotent only when calls are serialized: it
+        # clears its integer handle AFTER closing it. Two concurrent callers can
+        # therefore both close the same number, and the second can close an
+        # unrelated descriptor if the OS reused that number in between. Claim
+        # close ownership here, then release the guard before the underlying
+        # close so a cancellation never waits behind a blocked receive.
+        with self._close_guard:
+            if self._closed:
+                return
+            self._closed = True
         try:
             self._conn.close()
         except OSError:

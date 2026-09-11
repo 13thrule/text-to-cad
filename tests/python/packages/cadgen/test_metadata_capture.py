@@ -56,6 +56,8 @@ class MetadataCapture(unittest.TestCase):
         }
         self.manager = SurfaceSubscribers()
         self.addCleanup(lambda: [self.manager.cancel(token) for token in list(self.manager._jobs)])
+        trees._reset_metadata_capture_cache()
+        self.addCleanup(trees._reset_metadata_capture_cache)
 
     def test_metadata_releases_each_payload_and_native_capture_stays_owned(self):
         live = set()
@@ -98,7 +100,7 @@ class MetadataCapture(unittest.TestCase):
         self.assertEqual(second.bounding_box().min.X, previous)
         self.assertEqual(captured, self.payloads)
 
-    def test_resolve_and_each_poll_read_one_fresh_complete_closure(self):
+    def test_resolve_and_polls_recheck_one_verified_complete_closure(self):
         pending = PendingSurface()
         read = trees.read_verified_object
         with mock.patch.object(trees, "read_verified_object", wraps=read) as reads, \
@@ -108,19 +110,56 @@ class MetadataCapture(unittest.TestCase):
             reads.reset_mock()
             polled = self.manager.resolve(json.dumps({**self.request, "job": first["job"]}).encode())
             self.assertEqual(polled["job"], first["job"])
-            self.assertEqual(Counter(call.args[0] for call in reads.call_args_list), Counter(self.payloads.keys()))
+            self.assertFalse(reads.call_args_list)
             submit.assert_called_once()
         records = surfaces.derive(self.tree, [self.cid], producer=self.producer)
         pending.set_result(records)
         with mock.patch.object(trees, "read_verified_object", wraps=read) as reads:
             ready = self.manager.resolve(json.dumps({**self.request, "job": first["job"]}).encode())
             self.assertEqual(ready["components"][self.cid]["state"], "ready")
-            self.assertEqual(Counter(call.args[0] for call in reads.call_args_list), Counter(self.payloads.keys()))
+            self.assertFalse(reads.call_args_list)
         self.assertEqual(trees.capture_tree(self.tree)[0], self.geometry)
+
+    def test_metadata_cache_is_private_bounded_and_store_root_isolated(self):
+        trees._reset_metadata_capture_cache()
+        first, _ = trees.capture_tree(self.tree, retain_payloads=False)
+        first["occurrences"][0]["name"] = "private mutation"
+        second, _ = trees.capture_tree(self.tree, retain_payloads=False)
+        self.assertEqual(second, self.geometry)
+        self.assertGreater(trees._METADATA_CAPTURE_CACHE_SIZE, 0)
+        self.assertLessEqual(trees._METADATA_CAPTURE_CACHE_SIZE, trees._METADATA_CAPTURE_CACHE_CAPACITY)
+
+        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(self.root / "empty-store")}):
+            with self.assertRaises(FileNotFoundError):
+                trees.capture_tree(self.tree, retain_payloads=False)
+
+        trees._reset_metadata_capture_cache()
+        with mock.patch.object(trees, "_METADATA_CAPTURE_CACHE_CAPACITY", 1):
+            self.assertEqual(trees.capture_tree(self.tree, retain_payloads=False)[0], self.geometry)
+            self.assertFalse(trees._METADATA_CAPTURE_CACHE)
+            self.assertEqual(trees._METADATA_CAPTURE_CACHE_SIZE, 0)
+
+    def test_metadata_cache_reverifies_after_same_address_atomic_replacement(self):
+        trees._reset_metadata_capture_cache()
+        trees.capture_tree(self.tree, retain_payloads=False)
+        entry = next(iter(self.geometry["components"].values()))
+        target = object_path(entry["brep"])
+        replacement = target.with_name(f".{target.name}.replacement")
+        replacement.write_bytes(target.read_bytes())
+        os.replace(replacement, target)
+
+        read = trees.read_verified_object
+        with mock.patch.object(trees, "read_verified_object", wraps=read) as reads:
+            self.assertEqual(trees.capture_tree(self.tree, retain_payloads=False)[0], self.geometry)
+            self.assertEqual(Counter(call.args[0] for call in reads.call_args_list), Counter(self.payloads.keys()))
+            reads.reset_mock()
+            self.assertEqual(trees.capture_tree(self.tree, retain_payloads=False)[0], self.geometry)
+            self.assertFalse(reads.call_args_list)
 
     def test_metadata_entrypoints_read_once_before_producer_selection(self):
         from cadgen.store.view import descriptor_for_view
 
+        trees._reset_metadata_capture_cache()
         read = trees.read_verified_object
         with mock.patch.object(trees, "read_verified_object", wraps=read) as reads:
             def selected(*args):
@@ -133,7 +172,7 @@ class MetadataCapture(unittest.TestCase):
             self.assertEqual(Counter(call.args[0] for call in reads.call_args_list), Counter(self.payloads.keys()))
             reads.reset_mock()
             self.assertEqual(surfaces.request_view(self.tree, producer=self.producer), self.view)
-            self.assertEqual(Counter(call.args[0] for call in reads.call_args_list), Counter(self.payloads.keys()))
+            self.assertFalse(reads.call_args_list)
 
     def test_missing_or_corrupt_unrequested_geometry_is_rejected_every_time(self):
         records = surfaces.derive(self.tree, [self.cid], producer=self.producer)
@@ -141,8 +180,10 @@ class MetadataCapture(unittest.TestCase):
         target = object_path(other["brep"])
         original = target.read_bytes()
         record = records[self.cid]
-        for malformed in (None, b"corrupt geometry"):
+        same_size_corruption = bytes([original[0] ^ 1]) + original[1:]
+        for malformed in (None, b"corrupt geometry", same_size_corruption):
             with self.subTest(missing=malformed is None):
+                trees.capture_tree(self.tree, retain_payloads=False)
                 if malformed is None:
                     target.unlink()
                 else:
@@ -152,6 +193,7 @@ class MetadataCapture(unittest.TestCase):
                         for call in (
                             lambda: trees.capture_tree(self.tree, retain_payloads=False),
                             lambda: surfaces.request_view(self.tree, producer=self.producer),
+                            lambda: surfaces.derive(self.tree, [self.cid], producer=self.producer),
                             lambda: self.manager.resolve(json.dumps(self.request).encode()),
                             lambda: pinned_surface_object(self.tree, record["surfaceInput"], record["object"]),
                         ):
@@ -160,6 +202,26 @@ class MetadataCapture(unittest.TestCase):
                 finally:
                     target.write_bytes(original)
         self.assertEqual(trees.capture_tree(self.tree), (self.geometry, self.payloads))
+
+    def test_selected_surface_derivation_reads_only_its_exact_native_payload(self):
+        records = surfaces.derive(self.tree, [self.cid], producer=self.producer)
+        selected = self.geometry["components"][self.cid]
+        other = next(entry for cid, entry in self.geometry["components"].items() if cid != self.cid)
+        trees._reset_metadata_capture_cache()
+        trees.capture_tree(self.tree, retain_payloads=False)
+
+        graph_read = trees.read_verified_object
+        selected_read = surfaces.read_verified_object
+        with mock.patch.object(trees, "read_verified_object", wraps=graph_read) as graph_reads, \
+             mock.patch.object(surfaces, "read_verified_object", wraps=selected_read) as selected_reads:
+            self.assertEqual(
+                surfaces.derive(self.tree, [self.cid], force=True, producer=self.producer),
+                records,
+            )
+        self.assertFalse(graph_reads.call_args_list)
+        read_digests = [call.args[0] for call in selected_reads.call_args_list]
+        self.assertIn(selected["brep"], read_digests)
+        self.assertNotIn(other["brep"], read_digests)
 
 
 if __name__ == "__main__":

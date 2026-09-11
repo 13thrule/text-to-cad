@@ -7,7 +7,6 @@ inputs. Disconnect/cancellation detaches that subscriber, not another reader.
 
 from __future__ import annotations
 
-import copy
 import json
 import threading
 import time
@@ -32,9 +31,10 @@ def _request(body: bytes) -> tuple[dict, dict, dict, str | None, dict]:
     if type(value) is not dict or not fields <= set(value) or set(value) - fields - {"job"}:
         raise ValueError("surface request requires tree, viewId, producer and components")
     producer = surfaces.producer_fields(value["producer"])
-    canonical, _ = capture_tree(value["tree"], retain_payloads=False)
-    view = surfaces._view_from_geometry(value["tree"], copy.deepcopy(canonical), producer=producer)
-    if value["viewId"] != view["viewId"]:
+    tree = value["tree"]
+    canonical, _ = capture_tree(tree, retain_payloads=False)
+    view_id = surfaces._view_id(tree, producer)
+    if value["viewId"] != view_id:
         raise ValueError("surface request mixes runtime views")
     components = value["components"]
     if type(components) is not list or not 0 < len(components) <= MAX_COMPONENTS:
@@ -45,21 +45,22 @@ def _request(body: bytes) -> tuple[dict, dict, dict, str | None, dict]:
         if type(item) is not dict or not {"cid", "surfaceInput"} <= set(item) or set(item) - {"cid", "surfaceInput", "expectedSurfaceObject"}:
             raise ValueError("invalid surface component request")
         cid = item["cid"]
-        entry = view["components"].get(cid)
-        if entry is None or cid in selected or item["surfaceInput"] != entry["surfaceInput"]:
+        entry = canonical["components"].get(cid)
+        surface_input = surfaces.surface_input(entry, producer) if entry is not None else None
+        if entry is None or cid in selected or item["surfaceInput"] != surface_input:
             raise ValueError("surface request names an unpinned component or input")
-        selected[cid] = entry
+        selected[cid] = {"surfaceInput": surface_input}
         if "expectedSurfaceObject" in item:
             digest = item["expectedSurfaceObject"]
             if type(digest) is not str or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
                 raise ValueError("expected surface object must be a full lowercase digest")
-            expected[entry["surfaceInput"]] = digest
+            expected[surface_input] = digest
     job = value.get("job")
     if job is not None and (type(job) is not str or len(job) != 32 or any(c not in "0123456789abcdef" for c in job)):
         raise ValueError("invalid surface subscriber token")
     operation = {"kind": "surfaces", "tree": value["tree"], "cids": sorted(selected),
                  "producer": producer, "expected_objects": expected}
-    return view, selected, operation, job, canonical
+    return {"viewId": view_id}, selected, operation, job, canonical
 
 
 def surface_object_url(tree: str, surface_input: str, digest: str) -> str:

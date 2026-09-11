@@ -1,0 +1,486 @@
+{
+  "date": "2026-09-11",
+  "note": "Individual bounded local checkpoints, not a repeated statistical study. Source build and saved foreign STEP fixtures differ. Cold display excludes STEP import; cache-write completion is not a presented-frame timestamp.",
+  "evidence": {
+    "source_builds": {
+      "date": "2026-09-11",
+      "fixture": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/moonwatch-bench-20260911",
+      "runtime": {
+        "python": "/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python",
+        "pythonpath": "/private/tmp/moonwatch-bench-20260911/frozen-final",
+        "store": "/private/tmp/moonwatch-bench-20260911/daemon-store",
+        "socket": "/private/tmp/moonwatch-bench-20260911/daemon.sock",
+        "mode": "actual persistent daemon",
+        "jobs": 4,
+        "daemon_jobs_served_final": 37,
+        "daemon_imports_final": 13,
+        "daemon_crashes_final": 1,
+        "daemon_recycles_final": 0,
+        "daemon_crash_note": "The sole crash is the intentionally interrupted first movement_base attempt at the 100 second cap."
+      },
+      "small": {
+        "model": "src/finishing_sampler.py",
+        "baseline_parameter": "F.train_wheel(50, 9.0, ...)",
+        "edited_parameter": "F.train_wheel(52, 9.0, ...)",
+        "cold_wall_seconds_including_daemon_start": 18.27,
+        "cold_cadgen_total_seconds": 14.47,
+        "cold_model_body_seconds": 13.45,
+        "warm_noop_wall_seconds": 0.13,
+        "warm_noop_cadgen_seconds": 0.009,
+        "warm_edit_wall_seconds": 5.51,
+        "warm_edit_model_body_seconds": 4.59,
+        "baseline_tree": "27ef9b9187897d6f253556d9176aeee34913341da8cb34f284c83f79b4c3c473",
+        "edited_tree": "615e8fedc500831a081ade78ea480fb87c932cb1f8e24d2af338cd8b72e802d0",
+        "artifact_bytes": 3005238,
+        "artifact_sha256": "f33f40f6e454238a01d75e83a0dbba81ad117937c26f7aec827ad2b9ecaaa6ed",
+        "facts": {
+          "occurrences": 8,
+          "unique_shapes": 8,
+          "faces": 768,
+          "edges": 2072,
+          "size_mm": [
+            28.3395,
+            19.0,
+            3.14
+          ]
+        },
+        "validation": "PASS: all solids valid, closed, positive volume; self-intersection checked once per unique shape",
+        "validation_wall_seconds": 4.27,
+        "snapshot_wall_seconds": 1.79,
+        "snapshot_bytes": 181558,
+        "snapshot": "/private/tmp/moonwatch-bench-20260911/finishing_sampler.png"
+      },
+      "medium": {
+        "model": "src/chrono_works.py",
+        "baseline_parameter": "lib/mvt_chrono.py STAR_TEETH = 21",
+        "edited_parameter": "lib/mvt_chrono.py STAR_TEETH = 22",
+        "cold_wall_seconds": 57.18,
+        "cold_model_body_seconds": 54.06,
+        "warm_edit_21_to_22_wall_seconds": 7.69,
+        "warm_edit_model_body_seconds": 4.97,
+        "warm_noop_after_edit_wall_seconds": 0.17,
+        "warm_reverse_edit_22_to_21_wall_seconds": 6.66,
+        "final_restore_21_to_22_wall_seconds": 6.47,
+        "baseline_tree": "7f4a2e6c41b8272d4d545b433ee7f867d7b4e34b6cead8c7ec31ee00b5a288f6",
+        "edited_tree": "f0b1279c9f827dbe89db2926425067653f4e83ff464910749f22756b93354f90",
+        "occurrences": 73,
+        "unique_shapes": 69,
+        "changed_occurrences": [
+          {
+            "ref": "o1.1",
+            "label": "column_wheel",
+            "component_21": "83300dc7b4148911",
+            "component_22": "2b1608cc9815e931"
+          }
+        ],
+        "unchanged_occurrence_count": 72,
+        "column_wheel_21": {
+          "size_mm": [
+            4.581980313675219,
+            4.585418577489323,
+            0.980000000000385
+          ],
+          "center_mm": [
+            8.29185201153052,
+            3.5952950958646612,
+            3.4100000000001924
+          ]
+        },
+        "column_wheel_22": {
+          "size_mm": [
+            4.5597265136919995,
+            4.59975234403061,
+            0.980000000000385
+          ],
+          "center_mm": [
+            8.3,
+            3.6,
+            3.4100000000001924
+          ]
+        },
+        "targeted_column_wheel_validation": "PASS: valid, closed, positive volume, self-intersection checked",
+        "whole_subassembly_validation": "PASS: all 73 occurrences valid, closed, positive volume; self-intersection deliberately skipped because changed shape received the full check",
+        "whole_subassembly_validation_wall_seconds": 2.52,
+        "artifact_bytes": 13209990,
+        "artifact_sha256": "f4ab6b482dc38ad7656be7515be4c741d4e064be91a9a2e9fe8794a353475c19",
+        "snapshot_wall_seconds": 4.28,
+        "snapshot_bytes": 318452,
+        "snapshot": "/private/tmp/moonwatch-bench-20260911/chrono_works.png"
+      },
+      "full_authored_assembly": {
+        "model": "src/moonwatch.py",
+        "qualification": "authored Moonwatch source build with all child models warm; not an imported STEP wrapper",
+        "cold_full_skipped": true,
+        "cold_full_skip_reason": "A required movement_base child alone exceeded 98 seconds before its first publish, while bracelet cold took 57.97 seconds and chrono cold took 57.18 seconds; a cold root could not stay within the 120 second cap.",
+        "warm_children_build_wall_seconds": 63.47,
+        "warm_children_tree": "185e0f5b63d6734188b1018d5fba141eaa6e993e75b63363629d16289e3b4cb5",
+        "warm_children_model_body_seconds": 1.85,
+        "warm_children_preview_ready_seconds": 36.495,
+        "warm_children_step_saved_seconds": 62.645,
+        "warm_children_noop_wall_seconds": 0.56,
+        "edit": "lib/mvt_chrono.py STAR_TEETH 21 -> 22",
+        "edit_wall_seconds": 46.07,
+        "edit_tree": "8afa5a7cd69f3371caf6a732a51a104f903dd207ee490e57332ec4349541bf9f",
+        "edit_preview_ready_seconds": 18.925,
+        "edit_step_saved_seconds": 44.789,
+        "edit_preview_to_step_saved_seconds": 25.864,
+        "post_edit_noop_wall_seconds": 0.6,
+        "post_edit_noop_tree": "8afa5a7cd69f3371caf6a732a51a104f903dd207ee490e57332ec4349541bf9f",
+        "post_edit_noop_sha256": "8e55a3022c1f812aa890a006e11855b35884c5a35d1a2c9290b322cc0f215ea2",
+        "artifact_bytes": 120270607,
+        "changed_component_occurrences": 1,
+        "total_component_occurrences": 192,
+        "changed_component": "o1.4.3.1 column_wheel",
+        "stable_child_trees": {
+          "case": "8c912c3402f199c2eeb4e17851c95d119bb2716071994798772cbad556173cd0",
+          "dial_and_hands": "ba2d8e1499fab3f343115a6f8d6f584ff086a006f062c8eb93b37cc019350452",
+          "bracelet": "40016f54297cef198e53cf3e54e9dbf9d97eeb00a2cb1d3d8eb79355a5311241",
+          "movement_base": "db2bd6bcab0c818e146b7a25cbc1ea2425888af4ad7872b71820b75fbb439b93",
+          "keyless_works": "67d045157a23b98a46246a81c30e440c419978dd2f1fa140eafcb63dcbedc6c8"
+        },
+        "changed_ancestor_trees": {
+          "chrono_works_before": "7f4a2e6c41b8272d4d545b433ee7f867d7b4e34b6cead8c7ec31ee00b5a288f6",
+          "chrono_works_after": "f0b1279c9f827dbe89db2926425067653f4e83ff464910749f22756b93354f90",
+          "movement_before": "e6d4661a5bf66f61766882fbe1e78ae689b24c498116f25b60baeaeaafeb6e60",
+          "movement_after": "70c5a8ce37f413ecb1e0c372ca2dc05c7c5f02560f5d50530798c7279c69587d",
+          "moonwatch_before": "185e0f5b63d6734188b1018d5fba141eaa6e993e75b63363629d16289e3b4cb5",
+          "moonwatch_after": "8afa5a7cd69f3371caf6a732a51a104f903dd207ee490e57332ec4349541bf9f"
+        }
+      },
+      "authored_child_prewarm_wall_seconds": {
+        "dial": 5.05,
+        "keyless_works": 8.77,
+        "case": 19.71,
+        "bracelet": 57.97,
+        "movement_base_retry_after_cap": 28.29,
+        "movement_parent_with_current_children": 10.58
+      },
+      "movement_base_hotspot": {
+        "first_attempt_client_cap_seconds": 98.52,
+        "first_attempt_outcome": "interrupted while still reporting Building geometry; daemon marked failed at about 100.6 seconds",
+        "same_store_retry_wall_seconds": 28.29,
+        "same_store_retry_model_body_seconds": 21.16,
+        "tree": "db2bd6bcab0c818e146b7a25cbc1ea2425888af4ad7872b71820b75fbb439b93",
+        "components": 78,
+        "analysis": "build_base runs seven uninstrumented stages sequentially. _plate_parts constructs one large cuts list containing recesses, six jewel sinks, a dense filtered perlage grid, and clipped satin-grain cutters, then executes plate = plate - cuts. The 72 second retry improvement shows completed low-level operations survived the failed unpublished run in the operation memo. The remaining issues are expensive many-tool boolean work plus no progress markers inside this long stage."
+      },
+      "commands": {
+        "build": "/usr/bin/time -p env PYTHONPATH=/private/tmp/moonwatch-bench-20260911/frozen-final CADGEN_CACHE_DIR=/private/tmp/moonwatch-bench-20260911/daemon-store CADGEN_DAEMON_SOCKET=/private/tmp/moonwatch-bench-20260911/daemon.sock CADGEN_JOBS=4 /Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python <model>.py --json --verbose",
+        "refs": "env PYTHONPATH=/private/tmp/moonwatch-bench-20260911/frozen-final CADGEN_CACHE_DIR=/private/tmp/moonwatch-bench-20260911/daemon-store CADGEN_DAEMON_SOCKET=/private/tmp/moonwatch-bench-20260911/daemon.sock /Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python -m cadgen.cli step inspect refs <step> '#column_wheel' --facts --positioning --format json",
+        "validate": "env PYTHONPATH=/private/tmp/moonwatch-bench-20260911/frozen-final CADGEN_CACHE_DIR=/private/tmp/moonwatch-bench-20260911/daemon-store CADGEN_DAEMON_SOCKET=/private/tmp/moonwatch-bench-20260911/daemon.sock CADGEN_VALIDATE_WORKERS=2 /Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python -m cadgen.cli step inspect validate <step> [--refs o1.1] --format text",
+        "snapshot": "/usr/bin/time -p env PYTHONPATH=/private/tmp/moonwatch-bench-20260911/frozen-final CADGEN_CACHE_DIR=/private/tmp/moonwatch-bench-20260911/daemon-store CADGEN_DAEMON_SOCKET=/private/tmp/moonwatch-bench-20260911/daemon.sock /Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python -m cadgen.cli step snapshot <step> <png> --camera iso --width 1024 --height 768 --json"
+      },
+      "notes": [
+        "The fixture is ignored by models/tmp/ and no tracked Moonwatch source was modified.",
+        "The global 21.7 GB cadgen store was not cloned. All reusable state is in the private benchmark store.",
+        "Transient fallback measurements taken before Unix-socket authorization are excluded from these primary metrics."
+      ]
+    },
+    "browser_after_metadata": {
+      "surface": {
+        "count": 256,
+        "first": "2026-09-11T15:06:29.476060+00:00",
+        "last": "2026-09-11T15:07:39.938780+00:00"
+      },
+      "mesh": {
+        "count": 256,
+        "first": "2026-09-11T15:06:30.141945+00:00",
+        "last": "2026-09-11T15:07:40.417343+00:00"
+      },
+      "daemon": {
+        "imports": 56,
+        "jobsServed": 256,
+        "spares": 2,
+        "inflight": 0,
+        "memoryReclaims": 0,
+        "crashes": 0
+      }
+    },
+    "browser_after_selected_brep": {
+      "surface": {
+        "count": 256,
+        "lastUtc": "2026-09-11T15:13:37.034974+00:00",
+        "elapsedToLastCacheWriteSeconds": 60.94197416305542
+      },
+      "mesh": {
+        "count": 256,
+        "lastUtc": "2026-09-11T15:13:37.747037+00:00",
+        "elapsedToLastCacheWriteSeconds": 61.65403723716736
+      },
+      "daemon": {
+        "imports": 66,
+        "jobsServed": 256,
+        "spares": 2,
+        "inflight": 0,
+        "crashes": 0,
+        "memoryReclaims": 0
+      }
+    },
+    "browser_after_worker_grace": {
+      "surface": {
+        "count": 256,
+        "lastUtc": "2026-09-11T15:23:57.541912+00:00",
+        "elapsedToLastCacheWriteSeconds": 33.78691220283508
+      },
+      "mesh": {
+        "count": 256,
+        "lastUtc": "2026-09-11T15:23:57.910725+00:00",
+        "elapsedToLastCacheWriteSeconds": 34.15572500228882
+      },
+      "daemon": {
+        "imports": 15,
+        "jobsServed": 257,
+        "spares": 2,
+        "inflight": 0,
+        "crashes": 1,
+        "memoryReclaims": 0,
+        "workers": [
+          {
+            "pid": 97838,
+            "model": "",
+            "busy": false,
+            "extra": false,
+            "jobs": 79
+          },
+          {
+            "pid": 97841,
+            "model": "",
+            "busy": false,
+            "extra": false,
+            "jobs": 59
+          }
+        ]
+      }
+    },
+    "snapshot_before": {
+      "seconds": 25.684451916720718,
+      "returncode": 0,
+      "stdout": "{\"ok\":true,\"files\":[{\"path\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/moonwatch-render-final-20260911/moonwatch.png\",\"kind\":\"png\",\"view\":\"iso\",\"input\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/moonwatch/STEP/moonwatch.step\",\"tree\":\"1aa2b62542541332854e08eef59c29377300f65cb8a8a6ddce7204357667ac60\",\"frames\":0,\"fps\":0,\"seconds\":0.0}],\"parts\":[],\"warnings\":[],\"timings\":{\"job_count\":1,\"total_ms\":23866.799666080624},\"debug\":[]}\n",
+      "stderr": "",
+      "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/moonwatch-render-final-20260911/moonwatch.png",
+      "outputBytes": 250259
+    },
+    "snapshot_before_warm": {
+      "seconds": 23.605068583972752,
+      "returncode": 0,
+      "stdout": "{\"ok\":true,\"files\":[{\"path\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/moonwatch-render-final-20260911/moonwatch-warm.png\",\"kind\":\"png\",\"view\":\"iso\",\"input\":\"/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/moonwatch/STEP/moonwatch.step\",\"tree\":\"1aa2b62542541332854e08eef59c29377300f65cb8a8a6ddce7204357667ac60\",\"frames\":0,\"fps\":0,\"seconds\":0.0}],\"parts\":[],\"warnings\":[],\"timings\":{\"job_count\":1,\"total_ms\":23100.558165926486},\"debug\":[]}\n",
+      "stderr": "",
+      "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/moonwatch-render-final-20260911/moonwatch-warm.png",
+      "outputBytes": 250259
+    },
+    "snapshot_before_stage_profile": {
+      "fixture": "models/moonwatch/STEP/moonwatch.step",
+      "cacheDir": "models/tmp/moonwatch-render-final-store-20260911",
+      "viewport": [
+        1024,
+        768
+      ],
+      "wallMs": 22635.0,
+      "stageTimings": {
+        "loadSourceMs": 21109,
+        "buildModelMs": 54,
+        "renderMs": 16,
+        "captureMs": 164
+      },
+      "meshIndexRows": 512,
+      "snapshotDefaultRows": 256,
+      "snapshotDefaultBytes": 98885708,
+      "snapshotQuality": {
+        "chordTolerance": 0.0015,
+        "angleTolerance": 0.35
+      }
+    },
+    "parent_kinematics_followup": {
+      "schema": 1,
+      "created": "2026-09-11T15:36:00Z",
+      "baseline_report": {
+        "path": "/private/tmp/moonwatch-bench-20260911/results.json",
+        "sha256": "59a588e91791fd312b3311f2cb919d705ff71b64864de1e9f890dc75ddcd75c1",
+        "unchanged": true
+      },
+      "scope": "Full authored Moonwatch parent build with hot child source trees and a new parent worker. The only fixture-source difference between the paired runs is the @step output basename. Both use the same private warmed store; the after run uses a separate frozen patched runtime and private daemon socket.",
+      "before": {
+        "fixture": "models/tmp/moonwatch-bench-20260911/src/moonwatch_baseline_hot_bench.py",
+        "runtime": "/private/tmp/moonwatch-bench-20260911/frozen-final",
+        "daemon_socket": "/private/tmp/moonwatch-bench-20260911/daemon.sock",
+        "store": "/private/tmp/moonwatch-bench-20260911/daemon-store",
+        "command": "/usr/bin/time -p env PYTHONPATH=/private/tmp/moonwatch-bench-20260911/frozen-final CADGEN_CACHE_DIR=/private/tmp/moonwatch-bench-20260911/daemon-store CADGEN_DAEMON_SOCKET=/private/tmp/moonwatch-bench-20260911/daemon.sock CADGEN_JOBS=4 /Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python moonwatch_baseline_hot_bench.py --json --verbose",
+        "timing_seconds": {
+          "real": 36.54,
+          "daemon_job": 36.46,
+          "model_body": 1.91,
+          "saving_step_milestone": 9.845,
+          "step_saved_milestone": 35.73
+        },
+        "artifact": {
+          "path": "models/tmp/moonwatch-bench-20260911/STEP/moonwatch_baseline_hot_bench.step",
+          "bytes": 120270672,
+          "sha256": "f4ecbe663221e65dd7363604495656926375edee441a3db7e1fec3515c3ed071",
+          "sidecar_bytes": 38910
+        }
+      },
+      "after": {
+        "fixture": "models/tmp/moonwatch-bench-20260911/src/moonwatch_kinematics_after_bench.py",
+        "runtime": "/private/tmp/moonwatch-bench-20260911/frozen-kinematics-test",
+        "daemon_socket": "/private/tmp/moonwatch-bench-20260911/kinematics-daemon.sock",
+        "store": "/private/tmp/moonwatch-bench-20260911/daemon-store",
+        "command": "/usr/bin/time -p env PYTHONPATH=/private/tmp/moonwatch-bench-20260911/frozen-kinematics-test CADGEN_CACHE_DIR=/private/tmp/moonwatch-bench-20260911/daemon-store CADGEN_DAEMON_SOCKET=/private/tmp/moonwatch-bench-20260911/kinematics-daemon.sock CADGEN_JOBS=4 /Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python moonwatch_kinematics_after_bench.py --json --verbose",
+        "timing_seconds": {
+          "real": 32.15,
+          "daemon_job": 32.06,
+          "cadgen_total": 31.32,
+          "load_generator": 0.075,
+          "model_body": 1.83,
+          "prepare_document": 0.591,
+          "kinematics_once": 3.13,
+          "source_result": 5.44,
+          "saving_step_milestone": 9.546,
+          "assemble_step": 6.06,
+          "reread_step": 12.86,
+          "canonical_document": 1.82,
+          "components": 27.84,
+          "write_tree": 28.35,
+          "step_saved_milestone": 30.897
+        },
+        "artifact": {
+          "path": "models/tmp/moonwatch-bench-20260911/STEP/moonwatch_kinematics_after_bench.step",
+          "bytes": 120270684,
+          "sha256": "26dddbad4b4d94f793026b9ebc147a1ab01c341850c487a6dd7991d1d56590bc",
+          "sidecar_bytes": 38910
+        }
+      },
+      "effect": {
+        "real_seconds_saved": 4.39,
+        "real_percent_saved": 12.0,
+        "step_saved_milestone_seconds_saved": 4.833,
+        "step_saved_milestone_percent_saved": 13.5,
+        "resolution_calls_before": 2,
+        "resolution_calls_after": 1
+      },
+      "equivalence": {
+        "step_line_count_each": 2391782,
+        "step_differing_lines": 5,
+        "step_difference_scope": "FILE_NAME line wrapping and root PRODUCT name only (lines 4-6 and 18-19); every STEP line from 20 through EOF is byte-identical.",
+        "sidecar_kinematics_equal": true,
+        "sidecar_appearance_equal": true,
+        "sidecar_kinematics_counts": {
+          "mates": 50,
+          "couplings": 2,
+          "poses": 8
+        },
+        "sidecar_differing_keys": [
+          "documentHash"
+        ],
+        "document_hash_difference_reason": "The root output/product basename is deliberately different in the paired fixtures."
+      },
+      "implementation": {
+        "file": "packages/cadgen/src/cadgen/_internal/generation.py",
+        "behavior": "Memoize successful tree_kinematics results by immutable authored result hash for one component-package job. Store and return deep copies so event sinks, final remapping, and record serialization have independent ownership.",
+        "failure_behavior": "A failed resolution is not cached; each build gets a fresh local memo."
+      },
+      "test": {
+        "name": "tests.python.packages.cadgen.test_kinematics_build.KinematicsBuildTests.test_preview_and_sidecar_share_one_owned_kinematics_resolution",
+        "result": "PASS",
+        "seconds": 2.424,
+        "assertions": "One resolver call and one export_view call; preview and sidecar start equivalent; mutating the event sink payload cannot mutate the final sidecar."
+      },
+      "rejected_source_cleanup": {
+        "fixture": "models/tmp/moonwatch-bench-20260911/src/moonwatch_cleanup_bench.py",
+        "change": "Replaced locate(Location * current_location) with moved(Location) and removed the final recursive materials.apply.",
+        "timing_seconds": {
+          "real": 40.73,
+          "model_body": 1.83,
+          "saving_step_milestone": 14.302,
+          "step_saved_milestone": 40.091
+        },
+        "conclusion": "The cleanup preserved more child links but was slower in the matched hot state, so it is not proposed as a performance fix."
+      },
+      "count_fixture_warning": "The authored source comparison is 192 authored occurrence rows and found exactly one changed row after STAR_TEETH 21 to 22. The separately imported foreign/original Moonwatch STEP decomposes to 256 unique shapes and 301 occurrences through XCAF. These are different fixtures and pipelines; their counts are not geometric-equivalence evidence and do not indicate loss."
+    },
+    "snapshot_after_stage_profile": {
+      "wallMs": 2163.6,
+      "stageTimings": {
+        "loadSourceMs": 493,
+        "buildModelMs": 51,
+        "renderMs": 16,
+        "captureMs": 161
+      },
+      "security": {
+        "secure": true,
+        "subtle": true
+      },
+      "meshIndexRowsBefore": 512,
+      "meshIndexRowsAfter": 512,
+      "meshIndexWrites": 0,
+      "outputDataUrlChars": 438810
+    },
+    "snapshot_after_output": {
+      "wallMs": 2172.3,
+      "stageTimings": {
+        "loadSourceMs": 491,
+        "buildModelMs": 49,
+        "renderMs": 17,
+        "captureMs": 159
+      },
+      "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/moonwatch-render-final-20260911/moonwatch-fixed.png",
+      "outputBytes": 329089,
+      "sha256": "468bdc23288b8e8514e9c1c74fee7c057e5ea109ac190facee775d8d1653f3e5"
+    },
+    "snapshot_after_cli_equivalent": {
+      "wallMs": 2159.8,
+      "stageTimings": {
+        "loadSourceMs": 508,
+        "buildModelMs": 49,
+        "renderMs": 15,
+        "captureMs": 155
+      },
+      "output": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/moonwatch-render-final-20260911/moonwatch-fixed-cli.png",
+      "outputBytes": 250259,
+      "sha256": "d248714a9627d4c56b6130dabe0f83d1e60691b5a172e3708fb03590b0bb5afa",
+      "byteIdenticalToPriorCli": true,
+      "priorCliSha256": "d248714a9627d4c56b6130dabe0f83d1e60691b5a172e3708fb03590b0bb5afa"
+    },
+    "final_browser_ui": {
+      "warmCompleteSceneObservedByMs": 2904,
+      "definition": "CUA screenshot/AX observation upper bound after reload of updated production viewer",
+      "faceSelection": {
+        "canvas": "o1.1.5.f1",
+        "kind": "sphere",
+        "areaMm2": 969.888191978231
+      },
+      "edgeSelection": {
+        "tree": "o1.1.5.e3",
+        "kind": "circle",
+        "lengthMm": 110.26990214100172
+      },
+      "url": "http://127.0.0.1:3257/?file=STEP%2Fmoonwatch.step",
+      "errors": [],
+      "warning": "Existing THREE.WebGLShadowMap PCFSoftShadowMap deprecation warning"
+    }
+  },
+  "machine": {
+    "cpu": "Apple M1 Max",
+    "memoryBytes": 68719476736,
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "python": "3.13.13",
+    "packages": {
+      "build123d": "0.11.1",
+      "cadquery-ocp": "7.9.3.1.1",
+      "cadquery-ocp-novtk": "7.9.3.1.1",
+      "playwright": "1.62.0"
+    }
+  },
+  "validation": {
+    "viewerBackend": 348,
+    "poolMemoryTransportArtifacts": 82,
+    "metadataGeometry": 32,
+    "packageSidecarBoundaries": 7,
+    "kinematicsReemitSnapshots": 153,
+    "namespaceSourceClosure": 22,
+    "totalAcrossSets": 644,
+    "bundleFreshness": "pass",
+    "versionPins": "0.5.1 unchanged; pass",
+    "gitDiffCheck": "pass",
+    "notes": "Initial incomplete direct test launch configurations failed; canonical absolute-path loader with private daemon passed."
+  }
+}

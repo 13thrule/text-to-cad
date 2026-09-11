@@ -666,3 +666,32 @@ native retention and the native-mesher experiment. The original 250 ms arbitrary
 monolithic preview target remains unmet; full FreeCAD parity is not established.
 Completing the selected implementation mechanisms does not turn those remaining
 performance targets into measured successes.
+
+## Moonwatch follow-up (September 11)
+
+The user selected the existing 117 MB moonwatch STEP for further generation,
+edit and render testing. It has 256 distinct components and 301 occurrences.
+Initial loading remained incomplete after several minutes and exposed a
+concurrent channel-close failure. Keep the tendon-hand project off this branch.
+
+- [x] Prevent concurrent cancellation and cleanup from closing one channel twice.
+- [x] Reuse verified flattened metadata with bounded process memory and complete
+  file-identity checks; test corruption, deletion, atomic replacement and root isolation.
+- [x] Extract requested surfaces from their own verified BREP bytes, without
+  retaining every component's bytes for each single-component request.
+- [x] Preserve warm subjectless workers across short request bursts while keeping
+  memory admission, zero-spare behavior and model-bound worker routing intact.
+- [x] Repeat a full render with geometry cached but no SURF/TESS entries; verify
+  warm reload, selection, worker reuse and eventual surplus-worker reclamation.
+- [x] Benchmark real moonwatch source generation, no-op runs and localized edits
+  propagated through the parent. Cap expensive cold operations and report them.
+- [x] Profile repeated headless snapshots separately from interactive rendering;
+  fix any confirmed reusable-work gap and visually inspect the saved PNG.
+- [x] Run affected backend, store and native-worker checks; record the new
+  measurements and remaining limits without inferring FreeCAD parity.
+
+The [Moonwatch report](scripts/bench/cadgen-performance/MOONWATCH-20260911.md)
+records 34.16-second cold display preparation, 22.64 → 2.16-second warm headless
+snapshots and a 36.54 → 32.15-second matched parent build. Full STEP export and
+readback remain substantial; this follow-up does not establish instant edits or
+measured FreeCAD parity.

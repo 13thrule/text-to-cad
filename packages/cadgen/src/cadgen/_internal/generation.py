@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import importlib.util
 import json
 import os
@@ -440,10 +441,15 @@ def _generate_part_outputs(
         except ValueError:
             surface_producer = None
 
+        resolved_kinematics: dict[str, dict[str, object]] = {}
+
         def tree_kinematics(result_hash: str):
             declaration = getattr(scene, "kinematics", None)
             if not declaration:
                 return None
+            cached = resolved_kinematics.get(result_hash)
+            if cached is not None:
+                return copy.deepcopy(cached)
             from cadgen._internal.kinematics_resolve import resolve_kinematics_block
             from cadgen.store.view import export_view
 
@@ -454,7 +460,8 @@ def _generate_part_outputs(
                         declaration, package_dir=view_dir, step_path=spec.step_path,
                         source_ref=str(spec.source_ref),
                     )
-                return resolved
+                resolved_kinematics[result_hash] = copy.deepcopy(resolved)
+                return copy.deepcopy(resolved)
             finally:
                 shutil.rmtree(view_dir, ignore_errors=True)
 

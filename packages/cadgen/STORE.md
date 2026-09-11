@@ -636,8 +636,14 @@ Every build goes through one interface, `cadgen.daemon.executors.submit(model)
   announcing readiness; importing the supervisor never loads the kernel.
   Spares: `CADGEN_DAEMON_SPARES` (default 2). Requests that name no
   model (`inspect`, `snapshot` on a document) borrow a spare without binding
-  it. A returning borrowed worker fills an available spare slot rather than
-  counting itself as an existing replacement. Worker admission accounts for
+  it. Borrowed workers count toward spare capacity while busy, so a stream of
+  artifact jobs reuses warm kernels instead of starting a replacement import
+  for every request. A subject-less burst may briefly retain already-admitted
+  surplus workers so an asynchronous client's next poll can reuse them; after
+  two idle seconds the periodic sweep returns the set to the configured spare
+  count. An explicit zero-spare pool retires every returning borrowed worker.
+  A returning borrowed worker fills an available spare slot rather than counting
+  itself as an existing replacement. Worker admission accounts for
   resident memory and pending reservations,
   and may reclaim idle workers or refuse work (§9 below). A worker is recycled after
   `CADGEN_DAEMON_RECYCLE` jobs (default 1000) as a leak hedge, and the daemon
@@ -894,8 +900,11 @@ availability, and fetches geometry from the existing object routes. The server
 does no kernel work and exposes no source/closure/model record. Plain file
 links stay in **Saved file** mode. Preview kinematics are resolved against the
 preview tree; the saved sidecar is resolved separately against the read-back
-tree and bound to the saved bytes. Adjacent authored render modules remain
-independent. A saved-tree identity change clears incompatible selection and
+tree and bound to the saved bytes. Within one build, successful authored-tree
+kinematics resolution may be reused for that exact tree hash, with independent
+copies for preview and saved-document remapping. No resolution survives the
+build or substitutes for the read-back remap. Adjacent authored render modules
+remain independent. A saved-tree identity change clears incompatible selection and
 measurement state.
 
 An open editing tab holds one request against an opaque ledger cursor scoped
@@ -972,8 +981,12 @@ Explicit model saves still obey every child/output/publication requirement.
   `capture_tree(hash)` for an owned verified flattened view and byte closure.
   Metadata-only consumers use `capture_tree(hash, retain_payloads=False)` to
   perform the same complete verification while releasing each raw object after
-  reading it. This changes retained memory, not completeness; a later request
-  verifies the closure again.
+  reading it. Compact process-local metadata may be reused while every required
+  immutable object retains the file identity observed around its verified read;
+  deletion, damage or atomic replacement invalidates that snapshot and makes the
+  next request verify the complete byte closure again. The metadata cache is
+  byte-bounded, store-root isolated and returns a newly parsed flattened view to
+  every caller.
   Components carry `brep`, `codec` and `faceColors`; display SURF resolves
   separately through `store.surfaces` and `index/surface`.
 - `cadgen store info` sizes the store. `cadgen store gc --dry-run` lists what

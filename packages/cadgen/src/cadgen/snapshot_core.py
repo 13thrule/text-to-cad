@@ -39,7 +39,11 @@ from cadgen.results import SnapshotFile, SnapshotResult, SnapshotTimings
 from cadgen._internal.atomic_replace import replace_atomic, write_bytes_atomic
 
 
-SNAPSHOT_ORIGIN = "http://snapshot.local"
+# `localhost` is a potentially trustworthy origin under the Secure Contexts
+# rules even over HTTP. The page is still entirely intercepted below; this
+# spelling gives its shared TESS provider the SubtleCrypto object required to
+# verify immutable cache bodies before use.
+SNAPSHOT_ORIGIN = "http://localhost"
 SNAPSHOT_RENDER_URL = f"{SNAPSHOT_ORIGIN}/render.html"
 SNAPSHOT_ROUTE_GLOB = f"{SNAPSHOT_ORIGIN}/**"
 # A snapshot is usually READ by an agent rather than looked at by a person, so it does not
@@ -1038,10 +1042,11 @@ def route_file(pathname: str, prefix: str, root: Path) -> Path:
 # in BatchSnapshotRenderer.start): those requests are never intercepted, in
 # either direction, at any size. Page-relative asset URLs (/__render_asset/,
 # the store prefix) are GET-only, so they stay intercepted and answer with a
-# tiny 307 to the same server. The page's origin stays snapshot.local, so the
-# loopback responses carry CORS headers for it (and answer the preflight a
-# cross-origin JSON POST triggers). Without that server there is no working
-# transport, so start() raises instead of degrading.
+# tiny 307 to the same server. The intercepted page uses localhost (a secure
+# context for its required SubtleCrypto checks), while the loopback responses
+# carry CORS headers and answer the preflight their distinct origin triggers.
+# Without that server there is no working transport, so start() raises instead
+# of degrading.
 
 TESS_CACHE_ROUTE_PREFIX = "/__tess_cache/"
 # The route's safe filename envelope. The store additionally requires the
@@ -1340,12 +1345,12 @@ class BatchSnapshotRenderer:
             self.browser = await self.playwright.chromium.launch(
                 headless=True,
                 timeout=RENDER_BROWSER_STARTUP_TIMEOUT_MS,
-                # The page origin is the intercepted (insecure) snapshot.local,
-                # and its bulk assets 307 to the loopback server. Chromium's
-                # Private Network Access blocks insecure-public -> loopback
-                # subresources, which would silently force every byte back
-                # through the ~20 MB/s CDP fulfill path. This renderer loads
-                # no web content — only our own runtime and files.
+                # The intercepted localhost page and its 127.0.0.1 bulk server
+                # are distinct origins. Keep the Private Network Access flags
+                # that make this cross-origin loopback transport work across
+                # Chromium generations; otherwise a blocked redirect silently
+                # forces bytes back through the ~20 MB/s CDP fulfill path. This
+                # renderer loads no web content — only our own runtime and files.
                 # Feature names cover the PNA generations: Chromium ~94-130
                 # shipped BlockInsecurePrivateNetworkRequests + the two
                 # preflight flags; newer builds renamed the check to

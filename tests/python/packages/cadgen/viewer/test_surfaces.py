@@ -19,7 +19,7 @@ SRC = add_repo_path("packages/cadgen/src")
 from cadgen.store import surfaces
 from cadgen.store.build import build_tree_from_compound
 from cadgen.store.objects import object_path
-from cadgen.viewer.surfaces import SurfaceSubscribers, pinned_surface_object
+from cadgen.viewer.surfaces import SurfaceSubscribers, _request, pinned_surface_object
 
 
 class SubscriberFuture(Future):
@@ -71,6 +71,19 @@ class SurfaceRequests(unittest.TestCase):
                              object_path(record["object"]))
             self.assertIsNone(pinned_surface_object(self.tree, "f" * 64, record["object"]))
             self.assertIsNone(pinned_surface_object(self.tree, self.entry["surfaceInput"], "f" * 64))
+
+    def test_request_validates_only_named_surface_inputs_without_rebuilding_whole_view(self):
+        surface_input = surfaces.surface_input
+        with mock.patch.object(
+            surfaces, "_view_from_geometry", side_effect=AssertionError("whole view rebuilt")
+        ), mock.patch.object(surfaces, "surface_input", wraps=surface_input) as inputs:
+            view, selected, operation, token, canonical = _request(json.dumps(self.request).encode())
+        self.assertEqual(view, {"viewId": self.view["viewId"]})
+        self.assertEqual(selected, {self.cid: {"surfaceInput": self.entry["surfaceInput"]}})
+        self.assertEqual(operation["cids"], [self.cid])
+        self.assertIsNone(token)
+        self.assertIn(self.cid, canonical["components"])
+        self.assertEqual(inputs.call_count, 1)
 
     def test_poll_submits_once_and_completion_rechecks_ready_output(self):
         future = SubscriberFuture()

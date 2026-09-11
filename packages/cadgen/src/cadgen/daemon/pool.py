@@ -14,6 +14,8 @@ Publication ordering remains the publish rule's concern.
 Spares: ``CADGEN_DAEMON_SPARES`` (default 2) workers that have finished importing
 build123d and are bound to nothing. Binding one starts a replacement in the
 background when memory permits, so a new model's first build pays no import.
+A subject-less job borrows one without replacing it. Surplus workers from a
+burst remain reusable for two idle seconds, then the periodic sweep restores K.
 An extra returns to the spare set when its job ends; a primary stays bound
 until idle timeout, memory pressure or recycling reclaims it.
 
@@ -42,6 +44,7 @@ from cadgen.daemon.memory import MemoryPolicy, MIB, process_tree_bytes
 DEFAULT_SPARES = 2
 DEFAULT_RECYCLE_AFTER = 1000
 DEFAULT_IDLE_UNBIND_SECONDS = 600.0
+BORROWED_SURPLUS_IDLE_SECONDS = 2.0
 SPAWN_TIMEOUT_SECONDS = 120.0
 _USE_SEQUENCE = itertools.count()
 
@@ -286,11 +289,15 @@ class Pool:
         return [w for w in self._workers if not w.model and not w.busy]
 
     def ensure_spares(self) -> None:
-        """Top the spare set up to ``spare_count()`` in the background."""
+        """Replenish spare capacity, including workers temporarily borrowed."""
         with self._cv:
             if self._closed:
                 return
-            want = spare_count() - len(self._spares_locked()) - self._spares_pending
+            # Subject-less borrowers return after one job. Replacing them while busy
+            # discards each returning warm kernel in favour of a cold import,
+            # turning a stream of surface requests into one import per job.
+            borrowed = sum(worker.busy and not worker.model for worker in self._workers)
+            want = spare_count() - len(self._spares_locked()) - borrowed - self._spares_pending
             if self._policy.limit_bytes:
                 usage = self._memory_locked()["chargedBytes"]
                 available = self._policy.limit_bytes - self._policy.dependency_bytes - usage
@@ -495,7 +502,12 @@ class Pool:
         """A bound worker idle for ``idle_unbind_seconds()`` returns to the spare set
         (spares beyond K exit). Its model's next build rebinds a spare -- no import
         repaid, a cold RAM op-memo tier. This only releases process state;
-        persistent cache objects remain available to the replacement worker."""
+        persistent cache objects remain available to the replacement worker.
+
+        Subject-less burst workers get a much shorter grace so the next browser
+        poll can reuse their warm kernels. Once that grace expires, this same
+        periodic sweep returns the idle spare set to K.
+        """
         limit = idle_unbind_seconds()
         with self._cv:
             now = self._clock()
@@ -509,9 +521,19 @@ class Pool:
                     self._drop_locked(worker)
                 else:
                     worker.model = ""
+            # Keep the K most recently used spares. Any additional unbound
+            # workers came from a subject-less burst: model-bound extras and
+            # idle unbinding still enforce K at release/unbind time. A brief
+            # grace bridges the viewer's asynchronous result poll without
+            # increasing the daemon's settled worker count.
+            spares = sorted(self._spares_locked(), key=lambda worker: worker.last_used, reverse=True)
+            for worker in spares[spare_count():]:
+                if now - worker.last_used >= BORROWED_SURPLUS_IDLE_SECONDS:
+                    self._drop_locked(worker)
 
     def release(self, worker: Worker, *, healthy: bool = True) -> None:
         with self._cv:
+            borrowed = worker.extra and not worker.model
             worker.busy = False
             worker.last_used = self._clock()
             worker.jobs_served += 1
@@ -525,11 +547,16 @@ class Pool:
                 self._drop_locked(worker)
             elif worker.extra:
                 # A subject-less compile still has model == "" after clearing
-                # busy above. Count the OTHER spares: otherwise the returning
-                # worker counts itself and is retired even when it is the only
-                # warm worker that fits the memory budget.
+                # busy above. Let a burst retain already-admitted warm workers
+                # briefly so asynchronous clients can submit their next wave
+                # without repaying imports. Explicit K=0 still retires them
+                # immediately. Model-bound extras keep the exact K-sized warm
+                # reserve semantics below.
                 other_spares = sum(spare is not worker for spare in self._spares_locked())
-                if other_spares + self._spares_pending >= spare_count():
+                if borrowed and spare_count() > 0:
+                    worker.model = ""
+                    worker.extra = False
+                elif other_spares + self._spares_pending >= spare_count():
                     # The spare set is already full (a replacement was started when this
                     # one was taken); keeping it too would grow the set by one per extra.
                     self._drop_locked(worker)

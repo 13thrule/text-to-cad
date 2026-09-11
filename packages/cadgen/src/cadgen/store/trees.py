@@ -30,15 +30,34 @@ join under a view directory becomes ``object_path(hash)``.
 from __future__ import annotations
 
 import copy
+from collections import OrderedDict
 import json
 import math
+import threading
 from typing import Any
 
-from cadgen.store.objects import put_object, read_verified_object
+from cadgen.store.objects import object_path, put_object, read_verified_object
 
 TREE_KIND = "geometry-tree"
 TREE_SCHEMA = 1
 FLAT_KIND = "assembly-package"
+
+# Metadata readers need an independently owned flattened descriptor but not the
+# native bytes that produced it. Re-reading and revalidating every BREP on each
+# viewer poll made a many-component document quadratic in practice. Keep only
+# compact JSON here: callers still parse a private result, while the cache never
+# owns native payloads or mutable descriptor objects.
+#
+# A hit is admitted only while every required immutable object has the same file
+# identity observed on both sides of its verified read. Deletion, in-place
+# damage and atomic repair/replacement all change the fingerprint and force the
+# ordinary full verification path. The resolved store root is part of the key
+# because tests and long-lived embedding processes may switch CADGEN_CACHE_DIR.
+_METADATA_CAPTURE_CACHE_CAPACITY = 64 * 1024 * 1024
+_METADATA_CAPTURE_CACHE: OrderedDict[tuple[str, str], tuple[bytes, tuple, int]] = OrderedDict()
+_METADATA_CAPTURE_CACHE_SIZE = 0
+_METADATA_CAPTURE_CACHE_LOCK = threading.Lock()
+_METADATA_CAPTURE_STAMP_BYTES = 512
 
 IDENTITY_16 = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
 
@@ -337,24 +356,110 @@ def _validate_structure(tree: Any, *, native: bool = False) -> None:
     if represented != ids:
         raise ValueError("geometry rows absent from assembly structure")
 
+
+def _object_stamp(digest: str) -> tuple:
+    stat = object_path(digest).stat()
+    return (digest, stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns)
+
+
+def _metadata_capture_key(tree_hash: str) -> tuple[str, str]:
+    from cadgen.store.paths import store_root
+
+    return str(store_root().resolve()), str(tree_hash)
+
+
+def _metadata_capture_hit(key: tuple[str, str]) -> dict | None:
+    with _METADATA_CAPTURE_CACHE_LOCK:
+        cached = _METADATA_CAPTURE_CACHE.get(key)
+    if cached is None:
+        return None
+    body, stamps, _weight = cached
+    try:
+        current = tuple(_object_stamp(stamp[0]) for stamp in stamps)
+    except (OSError, ValueError):
+        current = None
+    if current != stamps:
+        global _METADATA_CAPTURE_CACHE_SIZE
+        with _METADATA_CAPTURE_CACHE_LOCK:
+            if _METADATA_CAPTURE_CACHE.get(key) is cached:
+                _METADATA_CAPTURE_CACHE.pop(key)
+                _METADATA_CAPTURE_CACHE_SIZE -= cached[2]
+        return None
+    with _METADATA_CAPTURE_CACHE_LOCK:
+        if _METADATA_CAPTURE_CACHE.get(key) is cached:
+            _METADATA_CAPTURE_CACHE.move_to_end(key)
+    return json.loads(body)
+
+
+def _remember_metadata_capture(key: tuple[str, str], descriptor: dict, stamps: dict[str, tuple]) -> None:
+    global _METADATA_CAPTURE_CACHE_SIZE
+    body = json.dumps(descriptor, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ordered_stamps = tuple(stamps[digest] for digest in sorted(stamps))
+    weight = len(body) + len(ordered_stamps) * _METADATA_CAPTURE_STAMP_BYTES
+    if weight > _METADATA_CAPTURE_CACHE_CAPACITY:
+        return
+    with _METADATA_CAPTURE_CACHE_LOCK:
+        previous = _METADATA_CAPTURE_CACHE.pop(key, None)
+        if previous is not None:
+            _METADATA_CAPTURE_CACHE_SIZE -= previous[2]
+        _METADATA_CAPTURE_CACHE[key] = (body, ordered_stamps, weight)
+        _METADATA_CAPTURE_CACHE_SIZE += weight
+        while _METADATA_CAPTURE_CACHE_SIZE > _METADATA_CAPTURE_CACHE_CAPACITY:
+            _old_key, (_old_body, _old_stamps, old_weight) = _METADATA_CAPTURE_CACHE.popitem(last=False)
+            _METADATA_CAPTURE_CACHE_SIZE -= old_weight
+
+
+def _reset_metadata_capture_cache() -> None:
+    """Release process-owned verified metadata snapshots (tests and embedding)."""
+    global _METADATA_CAPTURE_CACHE_SIZE
+    with _METADATA_CAPTURE_CACHE_LOCK:
+        _METADATA_CAPTURE_CACHE.clear()
+        _METADATA_CAPTURE_CACHE_SIZE = 0
+
 def capture_tree(tree_hash: str, *, retain_payloads: bool = True) -> tuple[dict, dict[str, bytes]]:
     """One verified graph snapshot with independently owned metadata.
 
     Native consumers retain the complete immutable byte closure by default.
-    Metadata-only callers may discard payloads after the same full verification;
-    their returned payload map is empty, and every new call verifies disk anew.
+    Metadata-only callers may discard payloads after the same full verification.
+    Later calls reuse compact metadata only while the complete immutable object
+    closure retains the exact file identities observed during verified reads.
     """
     from cadgen._internal.component_package import canonical_json_bytes, validate_geometry_component
     from cadgen.store.surfaces import validate_surface_bytes
 
+    cache_key = _metadata_capture_key(tree_hash)
+    if not retain_payloads:
+        cached = _metadata_capture_hit(cache_key)
+        if cached is not None:
+            return cached, {}
+
     captured, memo, active = {}, {}, set()
+    stamps: dict[str, tuple] = {}
+    cacheable = True
+
+    def verified(digest):
+        nonlocal cacheable
+        try:
+            before = _object_stamp(digest)
+        except (OSError, ValueError):
+            before = None
+        payload = read_verified_object(digest)
+        try:
+            after = _object_stamp(digest)
+        except (OSError, ValueError):
+            after = None
+        if before is None or before != after:
+            cacheable = False
+        else:
+            stamps[digest] = after
+        return payload
 
     def visit(digest):
         if digest in memo:
             return
         if digest in active:
             raise ValueError("cyclic geometry tree")
-        payload = read_verified_object(digest)
+        payload = verified(digest)
         tree = json.loads(payload)
         _validate_structure(tree)
         if retain_payloads:
@@ -364,13 +469,13 @@ def capture_tree(tree_hash: str, *, retain_payloads: bool = True) -> tuple[dict,
         for cid, entry in tree["components"].items():
             if type(entry) is not dict:
                 raise ValueError("invalid geometry component")
-            brep = read_verified_object(entry["brep"])
+            brep = verified(entry["brep"])
             validate_geometry_component(entry, brep, cid=cid)
             if retain_payloads:
                 captured[entry["brep"]] = brep
             del brep
             if entry["kind"] == "eager-only":
-                surf = read_verified_object(entry["eagerSurface"])
+                surf = verified(entry["eagerSurface"])
                 validate_surface_bytes(surf)
                 if retain_payloads:
                     captured[entry["eagerSurface"]] = surf
@@ -394,4 +499,7 @@ def capture_tree(tree_hash: str, *, retain_payloads: bool = True) -> tuple[dict,
         active.remove(digest)
 
     visit(tree_hash)
-    return copy.deepcopy(memo[tree_hash]), dict(captured)
+    descriptor = copy.deepcopy(memo[tree_hash])
+    if not retain_payloads and cacheable:
+        _remember_metadata_capture(cache_key, descriptor, stamps)
+    return descriptor, dict(captured)

@@ -1683,27 +1683,37 @@ class SnapshotCliTests(unittest.TestCase):
     def test_runtime_routes_are_self_contained(self) -> None:
         self.assertEqual(
             resolve_snapshot_route_file(
-                "http://snapshot.local/render.html", runtime_dir=RUNTIME_DIR
+                "http://localhost/render.html", runtime_dir=RUNTIME_DIR
             ),
             RENDER_HTML_PATH,
         )
         self.assertEqual(
             resolve_snapshot_route_file(
-                "http://snapshot.local/snapshot-render.js", runtime_dir=RUNTIME_DIR
+                "http://localhost/snapshot-render.js", runtime_dir=RUNTIME_DIR
             ),
             RUNTIME_DIR / "snapshot-render.js",
         )
+        with self.assertRaisesRegex(snapshot_main.RouteFileError, "unsupported snapshot origin"):
+            resolve_snapshot_route_file(
+                "http://snapshot.local/render.html", runtime_dir=RUNTIME_DIR
+            )
+        with self.assertRaisesRegex(snapshot_main.RouteFileError, "snapshot route not found"):
+            resolve_snapshot_route_file(
+                "http://localhost/missing.js", runtime_dir=RUNTIME_DIR
+            )
 
     def test_snapshot_renderer_does_not_force_chromium_single_process(self) -> None:
         captured_launch_options = {}
         init_scripts = []
+        routed = []
+        navigated = []
 
         class FakePage:
             async def route(self, *args, **kwargs):
-                pass
+                routed.append(args[0])
 
             async def goto(self, *args, **kwargs):
-                pass
+                navigated.append(args[0])
 
             async def wait_for_function(self, *args, **kwargs):
                 pass
@@ -1773,6 +1783,8 @@ class SnapshotCliTests(unittest.TestCase):
                 sys.modules["playwright.async_api"] = original_async_api
 
         self.assertNotIn("--single-process", captured_launch_options.get("args") or [])
+        self.assertEqual(routed, [snapshot_main.SNAPSHOT_ROUTE_GLOB])
+        self.assertEqual(navigated, [snapshot_main.SNAPSHOT_RENDER_URL])
         # The page must be handed the loopback cache server's ABSOLUTE origin
         # before any page script runs: a relative cache URL is intercepted by
         # the route above, and interception alone pushes the whole request body

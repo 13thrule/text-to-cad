@@ -90,6 +90,13 @@ def request_view(tree_hash: str, *, producer: dict | None = None) -> dict:
     return _view_from_geometry(tree_hash, descriptor, producer=producer)
 
 
+def _view_id(tree_hash: str, producer: dict) -> str:
+    key = producer_key(producer)
+    return hashlib.sha256(
+        b"cadgen-runtime-view-v1\0" + tree_hash.encode() + b"\0" + key.encode()
+    ).hexdigest()
+
+
 def _view_from_geometry(tree_hash: str, descriptor: dict, *, producer: dict | None = None) -> dict:
     """Consume an owned descriptor from this call's verified geometry capture.
 
@@ -100,7 +107,7 @@ def _view_from_geometry(tree_hash: str, descriptor: dict, *, producer: dict | No
     key = producer_key(selected)
     descriptor["viewSchemaVersion"] = 1
     descriptor["tree"] = tree_hash
-    descriptor["viewId"] = hashlib.sha256(b"cadgen-runtime-view-v1\0" + tree_hash.encode() + b"\0" + key.encode()).hexdigest()
+    descriptor["viewId"] = _view_id(tree_hash, selected)
     descriptor["surfaceProducer"] = {**selected, "producerKey": key}
     for entry in descriptor["components"].values():
         entry["surfaceInput"] = surface_input(entry, selected)
@@ -129,7 +136,13 @@ def derive(tree_hash: str, cids: list[str] | None = None, *, force: bool = False
     from cadgen._internal.component_package import decode_geometry_component, canonical_json_bytes as canonical_bytes
     from cadgen._internal.surface_extract import extract_surface_component
 
-    descriptor, captured = capture(tree_hash)
+    # Surface work still admits only a complete verified geometry graph. It
+    # does not need to retain every BREP in that graph when the request names a
+    # bounded CID subset: metadata capture verifies the whole closure, then an
+    # extraction reads the exact selected CAS payload immediately before decode.
+    # This keeps capture_tree()'s native-owner contract unchanged for consumers
+    # that actually materialize the complete graph.
+    descriptor, _ = capture(tree_hash, retain_payloads=False)
     producer = producer_identity() if producer is None else producer_fields(producer)
     if producer != producer_identity():
         raise ValueError("worker cannot implement the request's pinned surface producer")
@@ -145,13 +158,13 @@ def derive(tree_hash: str, cids: list[str] | None = None, *, force: bool = False
         if expected_object is None and force and prior is not None:
             expected_object = prior["object"]
         if entry["kind"] == "eager-only":
-            payload = captured[entry["eagerSurface"]]
+            payload = read_verified_object(entry["eagerSurface"])
             validate_surface_bytes(payload)
             actual = {**expected, "object": entry["eagerSurface"]}
         else:
             actual = None if force else prior
             if actual is None:
-                shape = decode_geometry_component(entry, captured[entry["brep"]])
+                shape = decode_geometry_component(entry, read_verified_object(entry["brep"]))
                 payload = extract_surface_component(shape.wrapped, face_colors=shape.cad_face_ordinal_colors)
                 validate_surface_bytes(payload)
                 digest = hashlib.sha256(payload).hexdigest()

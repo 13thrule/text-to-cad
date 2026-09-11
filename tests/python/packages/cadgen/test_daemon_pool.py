@@ -124,6 +124,7 @@ class Binding(_PoolFixture):
             _settle(self.pool)
         bound = [w for w in self.pool.snapshot()["workers"] if w["model"]]
         self.assertEqual(bound, [], "a subject-less job bound a worker")
+        self.assertNotIn(worker, self.pool._workers, "an explicit zero-spare pool retained a borrowed worker")
 
     def test_explicitly_disabled_memory_admission_does_not_cap_workers(self):
         with self._spares(0):
@@ -142,6 +143,34 @@ class Binding(_PoolFixture):
 
 
 class Spares(_PoolFixture):
+    def test_repeated_borrowed_job_bursts_keep_the_same_warm_kernels(self):
+        with self._spares(2):
+            self.pool.ensure_spares()
+            _settle(self.pool)
+            initial = {worker.pid for worker in self.pool._workers}
+            for _ in range(20):
+                held = [self.pool.acquire("") for _ in range(2)]
+                _settle(self.pool)
+                self.assertEqual({worker.pid for worker in held}, initial)
+                for worker in held:
+                    self.pool.release(worker)
+                _settle(self.pool)
+            self.assertEqual(self.pool.snapshot()["imports"], 2)
+            self.assertEqual(self.pool.snapshot()["jobsServed"], 40)
+            self.assertEqual(self.pool.snapshot()["spares"], 2)
+
+    def test_failed_borrowed_worker_replenishes_spare_capacity(self):
+        with self._spares(1):
+            self.pool.ensure_spares()
+            _settle(self.pool)
+            failed = self.pool.acquire("")
+            self.pool.release(failed, healthy=False)
+            _settle(self.pool)
+            replacement = self.pool.acquire("")
+            self.assertIsNot(replacement, failed)
+            self.assertEqual(self.pool.snapshot()["imports"], 2)
+            self.pool.release(replacement)
+
     def test_borrowed_worker_returns_when_no_replacement_fits(self):
         with self._spares(1):
             self.pool.ensure_spares()
@@ -161,18 +190,48 @@ class Spares(_PoolFixture):
                 self.assertEqual(self.pool.snapshot()["imports"], imports)
                 self.pool.release(again)
 
-    def test_borrowed_worker_retires_when_replacement_is_already_ready(self):
+    def test_borrowed_burst_reuses_surplus_workers_then_trims_to_k_after_grace(self):
+        now = [1000.0]
+        self.pool._clock = lambda: now[0]
+        with self._spares(2):
+            self.pool.ensure_spares()
+            _settle(self.pool)
+            first = [self.pool.acquire("") for _ in range(8)]
+            first_pids = {worker.pid for worker in first}
+            for worker in first:
+                self.pool.release(worker)
+            self.assertEqual(self.pool.snapshot()["spares"], 8)
+            self.assertEqual(self.pool.snapshot()["imports"], 8)
+
+            now[0] += pool_mod.BORROWED_SURPLUS_IDLE_SECONDS - 0.01
+            second = [self.pool.acquire("") for _ in range(8)]
+            self.assertEqual({worker.pid for worker in second}, first_pids)
+            self.assertEqual(self.pool.snapshot()["imports"], 8)
+            for worker in second:
+                self.pool.release(worker)
+
+            now[0] += pool_mod.BORROWED_SURPLUS_IDLE_SECONDS + 0.01
+            self.pool.unbind_idle()
+            snapshot = self.pool.snapshot()
+            self.assertEqual(snapshot["spares"], 2, snapshot)
+            retained = {worker["pid"] for worker in snapshot["workers"]}
+            self.assertEqual(len(first_pids - retained), 6)
+
+    def test_a_new_model_can_bind_a_transient_borrowed_spare(self):
         with self._spares(1):
             self.pool.ensure_spares()
             _settle(self.pool)
-            worker = self.pool.acquire("")
-            _settle(self.pool)
-            replacement = next(w for w in self.pool._workers if not w.busy)
-            self.assertIsNot(replacement, worker)
-            self.pool.release(worker)
-            self.assertNotIn(worker, self.pool._workers)
-            self.assertIn(replacement, self.pool._workers)
-            self.assertEqual(self.pool.snapshot()["spares"], 1)
+            burst = [self.pool.acquire("") for _ in range(2)]
+            for worker in burst:
+                self.pool.release(worker)
+            held = self.pool.acquire("")
+            before = self.pool.snapshot()["imports"]
+            model = self.pool.acquire("/m/new.py")
+            self.assertIn(model, burst)
+            self.assertIsNot(model, held)
+            self.assertEqual(self.pool.snapshot()["imports"], before)
+            self.pool.release(held)
+            self.pool.release(model)
 
     def test_ensure_spares_fills_to_k_in_the_background(self):
         with self._spares(2):
@@ -193,6 +252,21 @@ class Spares(_PoolFixture):
         self.assertEqual(snapshot["spares"], 2, "the spare set was not refilled")
         self.assertEqual(_StubWorker.spawned, before + 1, "exactly one replacement")
         self.pool.release(worker)
+
+    def test_a_model_bound_extra_preserves_the_warm_reserve_for_other_models(self):
+        with self._spares(1):
+            primary = self.pool.acquire("/m/a.py")
+            _settle(self.pool)
+            extra = self.pool.acquire("/m/a.py")
+            _settle(self.pool)
+            self.assertEqual(self.pool.snapshot()["spares"], 1)
+            reserve = next(worker for worker in self.pool._workers if not worker.busy)
+            other = self.pool.acquire("/m/b.py")
+            self.assertIs(other, reserve)
+            self.assertEqual(other.jobs_served, 0)
+            self.pool.release(extra)
+            self.pool.release(primary)
+            self.pool.release(other)
 
     def test_a_model_with_no_worker_takes_a_spare_not_a_spawn(self):
         with self._spares(1):

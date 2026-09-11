@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import os
 import unittest
@@ -19,6 +20,7 @@ from tests.python.support.paths import add_repo_path
 
 add_repo_path("packages/cadgen/src")
 from tests.python.support.tessellation import tessellation_fixture
+from tests.python.support.tmp_root import generated_cad_directory
 
 FIXTURE = tessellation_fixture()
 PAYLOAD = base64.b64decode(FIXTURE["bytes"])
@@ -39,6 +41,7 @@ from cadgen.snapshot_core import (  # noqa: E402
     read_tessellation_cache_entry,
     write_tessellation_cache_entry,
 )
+from cadgen.assets import browser_runtime_dir  # noqa: E402
 
 
 class AssetServerIsMandatoryTest(unittest.TestCase):
@@ -224,6 +227,82 @@ class SnapshotAssetServerTests(unittest.TestCase):
         self.assertEqual(decode_batch(response), [PAYLOAD, None])
         status, _, _ = self.request("POST", TESS_CACHE_BATCH_PATH, b"not json")
         self.assertEqual(status, 400)
+
+
+class SnapshotBrowserTessCacheIntegrationTest(unittest.TestCase):
+    """The real snapshot page must adopt what its real HTTP provider writes."""
+
+    def test_cold_surface_write_is_a_warm_hit_after_the_surface_is_gone(self) -> None:
+        repo = Path(__file__).resolve().parents[4]
+        surface_bytes = (
+            repo / "packages/cadgen-js/src/lib/surf/fixtures/cam_follower_roller.surf"
+        ).read_bytes()
+
+        async def exercise(root: Path) -> None:
+            asset_root = root / "assets"
+            asset_root.mkdir()
+            surface_path = asset_root / "roller.surf"
+            surface_path.write_bytes(surface_bytes)
+            surface_input = "d" * 64
+            surface_object = hashlib.sha256(surface_bytes).hexdigest()
+            descriptor = {
+                "kind": "assembly-package",
+                "components": {"roller": {
+                    "surfaceInput": surface_input,
+                    "surfaceObject": surface_object,
+                }},
+                "occurrences": [{
+                    "id": "o1.1", "name": "roller", "component": "roller",
+                    "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+                }],
+                "assembly": {"root": {
+                    "id": "o1", "name": "fixture", "nodeType": "assembly",
+                    "children": [{
+                        "id": "o1.1", "name": "roller", "nodeType": "part", "children": [],
+                    }],
+                }},
+            }
+            job = {
+                "kind": "step",
+                "resolved": {
+                    "kind": "step",
+                    "rootPath": str(asset_root),
+                    "package": {
+                        "descriptor": descriptor,
+                        "componentUrls": {"roller": "/__render_asset/roller.surf"},
+                    },
+                },
+                "outputs": [{
+                    "path": str(root / "out.png"), "width": 64, "height": 64, "camera": "iso",
+                }],
+            }
+            renderer = BatchSnapshotRenderer(browser_runtime_dir(None))
+            try:
+                cold = await renderer.render(job)
+                self.assertTrue(cold["ok"])
+                self.assertEqual(
+                    {"secure": True, "subtle": True},
+                    await renderer.page.evaluate(
+                        "({secure: isSecureContext, subtle: !!globalThis.crypto?.subtle})"
+                    ),
+                )
+                mesh_entries = list((root / "cache/index/mesh").iterdir())
+                self.assertEqual(len(mesh_entries), 1)
+                cached_index = mesh_entries[0].read_bytes()
+
+                # A warm success now proves the browser read the exact persisted
+                # TESS body: the only SURF URL the fallback could use is gone.
+                surface_path.unlink()
+                warm = await renderer.render(job)
+                self.assertTrue(warm["ok"])
+                self.assertEqual(mesh_entries[0].read_bytes(), cached_index)
+            finally:
+                await renderer.close()
+
+        with generated_cad_directory(prefix="snapshot-browser-cache-") as temporary:
+            root = Path(temporary).resolve()
+            with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(root / "cache")}):
+                asyncio.run(exercise(root))
 
 
 if __name__ == "__main__":
