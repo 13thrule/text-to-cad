@@ -1,0 +1,198 @@
+{
+  "summary": [
+    {
+      "occurrences": 9,
+      "ordinary": {
+        "preview_ms": 142.79958419501781,
+        "complete_ms": 374.10666700452566,
+        "at_preview": {
+          "native_decodes": 18,
+          "brep_serializations": 18,
+          "xcaf_documents": 1,
+          "child_materializations": 9,
+          "surfaces": 0
+        },
+        "counts": {
+          "native_decodes": 36,
+          "brep_serializations": 27,
+          "xcaf_documents": 2,
+          "child_materializations": 9,
+          "surfaces": 0
+        }
+      },
+      "reference": {
+        "preview_ms": 92.41287503391504,
+        "complete_ms": 322.1569173038006,
+        "at_preview": {
+          "native_decodes": 18,
+          "brep_serializations": 0,
+          "xcaf_documents": 0,
+          "child_materializations": 0,
+          "surfaces": 0
+        },
+        "counts": {
+          "native_decodes": 36,
+          "brep_serializations": 9,
+          "xcaf_documents": 1,
+          "child_materializations": 0,
+          "surfaces": 0
+        }
+      }
+    }
+  ],
+  "samples": [
+    {
+      "occurrences": 9,
+      "revision": 0,
+      "enabled": false,
+      "complete_ms": 374.1207499988377,
+      "counts": {
+        "native_decodes": 36,
+        "brep_serializations": 27,
+        "xcaf_documents": 2,
+        "child_materializations": 9,
+        "surfaces": 0
+      },
+      "preview_ms": 142.05954177305102,
+      "at_preview": {
+        "native_decodes": 18,
+        "brep_serializations": 18,
+        "xcaf_documents": 1,
+        "child_materializations": 9,
+        "surfaces": 0
+      },
+      "tree": "f3d1620886c4dfe3e8fa0140b79b88b1f683df7faffddfbb98fc4e8d9565b9f4",
+      "step_sha": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca"
+    },
+    {
+      "occurrences": 9,
+      "revision": 0,
+      "enabled": true,
+      "complete_ms": 319.2761670798063,
+      "counts": {
+        "native_decodes": 36,
+        "brep_serializations": 9,
+        "xcaf_documents": 1,
+        "child_materializations": 0,
+        "surfaces": 0
+      },
+      "preview_ms": 92.11537474766374,
+      "at_preview": {
+        "native_decodes": 18,
+        "brep_serializations": 0,
+        "xcaf_documents": 0,
+        "child_materializations": 0,
+        "surfaces": 0
+      },
+      "tree": "f3d1620886c4dfe3e8fa0140b79b88b1f683df7faffddfbb98fc4e8d9565b9f4",
+      "step_sha": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca"
+    },
+    {
+      "occurrences": 9,
+      "revision": 1,
+      "enabled": true,
+      "complete_ms": 322.677583899349,
+      "counts": {
+        "native_decodes": 36,
+        "brep_serializations": 9,
+        "xcaf_documents": 1,
+        "child_materializations": 0,
+        "surfaces": 0
+      },
+      "preview_ms": 92.41287503391504,
+      "at_preview": {
+        "native_decodes": 18,
+        "brep_serializations": 0,
+        "xcaf_documents": 0,
+        "child_materializations": 0,
+        "surfaces": 0
+      },
+      "tree": "37859b1fb6c8c4f2d851ea5d34c7fc8fdd0b1deb1c9c1823891d9b14b1824bb7",
+      "step_sha": "bd4aac5a4815e30dea89b9b9df767a3d845ee4791323d49857dc8ea711fc2cf7"
+    },
+    {
+      "occurrences": 9,
+      "revision": 1,
+      "enabled": false,
+      "complete_ms": 374.10666700452566,
+      "counts": {
+        "native_decodes": 36,
+        "brep_serializations": 27,
+        "xcaf_documents": 2,
+        "child_materializations": 9,
+        "surfaces": 0
+      },
+      "preview_ms": 143.54579197242856,
+      "at_preview": {
+        "native_decodes": 18,
+        "brep_serializations": 18,
+        "xcaf_documents": 1,
+        "child_materializations": 9,
+        "surfaces": 0
+      },
+      "tree": "37859b1fb6c8c4f2d851ea5d34c7fc8fdd0b1deb1c9c1823891d9b14b1824bb7",
+      "step_sha": "bd4aac5a4815e30dea89b9b9df767a3d845ee4791323d49857dc8ea711fc2cf7"
+    },
+    {
+      "occurrences": 9,
+      "revision": 2,
+      "enabled": false,
+      "complete_ms": 372.6531248539686,
+      "counts": {
+        "native_decodes": 36,
+        "brep_serializations": 27,
+        "xcaf_documents": 2,
+        "child_materializations": 9,
+        "surfaces": 0
+      },
+      "preview_ms": 142.79958419501781,
+      "at_preview": {
+        "native_decodes": 18,
+        "brep_serializations": 18,
+        "xcaf_documents": 1,
+        "child_materializations": 9,
+        "surfaces": 0
+      },
+      "tree": "3299c79b7981a98fe15cd9e7d6ec2a848b34aa8f086a4e2ff66e0ef5bba56139",
+      "step_sha": "4fe4eb1bf846e4ddb287a37d09b40f8dd5f3a41d40faa986a9833da7f638e74d"
+    },
+    {
+      "occurrences": 9,
+      "revision": 2,
+      "enabled": true,
+      "complete_ms": 322.1569173038006,
+      "counts": {
+        "native_decodes": 36,
+        "brep_serializations": 9,
+        "xcaf_documents": 1,
+        "child_materializations": 0,
+        "surfaces": 0
+      },
+      "preview_ms": 92.90070924907923,
+      "at_preview": {
+        "native_decodes": 18,
+        "brep_serializations": 0,
+        "xcaf_documents": 0,
+        "child_materializations": 0,
+        "surfaces": 0
+      },
+      "tree": "3299c79b7981a98fe15cd9e7d6ec2a848b34aa8f086a4e2ff66e0ef5bba56139",
+      "step_sha": "4fe4eb1bf846e4ddb287a37d09b40f8dd5f3a41d40faa986a9833da7f638e74d"
+    }
+  ],
+  "timed_calls": 6,
+  "prewarm_calls": 3,
+  "faces": 582,
+  "fixture_components": [
+    "carrier_plate",
+    "ring_gear",
+    "sun_gear",
+    "planet_gear_1",
+    "planet_pin_1",
+    "planet_gear_2",
+    "planet_pin_2",
+    "planet_gear_3",
+    "planet_pin_3"
+  ],
+  "method": "Actual run_model_argv warm kernels, three placement revisions, enabled/disabled alternating order, identical revision artifact readback prewarmed. Existing child output records current. Elapsed begins at CLI call, source preview and complete save measured separately; no browser first-frame claim."
+}

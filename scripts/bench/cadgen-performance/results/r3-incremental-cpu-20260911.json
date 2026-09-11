@@ -1,0 +1,24 @@
+{
+  "status": "historical-development-measurement",
+  "scope": "synchronous composition and cadScene.update only",
+  "fixture": "two one-triangle components with one moved occurrence per revision",
+  "harnessAtMeasurement": "/private/tmp/r3-bench.mjs",
+  "durableEquivalentHarness": "scripts/bench/cadgen-performance/r3-incremental-cpu.mjs",
+  "baselineSourceSnapshotPreserved": false,
+  "primaryClaimEligible": false,
+  "measurements": [
+    {
+      "occurrences": 24,
+      "iterations": 100,
+      "baseline": { "compositionPerRevisionMs": 0.173, "sceneUpdatePerRevisionMs": 0.582 },
+      "current": { "compositionPerRevisionMs": 0.066, "sceneUpdatePerRevisionMs": 0.147 }
+    },
+    {
+      "occurrences": 240,
+      "iterations": 40,
+      "baseline": { "compositionPerRevisionMs": 0.998, "sceneUpdatePerRevisionMs": 2.46 },
+      "current": { "compositionPerRevisionMs": 0.499, "sceneUpdatePerRevisionMs": 0.536 }
+    }
+  ],
+  "qualification": "The current-path workload is reproducible with the durable harness. The before-source snapshot and original stdout were not preserved, so the before/after numbers are context only and should not be used as a primary final claim."
+}

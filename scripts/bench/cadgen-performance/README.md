@@ -1,5 +1,12 @@
 # Cadgen warm-build and meshing benchmarks
 
+Start with the [current summary](SUMMARY-20260911.md). The latest
+[FreeCAD-inspired follow-on](FOLLOWON-INTEGRATION-20260911.md) links the
+reference-assembly, pure-factory, incremental-scene, preview-delivery, command-completion and
+dependency-footprint studies and their reproduction commands. These use small
+and moderate fixtures; historical giant-assembly results are not current
+acceptance requirements.
+
 These repository commands reproduce two CPU studies: cached model edits with
 preview/save events, and native OCCT triangulation versus the current JavaScript
 SURF tessellator. They do not change the runtime or select a different production

@@ -1,0 +1,68 @@
+{
+  "runtime_eligible": true,
+  "guard_median_ms": 3.8558130618184805,
+  "guarded_classes": 65,
+  "mutable_native_defaults": 27,
+  "stats": {
+    "hits": 30,
+    "misses": 6,
+    "declined": 0,
+    "unstorable": 0
+  },
+  "results": [
+    {
+      "factory": "algebra",
+      "holes": 2,
+      "baseline_ms": 2.3017078638076782,
+      "cached_ms": 5.3189583122730255,
+      "speedup": 0.4327365865035436,
+      "volume_match": true,
+      "bytes_match": true
+    },
+    {
+      "factory": "algebra",
+      "holes": 6,
+      "baseline_ms": 7.278124801814556,
+      "cached_ms": 4.66049974784255,
+      "speedup": 1.561661880828073,
+      "volume_match": true,
+      "bytes_match": true
+    },
+    {
+      "factory": "algebra",
+      "holes": 12,
+      "baseline_ms": 17.853249795734882,
+      "cached_ms": 4.738667048513889,
+      "speedup": 3.767567886275932,
+      "volume_match": true,
+      "bytes_match": true
+    },
+    {
+      "factory": "builder",
+      "holes": 2,
+      "baseline_ms": 8.00162460654974,
+      "cached_ms": 4.811374936252832,
+      "speedup": 1.6630640331641915,
+      "volume_match": true,
+      "bytes_match": true
+    },
+    {
+      "factory": "builder",
+      "holes": 6,
+      "baseline_ms": 28.94399967044592,
+      "cached_ms": 4.563667345792055,
+      "speedup": 6.342267627620544,
+      "volume_match": true,
+      "bytes_match": true
+    },
+    {
+      "factory": "builder",
+      "holes": 12,
+      "baseline_ms": 74.95125010609627,
+      "cached_ms": 4.76816575974226,
+      "speedup": 15.719094906244976,
+      "volume_match": true,
+      "bytes_match": true
+    }
+  ]
+}

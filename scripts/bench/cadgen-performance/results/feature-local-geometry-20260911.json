@@ -1,0 +1,1826 @@
+{
+  "boundary": "Warm worker bootstrap, normal public source builds, baseline op_memo primed in both modes; source writes excluded. Preview event is not a browser frame. STEP completion includes ordinary persistence/readback.",
+  "scenario": "One occurrence changes width; eight retain baseline arguments. Each pair uses a novel width and verifies only occurrence 0 geometry changes.",
+  "orderQualification": "Each pair alternates cache-off/cache-on order. The second build can reuse the first build's saved-byte/readback results and kernel operations; novel geometry is not separately primed. Individual order and rows are retained for the local-geometry scenario.",
+  "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+  "python": "3.13.13",
+  "versions": {
+    "build123d": "0.11.1",
+    "cadquery-ocp-novtk": "7.9.3.1.1"
+  },
+  "sourceSha256": {
+    "packages/cadgen/src/cadgen/features.py": "d74f386e2883cbff4be9c334755fd979adb135bbba10ffbb84b59a3335d7609a",
+    "packages/cadgen/src/cadgen/_internal/op_memo.py": "6ae31fd0aa227e12c372abffad3a4571f7c836aa653505ae9343996964e26f12",
+    "packages/cadgen/src/cadgen/_internal/generation_runner.py": "594d8ee8195622625de765c5f6589c15394b01d18ba299753a774431bce23b70",
+    "packages/cadgen/src/cadgen/daemon/worker.py": "d805002d4d855ea6fcff29d56bb6af30684fd518950cd5c7e75432388323d024"
+  },
+  "helperSha256": "a78d73045cbd7b5a922a617a812a27072da95db78b45e576598a0b98eef71438",
+  "summaries": [
+    {
+      "parts": 9,
+      "stepBytes": 348301,
+      "pairs": 3,
+      "changedOccurrences": 1,
+      "unchangedOccurrences": 8,
+      "sourceResultMs": {
+        "before": 578.1638328917325,
+        "after": 139.95637511834502,
+        "speedup": 4.131028918138568
+      },
+      "previewMs": {
+        "before": 578.2731659710407,
+        "after": 140.06566628813744,
+        "speedup": 4.128586121751211
+      },
+      "completeMs": {
+        "before": 675.1581658609211,
+        "after": 190.6357081606984,
+        "speedup": 3.541614382609733
+      }
+    }
+  ],
+  "runs": [
+    {
+      "parts": 9,
+      "shift": 0,
+      "reuse": true,
+      "measured": false,
+      "completeMs": 932.8272920101881,
+      "previewMs": 840.7045840285718,
+      "sourceResultMs": 840.6170001253486,
+      "features": {
+        "hits": 3,
+        "misses": 6,
+        "declined": 0,
+        "unstorable": 0
+      },
+      "tree": "6289921653cfd841166b8c040a64b8ab244e7be4bf7d7592017c72a1abf4d8e8",
+      "stepBytes": 309433,
+      "stepSha256": "e60848fe77ccbb36fcc157fc2efc508fbcd3061506753e47d2d3e558e3408b83",
+      "firstWidth": 70.0,
+      "occurrences": {
+        "plate-0": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-1": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            90.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-2": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            180.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        },
+        "plate-3": {
+          "component": "a9d4fa8be3366eab",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            270.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "bb42ddc89842a557e57df4bef9f1b65ff1cdeabf207dd0ec8bb4a62f433cf080"
+        },
+        "plate-4": {
+          "component": "b281a03c30650dc1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            360.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "d2c18207b152215b5d3f9f7b2f1c14fb3a2e805c47ab771e29ba6fd9df020460"
+        },
+        "plate-5": {
+          "component": "7c317e9c198b1207",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            450.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "719492ae7e5c1ec2af314ce49db93afad78b91f909bd7e72650325c5e3c6b755"
+        },
+        "plate-6": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            540.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-7": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            630.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-8": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            35.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        }
+      }
+    },
+    {
+      "parts": 9,
+      "shift": 0,
+      "reuse": false,
+      "measured": false,
+      "completeMs": 547.1428339369595,
+      "previewMs": 503.967291675508,
+      "sourceResultMs": 503.8760839961469,
+      "features": {
+        "hits": 0,
+        "misses": 9,
+        "declined": 0,
+        "unstorable": 0
+      },
+      "tree": "6289921653cfd841166b8c040a64b8ab244e7be4bf7d7592017c72a1abf4d8e8",
+      "stepBytes": 309433,
+      "stepSha256": "e60848fe77ccbb36fcc157fc2efc508fbcd3061506753e47d2d3e558e3408b83",
+      "firstWidth": 70.0,
+      "occurrences": {
+        "plate-0": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-1": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            90.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-2": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            180.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        },
+        "plate-3": {
+          "component": "a9d4fa8be3366eab",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            270.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "bb42ddc89842a557e57df4bef9f1b65ff1cdeabf207dd0ec8bb4a62f433cf080"
+        },
+        "plate-4": {
+          "component": "b281a03c30650dc1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            360.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "d2c18207b152215b5d3f9f7b2f1c14fb3a2e805c47ab771e29ba6fd9df020460"
+        },
+        "plate-5": {
+          "component": "7c317e9c198b1207",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            450.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "719492ae7e5c1ec2af314ce49db93afad78b91f909bd7e72650325c5e3c6b755"
+        },
+        "plate-6": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            540.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-7": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            630.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-8": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            35.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        }
+      }
+    },
+    {
+      "parts": 9,
+      "shift": 0,
+      "reuse": false,
+      "measured": true,
+      "completeMs": 692.2431248240173,
+      "previewMs": 592.9031660780311,
+      "sourceResultMs": 592.745749745518,
+      "features": {
+        "hits": 0,
+        "misses": 9,
+        "declined": 0,
+        "unstorable": 0
+      },
+      "tree": "a6552cf458ac32347768190f1095f380bcfaf8414f2600c00e012627599cd360",
+      "stepBytes": 348301,
+      "stepSha256": "6d121cd0f628b6d9bafc421dec171a502aac1b93bcb34d47c989e42431969e63",
+      "firstWidth": 71.0,
+      "occurrences": {
+        "plate-0": {
+          "component": "09a8aeffc1cb57ce",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "a407f4f0eadd6b713350875afd50ec0b6148aaee54e6368d311bf3ebf788fbb2"
+        },
+        "plate-1": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            90.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-2": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            180.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        },
+        "plate-3": {
+          "component": "a9d4fa8be3366eab",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            270.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "bb42ddc89842a557e57df4bef9f1b65ff1cdeabf207dd0ec8bb4a62f433cf080"
+        },
+        "plate-4": {
+          "component": "b281a03c30650dc1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            360.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "d2c18207b152215b5d3f9f7b2f1c14fb3a2e805c47ab771e29ba6fd9df020460"
+        },
+        "plate-5": {
+          "component": "7c317e9c198b1207",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            450.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "719492ae7e5c1ec2af314ce49db93afad78b91f909bd7e72650325c5e3c6b755"
+        },
+        "plate-6": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            540.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-7": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            630.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-8": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            35.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        }
+      },
+      "pair": 1,
+      "orderInPair": 1,
+      "changedComponents": [
+        "plate-0"
+      ]
+    },
+    {
+      "parts": 9,
+      "shift": 0,
+      "reuse": true,
+      "measured": true,
+      "completeMs": 186.2664590589702,
+      "previewMs": 137.44516670703888,
+      "sourceResultMs": 137.29854207485914,
+      "features": {
+        "hits": 8,
+        "misses": 1,
+        "declined": 0,
+        "unstorable": 0
+      },
+      "tree": "a6552cf458ac32347768190f1095f380bcfaf8414f2600c00e012627599cd360",
+      "stepBytes": 348301,
+      "stepSha256": "6d121cd0f628b6d9bafc421dec171a502aac1b93bcb34d47c989e42431969e63",
+      "firstWidth": 71.0,
+      "occurrences": {
+        "plate-0": {
+          "component": "09a8aeffc1cb57ce",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "a407f4f0eadd6b713350875afd50ec0b6148aaee54e6368d311bf3ebf788fbb2"
+        },
+        "plate-1": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            90.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-2": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            180.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        },
+        "plate-3": {
+          "component": "a9d4fa8be3366eab",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            270.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "bb42ddc89842a557e57df4bef9f1b65ff1cdeabf207dd0ec8bb4a62f433cf080"
+        },
+        "plate-4": {
+          "component": "b281a03c30650dc1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            360.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "d2c18207b152215b5d3f9f7b2f1c14fb3a2e805c47ab771e29ba6fd9df020460"
+        },
+        "plate-5": {
+          "component": "7c317e9c198b1207",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            450.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "719492ae7e5c1ec2af314ce49db93afad78b91f909bd7e72650325c5e3c6b755"
+        },
+        "plate-6": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            540.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-7": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            630.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-8": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            35.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        }
+      },
+      "pair": 1,
+      "orderInPair": 2,
+      "changedComponents": [
+        "plate-0"
+      ]
+    },
+    {
+      "parts": 9,
+      "shift": 0,
+      "reuse": true,
+      "measured": true,
+      "completeMs": 261.50208339095116,
+      "previewMs": 163.3187923580408,
+      "sourceResultMs": 163.1966670975089,
+      "features": {
+        "hits": 8,
+        "misses": 1,
+        "declined": 0,
+        "unstorable": 0
+      },
+      "tree": "aab379f2593d7c9f329339b256148c3b99ebb5db99aed5b118e29497af4fbe3a",
+      "stepBytes": 348275,
+      "stepSha256": "d801b057878851eede1e0f4e8d83788fa0aded5c481364d7f25f745687ae4f99",
+      "firstWidth": 72.0,
+      "occurrences": {
+        "plate-0": {
+          "component": "4ca18fb1f2de1592",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "79c8785e81e9b0e06fd53f7e97a2f3e40f0501751549781538b50c7468b8e339"
+        },
+        "plate-1": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            90.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-2": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            180.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        },
+        "plate-3": {
+          "component": "a9d4fa8be3366eab",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            270.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "bb42ddc89842a557e57df4bef9f1b65ff1cdeabf207dd0ec8bb4a62f433cf080"
+        },
+        "plate-4": {
+          "component": "b281a03c30650dc1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            360.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "d2c18207b152215b5d3f9f7b2f1c14fb3a2e805c47ab771e29ba6fd9df020460"
+        },
+        "plate-5": {
+          "component": "7c317e9c198b1207",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            450.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "719492ae7e5c1ec2af314ce49db93afad78b91f909bd7e72650325c5e3c6b755"
+        },
+        "plate-6": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            540.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-7": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            630.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-8": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            35.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        }
+      },
+      "pair": 2,
+      "orderInPair": 1,
+      "changedComponents": [
+        "plate-0"
+      ]
+    },
+    {
+      "parts": 9,
+      "shift": 0,
+      "reuse": false,
+      "measured": true,
+      "completeMs": 615.2535839937627,
+      "previewMs": 563.0515837110579,
+      "sourceResultMs": 562.9620417021215,
+      "features": {
+        "hits": 0,
+        "misses": 9,
+        "declined": 0,
+        "unstorable": 0
+      },
+      "tree": "aab379f2593d7c9f329339b256148c3b99ebb5db99aed5b118e29497af4fbe3a",
+      "stepBytes": 348275,
+      "stepSha256": "d801b057878851eede1e0f4e8d83788fa0aded5c481364d7f25f745687ae4f99",
+      "firstWidth": 72.0,
+      "occurrences": {
+        "plate-0": {
+          "component": "4ca18fb1f2de1592",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "79c8785e81e9b0e06fd53f7e97a2f3e40f0501751549781538b50c7468b8e339"
+        },
+        "plate-1": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            90.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-2": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            180.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        },
+        "plate-3": {
+          "component": "a9d4fa8be3366eab",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            270.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "bb42ddc89842a557e57df4bef9f1b65ff1cdeabf207dd0ec8bb4a62f433cf080"
+        },
+        "plate-4": {
+          "component": "b281a03c30650dc1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            360.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "d2c18207b152215b5d3f9f7b2f1c14fb3a2e805c47ab771e29ba6fd9df020460"
+        },
+        "plate-5": {
+          "component": "7c317e9c198b1207",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            450.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "719492ae7e5c1ec2af314ce49db93afad78b91f909bd7e72650325c5e3c6b755"
+        },
+        "plate-6": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            540.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-7": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            630.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-8": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            35.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        }
+      },
+      "pair": 2,
+      "orderInPair": 2,
+      "changedComponents": [
+        "plate-0"
+      ]
+    },
+    {
+      "parts": 9,
+      "shift": 0,
+      "reuse": false,
+      "measured": true,
+      "completeMs": 675.1581658609211,
+      "previewMs": 578.2731659710407,
+      "sourceResultMs": 578.1638328917325,
+      "features": {
+        "hits": 0,
+        "misses": 9,
+        "declined": 0,
+        "unstorable": 0
+      },
+      "tree": "6122d16053816bd97d788ec48c7feac3ade8fe7d11647e29322df618f844265e",
+      "stepBytes": 348301,
+      "stepSha256": "d4a60b085480a3b13ce62f75890a4948e454164422a1cd3eb32007f234a312d4",
+      "firstWidth": 73.0,
+      "occurrences": {
+        "plate-0": {
+          "component": "9454a252f3fee52a",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "4cae0ea01daba21343c2a6cd829d6fcce4b7c3462ea5842449ecb84a158d69c1"
+        },
+        "plate-1": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            90.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-2": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            180.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        },
+        "plate-3": {
+          "component": "a9d4fa8be3366eab",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            270.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "bb42ddc89842a557e57df4bef9f1b65ff1cdeabf207dd0ec8bb4a62f433cf080"
+        },
+        "plate-4": {
+          "component": "b281a03c30650dc1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            360.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "d2c18207b152215b5d3f9f7b2f1c14fb3a2e805c47ab771e29ba6fd9df020460"
+        },
+        "plate-5": {
+          "component": "7c317e9c198b1207",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            450.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "719492ae7e5c1ec2af314ce49db93afad78b91f909bd7e72650325c5e3c6b755"
+        },
+        "plate-6": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            540.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-7": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            630.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-8": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            35.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        }
+      },
+      "pair": 3,
+      "orderInPair": 1,
+      "changedComponents": [
+        "plate-0"
+      ]
+    },
+    {
+      "parts": 9,
+      "shift": 0,
+      "reuse": true,
+      "measured": true,
+      "completeMs": 190.6357081606984,
+      "previewMs": 140.06566628813744,
+      "sourceResultMs": 139.95637511834502,
+      "features": {
+        "hits": 8,
+        "misses": 1,
+        "declined": 0,
+        "unstorable": 0
+      },
+      "tree": "6122d16053816bd97d788ec48c7feac3ade8fe7d11647e29322df618f844265e",
+      "stepBytes": 348301,
+      "stepSha256": "d4a60b085480a3b13ce62f75890a4948e454164422a1cd3eb32007f234a312d4",
+      "firstWidth": 73.0,
+      "occurrences": {
+        "plate-0": {
+          "component": "9454a252f3fee52a",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "4cae0ea01daba21343c2a6cd829d6fcce4b7c3462ea5842449ecb84a158d69c1"
+        },
+        "plate-1": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            90.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-2": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            180.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        },
+        "plate-3": {
+          "component": "a9d4fa8be3366eab",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            270.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "bb42ddc89842a557e57df4bef9f1b65ff1cdeabf207dd0ec8bb4a62f433cf080"
+        },
+        "plate-4": {
+          "component": "b281a03c30650dc1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            360.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "d2c18207b152215b5d3f9f7b2f1c14fb3a2e805c47ab771e29ba6fd9df020460"
+        },
+        "plate-5": {
+          "component": "7c317e9c198b1207",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            450.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "719492ae7e5c1ec2af314ce49db93afad78b91f909bd7e72650325c5e3c6b755"
+        },
+        "plate-6": {
+          "component": "28a528fb5743bd8f",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            540.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "44b6515efdd83e392b50f16c6c044ad0cf439046d0172137458ac489451a48d5"
+        },
+        "plate-7": {
+          "component": "4ffef196fe0c63a1",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            630.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "dbb28126708a2ec521b06e77b7d5eea988acef350a69d43c2c7f5be71038aa65"
+        },
+        "plate-8": {
+          "component": "ba5b9268569e0fe8",
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            35.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "brep": "ae269a10dde9d6136c07ab3331c52c456262ab47b0946a6f5a79840aa7dc7af7"
+        }
+      },
+      "pair": 3,
+      "orderInPair": 2,
+      "changedComponents": [
+        "plate-0"
+      ]
+    }
+  ]
+}

@@ -7,12 +7,18 @@ for before/after timings, the FreeCAD comparison and the current play viewer.
 The implementation is on `codex/tendon-hand-performance`, based on the reviewed
 `codex/tendon-hand-preview` tip `7aa3e85be`. The release version stays 0.5.1.
 
-The twelve planned steps below are implemented or have a documented experiment
+The original twelve planned steps below are implemented or have a documented experiment
 decision. The additional geometry/display separation and the reported canvas
 selection repair pass their correctness and packaging checks. The bounded final
 studies are recorded. Full performance acceptance remains open: the last
 nine-part monolithic preview measured about 500 ms against a 250 ms target.
 Checked implementation tasks below do not mean that every latency target passed.
+The follow-on mechanisms R1–R5 and dependency audit below are implemented and
+validated. Browser interaction, paired source-to-draw measurements, actual
+command-exit checks and the final isolated wheel all passed. The timing study
+also exposed and removed unnecessary initiating-process geometry reconstruction.
+See the
+[follow-on record](scripts/bench/cadgen-performance/FOLLOWON-INTEGRATION-20260911.md).
 
 | Area | Implemented behavior and evidence |
 |---|---|
@@ -27,9 +33,9 @@ Checked implementation tasks below do not mean that every latency target passed.
 | Native meshing | The bounded OCCT experiment found worse complete extraction cost on curved fixtures. The production JS mesher is retained; adopting another backend is not a completion prerequisite. |
 | Authoring and store design | Ordinary CAD code and existing decorators remain sufficient. Immutable content-addressed objects and atomic indexes retain their meanings. No author-managed cache/session utilities or persistent edit store were introduced. |
 
-The coordinated geometry/display cut passes **1,725 package Python tests and
-1,014 shared JavaScript tests**. The later CLI correction passes 89 focused
-tests, including seven new tests; the final viewer passes 514 client tests.
+The earlier coordinated geometry/display checkpoint passed **1,725 package
+Python tests and 1,014 shared JavaScript tests**. Its later CLI correction
+passed 89 focused tests, including seven new tests; its viewer passed 514 client tests.
 Repository policy checks pass
 126 tests with one skip. Canonical bundling/freshness, documentation checks,
 source-free installed-wheel exports and actual HTTP serving provenance pass.
@@ -39,6 +45,16 @@ The browser passes 12 lifecycle and 12 adaptive/resize assertions on the
 passes nine direct browser assertions, covering components, faces, edges and
 saved-file replacement. See the
 [final integration record](scripts/bench/cadgen-performance/DEFERRED-SURF-INTEGRATION-20260911.md).
+
+The follow-on's broader package sweep ran 1,796 tests; one stale ledger mock
+was corrected and its 23-test module passed on rerun. The 434-test skill sweep
+likewise needed stale generation fixtures corrected; the affected 45-test
+module then passed. Other modules passed their original sweeps. Shared JS
+passes 1,021 tests and the final viewer passes 522. The subsequent R5 authoring
+change passes seven subprocess tests, 24 related public/source-result tests and
+four package-boundary tests. The
+[follow-on validation record](scripts/bench/cadgen-performance/FOLLOWON-INTEGRATION-20260911.md)
+preserves the precise scope and installed-wheel evidence.
 
 ### Final evidence and unresolved performance targets
 
@@ -99,6 +115,145 @@ The side task is complete: `models/tendon_hand` is isolated on
 and no generated large artifacts. The legacy project folders were removed
 from this performance branch. [PR #384](https://github.com/earthtojake/text-to-cad/pull/384)
 contains about 6.90 MB of source files (about 1.23 MB compressed Git objects).
+
+## Follow-on priorities — retained execution and dependency footprint
+
+Prioritize FreeCAD's useful execution mechanisms within cadgen's existing
+build123d/OCP engine. FreeCADCmd remains a reference implementation for bounded
+comparisons; this list does not add FreeCAD as a production dependency. The
+largest opportunity is making a local edit cost proportional to its affected
+computations and components through publication and browser adoption.
+
+- [x] **R1 — Retain private geometry and compose unchanged parts by reference.**
+  Prototype a bounded working assembly owned by one worker/store/model revision
+  lineage. Existing workers retain the kernel and byte caches; independent
+  consumers still reconstruct native shapes, and ordinary build123d compound
+  construction forces lazy children. Preserve pinned references through eligible
+  assembly composition and retain unexposed native geometry where ownership can
+  be proved. A placement-only edit should not reconstruct or remesh unchanged
+  components just to form an assembly. Native operations that require geometry
+  must still receive correct private shapes. Document the revised ownership
+  contract before implementation; do not revive the rejected shared mutable
+  prototype cache or use pointer identity as proof of unchanged geometry.
+  **Result:** exact-reference composition avoids child materialization and
+  redundant serialization through source publication; native access forces
+  ordinary private geometry. A cross-build native cache was rejected after
+  negligible clone gains and a changed BREP. The nine-part planetary preview
+  improves from 142.8 to 92.4 ms with identical STEP bytes. See the
+  [R1 report](scripts/bench/cadgen-performance/REFERENCE-ASSEMBLIES-20260911.md).
+- [x] **R2 — Execute only affected decorated computations.** Extend the existing
+  child-result graph so local edits avoid unrelated Python/builder replay as
+  well as kernel operations. Start at existing decorated-part boundaries. If
+  finer reuse needs argument-keyed intermediate functions, design it through
+  decorators, including input identity, dependency discovery and invalidation.
+  Arbitrary monolithic Python cannot be partially skipped by assuming an old
+  trace is still valid; unsupported cases retain ordinary execution semantics.
+  **Result:** optional `@feature` factories use the existing operation index,
+  immutable BREP objects and private canonical returns. The decorator declares
+  purity; defensive guards are not a proof of arbitrary Python behavior. A
+  one-part edit in a nine-part assembly reuses eight features and recomputes
+  one, with preview 578.3 → 140.1 ms and exact paired STEP bytes. See the
+  [R2 report](scripts/bench/cadgen-performance/FEATURE-FACTORIES-20260911.md).
+- [x] **R3 — Carry component reuse through publication and rendering.** Reuse
+  unchanged immutable objects and complete tree branches; serialize and derive
+  display data only for changed geometry where the verified ownership contract
+  permits. Finish transform-only and component-replacement paths without
+  rebuilding unaffected scene bookkeeping, GPU buffers or selector resources.
+  Build on the existing instancing, mesh retention and lazy selectors. Preserve
+  exact topology/mesh identity and all required publication integrity checks.
+  **Result:** immutable composition rows/tree branches cross same-file
+  revisions, and unchanged static scene records avoid repeated work. Full
+  shared-JS and viewer tests pass. The 24-occurrence browser check verifies
+  visible placement/component changes, exact face/edge picks, stable resources,
+  retained failed replacements and recovery on a new revision. Module-driven
+  entries use their existing loading path. See the
+  [R3 report](scripts/bench/cadgen-performance/INCREMENTAL-SCENE-20260911.md).
+- [x] **R4 — Validate the complete interactive path separately from saving.**
+  Preview-before-save is already implemented. Measure source change to the
+  first frame containing that revision, interaction readiness and completed
+  STEP save separately. Use short, bounded small/medium cases for placement,
+  one-part geometry and repeated-component assembly edits; no hand stress tests
+  or revival of the rejected sustained benchmark. Count Python executions,
+  native reconstructions, serialization, surface/mesh derivations and GPU
+  replacements to establish which unchanged work actually disappears.
+  Remove the preview feed's 500 ms idle polling delay with bounded ledger
+  change notifications; keep periodic artifact-integrity checks and measure
+  notification delivery separately from component adoption and actual drawing.
+  **Result:** eight paired edits on 2/24 occurrences pass exact TREE, actual STEP
+  bytes and worker/HTTP/adoption/main-scene-draw ordering. On the final runtime,
+  placement draws improve from 409 to 186 ms and 351 to 245 ms under the recorded
+  polling phases; geometry gains are smaller. A separate exact authored-baseline
+  check proves 24/24 GPU reuse at the same LOD and identifies intentional LOD
+  replacement when tessellation changes. These are single pairs, not medians or
+  compositor measurements. See the
+  [R4 report](scripts/bench/cadgen-performance/PREVIEW-DELIVERY-20260911.md).
+- [x] **R5 — Avoid reconstructing an unused script result after saving.** The
+  actual-command study found a 2.8–3.7 second process lifetime despite STEP saves
+  finishing in 147–258 ms. A conventional real-file main-module bare call
+  immediately discards its returned geometry. Skip that final reconstruction
+  only when CPython's next instruction proves the discard and no tracing,
+  profiling or monitoring observer is active. Keep assigned, nested,
+  interactive, synthetic and uncertain calls unchanged. Always complete the
+  build and receive its checked source result first. Validate actual bare and
+  consumed returns, matched command-exit timings, exact output bytes and the
+  installed wheel; then refresh the bounded browser timing on that final runtime.
+  **Result:** unchanged 2/24-occurrence commands fall from 2.63/2.75 seconds to
+  113 ms; new placements fall from 2.71/2.93 seconds to 188/231 ms. These are
+  single paired actual process lifetimes, with warm private daemons and identical
+  STEP bytes. Consumed-return and observer/failure tests pass. The final wheel
+  matches all 223 payload files and passes actual bare/assigned calls; final
+  browser timings use that same source. See the
+  [R5 report](scripts/bench/cadgen-performance/R5-SCRIPT-COMPLETION-20260911.md).
+
+R1 and R2 address different costs and need a shared ownership/execution design;
+R3 carries their benefits to the user. Keep source authoritative, objects
+immutable, indexes atomic, exact child pins valid and saved-file readers
+source-free. Worker eviction and store deletion must remain recoverable. A
+retained RAM handle must not conceal missing required disk objects. Explicit
+builds still complete all declared outputs even if a newer preview supersedes
+their display. Authors must not manage sessions, ownership or cache utilities.
+
+FreeCAD's reference mechanisms are its
+[document/recompute API](https://freecad.github.io/SourceDoc/d8/d3e/classApp_1_1Document.html)
+and [linked instances](https://github.com/FreeCAD/FreeCAD-documentation/blob/main/wiki/Std_LinkMake.md).
+Our existing FreeCAD benchmark explicitly replaces one known part's shape and
+retains the other eight; it does not discover a build123d feature graph.
+No 100x improvement is established. Large gains from avoiding unchanged work
+must not be extrapolated to cold unique geometry, full STEP serialization or
+already-fluid viewport frame times. The native mesher remains deferred under
+the existing measured decision.
+
+### D1 — Audit the required Python dependencies, especially VTK
+
+- [x] Trace actual cadgen/build123d usage of VTK and the OCP modules provided by
+  `cadquery-ocp` versus `cadquery-ocp-novtk`, including packaged commands and
+  optional exports. Decide whether cadgen can directly require the no-VTK
+  distribution while retaining the OCP APIs it actually imports.
+- [x] Verify any proposed dependency change in a clean isolated installation,
+  not by uninstalling overlapping OCP distributions from the shared development
+  environment. Exercise installed-wheel generation, STEP import/export,
+  inspection, snapshots and viewer jobs, and check supported platform wheels.
+  Refresh dependency documentation and derived metadata only if a change lands;
+  leave the release version unchanged.
+- [x] Report installed and download footprints separately, with shared package
+  files counted once. Measure startup or RAM only if claiming improvements to
+  those metrics; smaller installed size alone proves neither.
+
+Local macOS measurements on September 11: build123d 0.11.1 alone uses about
+1.5 MiB of allocated package-file space, its required dependency closure about
+462 MiB, and cadgen's four declared dependency roots about 1.07 GiB. VTK 9.6.2
+alone accounts for about 591 MiB. Installed metadata shows build123d requiring
+`cadquery-ocp-novtk`, while cadgen separately requires `cadquery-ocp`, which
+requires VTK and consequently matplotlib. These totals use installed RECORD
+paths with inode deduplication, excluding Python, Node, the snapshot browser
+and unrelated development dependencies. The completed
+[dependency audit](scripts/bench/cadgen-performance/DEPENDENCY-AUDIT-20260911.md)
+switches the direct OCP requirement to `cadquery-ocp-novtk` and verifies a clean
+wheel installation without VTK or matplotlib. That clean dependency closure
+uses 623.83 MiB; different resolved versions prevent treating the earlier
+whole-environment total as an exact matched delta. The matched provider archive
+closure falls from 184.09 to 59.41 MiB. Existing environments are unchanged;
+no startup, RAM or modeling-speed gain is claimed from this packaging change.
 
 ## Objective
 
@@ -504,4 +659,10 @@ Use the smallest relevant checks during each step and the shared checks for inte
 
 The branch is ready when the selected performance targets are verified, correctness and package checks pass, and the viewer/build contracts describe the implemented behavior. Store/runtime expansion is authorized within the object/index and decorator-only boundaries. Resolve and document internal schema, ownership and publication designs before dependent implementation; verify existing model scripts benefit unchanged.
 
-The highest-value immediate work is imported-document caching, lazy selector construction, complete memory ownership and surface instancing. Persistent editing revisions and asynchronous STEP persistence then address the remaining architectural difference between a fast viewport update and a complete saved-file rebuild.
+Imported-document caching, lazy selectors, resource ownership, instancing and
+preview-before-save are implemented foundations. Follow-on R1–R5 and D1 are now
+implemented and validated, including the documented rejection of cross-build
+native retention and the native-mesher experiment. The original 250 ms arbitrary
+monolithic preview target remains unmet; full FreeCAD parity is not established.
+Completing the selected implementation mechanisms does not turn those remaining
+performance targets into measured successes.

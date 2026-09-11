@@ -468,6 +468,54 @@
       "archiveSha256": "6881ab5d14ab08e2b488ef30c35753049fb85616e36c43ddbd756f9cff442db9"
     },
     {
+      "path": "r4-preview-delivery-20260911.json",
+      "archive": "r4-preview-delivery-20260911.json.gz",
+      "bytes": 329624,
+      "sha256": "011ab294e06cfedae4b01b324e05f1033a4cf376d3d96929826cfcadeddc40b2",
+      "archiveBytes": 24112,
+      "archiveSha256": "ab1fc01ea1448780996a732b7024a4308d880afdea7ace27b7680f75ad065be1"
+    },
+    {
+      "path": "r4-preview-delivery-final-authored-placement-20260911.json",
+      "archive": "r4-preview-delivery-final-authored-placement-20260911.json.gz",
+      "bytes": 169374,
+      "sha256": "fd6329e147273d64a4e326d33266292ed26fe9c6c3b130f9aa3a2a25e0773f6c",
+      "archiveBytes": 13900,
+      "archiveSha256": "4aed683789f9ac040f89302f34f4cc371bf86cc4625bdab35430e46b48466989"
+    },
+    {
+      "path": "r4-preview-delivery-final-initial-20260911.json",
+      "archive": "r4-preview-delivery-final-initial-20260911.json.gz",
+      "bytes": 313324,
+      "sha256": "fd350e57769609ae8cdd73ce85491579433dcb9ed6273686a7879901c9be03ec",
+      "archiveBytes": 21704,
+      "archiveSha256": "f6a840bf085b271746a24239fc95357c809a09f82ecd55dd9a0c7175f06a4563"
+    },
+    {
+      "path": "r4-preview-delivery-final-placement-correction-20260911.json",
+      "archive": "r4-preview-delivery-final-placement-correction-20260911.json.gz",
+      "bytes": 124953,
+      "sha256": "d4d9781139c257e39f3adb50b08b793e21ed5dbc21b8f731881b66f493085a31",
+      "archiveBytes": 10062,
+      "archiveSha256": "b381741c1130e2dbe80fb8dc1f5c75393a4faecea1761d0dd20ee1f86a0879ae"
+    },
+    {
+      "path": "r4-preview-delivery-pre-r5-20260911.json",
+      "archive": "r4-preview-delivery-pre-r5-20260911.json.gz",
+      "bytes": 381966,
+      "sha256": "6337bc8c3e3b05514edb261e4c514fcc9b7d1235d988809adaa02ce3e691dc74",
+      "archiveBytes": 25415,
+      "archiveSha256": "b234e24c39ef01dd02bcd9457be6d543bb350dd345779c1f9aade0ca146bec41"
+    },
+    {
+      "path": "r5-script-completion-20260911.json",
+      "archive": "r5-script-completion-20260911.json.gz",
+      "bytes": 69505,
+      "sha256": "b72afa3b86d791f5194cc77152d09285201e903db266bc0091e93f2173c5c453",
+      "archiveBytes": 4354,
+      "archiveSha256": "73c7ad4f9772d5f3c89afc20fc209fb160ea70a9a94985fef356131409ded6b6"
+    },
+    {
       "path": "ready-sibling-counterfactual-20260910.json",
       "archive": "ready-sibling-counterfactual-20260910.json.gz",
       "bytes": 1402248,
