@@ -175,6 +175,14 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   path as a cold import, using only hierarchy, names, colors and geometry in
   the STEP bytes. Only this tree is entered in `index/document`.
 
+  Raw-document compilation does not discover neighboring model sources. It
+  passes the parsed scene directly to this canonical builder, whose fixed edge
+  classes also govern saved readback; it does not construct a discarded Python
+  compound or calculate source-only adaptive metadata. Generated models,
+  annotated re-emits and public `read_step` geometry retain their existing
+  preparation paths. Compilation leaves the STEP and its sidecar untouched;
+  declaration consumers retain their normal binding and schema checks.
+
   Saved readback may reconstruct a private scene from that document index
   when the freshly emitted STEP has an already-seen exact digest. It verifies
   one snapshot of the root tree and every consumed BREP/SURF object against

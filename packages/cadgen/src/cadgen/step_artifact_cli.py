@@ -439,7 +439,13 @@ def build_step_artifact(
                 )
             result = _generate_part_outputs(
                 spec,
-                entries_by_step_path=_entries_by_step_path_for_repo(repo_root, spec),
+                # A document compile has no source dependencies to discover.
+                # Its requested spec is sufficient; generation currently uses
+                # this map only as invocation bookkeeping.
+                entries_by_step_path=(
+                    _entries_by_step_path_for_repo(repo_root, spec)
+                    if from_generator else {spec.step_path.resolve(): spec}
+                ),
                 preloaded_scene=scene,
                 require_step_file=not from_generator,
                 force=force,

@@ -391,7 +391,16 @@ def _generate_part_outputs(
         **entries_by_step_path,
         spec.step_path.resolve(): spec,
     }
-    selector_options = _selector_options_for_part(spec, scene=scene)
+    # Raw document compilation publishes the byte-derived canonical tree,
+    # whose edge classes are fixed by build_document_tree. Do not calculate
+    # generated-source metadata that this path never consumes. Re-emits and
+    # Python-backed scenes retain their ordinary preparation path.
+    raw_document = (
+        spec.source != "generated"
+        and str(getattr(scene, "source_kind", "step") or "step").strip().lower() != "python"
+        and not str(getattr(scene, "reemit_source_hash", "") or "").strip()
+    )
+    selector_options = _selector_options_for_part(spec, scene=None if raw_document else scene)
     if (
         not has_extra_outputs
         and spec.source != "generated"
@@ -415,7 +424,7 @@ def _generate_part_outputs(
     # else is one component. No declaration steers it and nothing is inferred from
     # source — the tree's entryKind is read off the tree once built.
     source_compound = getattr(scene, "source_compound", None)
-    package_provenance = _assembly_provenance_manifest(
+    package_provenance = {} if raw_document else _assembly_provenance_manifest(
         scene, selector_options=selector_options, step_path=spec.step_path
     )
 
@@ -423,10 +432,10 @@ def _generate_part_outputs(
         from pathlib import Path
 
         shape = source_compound
-        if shape is None:
-            # Imported STEP (no generator compound): compose the ALREADY-LOADED scene
-            # into the packaging compound. This used to call build123d.import_step and
-            # pay a second full text-STEP parse right after the scene load above.
+        if shape is None and not raw_document:
+            # Generated/re-emitted scenes without an authored compound need
+            # this wrapper. Raw documents go directly to build_document_tree;
+            # constructing the same hierarchy here would be discarded.
             from cadgen._internal.step_scene_mesh import scene_to_build123d_compound
 
             shape = scene_to_build123d_compound(scene)
