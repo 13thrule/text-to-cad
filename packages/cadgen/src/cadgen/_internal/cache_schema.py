@@ -1,23 +1,20 @@
-"""The ONE cache-scheme number.
+"""Compatibility identity for component extraction inputs.
 
-``CACHE_SCHEMA_VERSION`` is the store generation: it salts every render
-package's directory key (``<sha256(document)>-v<N>``, ``cadgen.catalog``)
-and the component cids inside packages. Bumping it is the whole migration
-story — old-generation artifacts simply stop resolving (orphaned BY NAME,
-swept by ``cadgen cache gc``) and everything regenerates on demand at the
-new key. Nothing is ever migrated in place, and no artifact records a
-version inside itself: a tree that resolves at all IS current-scheme by
-construction.
+``CACHE_SCHEMA_VERSION`` participates in a component's input hash together
+with its exact BREP bytes and normalized face colors. Changing the extraction
+scheme prevents reuse through an older component input key. Immutable object
+addresses remain hashes of their bytes, and document keys remain hashes of
+the actual saved file. There are no version-salted package directories.
 
-Bump it whenever anything about a tree's meaning or payloads changes:
-the assembly.json shape, the ``.surf`` container (``SURF_VERSION``), the
-embedded topology tables, component serialization — one number, one
-signal, one regeneration.
+This is not a universal store-reset switch. Model/document index payloads,
+operation keys, SURF containers and tessellation payloads validate their own
+compatibility contracts. A component scheme change alone does not invalidate
+an otherwise accepted saved-document mapping. Persistent deletion remains the
+explicit ``cadgen store gc`` operation.
 
-Stdlib-only on purpose: the viewer's mirror is ``CACHE_SCHEMA_VERSION``
-in ``apps/viewer/server/store_paths.py``, pinned against this literal by
-``tests/python/global/test_render_contract_sync.py`` so a one-sided bump
-cannot ship.
+Keep this module free of kernel imports. The historical notes below describe
+the extraction cutovers when introduced; current builds distinguish authored
+result trees from canonical trees derived from saved STEP bytes.
 """
 
 # 17: the assembly.json's ``mesh`` section is gone. A tree stores
