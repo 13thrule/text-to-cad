@@ -1,0 +1,702 @@
+{
+  "checks": {
+    "all": true,
+    "allCallsAndRestoration": true,
+    "allRuntimeAndDaemonCleanup": true,
+    "exactAppearanceAndPlacementAllConditions": true,
+    "exactChildPinTransitions": true,
+    "exactNativeBrepWithinRuntimePairs": true,
+    "exactStepBytesAllConditions": true,
+    "nativeThreeSolidAtMostThirtyFaces": true,
+    "strictBounds": true
+  },
+  "hostAfter": {
+    "activeProcesses": [
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 98.5,
+        "pid": 64481,
+        "ppid": 64480,
+        "rssBytes": 764641280
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 98.2,
+        "pid": 64479,
+        "ppid": 64475,
+        "rssBytes": 761135104
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 97.6,
+        "pid": 64585,
+        "ppid": 8242,
+        "rssBytes": 765001728
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 97.3,
+        "pid": 64483,
+        "ppid": 64482,
+        "rssBytes": 878886912
+      },
+      {
+        "command": "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+        "cpuPercent": 61.2,
+        "pid": 427,
+        "ppid": 1,
+        "rssBytes": 222838784
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 47.4,
+        "pid": 87826,
+        "ppid": 8242,
+        "rssBytes": 98533376
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/152.0.7977.83/Helpers/Codex (Service).app/Contents/MacOS/Codex (Service)",
+        "cpuPercent": 18.7,
+        "pid": 7542,
+        "ppid": 7523,
+        "rssBytes": 327172096
+      },
+      {
+        "command": "/Applications/Stremio.app/Contents/MacOS/stremio",
+        "cpuPercent": 17.5,
+        "pid": 54328,
+        "ppid": 1,
+        "rssBytes": 1117102080
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/152.0.7977.83/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)",
+        "cpuPercent": 13.7,
+        "pid": 8252,
+        "ppid": 7523,
+        "rssBytes": 1165426688
+      },
+      {
+        "command": "/usr/sbin/coreaudiod",
+        "cpuPercent": 10.4,
+        "pid": 437,
+        "ppid": 1,
+        "rssBytes": 84000768
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
+        "cpuPercent": 8.6,
+        "pid": 7523,
+        "ppid": 1,
+        "rssBytes": 465141760
+      },
+      {
+        "command": "/System/Applications/Messages.app/Contents/MacOS/Messages",
+        "cpuPercent": 3.2,
+        "pid": 667,
+        "ppid": 1,
+        "rssBytes": 269975552
+      },
+      {
+        "command": "/Applications/WhatsApp.app/Contents/MacOS/WhatsApp",
+        "cpuPercent": 2.7,
+        "pid": 70715,
+        "ppid": 1,
+        "rssBytes": 368885760
+      },
+      {
+        "command": "/Applications/Slack.app/Contents/Frameworks/Slack Helper (Renderer).app/Contents/MacOS/Slack Helper (Renderer)",
+        "cpuPercent": 2.4,
+        "pid": 48832,
+        "ppid": 694,
+        "rssBytes": 238436352
+      },
+      {
+        "command": "/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python",
+        "cpuPercent": 2.2,
+        "pid": 64267,
+        "ppid": 8242,
+        "rssBytes": 25460736
+      },
+      {
+        "command": "/System/Library/DriverExtensions/com.apple.DriverKit-AppleBCMWLAN.dext/com.apple.DriverKit-AppleBCMWLAN",
+        "cpuPercent": 1.9,
+        "pid": 579,
+        "ppid": 1,
+        "rssBytes": 42467328
+      },
+      {
+        "command": "/System/Library/CoreServices/Siri.app/Contents/MacOS/Siri",
+        "cpuPercent": 1.8,
+        "pid": 3182,
+        "ppid": 1,
+        "rssBytes": 24723456
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "cpuPercent": 1.2,
+        "pid": 8242,
+        "ppid": 7523,
+        "rssBytes": 457736192
+      },
+      {
+        "command": "/usr/sbin/cfprefsd",
+        "cpuPercent": 1.1,
+        "pid": 84321,
+        "ppid": 1,
+        "rssBytes": 12812288
+      },
+      {
+        "command": "2BUA8C4S2C.com.agilebits.onepassword7-helper",
+        "cpuPercent": 1.0,
+        "pid": 5195,
+        "ppid": 1,
+        "rssBytes": 42762240
+      }
+    ],
+    "at": "2026-09-11T04:09:27.590126+00:00",
+    "loadAverage": [
+      8.2548828125,
+      8.451171875,
+      11.078125
+    ]
+  },
+  "hostBefore": {
+    "activeProcesses": [
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/152.0.7977.83/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)",
+        "cpuPercent": 66.0,
+        "pid": 19198,
+        "ppid": 7523,
+        "rssBytes": 696369152
+      },
+      {
+        "command": "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+        "cpuPercent": 54.9,
+        "pid": 427,
+        "ppid": 1,
+        "rssBytes": 221003776
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/152.0.7977.83/Helpers/Codex (Service).app/Contents/MacOS/Codex (Service)",
+        "cpuPercent": 52.5,
+        "pid": 7542,
+        "ppid": 7523,
+        "rssBytes": 327761920
+      },
+      {
+        "command": "/sbin/launchd",
+        "cpuPercent": 29.1,
+        "pid": 1,
+        "ppid": 0,
+        "rssBytes": 24330240
+      },
+      {
+        "command": "/Applications/Stremio.app/Contents/MacOS/stremio",
+        "cpuPercent": 22.8,
+        "pid": 54328,
+        "ppid": 1,
+        "rssBytes": 1115492352
+      },
+      {
+        "command": "/usr/sbin/coreaudiod",
+        "cpuPercent": 17.0,
+        "pid": 437,
+        "ppid": 1,
+        "rssBytes": 84000768
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "cpuPercent": 11.0,
+        "pid": 8242,
+        "ppid": 7523,
+        "rssBytes": 415776768
+      },
+      {
+        "command": "/usr/libexec/duetexpertd",
+        "cpuPercent": 7.3,
+        "pid": 80445,
+        "ppid": 1,
+        "rssBytes": 77381632
+      },
+      {
+        "command": "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/corespotlightd",
+        "cpuPercent": 6.6,
+        "pid": 737,
+        "ppid": 1,
+        "rssBytes": 128679936
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/MacOS/ChatGPT",
+        "cpuPercent": 5.5,
+        "pid": 7523,
+        "ppid": 1,
+        "rssBytes": 466075648
+      },
+      {
+        "command": "/System/Library/DriverExtensions/com.apple.DriverKit-AppleBCMWLAN.dext/com.apple.DriverKit-AppleBCMWLAN",
+        "cpuPercent": 5.1,
+        "pid": 579,
+        "ppid": 1,
+        "rssBytes": 42467328
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/152.0.7977.83/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)",
+        "cpuPercent": 4.4,
+        "pid": 8252,
+        "ppid": 7523,
+        "rssBytes": 1163067392
+      },
+      {
+        "command": "/System/Library/Frameworks/Contacts.framework/Support/contactsd",
+        "cpuPercent": 4.0,
+        "pid": 61088,
+        "ppid": 1,
+        "rssBytes": 44531712
+      },
+      {
+        "command": "/System/Applications/Messages.app/Contents/MacOS/Messages",
+        "cpuPercent": 3.7,
+        "pid": 667,
+        "ppid": 1,
+        "rssBytes": 269975552
+      },
+      {
+        "command": "/Applications/WhatsApp.app/Contents/MacOS/WhatsApp",
+        "cpuPercent": 3.0,
+        "pid": 70715,
+        "ppid": 1,
+        "rssBytes": 368852992
+      },
+      {
+        "command": "/usr/sbin/bluetoothd",
+        "cpuPercent": 2.7,
+        "pid": 419,
+        "ppid": 1,
+        "rssBytes": 35127296
+      },
+      {
+        "command": "/usr/libexec/logd",
+        "cpuPercent": 1.5,
+        "pid": 354,
+        "ppid": 1,
+        "rssBytes": 47742976
+      },
+      {
+        "command": "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mds",
+        "cpuPercent": 1.3,
+        "pid": 383,
+        "ppid": 1,
+        "rssBytes": 38780928
+      },
+      {
+        "command": "/System/Library/CoreServices/UniversalControl.app/Contents/MacOS/UniversalControl",
+        "cpuPercent": 1.1,
+        "pid": 867,
+        "ppid": 1,
+        "rssBytes": 15761408
+      },
+      {
+        "command": "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mds_stores",
+        "cpuPercent": 1.0,
+        "pid": 572,
+        "ppid": 1,
+        "rssBytes": 492781568
+      }
+    ],
+    "at": "2026-09-11T04:08:58.635075+00:00",
+    "loadAverage": [
+      7.91845703125,
+      8.44189453125,
+      11.17236328125
+    ]
+  },
+  "study": "/private/tmp/cadgen-performance-20260910/tiny-procedural-safe/results-ebce2a143-v2.json",
+  "variants": {
+    "baseline": {
+      "appearanceAndPlacement": {
+        "block": {
+          "color": [
+            0.2,
+            0.4,
+            0.8,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "cap": {
+          "color": [
+            0.3,
+            0.7,
+            0.3,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            20.0,
+            0.0,
+            1.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "pin": {
+          "color": [
+            0.8,
+            0.3,
+            0.2,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            14.0,
+            0.0,
+            1.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      },
+      "nativeFacts": {
+        "bounds": {
+          "max": [
+            21.5,
+            6.0,
+            2.0
+          ],
+          "min": [
+            -5.0,
+            -4.0,
+            -2.0
+          ]
+        },
+        "faces": 12,
+        "solids": 3,
+        "valid": true,
+        "volume": 398.5398163397448
+      },
+      "stepSha256": "779e71e78ab88b922527233944bd14d5af72d894413f744f0f71ad522479e4ee"
+    },
+    "baseline-current": {
+      "appearanceAndPlacement": {
+        "block": {
+          "color": [
+            0.2,
+            0.4,
+            0.8,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "cap": {
+          "color": [
+            0.3,
+            0.7,
+            0.3,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            20.0,
+            0.0,
+            1.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "pin": {
+          "color": [
+            0.8,
+            0.3,
+            0.2,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            14.0,
+            0.0,
+            1.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      },
+      "stepSha256": "779e71e78ab88b922527233944bd14d5af72d894413f744f0f71ad522479e4ee"
+    },
+    "geometry": {
+      "appearanceAndPlacement": {
+        "block": {
+          "color": [
+            0.2,
+            0.4,
+            0.8,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "cap": {
+          "color": [
+            0.3,
+            0.7,
+            0.3,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            20.0,
+            0.0,
+            1.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "pin": {
+          "color": [
+            0.8,
+            0.3,
+            0.2,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            14.0,
+            0.0,
+            1.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      },
+      "nativeFacts": {
+        "bounds": {
+          "max": [
+            21.5,
+            6.0,
+            2.0
+          ],
+          "min": [
+            -6.0,
+            -4.0,
+            -2.0
+          ]
+        },
+        "faces": 12,
+        "solids": 3,
+        "valid": true,
+        "volume": 462.53981633974485
+      },
+      "stepSha256": "fa193036f5ae72adbaacc118ab7589e506dd3c3899ac2cce9dd40f04548bcbb4"
+    },
+    "placement": {
+      "appearanceAndPlacement": {
+        "block": {
+          "color": [
+            0.2,
+            0.4,
+            0.8,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            2.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "cap": {
+          "color": [
+            0.3,
+            0.7,
+            0.3,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            20.0,
+            0.0,
+            1.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "pin": {
+          "color": [
+            0.8,
+            0.3,
+            0.2,
+            1.0
+          ],
+          "transform": [
+            1.0,
+            0.0,
+            0.0,
+            14.0,
+            0.0,
+            1.0,
+            0.0,
+            4.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        }
+      },
+      "nativeFacts": {
+        "bounds": {
+          "max": [
+            21.5,
+            6.0,
+            4.0
+          ],
+          "min": [
+            -6.0,
+            -4.0,
+            -2.0
+          ]
+        },
+        "faces": 12,
+        "solids": 3,
+        "valid": true,
+        "volume": 462.53981633974485
+      },
+      "stepSha256": "48c80c82de7bcd1b11c03e05774d890dd77da6504fb7080aa07bc0b538b645f6"
+    }
+  }
+}

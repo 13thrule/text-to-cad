@@ -4,6 +4,7 @@
 
 # Original copies of losslessly archived reports remain available locally.
 /cold-compile-cleanup-20260911.json
+/deferred-surf-core-measurement-20260911.json
 /descriptor-bounds-interleaved-20260911.json
 /hand-canonical-l1-clipping-locked-20260910.json
 /hand-canonical-l1-instance-reuse-locked-20260910.json
@@ -28,9 +29,13 @@
 /imported-before-unseen-final-20260910.json
 /installed-wheel-2709968dc-20260911.json
 /installed-wheel-8971f760d-20260911.json
+/installed-wheel-cli-canvas-v15-20260911-runtime-freeze.json
+/installed-wheel-cli-canvas-v15-20260911.json
 /installed-wheel-cold-compile-20260911.json
 /installed-wheel-current-20260910.json
 /installed-wheel-descriptor-bounds-20260911.json
+/installed-wheel-geometry-v12-20260911-runtime-freeze.json
+/installed-wheel-geometry-v12-20260911.json
 /installed-wheel-viewer-9be4f5424-20260911.json
 /mesher-v2-final-curved-20260910.json
 /mesher-v2-final-nine-20260910-js-0.json
@@ -54,6 +59,8 @@
 /planetary-split-before-novel-final-20260910.json
 /play-hand-cpu-8640d6902-20260910.cpuprofile
 /play-hand-cpu-8640d6902-20260910.json
+/public-native-hard-cut-measurement-20260911.json
+/public-native-hard-cut-summary-20260911.json
 /ready-sibling-counterfactual-20260910.json
 /ready-sibling-production-children-ordinary-20260910.json
 /ready-sibling-production-children-prepared-20260910.json
@@ -66,6 +73,9 @@
 /rwgltf-margin2-moderate-20260910.json
 /split-stage-profile-20260910.json
 /surf-recipe-occupancy-20260910.json
+/tiny-procedural-safe-incomplete-v1-20260911.json
+/tiny-procedural-safe-v2-20260911.json
+/viewer-adaptive-geometry-v4-20260911.json
 /viewer-batch-v2-measure-candidate1-1-20260910.json
 /viewer-batch-v2-smoke-candidate1-4-20260910.json
 /viewer-batch-v2-smoke-candidate4-5-20260910.json
@@ -82,6 +92,8 @@
 /viewer-batch-v3-measure-old-5-20260910.json
 /viewer-batch-v3-measure-old-7-20260910.json
 /viewer-http-nagle-ab-20260910.json
+/viewer-lifecycle-geometry-v4-20260911.json
+/viewer-lifecycle-insufficient-samples-20260911.json
 /viewer-nine-adaptive-ownership-integrated-20260910.json
 /viewer-nine-adaptive-settled-tree-20260910.json
 /viewer-nine-adaptive-visibility-20260910.json

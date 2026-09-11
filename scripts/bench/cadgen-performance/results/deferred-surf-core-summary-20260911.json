@@ -1,0 +1,188 @@
+{
+  "scope": "Resident in-process native read/publish/derive/edit-save-readback core; not public CLI/build-pool/browser latency",
+  "measurementStartedAt": "2026-09-11T02:59:48.303596+00:00",
+  "measurementCompletedAt": "2026-09-11T03:00:36.216271+00:00",
+  "calls": 16,
+  "order": "ABBA repeated four times; A baseline, B candidate",
+  "warmups": 2,
+  "preload": [
+    {
+      "ready": "baseline",
+      "pid": 34844,
+      "preloadMs": 2309.472874738276
+    },
+    {
+      "ready": "candidate",
+      "pid": 34849,
+      "preloadMs": 2236.4202081225812
+    }
+  ],
+  "fixtureSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+  "metrics": {
+    "baseline": {
+      "coldNativeReadMs": {
+        "median": 1126.0070626158267,
+        "min": 1102.2567078471184,
+        "max": 1177.5957089848816
+      },
+      "inputSurfaceReadyMs": {
+        "median": 19.354208605363965,
+        "min": 18.850790802389383,
+        "max": 20.448042079806328
+      },
+      "warmNativeReadMs": {
+        "median": 28.025686973705888,
+        "min": 26.56920813024044,
+        "max": 28.393958695232868
+      },
+      "editSaveReadbackMs": {
+        "median": 1295.3723545651883,
+        "min": 1279.3975421227515,
+        "max": 1524.598625022918
+      },
+      "outputSurfaceReadyMs": {
+        "median": 19.804853945970535,
+        "min": 19.222833216190338,
+        "max": 36.482250317931175
+      }
+    },
+    "candidate": {
+      "coldNativeReadMs": {
+        "median": 341.77956241182983,
+        "min": 335.6277081184089,
+        "max": 436.78520899266005
+      },
+      "inputSurfaceReadyMs": {
+        "median": 835.6543751433492,
+        "min": 820.083832833916,
+        "max": 1055.4597089067101
+      },
+      "warmNativeReadMs": {
+        "median": 17.469041515141726,
+        "min": 16.98620803654194,
+        "max": 20.39858279749751
+      },
+      "editSaveReadbackMs": {
+        "median": 522.3089789506048,
+        "min": 513.1092080846429,
+        "max": 570.2763749286532
+      },
+      "outputSurfaceReadyMs": {
+        "median": 821.8628126196563,
+        "min": 806.3810002058744,
+        "max": 896.4055827818811
+      }
+    }
+  },
+  "raw": "/private/tmp/cadgen-performance-20260910/deferred-surf-spike/measurement-core.json",
+  "rawSha256": "2035c56615633c98ed5d62772c1dfe3559e6e53236893b191a84541066fe7a15",
+  "helperSha256": "8db0a9c167c95b3e1907fc9d42fbf8cfdebc87d92f1142fc3dc5bb51f016f02f",
+  "proofSha256": "d749691a0ae04959f3f370ceafda08a0dccd96c79822fe612f53cf3feca97737",
+  "pairedDeltas": {
+    "coldNativeReadMs": {
+      "valuesMs": [
+        -785.6015828438103,
+        -812.2834581881762,
+        -688.657000195235,
+        -783.0184991471469,
+        -827.31395913288,
+        -765.9862907603383,
+        -769.4308748468757,
+        -773.1175837107003
+      ],
+      "medianMs": -778.0680414289236,
+      "minMs": -827.31395913288,
+      "maxMs": -688.657000195235
+    },
+    "inputSurfaceReadyMs": {
+      "valuesMs": [
+        827.3995420895517,
+        799.6357907541096,
+        1035.0887509994209,
+        805.1553750410676,
+        891.7675828561187,
+        802.9437507502735,
+        892.3622923903167,
+        805.9598342515528
+      ],
+      "medianMs": 816.6796881705523,
+      "minMs": 799.6357907541096,
+      "maxMs": 1035.0887509994209
+    },
+    "warmNativeReadMs": {
+      "valuesMs": [
+        -9.194083046168089,
+        -11.385584250092506,
+        -7.6487502083182335,
+        -9.707541670650244,
+        -10.659332852810621,
+        -10.826708748936653,
+        -10.095167439430952,
+        -10.441082995384932
+      ],
+      "medianMs": -10.268125217407942,
+      "minMs": -11.385584250092506,
+      "maxMs": -7.6487502083182335
+    },
+    "editSaveReadbackMs": {
+      "valuesMs": [
+        -770.3950828872621,
+        -782.5087080709636,
+        -954.3222500942647,
+        -755.8069997467101,
+        -773.5341670922935,
+        -773.2747918926179,
+        -773.527876008302,
+        -758.8832923211157
+      ],
+      "medianMs": -773.40133395046,
+      "minMs": -954.3222500942647,
+      "maxMs": -755.8069997467101
+    },
+    "outputSurfaceReadyMs": {
+      "valuesMs": [
+        808.7875838391483,
+        792.2839168459177,
+        859.9233324639499,
+        795.8860411308706,
+        865.4599161818624,
+        785.8047089539468,
+        834.5021256245673,
+        789.8344164714217
+      ],
+      "medianMs": 802.3368124850094,
+      "minMs": 785.8047089539468,
+      "maxMs": 865.4599161818624
+    }
+  },
+  "totalMedians": {
+    "inputSurfaceReadyTotalMs": {
+      "baseline": 1145.9036250598729,
+      "candidate": 1179.7485421411693
+    },
+    "savedSurfaceReadyTotalMs": {
+      "baseline": 1314.9289996363223,
+      "candidate": 1353.2942291349173
+    }
+  },
+  "allExactParityPassed": true,
+  "cleanup": [
+    {
+      "variant": "baseline",
+      "pid": 34844,
+      "exit": 0
+    },
+    {
+      "variant": "candidate",
+      "pid": 34849,
+      "exit": 0
+    }
+  ],
+  "failedWarmupRetained": "/private/tmp/cadgen-performance-20260910/deferred-surf-spike/failed-first-warmup",
+  "pointFenceAfterMeasurement": {
+    "helper": "/private/tmp/cadgen-performance-20260910/brep-codec-feasibility/point_signature_codec_recommended.py",
+    "sha256": "8a280c9c4d8b1d10c22478656c6f26c774aa7ae507a4dbbb9eececa630f52769",
+    "measured": false,
+    "qualification": "Separately proven correctness improvement for point-bearing inputs; all9 measured components are point-free and take the unchanged current-v4 admission path."
+  }
+}

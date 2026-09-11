@@ -1,0 +1,24 @@
+{
+  "status": "pass",
+  "reviewedAt": "2026-09-11T03:55:37.547481+00:00",
+  "qualification": "Human-visible image inspection of the installed-wheel functional fixture; no performance claim.",
+  "checks": [
+    "Posed PNG contains both complete solids with clear edges and no clipping or missing faces.",
+    "First and last video frames retain the same base; the arm moves upward as specified.",
+    "All inspected views remain within the image boundary."
+  ],
+  "images": [
+    {
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-geometry-v12/saved/portable-open.png",
+      "sha256": "956a86b58536a78e2a0830cf2f65040b6245d9eb9f65346c8e7691604280c9ee"
+    },
+    {
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-geometry-v12/saved/frame-01.png",
+      "sha256": "e544aae7771a0dab1d3545c8dd804a5d5989240d47f026c4f4284934e758d791"
+    },
+    {
+      "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/installed-geometry-v12/saved/frame-03.png",
+      "sha256": "dabb9edadebd94dae9f0e0a3a1987421d84a4ee1a59749ef5cf4857b4a091393"
+    }
+  ]
+}

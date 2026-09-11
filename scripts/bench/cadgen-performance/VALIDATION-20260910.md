@@ -1,12 +1,25 @@
 # Integration validation — September 10, 2026
 
+## Final geometry/display cut, September 11
+
+The geometry/display cut passes 1,725 package Python tests, 1,014 shared
+JavaScript tests, an isolated installed-wheel check and the moderate browser
+lifecycle/adaptive checks. Later corrections pass 89 focused Python tests,
+514 viewer-client tests, nine direct canvas assertions and a final installed-wheel
+check. See the
+[final integration record](DEFERRED-SURF-INTEGRATION-20260911.md) and
+[preserved validation logs](results/geometry-v4-final-validation-20260911.json).
+The dated sections below preserve earlier checkpoints and failed attempts;
+their counts and outstanding gates do not describe the final cut.
+
+
 Implementation branch: `codex/tendon-hand-performance`, based on the reviewed
 preview branch at `7aa3e85be76f305437abd3d7aba26e38b28e43cb`. This record covers
 functional and lifecycle checks. Concurrent test activity makes their elapsed
 times unsuitable for performance comparisons; the isolated CPU study is in
 [RESULTS-20260910.md](RESULTS-20260910.md).
 
-## Current checkpoint
+## Earlier checkpoints
 
 The branch remains under active implementation. Ongoing acceptance uses the
 nine-part planetary assembly and modest repeated-parts fixtures. The user

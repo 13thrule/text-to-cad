@@ -1,0 +1,413 @@
+{
+  "precondition": {
+    "surfaceIndexAbsent": true,
+    "surfaceObjectAbsent": true,
+    "warmMeshRows": [
+      {
+        "tessellationInput": "db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f589374bc6a7efa-a3fd6666666666666",
+        "object": "99465bceda8c34e021b5dc91ed90b3a0af2a081fb798b7ebd334ffe1eadbd045",
+        "surfaceInput": "db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023",
+        "surfaceObject": "2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445",
+        "byteLength": 3020
+      },
+      {
+        "tessellationInput": "db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666",
+        "object": "9ddebcb23ad17149e27c1ced9b33f8b3562b385a46d2fa6cff72d518a79f1c74",
+        "surfaceInput": "db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023",
+        "surfaceObject": "2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445",
+        "byteLength": 3020
+      }
+    ]
+  },
+  "descriptor": {
+    "tree": "cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a",
+    "viewId": "b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34",
+    "component": "5d6621f293669d6b",
+    "surfaceInput": "db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023",
+    "expectedSurfaceObject": "2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445"
+  },
+  "display": {
+    "readyAt": 1789098103418,
+    "meshFinal": true,
+    "occurrences": 24,
+    "loadedComponents": 2,
+    "totalComponents": 2,
+    "selectorEntries": 0,
+    "tessProbeCount": 4,
+    "exactTessBodyCount": 2,
+    "surfaceResolveCount": 0,
+    "surfaceBodyCount": 0
+  },
+  "selector": {
+    "readyAt": 1789098107204,
+    "entries": 1,
+    "surfaceRequestCount": 8,
+    "exactSurfaceGet": "http://127.0.0.1:3287/__cad/store?tree=cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a&surfaceInput=db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023&object=2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445",
+    "pinnedTree": "cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a",
+    "pinnedSurfaceInput": "db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023",
+    "pinnedSurfaceObject": "2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445",
+    "recreatedRecord": {
+      "brep": "c4227d5fdde106a2886c1411d1710b04cf0ac659b97a2a2a8fe281a548f60250",
+      "codec": "bintools-v4",
+      "component": "5d6621f293669d6b2d37adf7e6f16aba1f40ece7cfd7795ffa0d825842a33950",
+      "faceColors": {},
+      "object": "2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445",
+      "producer": {
+        "build123d": "0.11.1",
+        "cadqueryOcp": "7.9.3.1.1",
+        "ocp": "7.9.3.1",
+        "scheme": 19,
+        "surfFormat": 2
+      },
+      "schemaVersion": 1,
+      "surfaceInput": "db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023"
+    },
+    "recreatedObjectExists": true
+  },
+  "assertions": {
+    "warmTessRenderedWithoutSurfaceIndex": true,
+    "warmTessRenderedWithoutSurfaceObject": true,
+    "noSurfaceResolutionBeforeDisplayReady": true,
+    "noSurfaceBodyBeforeDisplayReady": true,
+    "usedMetadataProbe": true,
+    "usedExactPinnedTessBody": true,
+    "selectorResolved": true,
+    "selectorUsedExactSurfaceRoute": true,
+    "recreatedSurfaceRecordPinsExpectedObject": true,
+    "recreatedSurfaceObjectPresent": true,
+    "noPageErrors": true,
+    "noUnexpectedRequestFailures": true
+  },
+  "requests": [
+    {
+      "at": 1789098102731,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/catalog?file=repeated24.step",
+      "postData": null
+    },
+    {
+      "at": 1789098102769,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/server?file=repeated24.step",
+      "postData": null
+    },
+    {
+      "at": 1789098102858,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/artifact?file=%2FUsers%2Fjakefitzgerald%2F.codex%2Fworktrees%2F3c6b%2Ftext-to-cad%2Fmodels%2Ftmp%2Fdeferred-surf-playground-20260911%2Frepeated24.step",
+      "postData": null
+    },
+    {
+      "at": 1789098102858,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/asset?file=%2FUsers%2Fjakefitzgerald%2F.codex%2Fworktrees%2F3c6b%2Ftext-to-cad%2Fmodels%2Ftmp%2Fdeferred-surf-playground-20260911%2Frepeated24.step.js",
+      "postData": null
+    },
+    {
+      "at": 1789098102858,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/store?file=%2Fcc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a%2Fassembly.json&documentHash=ab104f441544b852390825f5c7589a0815a3448024bf88b1af27fd754786e370",
+      "postData": null
+    },
+    {
+      "at": 1789098102871,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "postData": "{\"tessellationInputs\":[\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f589374bc6a7efa-a3fd6666666666666\"]}"
+    },
+    {
+      "at": 1789098102871,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "postData": "{\"tessellationInputs\":[\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f589374bc6a7efa-a3fd6666666666666\"]}"
+    },
+    {
+      "at": 1789098102880,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f589374bc6a7efa-a3fd6666666666666.tess?object=99465bceda8c34e021b5dc91ed90b3a0af2a081fb798b7ebd334ffe1eadbd045&maxBytes=3020",
+      "postData": null
+    },
+    {
+      "at": 1789098102880,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f589374bc6a7efa-a3fd6666666666666.tess?object=53e930bcb001a447d4d12196f7552f0fc166e9e6a2aa5b534b262a2cc23102a7&maxBytes=26412",
+      "postData": null
+    },
+    {
+      "at": 1789098103113,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "postData": "{\"tessellationInputs\":[\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666\"]}"
+    },
+    {
+      "at": 1789098103115,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666.tess?object=9ddebcb23ad17149e27c1ced9b33f8b3562b385a46d2fa6cff72d518a79f1c74&maxBytes=3020",
+      "postData": null
+    },
+    {
+      "at": 1789098103120,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "postData": "{\"tessellationInputs\":[\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666\"]}"
+    },
+    {
+      "at": 1789098103123,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666.tess?object=a9dafe42bf2fd9801065fde1d17c7cdd22139fbb24353ef8f7c7f946ba98fe84&maxBytes=23744",
+      "postData": null
+    },
+    {
+      "at": 1789098103461,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "postData": "{\"tree\":\"cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a\",\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"producer\":{\"build123d\":\"0.11.1\",\"cadqueryOcp\":\"7.9.3.1.1\",\"ocp\":\"7.9.3.1\",\"scheme\":19,\"surfFormat\":2,\"producerKey\":\"70b4ea46da4e577d68a7cad1ee066e5a925e2373d3d67ee2ff1c848b54fdee95\"},\"components\":[{\"cid\":\"5d6621f293669d6b\",\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\"}]}"
+    },
+    {
+      "at": 1789098103610,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "postData": "{\"tree\":\"cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a\",\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"producer\":{\"build123d\":\"0.11.1\",\"cadqueryOcp\":\"7.9.3.1.1\",\"ocp\":\"7.9.3.1\",\"scheme\":19,\"surfFormat\":2,\"producerKey\":\"70b4ea46da4e577d68a7cad1ee066e5a925e2373d3d67ee2ff1c848b54fdee95\"},\"components\":[{\"cid\":\"5d6621f293669d6b\",\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\"}],\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098103776,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "postData": "{\"tree\":\"cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a\",\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"producer\":{\"build123d\":\"0.11.1\",\"cadqueryOcp\":\"7.9.3.1.1\",\"ocp\":\"7.9.3.1\",\"scheme\":19,\"surfFormat\":2,\"producerKey\":\"70b4ea46da4e577d68a7cad1ee066e5a925e2373d3d67ee2ff1c848b54fdee95\"},\"components\":[{\"cid\":\"5d6621f293669d6b\",\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\"}],\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098104101,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "postData": "{\"tree\":\"cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a\",\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"producer\":{\"build123d\":\"0.11.1\",\"cadqueryOcp\":\"7.9.3.1.1\",\"ocp\":\"7.9.3.1\",\"scheme\":19,\"surfFormat\":2,\"producerKey\":\"70b4ea46da4e577d68a7cad1ee066e5a925e2373d3d67ee2ff1c848b54fdee95\"},\"components\":[{\"cid\":\"5d6621f293669d6b\",\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\"}],\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098104731,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/catalog?file=repeated24.step",
+      "postData": null
+    },
+    {
+      "at": 1789098104745,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "postData": "{\"tree\":\"cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a\",\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"producer\":{\"build123d\":\"0.11.1\",\"cadqueryOcp\":\"7.9.3.1.1\",\"ocp\":\"7.9.3.1\",\"scheme\":19,\"surfFormat\":2,\"producerKey\":\"70b4ea46da4e577d68a7cad1ee066e5a925e2373d3d67ee2ff1c848b54fdee95\"},\"components\":[{\"cid\":\"5d6621f293669d6b\",\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\"}],\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098105389,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "postData": "{\"tree\":\"cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a\",\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"producer\":{\"build123d\":\"0.11.1\",\"cadqueryOcp\":\"7.9.3.1.1\",\"ocp\":\"7.9.3.1\",\"scheme\":19,\"surfFormat\":2,\"producerKey\":\"70b4ea46da4e577d68a7cad1ee066e5a925e2373d3d67ee2ff1c848b54fdee95\"},\"components\":[{\"cid\":\"5d6621f293669d6b\",\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\"}],\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098106033,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "postData": "{\"tree\":\"cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a\",\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"producer\":{\"build123d\":\"0.11.1\",\"cadqueryOcp\":\"7.9.3.1.1\",\"ocp\":\"7.9.3.1\",\"scheme\":19,\"surfFormat\":2,\"producerKey\":\"70b4ea46da4e577d68a7cad1ee066e5a925e2373d3d67ee2ff1c848b54fdee95\"},\"components\":[{\"cid\":\"5d6621f293669d6b\",\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\"}],\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098106677,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "postData": "{\"tree\":\"cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a\",\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"producer\":{\"build123d\":\"0.11.1\",\"cadqueryOcp\":\"7.9.3.1.1\",\"ocp\":\"7.9.3.1\",\"scheme\":19,\"surfFormat\":2,\"producerKey\":\"70b4ea46da4e577d68a7cad1ee066e5a925e2373d3d67ee2ff1c848b54fdee95\"},\"components\":[{\"cid\":\"5d6621f293669d6b\",\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\"}],\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098106681,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "postData": "{\"tessellationInputs\":[\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666\"]}"
+    },
+    {
+      "at": 1789098106684,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666.tess?object=9ddebcb23ad17149e27c1ced9b33f8b3562b385a46d2fa6cff72d518a79f1c74&maxBytes=3020",
+      "postData": null
+    },
+    {
+      "at": 1789098106687,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/store?tree=cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a&surfaceInput=db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023&object=2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445",
+      "postData": null
+    },
+    {
+      "at": 1789098106732,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/catalog?file=repeated24.step",
+      "postData": null
+    }
+  ],
+  "responses": [
+    {
+      "at": 1789098102777,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/catalog?file=repeated24.step",
+      "status": 200
+    },
+    {
+      "at": 1789098102777,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/server?file=repeated24.step",
+      "status": 200
+    },
+    {
+      "at": 1789098102869,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/asset?file=%2FUsers%2Fjakefitzgerald%2F.codex%2Fworktrees%2F3c6b%2Ftext-to-cad%2Fmodels%2Ftmp%2Fdeferred-surf-playground-20260911%2Frepeated24.step.js",
+      "status": 200
+    },
+    {
+      "at": 1789098102869,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/store?file=%2Fcc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a%2Fassembly.json&documentHash=ab104f441544b852390825f5c7589a0815a3448024bf88b1af27fd754786e370",
+      "status": 200
+    },
+    {
+      "at": 1789098102875,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "status": 200,
+      "body": "{\"entries\":{\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f589374bc6a7efa-a3fd6666666666666\":{\"arrayBytes\":1248,\"byteLength\":3020,\"decodedBytes\":23104,\"edgeClassCount\":12,\"edgeCount\":12,\"edgeSegmentCount\":12,\"faceRangeCount\":6,\"headerBytes\":1760,\"object\":\"99465bceda8c34e021b5dc91ed90b3a0af2a081fb798b7ebd334ffe1eadbd045\",\"payloadVersion\":4,\"quality\":{\"angleTolerance\":0.35,\"angleToleranceF64\":\"3fd6666666666666\",\"chordTolerance\":0.0015,\"chordToleranceF64\":\"3f589374bc6a7efa\"},\"renderIdentity\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f589374bc6a7efa-a3fd6666666666666-s2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445\",\"schemaVersion\":1,\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"surfaceObject\":\"2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445\",\"tessellationInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f589374bc6a7efa-a3fd6666666666666\",\"tessellatorVersion\":2}}}"
+    },
+    {
+      "at": 1789098102879,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "status": 200,
+      "body": "{\"entries\":{\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f589374bc6a7efa-a3fd6666666666666\":{\"arrayBytes\":25348,\"byteLength\":26412,\"decodedBytes\":37100,\"edgeClassCount\":3,\"edgeCount\":3,\"edgeSegmentCount\":129,\"faceRangeCount\":3,\"headerBytes\":1052,\"object\":\"53e930bcb001a447d4d12196f7552f0fc166e9e6a2aa5b534b262a2cc23102a7\",\"payloadVersion\":4,\"quality\":{\"angleTolerance\":0.35,\"angleToleranceF64\":\"3fd6666666666666\",\"chordTolerance\":0.0015,\"chordToleranceF64\":\"3f589374bc6a7efa\"},\"renderIdentity\":\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f589374bc6a7efa-a3fd6666666666666-s719dc96706ff2053b589a0b8903fac2edd57c6c36686607375587f2c53b5cdf9\",\"schemaVersion\":1,\"surfaceInput\":\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6\",\"surfaceObject\":\"719dc96706ff2053b589a0b8903fac2edd57c6c36686607375587f2c53b5cdf9\",\"tessellationInput\":\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f589374bc6a7efa-a3fd6666666666666\",\"tessellatorVersion\":2}}}"
+    },
+    {
+      "at": 1789098102884,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f589374bc6a7efa-a3fd6666666666666.tess?object=99465bceda8c34e021b5dc91ed90b3a0af2a081fb798b7ebd334ffe1eadbd045&maxBytes=3020",
+      "status": 200
+    },
+    {
+      "at": 1789098102884,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f589374bc6a7efa-a3fd6666666666666.tess?object=53e930bcb001a447d4d12196f7552f0fc166e9e6a2aa5b534b262a2cc23102a7&maxBytes=26412",
+      "status": 200
+    },
+    {
+      "at": 1789098102947,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/artifact?file=%2FUsers%2Fjakefitzgerald%2F.codex%2Fworktrees%2F3c6b%2Ftext-to-cad%2Fmodels%2Ftmp%2Fdeferred-surf-playground-20260911%2Frepeated24.step",
+      "status": 200
+    },
+    {
+      "at": 1789098103114,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "status": 200,
+      "body": "{\"entries\":{\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666\":{\"arrayBytes\":1248,\"byteLength\":3020,\"decodedBytes\":23104,\"edgeClassCount\":12,\"edgeCount\":12,\"edgeSegmentCount\":12,\"faceRangeCount\":6,\"headerBytes\":1760,\"object\":\"9ddebcb23ad17149e27c1ced9b33f8b3562b385a46d2fa6cff72d518a79f1c74\",\"payloadVersion\":4,\"quality\":{\"angleTolerance\":1.4,\"angleToleranceF64\":\"3ff6666666666666\",\"chordTolerance\":0.002,\"chordToleranceF64\":\"3f60624dd2f1a9fc\"},\"renderIdentity\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666-s2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445\",\"schemaVersion\":1,\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"surfaceObject\":\"2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445\",\"tessellationInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666\",\"tessellatorVersion\":2}}}"
+    },
+    {
+      "at": 1789098103116,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666.tess?object=9ddebcb23ad17149e27c1ced9b33f8b3562b385a46d2fa6cff72d518a79f1c74&maxBytes=3020",
+      "status": 200
+    },
+    {
+      "at": 1789098103122,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "status": 200,
+      "body": "{\"entries\":{\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666\":{\"arrayBytes\":22684,\"byteLength\":23744,\"decodedBytes\":33892,\"edgeClassCount\":3,\"edgeCount\":3,\"edgeSegmentCount\":65,\"faceRangeCount\":3,\"headerBytes\":1048,\"object\":\"a9dafe42bf2fd9801065fde1d17c7cdd22139fbb24353ef8f7c7f946ba98fe84\",\"payloadVersion\":4,\"quality\":{\"angleTolerance\":1.4,\"angleToleranceF64\":\"3ff6666666666666\",\"chordTolerance\":0.002,\"chordToleranceF64\":\"3f60624dd2f1a9fc\"},\"renderIdentity\":\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666-s719dc96706ff2053b589a0b8903fac2edd57c6c36686607375587f2c53b5cdf9\",\"schemaVersion\":1,\"surfaceInput\":\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6\",\"surfaceObject\":\"719dc96706ff2053b589a0b8903fac2edd57c6c36686607375587f2c53b5cdf9\",\"tessellationInput\":\"c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666\",\"tessellatorVersion\":2}}}"
+    },
+    {
+      "at": 1789098103123,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/c2904d0883c30eb34684586ca49919056590552f58d9147153faeba494be18b6-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666.tess?object=a9dafe42bf2fd9801065fde1d17c7cdd22139fbb24353ef8f7c7f946ba98fe84&maxBytes=23744",
+      "status": 200
+    },
+    {
+      "at": 1789098103527,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "status": 200,
+      "body": "{\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"components\":{\"5d6621f293669d6b\":{\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"state\":\"pending\",\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}},\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098103614,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "status": 200,
+      "body": "{\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"components\":{\"5d6621f293669d6b\":{\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"state\":\"pending\",\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}},\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098103780,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "status": 200,
+      "body": "{\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"components\":{\"5d6621f293669d6b\":{\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"state\":\"pending\",\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}},\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098104104,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "status": 200,
+      "body": "{\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"components\":{\"5d6621f293669d6b\":{\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"state\":\"pending\",\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}},\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098104746,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/catalog?file=repeated24.step",
+      "status": 200
+    },
+    {
+      "at": 1789098104747,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "status": 200,
+      "body": "{\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"components\":{\"5d6621f293669d6b\":{\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"state\":\"pending\",\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}},\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098105392,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "status": 200,
+      "body": "{\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"components\":{\"5d6621f293669d6b\":{\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"state\":\"pending\",\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}},\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098106036,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "status": 200,
+      "body": "{\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"components\":{\"5d6621f293669d6b\":{\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"state\":\"pending\",\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}},\"job\":\"7000c7866f474ac0bfa7eb27628884dc\"}"
+    },
+    {
+      "at": 1789098106681,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__cad/surfaces",
+      "status": 200,
+      "body": "{\"viewId\":\"b7cfdee01f2f85a80aa5cdd02762f1df1ac651438016e7bd79952a736fb8ae34\",\"components\":{\"5d6621f293669d6b\":{\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"state\":\"ready\",\"surfaceObject\":\"2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445\",\"url\":\"/__cad/store?tree=cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a&surfaceInput=db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023&object=2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445\",\"byteLength\":10506}}}"
+    },
+    {
+      "at": 1789098106683,
+      "method": "POST",
+      "url": "http://127.0.0.1:3287/__tess_cache/probe",
+      "status": 200,
+      "body": "{\"entries\":{\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666\":{\"arrayBytes\":1248,\"byteLength\":3020,\"decodedBytes\":23104,\"edgeClassCount\":12,\"edgeCount\":12,\"edgeSegmentCount\":12,\"faceRangeCount\":6,\"headerBytes\":1760,\"object\":\"9ddebcb23ad17149e27c1ced9b33f8b3562b385a46d2fa6cff72d518a79f1c74\",\"payloadVersion\":4,\"quality\":{\"angleTolerance\":1.4,\"angleToleranceF64\":\"3ff6666666666666\",\"chordTolerance\":0.002,\"chordToleranceF64\":\"3f60624dd2f1a9fc\"},\"renderIdentity\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666-s2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445\",\"schemaVersion\":1,\"surfaceInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023\",\"surfaceObject\":\"2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445\",\"tessellationInput\":\"db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666\",\"tessellatorVersion\":2}}}"
+    },
+    {
+      "at": 1789098106684,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__tess_cache/db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023-t2-p4-l3f60624dd2f1a9fc-a3ff6666666666666.tess?object=9ddebcb23ad17149e27c1ced9b33f8b3562b385a46d2fa6cff72d518a79f1c74&maxBytes=3020",
+      "status": 200
+    },
+    {
+      "at": 1789098106689,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/store?tree=cc4572fa6ecd3569d053c2c4ddd18bee5d8242cd7f5c8ca0aa283db1910c2b8a&surfaceInput=db5c607a8fcead619dc23a3a764e69b3164a148e1310c946c24f8b98a1536023&object=2f977da86e1af8ff472b71df38a1218b5bda1e0f82af736a8e63ceda67066445",
+      "status": 200
+    },
+    {
+      "at": 1789098106747,
+      "method": "GET",
+      "url": "http://127.0.0.1:3287/__cad/catalog?file=repeated24.step",
+      "status": 200
+    }
+  ],
+  "pageErrors": [],
+  "requestFailures": [],
+  "screenshotPath": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/repeated24-warm-tess-exact-selector.png"
+}

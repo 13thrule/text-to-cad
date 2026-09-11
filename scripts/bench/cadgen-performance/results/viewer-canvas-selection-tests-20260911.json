@@ -1,0 +1,16 @@
+{
+  "command": "npm --prefix apps/viewer run test",
+  "sourceCommit": "c83b191cf",
+  "exitCode": 0,
+  "tests": 514,
+  "suites": 0,
+  "passed": 514,
+  "failed": 0,
+  "cancelled": 0,
+  "skipped": 0,
+  "todo": 0,
+  "durationMs": 1365.000959,
+  "exactOutputBytes": 45053,
+  "exactOutputSha256": "cbe3ae32a39e8b245dfaae9fc7e8e639e6317f5987543c4579e6654c1a871b29",
+  "exactOutputPrivatePath": "/private/tmp/cadgen-performance-20260910/viewer-canvas-selection-tests-20260911.log"
+}

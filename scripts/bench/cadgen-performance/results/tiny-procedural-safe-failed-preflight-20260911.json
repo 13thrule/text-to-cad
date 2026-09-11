@@ -1,0 +1,264 @@
+{
+  "calls": 16,
+  "conditions": [],
+  "elapsedSeconds": 0.0001521669328212738,
+  "finishedAt": "2026-09-11T04:06:29.973613+00:00",
+  "hostAfter": {
+    "activeProcesses": [
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 99.3,
+        "pid": 63470,
+        "ppid": 63468,
+        "rssBytes": 750665728
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 90.9,
+        "pid": 63560,
+        "ppid": 63558,
+        "rssBytes": 301760512
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 73.6,
+        "pid": 49805,
+        "ppid": 8242,
+        "rssBytes": 86130688
+      },
+      {
+        "command": "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+        "cpuPercent": 53.1,
+        "pid": 427,
+        "ppid": 1,
+        "rssBytes": 221888512
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/152.0.7977.83/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)",
+        "cpuPercent": 17.6,
+        "pid": 8252,
+        "ppid": 7523,
+        "rssBytes": 1163100160
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 14.3,
+        "pid": 87826,
+        "ppid": 8242,
+        "rssBytes": 86769664
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/152.0.7977.83/Helpers/Codex (Service).app/Contents/MacOS/Codex (Service)",
+        "cpuPercent": 12.7,
+        "pid": 7542,
+        "ppid": 7523,
+        "rssBytes": 525729792
+      },
+      {
+        "command": "/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python",
+        "cpuPercent": 12.6,
+        "pid": 63561,
+        "ppid": 8242,
+        "rssBytes": 24182784
+      },
+      {
+        "command": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "cpuPercent": 10.9,
+        "pid": 62037,
+        "ppid": 1,
+        "rssBytes": 804093952
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "cpuPercent": 6.8,
+        "pid": 8242,
+        "ppid": 7523,
+        "rssBytes": 404996096
+      },
+      {
+        "command": "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)",
+        "cpuPercent": 4.0,
+        "pid": 66956,
+        "ppid": 66023,
+        "rssBytes": 160235520
+      },
+      {
+        "command": "/System/Applications/Messages.app/Contents/MacOS/Messages",
+        "cpuPercent": 3.5,
+        "pid": 667,
+        "ppid": 1,
+        "rssBytes": 269615104
+      },
+      {
+        "command": "/Applications/WhatsApp.app/Contents/MacOS/WhatsApp",
+        "cpuPercent": 3.0,
+        "pid": 70715,
+        "ppid": 1,
+        "rssBytes": 366231552
+      },
+      {
+        "command": "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder",
+        "cpuPercent": 1.7,
+        "pid": 736,
+        "ppid": 1,
+        "rssBytes": 141197312
+      },
+      {
+        "command": "/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock",
+        "cpuPercent": 1.5,
+        "pid": 732,
+        "ppid": 1,
+        "rssBytes": 36241408
+      },
+      {
+        "command": "/usr/sbin/coreaudiod",
+        "cpuPercent": 1.2,
+        "pid": 437,
+        "ppid": 1,
+        "rssBytes": 81231872
+      },
+      {
+        "command": "/System/Library/DriverExtensions/com.apple.DriverKit-AppleBCMWLAN.dext/com.apple.DriverKit-AppleBCMWLAN",
+        "cpuPercent": 1.0,
+        "pid": 579,
+        "ppid": 1,
+        "rssBytes": 42467328
+      }
+    ],
+    "at": "2026-09-11T04:06:30.030256+00:00",
+    "loadAverage": [
+      7.4609375,
+      8.82275390625,
+      11.82421875
+    ]
+  },
+  "hostBefore": {
+    "activeProcesses": [
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 97.7,
+        "pid": 63470,
+        "ppid": 63468,
+        "rssBytes": 750665728
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 86.7,
+        "pid": 63560,
+        "ppid": 63558,
+        "rssBytes": 283885568
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 66.3,
+        "pid": 49805,
+        "ppid": 8242,
+        "rssBytes": 86130688
+      },
+      {
+        "command": "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer",
+        "cpuPercent": 50.8,
+        "pid": 427,
+        "ppid": 1,
+        "rssBytes": 221888512
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/152.0.7977.83/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)",
+        "cpuPercent": 25.8,
+        "pid": 8252,
+        "ppid": 7523,
+        "rssBytes": 1163100160
+      },
+      {
+        "command": "../text-to-cad/.venv/bin/python",
+        "cpuPercent": 16.5,
+        "pid": 87826,
+        "ppid": 8242,
+        "rssBytes": 86769664
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/152.0.7977.83/Helpers/Codex (Service).app/Contents/MacOS/Codex (Service)",
+        "cpuPercent": 12.6,
+        "pid": 7542,
+        "ppid": 7523,
+        "rssBytes": 525729792
+      },
+      {
+        "command": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "cpuPercent": 10.0,
+        "pid": 62037,
+        "ppid": 1,
+        "rssBytes": 804093952
+      },
+      {
+        "command": "/Applications/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/Contents/MacOS/Code Helper (Plugin)",
+        "cpuPercent": 6.8,
+        "pid": 66956,
+        "ppid": 66023,
+        "rssBytes": 160235520
+      },
+      {
+        "command": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "cpuPercent": 3.7,
+        "pid": 8242,
+        "ppid": 7523,
+        "rssBytes": 404996096
+      },
+      {
+        "command": "/System/Applications/Messages.app/Contents/MacOS/Messages",
+        "cpuPercent": 3.5,
+        "pid": 667,
+        "ppid": 1,
+        "rssBytes": 269615104
+      },
+      {
+        "command": "/Applications/WhatsApp.app/Contents/MacOS/WhatsApp",
+        "cpuPercent": 3.0,
+        "pid": 70715,
+        "ppid": 1,
+        "rssBytes": 366231552
+      },
+      {
+        "command": "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder",
+        "cpuPercent": 2.3,
+        "pid": 736,
+        "ppid": 1,
+        "rssBytes": 141197312
+      },
+      {
+        "command": "/usr/sbin/coreaudiod",
+        "cpuPercent": 1.9,
+        "pid": 437,
+        "ppid": 1,
+        "rssBytes": 81231872
+      },
+      {
+        "command": "/System/Library/DriverExtensions/com.apple.DriverKit-AppleBCMWLAN.dext/com.apple.DriverKit-AppleBCMWLAN",
+        "cpuPercent": 1.5,
+        "pid": 579,
+        "ppid": 1,
+        "rssBytes": 42467328
+      },
+      {
+        "command": "/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mdworker_shared",
+        "cpuPercent": 1.2,
+        "pid": 63522,
+        "ppid": 1,
+        "rssBytes": 29016064
+      }
+    ],
+    "at": "2026-09-11T04:06:29.973406+00:00",
+    "loadAverage": [
+      7.4609375,
+      8.82275390625,
+      11.82421875
+    ]
+  },
+  "limits": {
+    "rssBytes": 2147483648,
+    "seconds": 90
+  },
+  "measured": 12,
+  "startedAt": "2026-09-11T04:06:29.912150+00:00",
+  "status": "RUNNING"
+}

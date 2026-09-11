@@ -1,0 +1,17 @@
+{
+  "asset": "/assets/index-YIbFxBO-.js",
+  "selectedReference": "o1.3.e237",
+  "waitAfterSelectionMs": 2000,
+  "edgeSelected": true,
+  "treeRowCount": 31,
+  "selectedTreeRow": {
+    "id": "step-topology:o1.3:edge:o1.3.e237",
+    "label": "Edge e237 line length=8",
+    "top": 269,
+    "bottom": 297,
+    "width": 253,
+    "height": 28,
+    "active": true
+  },
+  "consoleErrors": []
+}

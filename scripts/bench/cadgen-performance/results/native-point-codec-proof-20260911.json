@@ -1,0 +1,138 @@
+{
+  "frozenAt": "2026-09-11T02:57:57.428690+00:00",
+  "pass": true,
+  "nativeExecutionClaim": "Two fresh functional processes; no timing claim.",
+  "processes": [
+    {
+      "pid": 32825,
+      "startedAt": "2026-09-11T02:53:31.449279+00:00",
+      "completedAt": "2026-09-11T02:53:37.651977+00:00",
+      "nativeCases": 7,
+      "planetaryComparisons": 9,
+      "controls": 3,
+      "healthyNormalizedPointCases": 1
+    },
+    {
+      "pid": 34134,
+      "startedAt": "2026-09-11T02:56:12.872267+00:00",
+      "completedAt": "2026-09-11T02:56:18.938116+00:00",
+      "nativeCases": 7,
+      "planetaryComparisons": 9,
+      "controls": 3,
+      "healthyNormalizedPointCases": 1
+    }
+  ],
+  "freshProcessSubstantiveReportsEqual": true,
+  "ignoredOnly": [
+    "pid",
+    "startedAt",
+    "completedAt",
+    "native exception pointer text",
+    "legacy generic-vertex wrapper pointer text"
+  ],
+  "nativeContext": {
+    "ocp": "7.9.3.1",
+    "binding": "7.9.3.1.1",
+    "python": "/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python",
+    "componentPackagePath": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen/src/cadgen/_internal/component_package.py",
+    "componentPackageSha256": "18e9ca752326bd08b407bf7fe16c44e0133b6fa9cef0f79b1249bda9265c96f9"
+  },
+  "stepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+  "strictProofUnchanged": true,
+  "experimentFallbackSemantics": "Exact point-record comparison replaces whole-native and alternate-codec fixedpoint checks; only bounded functional coverage is claimed.",
+  "narrowRecommendation": "Use exact point-record gate only for v4; retain strict original-native and codec-fixedpoint requirements for v3/ASCII.",
+  "recommendedHelperValidation": {
+    "sourceOnly": true,
+    "pointSignatureAstEqualsExecutedExperiment": true,
+    "v4BranchAstEqualsExecutedExperiment": true,
+    "fallbackLoopAstEqualsFrozenStrictHelper": true,
+    "writersAndDecoderAstEqualBothExecutedHelpers": true,
+    "combinedHelperNativeRunPerformed": false
+  },
+  "healthyNormalizedPoint": {
+    "sourceStepSha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca",
+    "sourceComponentBrepSha256": "ee8c6119e07aa7ccc4a16716fb7c0323f8df34b33347ce3c8d7384b2e5fc55ee",
+    "sourceFaceOrdinal": 17,
+    "faces": 1,
+    "edges": 4,
+    "vertices": 4,
+    "originalBrepSha256": "c43d181cf7ee5208e00fbdab4fbc6328a78d398f6401027ee4a050c820913eca",
+    "strictRejectedNormalization": "binary v4: binary v4 changed point-bearing native bytes; bintools-v3: original native byte fidelity not proven; breptools-ascii-v3: original native byte fidelity not proven",
+    "signatureCodec": "bintools-v4",
+    "signatureSha256": "b480ef4eb6c46cfdc92ea9d2f320dec082499da5e4d8261e4b0652151195cad3",
+    "signatureBytes": 262,
+    "pointFieldsExact": true,
+    "currentConsumerExact": true,
+    "currentWorkerSurfSha256": "bf5047829cebbeb49746376587cc25fd1fa34dae643c74a3aec3fce70e7a1615",
+    "signatureDoesNotMutate": true,
+    "referenceAndOrderMutationsDetected": {
+      "parameter": true,
+      "referencedLocation": true,
+      "referenceAssociation": true,
+      "removedPointList": true,
+      "addedPoint": true,
+      "orderedPointList": true
+    },
+    "privateNativeMutationIsolation": {
+      "topology_flag": true,
+      "vertex": true,
+      "curve": true,
+      "surface": true,
+      "point_representation": true
+    },
+    "placement": {
+      "currentPlacedAndReversedNativeExact": true,
+      "inverseMaxError": 7.944109290391274e-15
+    }
+  },
+  "artifacts": [
+    "models/tmp/brep-codec-feasibility-20260911/signature1",
+    "models/tmp/brep-codec-feasibility-20260911/signature2"
+  ],
+  "files": {
+    "point_guard_codec_final.py": {
+      "sha256": "2e06baff5b84829cac5217def9a4f3ff072d5668cc4f329b59651c0fef0e709c",
+      "bytes": 4613
+    },
+    "final-codec-proof.json": {
+      "sha256": "46e1b05532a9ca2cc886009d1d26344acb0784b2756ff3ae4eb76dbde490d1af",
+      "bytes": 2222
+    },
+    "point_signature_codec.py": {
+      "sha256": "7e99c66c1eec5b82c3e4504b7928a6a39600e47e9ca1201a3fb5aeece8e03fbd",
+      "bytes": 6679
+    },
+    "signature_probe.py": {
+      "sha256": "ec38f51e69e14a59dab97f39b98d2129ec246b8becfbcd6e48fdb14e5a8fa458",
+      "bytes": 14724
+    },
+    "signature1.json": {
+      "sha256": "82c5b950efc19681c419faea1f717e20faef8b584d7fcbeb25b700656078aed7",
+      "bytes": 74882
+    },
+    "signature2.json": {
+      "sha256": "437ff151d164a186a11c97187d9697d57aa738772a90d207d56cab17fae31dd0",
+      "bytes": 74882
+    },
+    "point-signature-experiment.patch": {
+      "sha256": "8c6e5e8747070fa85739dbb64ee405141a4153a03bb43c28ae137b6d967b1f98",
+      "bytes": 4409
+    },
+    "point_signature_codec_recommended.py": {
+      "sha256": "8a280c9c4d8b1d10c22478656c6f26c774aa7ae507a4dbbb9eececa630f52769",
+      "bytes": 6778
+    },
+    "point-signature-v4-only.patch": {
+      "sha256": "a3393c9c4ea958d6e47801865b1e02bf719d650e394b108b6e02c576893056c7",
+      "bytes": 4209
+    },
+    "freeze_signature.py": {
+      "sha256": "31f87d6e7d1ee9283fadcddd2c4f55112c3b7ebb768c91ce632f46f40ef05ff8",
+      "bytes": 7525
+    },
+    "POINT-SIGNATURE-ASSESSMENT.md": {
+      "sha256": "e0d8b9c4b009704077f1710f9586b861a5d13a04f2910dc2cfc26fbefa1b323d",
+      "bytes": 6041
+    }
+  }
+}

@@ -12,6 +12,14 @@
       "archiveSha256": "db0a1eac9c036ca5441bb6ec2e78a777e8f98d5eadc4a87d43cc3d0b00006343"
     },
     {
+      "path": "deferred-surf-core-measurement-20260911.json",
+      "archive": "deferred-surf-core-measurement-20260911.json.gz",
+      "bytes": 782617,
+      "sha256": "2035c56615633c98ed5d62772c1dfe3559e6e53236893b191a84541066fe7a15",
+      "archiveBytes": 68827,
+      "archiveSha256": "e10a3d88acf430959313eab3a3aac86fd94cb9fe93090e213ca365a83a941889"
+    },
+    {
       "path": "descriptor-bounds-interleaved-20260911.json",
       "archive": "descriptor-bounds-interleaved-20260911.json.gz",
       "bytes": 4097147,
@@ -204,6 +212,22 @@
       "archiveSha256": "d67292ceb761b88eef729cb0bed1e73fafcaad32e3b42963790ff442d971e295"
     },
     {
+      "path": "installed-wheel-cli-canvas-v15-20260911-runtime-freeze.json",
+      "archive": "installed-wheel-cli-canvas-v15-20260911-runtime-freeze.json.gz",
+      "bytes": 107911,
+      "sha256": "b61a638487da31aef4854113a3b08716f8898df3a8f7ba7963b3d4927446070c",
+      "archiveBytes": 33208,
+      "archiveSha256": "83ed09a018f6a06cd12c6f8ce1ccf93bb597d6ec07cc9481a4e9701996f3e494"
+    },
+    {
+      "path": "installed-wheel-cli-canvas-v15-20260911.json",
+      "archive": "installed-wheel-cli-canvas-v15-20260911.json.gz",
+      "bytes": 184169,
+      "sha256": "8bf8a9a4fe955d8748ef42d613d16617d2d086be3e7827057293504a1116baa0",
+      "archiveBytes": 34149,
+      "archiveSha256": "b8cc7ea949d8d39d4834e0883716f49db8a69a544afe4efc8281c662450a8b2d"
+    },
+    {
       "path": "installed-wheel-cold-compile-20260911.json",
       "archive": "installed-wheel-cold-compile-20260911.json.gz",
       "bytes": 148112,
@@ -226,6 +250,22 @@
       "sha256": "064c1b3f02246c6a67b5c4470b0b3d0886b91d3be4a28ae31569410a49a73cdc",
       "archiveBytes": 31189,
       "archiveSha256": "151792ee570e1b68415a0399ed8a803730496a3939f0f81b8d7bb46d09063d80"
+    },
+    {
+      "path": "installed-wheel-geometry-v12-20260911-runtime-freeze.json",
+      "archive": "installed-wheel-geometry-v12-20260911-runtime-freeze.json.gz",
+      "bytes": 83011,
+      "sha256": "5d5c3d5ee430e8b37150fdcd5fb90a7ec1bfd8085022210e4cc81e2f36e45e92",
+      "archiveBytes": 31677,
+      "archiveSha256": "2abd1f6a85353ecb444b21afd3a20a865989ba7dfee66934a699fdc455b775a7"
+    },
+    {
+      "path": "installed-wheel-geometry-v12-20260911.json",
+      "archive": "installed-wheel-geometry-v12-20260911.json.gz",
+      "bytes": 174008,
+      "sha256": "671a53943fb67ef748440cd03e0a9bec3d44c8a58b43d0a7fded4b67727b7bc0",
+      "archiveBytes": 37747,
+      "archiveSha256": "004b665131063e8ad653d0245b220ec23655ab3c082d1ea52c674e36b5228727"
     },
     {
       "path": "installed-wheel-viewer-9be4f5424-20260911.json",
@@ -412,6 +452,22 @@
       "archiveSha256": "66a92bb0b7ebaab86814471bff389147aaa3d74324903b3fd0f0f790aa296198"
     },
     {
+      "path": "public-native-hard-cut-measurement-20260911.json",
+      "archive": "public-native-hard-cut-measurement-20260911.json.gz",
+      "bytes": 108086016,
+      "sha256": "c42e34f8503bfc9986292288171940b9d9c202f9f7b5cb87126e766074117587",
+      "archiveBytes": 3330982,
+      "archiveSha256": "388b2cb763573dd9afea82fd7c48cfdb18b7638fd55c543fe150e616072de2a6"
+    },
+    {
+      "path": "public-native-hard-cut-summary-20260911.json",
+      "archive": "public-native-hard-cut-summary-20260911.json.gz",
+      "bytes": 312275,
+      "sha256": "9802f069ca601bf2f13242412b9c6b34f006380a41a9427dab72ce963bf3c6a7",
+      "archiveBytes": 37703,
+      "archiveSha256": "6881ab5d14ab08e2b488ef30c35753049fb85616e36c43ddbd756f9cff442db9"
+    },
+    {
       "path": "ready-sibling-counterfactual-20260910.json",
       "archive": "ready-sibling-counterfactual-20260910.json.gz",
       "bytes": 1402248,
@@ -506,6 +562,30 @@
       "sha256": "2bc2ee599c23e7c669ea2b634021bcde938bd3da81fe4f05e8c950c7abb37104",
       "archiveBytes": 5870,
       "archiveSha256": "8852e1c77ac592ad636211febb120259caadf6baa24f312c6ef3778832c3ad41"
+    },
+    {
+      "path": "tiny-procedural-safe-incomplete-v1-20260911.json",
+      "archive": "tiny-procedural-safe-incomplete-v1-20260911.json.gz",
+      "bytes": 174632,
+      "sha256": "7b28492126b315d35c2e1b307b40c1834fb377a1af4c611899080d69b89252b0",
+      "archiveBytes": 28157,
+      "archiveSha256": "5aa43532565533411a47a392dd2fea67b55a8a44674ccef89fa76838c89ff2c2"
+    },
+    {
+      "path": "tiny-procedural-safe-v2-20260911.json",
+      "archive": "tiny-procedural-safe-v2-20260911.json.gz",
+      "bytes": 372715,
+      "sha256": "5d5554e569c67f82c5d7b8f6310bbf7dc0cfb4046e4fda752fdfd1eb46c30412",
+      "archiveBytes": 56054,
+      "archiveSha256": "0ce8ab28c4b39dec617bc6da7b650fba1492a0b727ffe1f14c5e5ee5af6191c7"
+    },
+    {
+      "path": "viewer-adaptive-geometry-v4-20260911.json",
+      "archive": "viewer-adaptive-geometry-v4-20260911.json.gz",
+      "bytes": 787128,
+      "sha256": "d4d7bfc23f06e9255cd84413c70303dc40e0ce8b111dc6a38ff855425b2a4b70",
+      "archiveBytes": 23282,
+      "archiveSha256": "96e031be1af8e2c04f8675ac83550bd2a6880e8a377aff4afea3540bf16d0ca9"
     },
     {
       "path": "viewer-batch-v2-measure-candidate1-1-20260910.json",
@@ -634,6 +714,22 @@
       "sha256": "08fe0a9e13fd72ee355df4e93d498cd12e792ffaec1be04e97ec00141b5731e7",
       "archiveBytes": 18231,
       "archiveSha256": "d520d3eaafe7f79403f3bbb014ac4bd71c9dd303ea651d0e14bdd4bbf8c5fe34"
+    },
+    {
+      "path": "viewer-lifecycle-geometry-v4-20260911.json",
+      "archive": "viewer-lifecycle-geometry-v4-20260911.json.gz",
+      "bytes": 130572,
+      "sha256": "c30275bdbe09254a635e4cc680e0c58986e9b928022aa90371fb9b4d10115bf1",
+      "archiveBytes": 9438,
+      "archiveSha256": "ddf56c0ebba8328ada56e57d59c46f8d4fd8714043617b5cb986836f68d6b735"
+    },
+    {
+      "path": "viewer-lifecycle-insufficient-samples-20260911.json",
+      "archive": "viewer-lifecycle-insufficient-samples-20260911.json.gz",
+      "bytes": 120802,
+      "sha256": "a844ebf12509e5d789ff78cdd46adb46f32bfcbcf9f9822447cbab3cd1dd055c",
+      "archiveBytes": 9347,
+      "archiveSha256": "7e3778bcc9f2b1d85933fbf9e016f1b857e1766b593f0c3cbc0f6f4028f865f8"
     },
     {
       "path": "viewer-nine-adaptive-ownership-integrated-20260910.json",

@@ -1,13 +1,18 @@
 # Separate canonical geometry from derived surfaces
 
-Private feasibility prototype authorized; no production schema change or new
-performance measurement yet.
-Cold-compile cleanup packaging is independently accepted. Its exact measured
-runtime and nine portable tests are unchanged in the final package.
+The private feasibility proof and matched resident measurement passed. See the
+[core results and qualifications](DEFERRED-SURF-CORE-20260911.md). Production
+integration now passes the frozen package, installed-wheel and moderate-browser
+checks with geometry-tree schema 1, model/document schema 4, separate surface
+indexes and TESS v4. Final public timing comparisons are recorded separately in
+the [integration report](DEFERRED-SURF-INTEGRATION-20260911.md).
+The release version remains unchanged.
+The proposal and staged acceptance sequence below record the design decision;
+their private-only implementation restriction has been satisfied by that proof.
 
 ## Decision and benefit boundary
 
-This is feasible and worth a **private, geometry-only feasibility spike**.
+The accepted implementation separates geometry publication from display work.
 It is a coordinated store contract change, not making today's `surf` field
 optional. A complete native geometry result must contain everything needed
 for an independent private reconstruction. Display and selector readiness are
@@ -20,7 +25,8 @@ that can be subtracted to predict an exact new total. Approximately 0.75 s of
 work is a credible target for removal from a cold geometry reader's critical
 path. Parsing alone already exceeds 250 ms in this fixture. Worker scheduling,
 canonical BREP writes/validation, exact bounds and the caller's private native
-construction remain. No current measurement establishes the new latency.
+construction remain. The bounded resident study now measures 342 ms native cold
+read/publication, while total input surface readiness remains about 1.18 s.
 
 This can improve public `read_step`, STEP re-emission and native parent edits
 that do not need selectors. It does not remove extraction from first display,
@@ -74,6 +80,46 @@ record/document payload versions reject the previous contract; no old-schema
 fallback. Object addresses and document keys remain raw byte hashes. The
 sidecar schema need not change merely for this separation if occurrence/face
 IDs and document binding remain identical. No release-version change.
+
+## Runtime producer and warm display
+
+Neither the extraction version nor the actual native producer belongs in a
+canonical geometry tree. With identical geometry inputs, changing the display
+producer must leave the tree hash unchanged. A request instead freezes its
+producer and derives a full surface input key, `D`, from that producer and the
+geometry input. The exact SURF output has a separate content hash, `O`.
+
+A fresh viewer must not start OpenCascade merely to select an already cached
+mesh. The existing document index can carry an optional, worker-attested
+`surfaceProducer` hint alongside its tree. The existing ephemeral preview event
+carries the same information. These are derived selection facts: they change
+neither the document key nor the tree, require no new persistent view/session
+store, and do not make geometry incomplete when absent. Read tree and hint
+from one index snapshot. A same-tree rewrite preserves a valid hint unless an
+attested producer is explicitly selected; a changed tree drops both the old
+hint and its external-output mesh ledger.
+
+That hint may select older but still valid assets. A cached TESS supplies its
+own `D` and `O`, so it renders even after the surface index and SURF object are
+deleted. A later selector request must recover exactly that `O`. If the old
+producer is unavailable, obtain the current producer and stage a new view with
+new identities; never attach its selectors to the old displayed mesh. A bare
+tree request with no producer hint pays producer initialization explicitly.
+
+The shared TESS lookup key, `L`, binds `D`, tessellator version, payload version,
+and both exact numeric tolerances. Encode each positive finite tolerance as
+its 16 hexadecimal IEEE-754 binary64 digits; the existing six-digit decimal
+format can merge distinct values. The displayed mesh/selector identity adds
+the full `O` to `L`. TESS version 4 carries and validates those inputs. Object
+hashes in a TESS header are provenance, not a requirement that SURF still exist
+or a transitive GC root.
+
+Probe encoded/decoded sizes before downloading whole cached meshes. Fetching
+an assembly's complete TESS batch before memory admission would retain a
+browser-crash path. Full payload/hash validation still precedes adoption;
+metadata estimates cannot override observed body sizes. The interface and
+shared codec remain private work, with browser integration gated on the core
+feasibility result.
 
 ## Identity and semantic dependencies
 
@@ -158,6 +204,35 @@ point-representation asymmetry. Existing deliberately invalid-cache tests are
 not native serializer reproductions. Finding or constructing a small real
 reproducer is a prerequisite to codec expansion; do not use a large assembly
 or a mocked decoder failure as proof of codec geometry parity.
+
+### Actual codec findings from the bounded spike
+
+Tiny native reproductions on OCP 7.9.3.1 / cadquery-ocp 7.9.3.1.1 establish two
+distinct point-representation faults. BinTools v4 can throw or silently alter
+a PointOnCurve parameter. Both binary v4 and v3 can swap a PointOnSurface's
+distinct U/V values. Pinned binary v3 preserves the first cases, and pinned
+BRepTools ASCII v3 preserves the second, including complete native bytes.
+The private closed codec set therefore contains all three explicit formats;
+the declared format must match the payload header before decoding.
+
+The current eager worker decodes the input for extraction but stores the
+original BREP payload verbatim. Ordinary consumers decode those same bytes.
+Five of the nine planetary components undergo small unit-direction
+normalizations during reading; this is existing behavior. An unconditional
+original-byte fixed-point requirement would incorrectly exclude those five.
+All nine have empty vertex point-representation lists, so the guarded v4 path
+preserves their exact existing stored bytes, native result and SURF output.
+
+The frozen strict three-codec helper requires full native-byte fidelity on
+point-bearing shapes, with v3 then ASCII recovery. Two fresh processes pass
+19 native/control/actual-worker comparisons each and nine negative header
+checks. It still conservatively rejects some potentially healthy point-bearing
+shapes when unrelated native normalization changes their serialized bytes.
+That is an unresolved coverage limit, not proof of geometric corruption.
+A separate exact vertex-representation experiment passed and supplied the
+recommended narrow v4 guard. Its v3 and ASCII recovery retain the strict full
+native-byte checks. The combined helper passes 20 comparisons; no approximate
+comparison or silent native-unavailable regression was accepted for speed.
 
 ## Reader and ownership map
 
