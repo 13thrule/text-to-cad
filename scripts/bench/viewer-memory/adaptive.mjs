@@ -10,6 +10,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { viewerRuntimeFingerprint, verifyServedViewerClient } from './fingerprint.mjs';
 import { installWorkerProbe } from './worker-probe.mjs';
+import { installViewerResourceTiming, collectViewerResourceTiming } from './resource-timing.mjs';
 import { installCacheWriteProbe, collectHeapDiagnostics } from './heap-diagnostics.mjs';
 import { adaptiveStatus, preservesCompleteAdaptiveView, createAdaptiveStabilityWindow, finishAdaptiveSettlePhase, adaptiveSettleAssertions, gradeAdaptiveOutcome, summarizeIntervals, processMemoryFromPs, mergeProcessPeak } from './adaptive-support.mjs';
 
@@ -45,7 +46,7 @@ const report = { args, startedAt: new Date().toISOString(),
   environment: { node: process.version, cpu: os.cpus()[0]?.model, platform: process.platform, arch: process.arch },
   runtimeFingerprintAtStart: viewerRuntimeFingerprint(), phases: [], samples: [], peakRss: {},
   errors: [], responseFailures: [], limitations: [], assertions: {}, };
-report.harness = Object.fromEntries(['adaptive.mjs', 'adaptive-support.mjs'].map(name => [name,
+report.harness = Object.fromEntries(['adaptive.mjs', 'adaptive-support.mjs', 'resource-timing.mjs'].map(name => [name,
   createHash('sha256').update(fs.readFileSync(new URL(name, import.meta.url))).digest('hex')]));
 report.playwright = { resolvedEntry: require.resolve(process.env.PLAYWRIGHT_FROM || 'playwright') };
 if (args.serverProvenance) report.serverProvenance = JSON.parse(fs.readFileSync(args.serverProvenance, 'utf8'));
@@ -198,6 +199,7 @@ try {
   report.browserVersion = context.browser()?.version();
   page = context.pages()[0] || await context.newPage();
   await page.addInitScript(installWorkerProbe); await page.addInitScript(installCacheWriteProbe); await page.addInitScript(installAdaptiveProbe);
+  await page.addInitScript(installViewerResourceTiming);
   page.on('pageerror', error => report.errors.push(String(error)));
   page.on('console', message => {
     if (message.type() !== 'error') return;
@@ -316,6 +318,9 @@ try {
   // Screenshot/GC cannot turn a failed pre-diagnostic grade into a pass.
   deadline = Date.now() + 15000;
   if (page && !page.isClosed()) {
+    try {
+      report.resourceTiming = await bounded(page.evaluate(collectViewerResourceTiming, { cutoffEpochMs: Date.parse(report.gradedAt) }), 2500);
+    } catch (error) { report.resourceTimingError = String(error.message || error); }
     try {
       await bounded(page.screenshot({ path: args.screenshot, timeout: 4000 }), 4500);
       report.screenshot = { path: path.resolve(args.screenshot), capturedAfterGrade: true, requiresVisualReview: true };

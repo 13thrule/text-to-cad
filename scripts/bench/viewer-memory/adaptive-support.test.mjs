@@ -8,7 +8,7 @@ function probe() {
     componentCount: 2, occurrenceCount: 4, at: 10 }, renderMemoryProbe: { occurrences: 4 },
   sceneSync: { records: 4, atMs: 10 }, draw: { lastAt: 12 },
   viewportLod: { componentCount: 2, minimumLevel: 0, levelCounts: { 0: 1, 1: 1 },
-    busy: false, pendingEvaluation: false, failedLevels: 0 },
+    busy: false, pendingEvaluation: false, failedLevels: 0, qualitySettled: true, unmetTargets: [] },
   memoryPolicy: { reservationCount: 0, lastLimitation: null }, cacheWrites: { active: 0 },
   workers: { live: 0 }, events: { lodCount: 1, cameraCount: 0 } };
 }
@@ -29,6 +29,33 @@ test('stable budget-limited view remains distinct from satisfied or failed detai
   assert.deepEqual([adaptiveStatus(p, expected).stableCandidate, adaptiveStatus(p, expected).detailOutcome], [true, 'budget-limited']);
   p.memoryPolicy.lastLimitation = null;
   assert.equal(adaptiveStatus(p, expected).detailOutcome, 'failed-levels');
+});
+
+test('idle alone cannot establish camera quality satisfaction', () => {
+  for (const value of [false, undefined]) {
+    const p = probe(); p.viewportLod.qualitySettled = value;
+    const status = adaptiveStatus(p, expected);
+    assert.equal(status.schedulerIdle, true);
+    assert.equal(status.stableCandidate, false);
+    assert.equal(status.detailOutcome, 'unmet-targets');
+  }
+  const p = probe();
+  p.viewportLod.unmetTargets = [{ cid: 'part', currentLevel: 1, targetLevel: 3, reason: 'pending' }];
+  assert.equal(adaptiveStatus(p, expected).qualitySettled, false);
+  assert.equal(adaptiveStatus(p, expected).stableCandidate, false);
+});
+
+test('parked pressure targets remain budget-limited even without a UI limitation', () => {
+  const p = probe(); p.viewportLod.qualitySettled = false;
+  p.viewportLod.unmetTargets = [{ cid: 'part', currentLevel: 2, targetLevel: 3, reason: 'memory-pressure' }];
+  const status = adaptiveStatus(p, expected);
+  assert.equal(status.stableCandidate, true);
+  assert.equal(status.detailOutcome, 'budget-limited');
+  const update = createAdaptiveStabilityWindow(2000);
+  update(p, expected, 0);
+  assert.equal(update(p, expected, 2000).stable, true);
+  p.viewportLod.unmetTargets = [{ cid: 'part', currentLevel: 1, targetLevel: 3, reason: 'memory-denied' }];
+  assert.equal(update(p, expected, 2100).stable, false);
 });
 
 test('new publication pending React commit preserves the old complete view', () => {

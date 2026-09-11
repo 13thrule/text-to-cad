@@ -53,6 +53,17 @@ text logs may go under `tmp/`; retain useful study reports here when reviewing
 results. Neither command deletes the supplied store. A new run overwrites the
 chosen report and matching log/report filenames, so use a new report basename
 to preserve an earlier study.
+Structured reports retain individual samples, runner events, stage timings and
+content proofs. New per-call `*-logs/` console directories remain local; older
+already-tracked logs are retained as historical evidence. Rerunning the harness
+recreates its console logs alongside the report.
+
+Large raw reports and profiler captures are retained losslessly as `.gz` files.
+[The archive manifest](results/compressed-evidence.json) records original and
+compressed sizes and SHA-256 digests. Small summaries remain readable JSON;
+compressed reports preserve every original sample, helper and identity proof.
+Use `gzip -dk path/to/report.json.gz` to restore its original local path before
+running a helper that reads it. The restored raw copy is ignored by Git.
 
 ## Browser lifecycle and preview validation
 
@@ -124,15 +135,17 @@ does not establish what a borrowed dependency directory actually contains.
 Launch Python with `PYTHONPATH=<checkout>/packages/cadgen/src` and verify
 `cadgen.__file__` and `cadgen.viewer.__file__` when comparing checkouts.
 
-Default adaptive acceptance uses a separate harness; it does not replace the
-forced `measure.mjs --min-lod 1` stress gate:
+Default adaptive acceptance uses a separate harness. Current iteration uses
+the nine-part planetary and modest repeated-parts fixtures; further tendon-hand
+stress tests were stopped at the user's request. Historical forced-L1 results
+remain separate from default adaptive behavior.
 
 ```sh
 node scripts/bench/viewer-memory/adaptive.mjs \
-  --url http://127.0.0.1:3267 --file hand.step \
-  --components 866 --occurrences 3259 \
-  --out scripts/bench/cadgen-performance/results/hand-default-adaptive.json \
-  --screenshot models/tmp/performance-hand-20260910/hand-default-adaptive.png
+  --url http://127.0.0.1:3276 --file planetary.step \
+  --components 9 --occurrences 9 \
+  --out tmp/performance-study/planetary-default-adaptive.json \
+  --screenshot models/tmp/performance-study/planetary-default-adaptive.png
 ```
 
 This uses production default LOD and worker settings, a fresh private browser,
@@ -147,10 +160,23 @@ explicit fixture/cache qualification, such as a census-populated canonical L1
 cache with higher levels still absent; the harness never assumes a cold cache.
 Optional `--resize-to 1600x900` widens the real browser viewport and restores it,
 requiring a scheduler reevaluation and stable complete scene after both changes.
+Native window Resource Timing uses a bounded 8,192-entry browser buffer and
+collects up to 4,096 matching same-origin tessellation-cache/SURF entries only
+after grading. The report keeps route identifiers and numeric request/response
+phases and byte sizes, with explicit truncation and a grading-time cutoff;
+there are no response-body copies or production fetch changes. Worker-owned
+SURF fetches have separate timelines and are outside this window-only capture.
+HTTP methods, server CPU time, JS body materialization and GPU completion are
+not inferred from those entries. The separate worker postMessage timestamps
+start after the main thread's cache HTTP/body read and dispatch queue.
 
 The harness waits for complete actual scene records and a subsequent draw, then
 requires two seconds of stable camera input/zoom, LOD publication and level
 counts, with no active scheduler job/timer, reservations, uploads or workers.
+Policy satisfaction additionally requires the scheduler's explicit
+`qualitySettled` signal and an empty unmet-target list. Idle alone is insufficient;
+pressure-capped and admission-denied targets remain budget-limited even if a
+UI limitation message has been cleared.
 It orbits, zooms/unzooms with a recorded wheel sequence, selects/clears one
 occurrence row and observes idle afterward. A near/returned-view settle timeout
 is recorded as a failed phase while recovery and selection continue within the

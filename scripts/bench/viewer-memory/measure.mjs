@@ -524,6 +524,9 @@ async function runOnce(runIndex) {
       }
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
+    record.workloadFinishedAt = new Date().toISOString();
+    record.workloadMs = Date.now() - started;
+    record.workloadPeakRss = structuredClone(peakRss);
     if (!record.loaded && !record.crashed) {
       record.crashMessage = record.loadFailure
         ? `memory admission failed for ${record.loadFailure.cid || record.loadFailure.label || "component"}`

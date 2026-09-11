@@ -19,12 +19,17 @@ export function adaptiveStatus(probe, { components, occurrences }) {
     && lod.minimumLevel === 0 && !lod.busy && !lod.pendingEvaluation;
   const resourcesIdle = probe.memoryPolicy?.reservationCount === 0
     && probe.cacheWrites?.active === 0 && probe.workers?.live === 0;
-  const limited = !!probe.memoryPolicy?.lastLimitation;
+  const unmetTargets = Array.isArray(lod?.unmetTargets) ? lod.unmetTargets : [];
+  const qualitySettled = lod?.qualitySettled === true && unmetTargets.length === 0;
+  const limited = !!probe.memoryPolicy?.lastLimitation
+    || unmetTargets.some(({ reason }) => reason === 'memory-denied' || reason === 'memory-pressure');
   const failed = Number(lod?.failedLevels) || 0;
+  const detailOutcome = limited ? 'budget-limited' : failed ? 'failed-levels'
+    : qualitySettled ? 'policy-satisfied' : 'unmet-targets';
   return {
-    complete, drawn, schedulerIdle, resourcesIdle,
-    stableCandidate: drawn && schedulerIdle && resourcesIdle,
-    detailOutcome: limited ? 'budget-limited' : failed ? 'failed-levels' : 'policy-satisfied',
+    complete, drawn, schedulerIdle, resourcesIdle, qualitySettled, unmetTargets,
+    stableCandidate: drawn && schedulerIdle && resourcesIdle && detailOutcome !== 'unmet-targets',
+    detailOutcome,
     limitation: probe.memoryPolicy?.lastLimitation || null,
     failedLevels: failed,
   };
@@ -39,7 +44,7 @@ export function createAdaptiveStabilityWindow(stableMs = 2000) {
     const nextKey = JSON.stringify([
       probe.modelKey, probe.meshCost?.at, probe.events?.lodCount,
       probe.events?.cameraCount, probe.cameraZoomPercent, probe.viewportLod?.levelCounts,
-      status.detailOutcome, status.failedLevels,
+      status.detailOutcome, status.failedLevels, status.qualitySettled, status.unmetTargets,
     ]);
     if (!status.stableCandidate) { key = null; since = null; }
     else if (key !== nextKey) { key = nextKey; since = now; }
