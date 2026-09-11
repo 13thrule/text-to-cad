@@ -56,6 +56,7 @@ import CadWorkspaceTopBar from "./workbench/CadWorkspaceTopBar";
 import CadWorkspaceHome from "./workbench/CadWorkspaceHome";
 import { useCadAssets } from "./workbench/hooks/useCadAssets";
 import { useEditingPreview } from "./workbench/hooks/useEditingPreview.js";
+import { useViewportQualityStatus } from "./workbench/hooks/useViewportQualityStatus.js";
 import { previewGeometryChanged } from "@/workbench/editingPreview.js";
 import {
   resolveDesktopPanelWidths,
@@ -2722,10 +2723,14 @@ export default function CadWorkspace({
   const drawingUndoStackRef = useRef(drawingUndoStack);
   const drawingRedoStackRef = useRef(drawingRedoStack);
   const viewerRef = useRef(null);
+  // This is the displayed render revision, so same-file saves cannot inherit
+  // a predecessor's scheduler or benchmark milestones.
+  const viewportQualityModelKey = `${selectedEntry?.file || ""}:${selectedMeshHash || selectedEntry?.hash || ""}`;
   // Viewport LOD (design/unified-tessellation.md Phase 5): camera-settle
   // driven re-tessellation of the components that project the worst error.
   const { onCameraMoved: onLodCameraMoved } = useViewportLod({
     viewerRef,
+    modelKey: viewportQualityModelKey,
     lodPackage,
     applyComponentLodBatch,
     prepareComponentLodPayload,
@@ -2735,6 +2740,17 @@ export default function CadWorkspace({
     dynamicScene: lodSceneMayMove({ robot: isUrdfView, drawing: selectedEntryIsDrawing,
       kinematics: selectedStepModuleDefinition, kinematicsLoading: selectedStepModuleLoading,
       renderModuleUrl: selectedRenderModuleUrl, exploded: displaySettings?.exploded?.enabled })
+  });
+  const viewportQualityStatus = useViewportQualityStatus({
+    modelKey: viewportQualityModelKey,
+    file: selectedEntry?.file || "",
+    hasGeometry: Boolean(selectedMeshData),
+    // A progressive assembly's first paint is a real preview, but more
+    // components can still arrive. It must not look fully refined yet.
+    modelComplete: !selectedMeshPartial && !meshLoadInProgress,
+    // The scheduler installs its snapshot after React commits this package.
+    // Its current scope must match this package before it can finish quality.
+    lodExpectedComponentCount: Array.isArray(lodPackage?.components) ? lodPackage.components.length : 0
   });
   const previewUiStateRef = useRef(null);
   const panelResizeStateRef = useRef(null);
@@ -7290,6 +7306,7 @@ export default function CadWorkspace({
           followEdits={followEdits}
           onFollowEditsChange={handleFollowEditsChange}
           editingStatus={editingPreview.label}
+          qualityStatus={viewportQualityStatus}
           annotationError={selectedEntry?.editingPreview ? "" : selectedEntry?.annotationError || ""}
           sidebarLabelForEntry={sidebarLabelForEntry}
           directoryTree={allEntriesTree}

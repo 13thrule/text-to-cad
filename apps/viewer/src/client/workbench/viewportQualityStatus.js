@@ -1,0 +1,139 @@
+// User-facing detail state is deliberately derived from the scheduler's public
+// snapshot. The scheduler owns tessellation work; this module only says what
+// the currently displayed geometry means to a person looking at the viewport.
+
+export const VIEWPORT_QUALITY_STATE = Object.freeze({
+  PREVIEW: "preview",
+  REFINING: "refining",
+  STANDARD: "standard",
+  LIMITED: "limited",
+  ERROR: "error"
+});
+
+const MEMORY_LIMIT_REASONS = new Set(["memory-pressure", "memory-denied"]);
+const ERROR_REASONS = new Set(["load-failed", "adoption-refused", "scene-failed"]);
+
+export const VIEWPORT_QUALITY_COPY = Object.freeze({
+  [VIEWPORT_QUALITY_STATE.PREVIEW]: {
+    label: "Preview detail",
+    title: "Preview detail is visible while standard detail is prepared."
+  },
+  [VIEWPORT_QUALITY_STATE.REFINING]: {
+    label: "Refining detail",
+    title: "More model detail is loading in the background."
+  },
+  [VIEWPORT_QUALITY_STATE.STANDARD]: {
+    label: "Standard detail",
+    title: "The visible model has reached standard detail."
+  },
+  [VIEWPORT_QUALITY_STATE.LIMITED]: {
+    label: "Reduced detail",
+    title: "Standard detail could not fit in available memory."
+  },
+  [VIEWPORT_QUALITY_STATE.ERROR]: {
+    label: "Detail update failed",
+    title: "The visible model could not finish loading standard detail."
+  }
+});
+
+const VIEWPORT_QUALITY_EXTRA_DETAIL_COPY = Object.freeze({
+  [VIEWPORT_QUALITY_STATE.LIMITED]: {
+    label: "Extra detail limited",
+    title: "Standard detail is ready. Additional detail could not fit in available memory."
+  },
+  [VIEWPORT_QUALITY_STATE.ERROR]: {
+    label: "Extra detail failed",
+    title: "Standard detail is ready. The view could not load additional detail."
+  }
+});
+
+function hasReason(snapshot, reasons) {
+  return (snapshot?.unmetTargets || []).some((target) => reasons.has(target?.reason));
+}
+
+export function isViewportLodMemoryLimitation(limitation) {
+  return limitation?.source === "viewportLod" && Array.isArray(limitation?.unmetTargets)
+    && limitation.unmetTargets.length > 0;
+}
+
+export function lodSnapshotForFile(snapshot, file) {
+  if (!snapshot || snapshot.disposed) {
+    return null;
+  }
+  const snapshotFile = String(snapshot.file || "");
+  return snapshotFile && file && snapshotFile !== file ? null : snapshot;
+}
+
+export function lodSnapshotForModel(record, modelKey) {
+  if (record?.modelKey !== modelKey || record?.snapshot?.modelKey !== modelKey) {
+    return null;
+  }
+  return record.snapshot;
+}
+
+/**
+ * Map genuine displayed geometry plus the LOD scheduler's public state to one
+ * compact label. `modelComplete` prevents an early progressive batch from
+ * presenting its temporary standard level as the finished model.
+ */
+export function viewportQualityStatus({
+  hasGeometry = false,
+  modelComplete = false,
+  lodExpectedComponentCount = 0,
+  lodSnapshot = null,
+  memoryLimitation = null
+} = {}) {
+  if (!hasGeometry) {
+    return { state: null, firstPreviewReady: false, standardQualityReady: false };
+  }
+
+  const hasLodComponents = Number(lodSnapshot?.componentCount) > 0;
+  const expectedComponentCount = Math.max(0, Math.floor(Number(lodExpectedComponentCount) || 0));
+  const requiresLod = expectedComponentCount > 0 || hasLodComponents;
+  // A progressive package may publish 24 or 56 components before its final 69.
+  // Its earlier snapshot is useful for its own preview, never proof that the
+  // newly complete package has reached standard detail.
+  const componentScopeMatches = expectedComponentCount === 0 ||
+    Number(lodSnapshot?.componentCount) === expectedComponentCount;
+  const firstPreviewReady = true;
+  const standardQualityReady = Boolean(
+    modelComplete && (requiresLod
+      ? hasLodComponents && componentScopeMatches && lodSnapshot?.standardSettled === true
+      : true)
+  );
+
+  // The scheduler's current targets are authoritative. A memory event may
+  // arrive before its next status event, but must not leave a cleared limit
+  // stuck on screen after the scheduler reports no unmet targets.
+  let state;
+  if (lodSnapshot?.sceneFailed || hasReason(lodSnapshot, ERROR_REASONS)) {
+    state = VIEWPORT_QUALITY_STATE.ERROR;
+  } else if (lodSnapshot
+    ? hasReason(lodSnapshot, MEMORY_LIMIT_REASONS)
+    : isViewportLodMemoryLimitation(memoryLimitation)) {
+    state = VIEWPORT_QUALITY_STATE.LIMITED;
+  } else if (!lodSnapshot) {
+    // Mesh formats without component refinement are already displayed at
+    // their normal detail once their complete asset is available.
+    state = standardQualityReady ? VIEWPORT_QUALITY_STATE.STANDARD : VIEWPORT_QUALITY_STATE.PREVIEW;
+  } else if (!modelComplete) {
+    state = VIEWPORT_QUALITY_STATE.PREVIEW;
+  } else if (lodSnapshot.busy || lodSnapshot.pendingEvaluation || hasReason(lodSnapshot, new Set(["pending"]))) {
+    state = VIEWPORT_QUALITY_STATE.REFINING;
+  } else if (standardQualityReady) {
+    state = VIEWPORT_QUALITY_STATE.STANDARD;
+  } else if (requiresLod && Number(lodSnapshot.belowMinimum) > 0) {
+    state = VIEWPORT_QUALITY_STATE.PREVIEW;
+  } else {
+    state = VIEWPORT_QUALITY_STATE.REFINING;
+  }
+
+  return {
+    state,
+    ...(standardQualityReady && VIEWPORT_QUALITY_EXTRA_DETAIL_COPY[state]
+      ? VIEWPORT_QUALITY_EXTRA_DETAIL_COPY[state]
+      : VIEWPORT_QUALITY_COPY[state]),
+    firstPreviewReady,
+    standardQualityReady
+  };
+}

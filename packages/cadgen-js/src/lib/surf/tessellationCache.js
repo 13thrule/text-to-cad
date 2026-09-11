@@ -584,6 +584,19 @@ export function tessellationCacheProviderRegistered() {
   return cacheProvider !== null;
 }
 
+export class TessellationCacheProbeMissError extends Error {
+  constructor(probe, options = {}) {
+    super("A probed tessellation cache object is no longer readable", options);
+    this.name = "TessellationCacheProbeMissError";
+    this.code = "TESS_CACHE_PROBE_MISS";
+    this.probe = probe;
+  }
+}
+
+export function isTessellationCacheProbeMissError(error) {
+  return error?.code === "TESS_CACHE_PROBE_MISS";
+}
+
 export async function probeCachedTessellationEntries(surfaceInputs, options = {}, { signal } = {}) {
   const hits = new Map();
   const provider = cacheProvider;
@@ -602,17 +615,35 @@ export async function probeCachedTessellationEntries(surfaceInputs, options = {}
   return hits;
 }
 
-export async function getCachedEntryBytes(surfaceInput, options = {}, { signal, probe = null } = {}) {
+export async function getCachedEntryBytes(surfaceInput, options = {}, {
+  signal,
+  probe = null,
+  strictProbe = false,
+} = {}) {
   const provider = cacheProvider;
-  if (!provider || !tessellationOptionsCacheable(options)) return null;
+  if (!provider || !tessellationOptionsCacheable(options)) {
+    if (strictProbe) throw new TessellationCacheProbeMissError(probe);
+    return null;
+  }
   const key = tessellationCacheKey(surfaceInput, options);
   let row = validateTessellationProbeRow(probe, { tessellationInput: key, surfaceInput });
   if (!row) {
     row = (await probeCachedTessellationEntries([surfaceInput], options, { signal })).get(surfaceInput) || null;
   }
-  if (!row) return null;
-  const bytes = await provider.getProbed(row, { signal, maxBytes: row.byteLength });
-  return tessellationPayloadFacts(bytes, row) ? bytes : null;
+  if (!row) {
+    if (strictProbe) throw new TessellationCacheProbeMissError(probe);
+    return null;
+  }
+  let bytes;
+  try {
+    bytes = await provider.getProbed(row, { signal, maxBytes: row.byteLength });
+  } catch (error) {
+    if (abortError(error, signal) || !strictProbe) throw error;
+    throw new TessellationCacheProbeMissError(row, { cause: error });
+  }
+  if (tessellationPayloadFacts(bytes, row)) return bytes;
+  if (strictProbe) throw new TessellationCacheProbeMissError(row);
+  return null;
 }
 
 export async function getCachedEntryBytesMany(probes, { signal, maxBytes = TESS_BATCH_MAX_BYTES } = {}) {

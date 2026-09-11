@@ -9,6 +9,7 @@
 
 import {
   getCachedEntryBytes,
+  TessellationCacheProbeMissError,
   tessellationCacheProviderRegistered,
   tessellationOptionsCacheable,
   writeBackEntryBytes,
@@ -394,6 +395,7 @@ export function loadSurfComponentInWorker(url, {
   // or debug options mean the message carries nothing extra.
   const surfaceInput = String(identity?.surfaceInput || "");
   const surfaceObject = String(identity?.surfaceObject || "");
+  const strictProbe = Boolean(identity?.tessellationProbe);
   const cacheable = Boolean(surfaceInput && surfaceObject)
     && tessellationCacheProviderRegistered()
     && tessellationOptionsCacheable(tessellation || {});
@@ -456,7 +458,23 @@ export function loadSurfComponentInWorker(url, {
       getCachedEntryBytes(surfaceInput, tessellation || {}, {
         signal,
         probe: identity?.tessellationProbe || null,
-      }).then(post, () => post(null));
+        strictProbe,
+      }).then(post, (error) => {
+        const request = pendingRequests.get(id);
+        if (!request) return;
+        pendingRequests.delete(id);
+        request.cleanup();
+        request.reject(error);
+        dispatchQueuedRequests();
+        releaseDeferredPoolIfIdle(request.poolGeneration);
+      });
+    } else if (strictProbe) {
+      const request = pendingRequests.get(id);
+      pendingRequests.delete(id);
+      request?.cleanup();
+      request?.reject(new TessellationCacheProbeMissError(identity.tessellationProbe));
+      dispatchQueuedRequests();
+      releaseDeferredPoolIfIdle(request?.poolGeneration);
     } else {
       post(null);
     }

@@ -31,7 +31,20 @@ function invalidMatrix(matrix) {
   return matrix && (!matrix.isMatrix4 || !matrix.elements.every(Number.isFinite));
 }
 
-export function sampleLodCamera(THREE, runtime, { components = new Map(), dynamicScene = false } = {}) {
+function selectedPartId(partId, selected) {
+  if (!selected.size) return false;
+  if (selected.has("__model__")) return true;
+  const normalized = String(partId || "").trim().replace(/^#\s*/, "");
+  if (!normalized) return false;
+  for (const candidate of selected) {
+    const value = String(candidate || "").trim().replace(/^#\s*/, "");
+    if (value && (normalized === value || normalized.startsWith(`${value}.`))) return true;
+  }
+  return false;
+}
+
+export function sampleLodCamera(THREE, runtime, { components = new Map(), dynamicScene = false,
+  selectedPartIds = [] } = {}) {
   const camera = runtime?.camera, canvas = runtime?.renderer?.domElement;
   if (!camera || !canvas) return null;
   const records = runtime.displayRecords || [];
@@ -43,16 +56,20 @@ export function sampleLodCamera(THREE, runtime, { components = new Map(), dynami
   const frustum = new THREE.Frustum().setFromProjectionMatrix(projection, camera.coordinateSystem, camera.reversedDepth);
   const cameraPosition = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
   const box = new THREE.Box3(), point = new THREE.Vector3(), matrix = new THREE.Matrix4();
-  const byCid = new Map(), distances = new Map(), visibility = new Map();
+  const selected = new Set((Array.isArray(selectedPartIds) ? selectedPartIds : [selectedPartIds])
+    .map(value => String(value || "").trim()).filter(Boolean));
+  const byCid = new Map(), distances = new Map(), visibility = new Map(), selectedComponents = new Map();
   const telemetry = { components: components.size, occurrences: 0, visibleOccurrences: 0,
     excludedOccurrences: 0, fallbackOccurrences: 0, visibleComponents: 0,
-    excludedComponents: 0, fallbackComponents: 0, pendingOccurrences: 0, dynamicFailOpen: Number(failOpen) };
+    excludedComponents: 0, fallbackComponents: 0, selectedComponents: 0,
+    pendingOccurrences: 0, dynamicFailOpen: Number(failOpen) };
   for (const record of records) {
     const cid = record?.sourcePart?.componentId;
     if (!components.has(cid)) continue;
     let state = byCid.get(cid);
-    if (!state) { state = { count: 0, nearest: Infinity, nearestAll: Infinity, fallback: false }; byCid.set(cid, state); }
+    if (!state) { state = { count: 0, nearest: Infinity, nearestAll: Infinity, fallback: false, selected: false }; byCid.set(cid, state); }
     state.count++; telemetry.occurrences++;
+    if (selectedPartId(record?.partId, selected)) state.selected = true;
     // partBounds already contains the occurrence's base transform. Reapplying
     // that transform would move it twice. Post-pose and floor/group transforms
     // are applied in the same order as the displayed mesh.
@@ -104,6 +121,8 @@ export function sampleLodCamera(THREE, runtime, { components = new Map(), dynami
       if (visible) telemetry.visibleComponents++;
       else telemetry.excludedComponents++;
     }
+    selectedComponents.set(cid, state?.selected === true);
+    if (state?.selected) telemetry.selectedComponents++;
   }
   const viewportWidthPx = canvas.clientWidth || canvas.width || 0;
   const viewportHeightPx = canvas.clientHeight || canvas.height || 0;
@@ -129,6 +148,7 @@ export function sampleLodCamera(THREE, runtime, { components = new Map(), dynami
     viewportHeightPx,
     distanceFor: cid => distances.get(cid) ?? NaN,
     visibleFor: cid => visibility.get(cid) !== false,
+    selectedFor: cid => selectedComponents.get(cid) === true,
     visibility: telemetry,
   };
 }

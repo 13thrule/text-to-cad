@@ -276,6 +276,7 @@ export function orderComponentsForProgressiveLoad(descriptor) {
  *   concurrency,
  *   isCurrent(),                       // false once the request is superseded or aborted
  *   sizeHint?(cid, component),         // -> Promise<number|{sourceBytes,cacheProbe}> before admission
+ *   retryCacheProbeMiss?(error, probe),// true re-enters metadata + admission after a stale body
  *   maxInFlightBytes?,                 // estimated decoded bytes in flight (PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES)
  *   sourceExpansionRatio?,             // conservative decoded/source estimate floor for this concrete tier
  *   retainedComponent?(cid, component),// already-owned exact meshData, bypassing decode admission
@@ -306,6 +307,7 @@ export function createProgressivePackageLoader({
   concurrency = 8,
   isCurrent = () => true,
   sizeHint = null,
+  retryCacheProbeMiss = null,
   maxInFlightBytes = PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
   sourceExpansionRatio = 0,
   retainedComponent = null,
@@ -522,42 +524,54 @@ export function createProgressivePackageLoader({
       }
       return;
     }
-    let hint = null;
-    if (typeof sizeHint === "function") {
-      // Optional metadata probes handle ordinary misses themselves. A thrown
-      // error is cancellation, an invalid immutable binding, or failed surface
-      // derivation and must fence sibling lanes like a decode failure.
+    const rejectedCacheObjects = new Set();
+    let cacheProbeMisses = 0;
+    let meshData;
+    let admission;
+    while (true) {
+      let hint = null;
+      if (typeof sizeHint === "function") {
+        // Optional metadata probes handle ordinary misses themselves. A thrown
+        // error is cancellation, an invalid immutable binding, or failed surface
+        // derivation and must fence sibling lanes like a decode failure.
+        try {
+          hint = await sizeHint(cid, component, {
+            rejectedCacheObjects,
+            // L1 and L0 are the only initial tiers. If both probed objects
+            // disappear, force the next pass through cold resolution instead
+            // of following a rapidly changing cache index forever.
+            skipCacheProbes: cacheProbeMisses >= 2,
+          });
+        } catch (error) {
+          markFailed(error);
+          throw error;
+        }
+      }
+      if (!active()) stop();
+      admission = await admit(hint, cid, component);
       try {
-        hint = await sizeHint(cid, component);
+        if (!active()) stop();
+        meshData = await loadComponent(cid, component, {
+          estimatedBytes: admission.estimate,
+          cacheProbe: admission.cacheProbe,
+        });
+        if (!active()) stop();
+        releaseSlot(admission);
+        break;
       } catch (error) {
-        markFailed(error);
+        const retry = cacheProbeMisses < 2 && admission.cacheProbe
+          && retryCacheProbeMiss?.(error, admission.cacheProbe) === true;
+        if (!retry) markFailed(error);
+        releaseSlot(admission);
+        if (retry) {
+          rejectedCacheObjects.add(admission.cacheProbe.object);
+          cacheProbeMisses += 1;
+          continue;
+        }
+        // The retryable probed-body case above is the only failure that may
+        // admit again; every other failure fences waiters before release.
         throw error;
       }
-    }
-    if (!active()) {
-      stop();
-    }
-    const admission = await admit(hint, cid, component);
-    let meshData;
-    try {
-      if (!active()) {
-        stop();
-      }
-      meshData = await loadComponent(cid, component, {
-        estimatedBytes: admission.estimate,
-        cacheProbe: admission.cacheProbe,
-      });
-      if (!active()) {
-        stop();
-      }
-    } catch (error) {
-      // Fence queued admission before releasing this slot. Otherwise that
-      // release wakes a waiter one microtask before the consumer loop sees the
-      // rejection, allowing one more component to start after the failure.
-      markFailed(error);
-      throw error;
-    } finally {
-      releaseSlot(admission);
     }
     const decodedBytes = estimateMeshRenderCost(meshData).typedArrayBytes;
     if (decodedBytes > maxInFlightBytes) {

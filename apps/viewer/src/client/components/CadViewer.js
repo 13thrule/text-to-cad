@@ -1736,6 +1736,9 @@ const CadViewer = forwardRef(function CadViewer({
   const perspectiveChangeRef = useRef(onPerspectiveChange);
   const lodCameraChangeRef = useRef(onLodCameraChange);
   lodCameraChangeRef.current = onLodCameraChange;
+  const lodSelectedPartIdsRef = useRef(selectedPartIds);
+  lodSelectedPartIdsRef.current = selectedPartIds;
+  const lodSelectionKey = normalizePartIdList(selectedPartIds).join("\u0000");
   const meshSourceAdoptionRef = useRef(onMeshSourceAdoption);
   meshSourceAdoptionRef.current = onMeshSourceAdoption;
 
@@ -3116,7 +3119,10 @@ const CadViewer = forwardRef(function CadViewer({
     sampleLodCamera(options) {
       const runtime = runtimeRef.current;
       if (!runtimeModelKeyMatches(runtime, modelKeyRef.current)) return null;
-      return sampleLodCamera(THREE, runtime, options);
+      return sampleLodCamera(THREE, runtime, {
+        ...options,
+        selectedPartIds: lodSelectedPartIdsRef.current,
+      });
     },
     // Exposed so a toolbar can drive the camera the same way the view-plane widget does.
     // The DXF 2D/3D toggle is exactly "look straight down" vs "the default three-quarter
@@ -4252,6 +4258,10 @@ const CadViewer = forwardRef(function CadViewer({
     runtime.cadScene?.syncSurfaceInstances();
     runtime.requestRender();
   }, [viewerReadyTick, partVisualStateEnabled, recordEdgesVisible, focusedPartIds, hiddenPartIds, hoveredPartId, pickMode, pickableParts, selectedPartIds, viewerTheme, visualEdgeSettings, normalizedDisplayMode]);
+
+  useEffect(() => {
+    lodCameraChangeRef.current?.();
+  }, [lodSelectionKey]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;

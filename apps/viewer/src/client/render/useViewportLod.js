@@ -10,7 +10,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { loadRenderSurfPayloadAtLevel, reclaimIdleSurfWorkers, releaseSurfWorkers, releaseRenderSurfLevel, renderAssetCacheStats } from "cadgen-js/lib/renderAssetClient.js";
 import { estimateMeshRenderCost } from "cadgen-js/lib/render/meshCost.js";
-import { lodTessellationForLevel } from "cadgen-js/lib/surf/lodPolicy.js";
+import { LOD_DEFAULT_LEVEL, lodTessellationForLevel } from "cadgen-js/lib/surf/lodPolicy.js";
 
 import { createLodScheduler } from "./lodScheduler.js";
 import { syncSurfWorkerMemory } from "./surfWorkerMemoryPolicy.js";
@@ -27,14 +27,16 @@ function publishLodMemoryLimitation(detail) {
 }
 
 /** Report blocked camera targets, without clearing another subsystem's limit. */
-export function syncViewportLodLimitation(status, policy = viewerMemoryPolicy, publish = publishLodMemoryLimitation) {
+export function syncViewportLodLimitation(status, policy = viewerMemoryPolicy, publish = publishLodMemoryLimitation,
+  publishedLimitation = typeof window !== "undefined" ? window.__cadViewerMemoryLimitation : null) {
   const targets = status?.disposed ? [] : (status?.unmetTargets || [])
     .filter(({ reason }) => reason === "memory-denied" || reason === "memory-pressure");
   if (targets.length) {
     const detail = { source: "viewportLod", preservingCurrentView: true, unmetTargets: targets };
     policy.noteLimitation(detail);
     publish(detail);
-  } else if (policy.snapshot().lastLimitation?.source === "viewportLod") {
+  } else if (policy.snapshot().lastLimitation?.source === "viewportLod" ||
+      (!policy.snapshot().lastLimitation && publishedLimitation?.source === "viewportLod")) {
     policy.clearLimitation();
     publish(null);
   }
@@ -44,7 +46,18 @@ function lodEnabled() {
   return typeof window === "undefined" || window.__CAD_VIEWER_LOD__ !== false;
 }
 
-export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, prepareComponentLodPayload, componentLodNeedsSelectors, dynamicScene = false }) {
+export function viewportLodMinimumLevel(target = typeof window !== "undefined" ? window : null) {
+  return Number(target?.__CAD_VIEWER_MIN_LOD__ ?? LOD_DEFAULT_LEVEL);
+}
+
+export function dispatchViewportLodStatus(status, target = typeof window !== "undefined" ? window : null,
+  EventClass = typeof CustomEvent !== "undefined" ? CustomEvent : null) {
+  if (!target || !EventClass || !status) return;
+  target.dispatchEvent(new EventClass("cad:lod-status", { detail: status }));
+}
+
+export function useViewportLod({ viewerRef, lodPackage, modelKey = "", applyComponentLodBatch,
+  prepareComponentLodPayload, componentLodNeedsSelectors, dynamicScene = false }) {
   const componentsRef = useRef(new Map());
   const displayBuffersRef = useRef(new Set());
   const refreshDisplayBuffers = () => {
@@ -61,6 +74,8 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, 
   selectorsRef.current = componentLodNeedsSelectors;
   const schedulerRef = useRef(null);
   const visibilityRef = useRef(null);
+  const lodPackageFileRef = useRef("");
+  const lodPackageModelKeyRef = useRef("");
 
   useEffect(() => {
     const stagingOwner = Symbol("viewport-lod");
@@ -75,9 +90,17 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, 
       viewerMemoryPolicy.setRetained("assetCaches", Object.entries(caches).reduce((sum, [name, stats]) =>
         name === "surfLeash" || name === "selector" ? sum : sum + (Number(stats?.typedBytes) || 0), 0));
     };
-    const scheduler = createLodScheduler({
+    let scheduler = null;
+    const snapshot = () => ({ file: lodPackageFileRef.current, modelKey: lodPackageModelKeyRef.current,
+      ...scheduler.snapshot(),
+      staging: lodStagingSnapshot(), visibility: visibilityRef.current });
+    const publishStatus = () => {
+      if (!scheduler || schedulerRef.current !== scheduler) return;
+      dispatchViewportLodStatus(snapshot());
+    };
+    scheduler = createLodScheduler({
       batchSize: typeof window !== "undefined" ? Number(window.__CAD_VIEWER_LOD_BATCH_SIZE__ || 4) : 4,
-      onOccupiedChanged: syncStaging,
+      onOccupiedChanged: entries => { syncStaging(entries); publishStatus(); },
       needsPreparation: (cid, _level, payload) => !payload?.bundle && selectorsRef.current?.(cid) === true,
       prepareLevel: (cid, level, payload, options) => prepareRef.current?.(cid, level, payload, options) || payload,
       reconcileLevel: ({ payload, reservedBytes, currentLevel, level }) => {
@@ -97,9 +120,10 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, 
         if (typeof window !== "undefined") for (const { cid, level } of entries)
           window.dispatchEvent(new CustomEvent("cad:lod-level", { detail: { cid, level } }));
       },
-      // Harness-only quality floor: exact tessellation options still name
-      // every mesh and export defaults are untouched.
-      minimumLevel: typeof window !== "undefined" ? Number(window.__CAD_VIEWER_MIN_LOD__ || 0) : 0,
+      // The coarse assembly mesh is only a first-paint preview. The settled
+      // viewport floor is the canonical default; the debug override can still
+      // exercise lower/higher rungs without changing cache or export identity.
+      minimumLevel: viewportLodMinimumLevel(),
       reserveLevel: ({ cid, currentLevel, level, direction }) => {
         const component = componentsRef.current.get(cid);
         const { currentBytes, nextMeshBytes, admissionBytes } = estimateViewportLodMemory({
@@ -133,6 +157,7 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, 
       },
       onIdle: (status) => {
         syncViewportLodLimitation(status);
+        publishStatus();
         releaseSurfWorkers().then(syncSurfWorkerMemory, syncSurfWorkerMemory);
       },
       loadLevel: (cid, level, { signal }) => {
@@ -185,7 +210,6 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, 
       }
     });
     schedulerRef.current = scheduler;
-    const snapshot = () => ({ ...scheduler.snapshot(), staging: lodStagingSnapshot(), visibility: visibilityRef.current });
     if (typeof window !== "undefined") window.__cadViewportLod = snapshot;
     return () => {
       scheduler.dispose();
@@ -197,12 +221,16 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, 
   // The package summary is republished per progressive-load batch (useCadAssets),
   // so the same file arriving again means the model GREW: keep the levels
   // already applied. A different file (or null between loads) is a reset.
-  const lodPackageFileRef = useRef("");
   useEffect(() => {
     const components = lodEnabled() ? lodPackage?.components || [] : [];
     const file = String(lodPackage?.file || "");
-    const preserveLevels = !!file && file === lodPackageFileRef.current;
+    // A new catalog revision can arrive while its predecessor remains on
+    // screen. Identity belongs to the adopted package, never to that request.
+    const nextModelKey = String(lodPackage?.modelKey || modelKey || file);
+    const preserveLevels = !!file && file === lodPackageFileRef.current &&
+      nextModelKey === lodPackageModelKeyRef.current;
     lodPackageFileRef.current = file;
+    lodPackageModelKeyRef.current = nextModelKey;
     visibilityRef.current = null;
     componentsRef.current = new Map(components.map((component) => [component.cid, component]));
     refreshDisplayBuffers();
@@ -210,7 +238,8 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, 
       components.map(({ cid, diagonal, level }) => ({ cid, diagonal, level })),
       { preserveLevels }
     );
-  }, [lodPackage]);
+    if (typeof window !== "undefined") dispatchViewportLodStatus(window.__cadViewportLod?.());
+  }, [lodPackage, modelKey]);
 
   // One numeric distance map per camera/summary/capability change. The sampler
   // checks whole occurrence bounds, never just centers or material visibility.
@@ -225,6 +254,7 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, 
     }
     visibilityRef.current = sampler.visibility;
     schedulerRef.current?.onCameraSample(sampler);
+    if (typeof window !== "undefined") dispatchViewportLodStatus(window.__cadViewportLod?.());
   }, [viewerRef, dynamicScene]);
 
   // Initial framing can notify before the package summary reaches this hook.

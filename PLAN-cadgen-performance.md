@@ -696,8 +696,13 @@ snapshots and a 36.54 → 32.15-second matched parent build. Full STEP export an
 readback remain substantial; this follow-up does not establish instant edits or
 measured FreeCAD parity.
 
-- [ ] Correct the browser quality regression found in visual review: coarse
+- [x] Correct the browser quality regression found in visual review: coarse
   initial meshes can remain settled because refinement tests chord error but
   ignores their looser angular tolerance. Restore standard detail in the
   background for visible geometry when memory permits, preserve admission and
   limitation reporting, and separately benchmark first preview and full quality.
+  The [quality follow-up](scripts/bench/cadgen-performance/VIEWER-QUALITY-20260911.md)
+  verifies all 256 Moonwatch components at standard detail, matching the prior
+  standard snapshot's mesh objects. Cold display reached standard detail in
+  85.81 seconds; warm opens took 1.22–1.32 seconds. These are separate from the
+  earlier coarse-preview timing and do not establish instant cold rendering.

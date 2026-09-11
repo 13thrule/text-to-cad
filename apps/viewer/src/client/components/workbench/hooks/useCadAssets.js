@@ -34,7 +34,10 @@ import {
   lodTessellationForLevel,
   normalizeLodLevel
 } from "cadgen-js/lib/surf/lodPolicy.js";
-import { probeCachedTessellationEntries } from "cadgen-js/lib/surf/tessellationCache.js";
+import {
+  isTessellationCacheProbeMissError,
+  probeCachedTessellationEntries
+} from "cadgen-js/lib/surf/tessellationCache.js";
 import { resolvePackageAssetUrl } from "./packageAssetUrl.js";
 import {
   createProgressivePackageLoader,
@@ -43,7 +46,7 @@ import {
   publishMeshCostAccounting,
   shouldRetainCompleteSameFileMesh
 } from "./packageProgressiveLoad.js";
-import { initialDisplayLodPlan } from "../../../render/initialDisplayLod.js";
+import { initialDisplayLodPlan, probeInitialDisplayLod } from "../../../render/initialDisplayLod.js";
 import {
   matchingDisplayedPackageContext,
   retainedComponentMeshesForRevision
@@ -464,7 +467,9 @@ export function useCadAssets({
         };
       })
       .filter(Boolean);
-    return { file: entry.file, components };
+    return { file: entry.file,
+      modelKey: `${entry.file}:${entryMeshAssetSignature(entry) || entry.hash || ""}`,
+      components };
   }, []);
 
   // This preparation is called by the scheduler's sole loader lane. Batch
@@ -950,6 +955,7 @@ export function useCadAssets({
               initialPlanByCid.get(cid) || defaultInitialPlan
             ).sourceExpansionRatio,
             retainedComponent: (cid) => retainedComponentMeshByCid[cid] || null,
+            retryCacheProbeMiss: isTessellationCacheProbeMissError,
             // Exact-surface artifact: tessellated client-side from the .surf
             // (design/surface-rendering.md). Same meshData contract as the
             // component GLB this replaced.
@@ -977,30 +983,26 @@ export function useCadAssets({
             // sizes the component before its decode is admitted; null when the
             // server does not answer, and the loader falls back to its running
             // mean.
-            sizeHint: async (cid, component) => {
+            sizeHint: async (cid, component, {
+              rejectedCacheObjects = new Set(),
+              skipCacheProbes = false,
+            } = {}) => {
               const surfaceInput = String(component?.surfaceInput || "");
-              const candidatePlans = [defaultInitialPlan];
-              if (defaultInitialPlan.level !== 0) {
-                candidatePlans.push({ ...defaultInitialPlan, level: 0,
-                  sourceExpansionRatio: 32, reason: "warm-coarse-cache" });
-              }
-              // Probe every initial tier the current policy can select. This
-              // preserves deleted-SURF warm hits even when the earlier tier
-              // decision depended on a SURF content length no longer present.
-              for (const plan of candidatePlans) {
-                const hits = await probeCachedTessellationEntries(
-                  [surfaceInput], lodTessellationForLevel(plan.level), { signal: controller.signal },
-                );
-                const probe = hits.get(surfaceInput) || null;
-                if (probe && (!component.surfaceObject || component.surfaceObject === probe.surfaceObject)) {
-                  initialPlanByCid.set(cid, plan);
-                  componentIdentityByCid.set(cid, Object.freeze({
-                    ...component,
-                    surfaceObject: probe.surfaceObject,
-                    surfUrl: component.surf ? resolvePackageAssetUrl(meshUrl, component.surf) : "",
-                  }));
-                  return { sourceBytes: null, cacheProbe: probe };
-                }
+              const cached = !skipCacheProbes && await probeInitialDisplayLod({
+                surfaceInput,
+                surfaceObject: component.surfaceObject,
+                maxInFlightBytes: PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
+                signal: controller.signal,
+                rejectedCacheObjects,
+              });
+              if (cached) {
+                initialPlanByCid.set(cid, cached.plan);
+                componentIdentityByCid.set(cid, Object.freeze({
+                  ...component,
+                  surfaceObject: cached.cacheProbe.surfaceObject,
+                  surfUrl: component.surf ? resolvePackageAssetUrl(meshUrl, component.surf) : "",
+                }));
+                return { sourceBytes: null, cacheProbe: cached.cacheProbe };
               }
 
               let ticket;
@@ -1027,10 +1029,11 @@ export function useCadAssets({
               initialPlanByCid.set(cid, plan);
               componentIdentityByCid.set(cid, Object.freeze({ ...component, ...ticket }));
               // A tier revised by the exact SURF size may already be warm.
-              const revised = (await probeCachedTessellationEntries(
-                [surfaceInput], lodTessellationForLevel(plan.level), { signal: controller.signal },
-              )).get(surfaceInput) || null;
-              if (revised && revised.surfaceObject === ticket.surfaceObject) {
+              const revised = skipCacheProbes ? null : (await probeCachedTessellationEntries(
+                  [surfaceInput], lodTessellationForLevel(plan.level), { signal: controller.signal },
+                )).get(surfaceInput) || null;
+              if (revised && revised.surfaceObject === ticket.surfaceObject
+                  && !rejectedCacheObjects.has(revised.object)) {
                 return { sourceBytes: hint, cacheProbe: revised };
               }
               return { sourceBytes: hint, cacheProbe: null };

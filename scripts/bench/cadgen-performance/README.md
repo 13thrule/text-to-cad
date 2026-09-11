@@ -472,3 +472,11 @@ packing, selection/BVH construction, React publication, GPU uploads, first
 visible geometry, orbit frame time, or picking latency. Compressed payload size
 is only a potential transport cost. Use the viewer benchmark commands for those
 separate stages; a fast kernel result alone is not an end-to-end speedup.
+
+`viewer_quality.mjs` measures first visible geometry, complete preview, and
+standard-detail completion separately in a real browser. Run it against a private
+viewer/store with prepared geometry and a deliberate display-cache state; see
+[standard-detail results and reproduction](VIEWER-QUALITY-20260911.md). It rejects
+an incomplete standard result and reports page errors, adopted levels and
+resource estimates. Snapshots belong under `models/`; detailed local JSON can go
+under `tmp/`.

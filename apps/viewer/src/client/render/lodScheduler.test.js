@@ -3,6 +3,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { LOD_TESSELLATION_LEVELS, nextLevel } from "cadgen-js/lib/surf/lodPolicy.js";
+
 import { createLodScheduler } from "./lodScheduler.js";
 import { estimateViewportLodMemory } from "./viewportLodMemory.js";
 
@@ -64,7 +66,7 @@ test("an omitted level means the canonical default while explicit L0 stays coars
   scheduler.dispose();
 });
 
-test("a canonical quality floor refines distant coarse leaves and later progressive arrivals", async () => {
+test("a stationary camera corrects the coarse angular tier and later progressive arrivals", async () => {
   const clock = makeClock();
   const loads = [];
   const scheduler = createLodScheduler({
@@ -74,7 +76,13 @@ test("a canonical quality floor refines distant coarse leaves and later progress
     applyLevel: () => {},
   });
   scheduler.setComponents([{ cid: "first", diagonal: 10, level: 0 }]);
-  scheduler.onCameraSample(sampleWith({ first: 10000, later: 10000 }));
+  const camera = sampleWith({ first: 10000, later: 10000 });
+  assert.equal(nextLevel({ diagonal: 10, cameraDistance: 10000,
+    camera: camera.camera, viewportHeightPx: camera.viewportHeightPx }, 0), 0,
+  "projected chord error alone considers the coarse mesh settled");
+  assert.ok(LOD_TESSELLATION_LEVELS[0].angleTolerance > LOD_TESSELLATION_LEVELS[1].angleTolerance,
+    "the standard floor must still repair coarse angular tessellation");
+  scheduler.onCameraSample(camera);
   clock.fire(); await tick(); await tick();
   assert.equal(scheduler.levelOf("first"), 1);
   scheduler.setComponents([{ cid: "first", diagonal: 10, level: 0 }, { cid: "later", diagonal: 10, level: 0 }], { preserveLevels: true });
@@ -82,6 +90,28 @@ test("a canonical quality floor refines distant coarse leaves and later progress
   assert.deepEqual(loads, ["first@1", "later@1"]);
   assert.deepEqual(scheduler.snapshot().levelCounts, { 1: 2 });
   assert.equal(scheduler.snapshot().belowMinimum, 0);
+  assert.equal(scheduler.snapshot().standardSettled, true);
+  scheduler.dispose();
+});
+
+test("standard-floor work prioritizes selected then large visible components and defers offscreen leaves", async () => {
+  const clock = makeClock();
+  const loads = [];
+  const scheduler = createLodScheduler({ ...clock, minimumLevel: 1,
+    loadLevel: async (cid, level) => { loads.push(`${cid}@${level}`); return {}; }, applyLevel: () => true });
+  scheduler.setComponents([
+    { cid: "small", diagonal: 1, level: 0 },
+    { cid: "offscreen", diagonal: 1000, level: 0 },
+    { cid: "large", diagonal: 100, level: 0 },
+    { cid: "selected", diagonal: 0.1, level: 0 },
+  ]);
+  scheduler.onCameraSample({ ...sampleWith({ small: 10000, offscreen: 10000, large: 10000, selected: 10000 }),
+    visibleFor: cid => cid !== "offscreen", selectedFor: cid => cid === "selected" });
+  clock.fire(); await drain();
+  assert.deepEqual(loads, ["selected@1", "large@1", "small@1"]);
+  assert.equal(scheduler.levelOf("offscreen"), 0);
+  assert.equal(scheduler.snapshot().belowMinimum, 0, "the visible floor excludes deferred offscreen work");
+  assert.equal(scheduler.snapshot().standardSettled, true);
   scheduler.dispose();
 });
 
@@ -508,7 +538,7 @@ test("denial fallback has at most six distinct probes and never bypasses the flo
     loadLevel: () => assert.fail("denied floor must not load"), applyLevel: () => true });
   floor.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
   floor.onCameraSample(sampleWith({ part: 60 })); clock.fire(); await drain();
-  assert.deepEqual(floorProbes, [3, 2, 1], "the existing +1 floor injection is also parked after denial");
+  assert.deepEqual(floorProbes, [3, 2], "visible work probes only eligible targets at or above the floor");
   assert.equal(floor.snapshot().belowMinimum, 1);
   assert.equal(floor.snapshot().qualitySettled, false);
   floor.dispose();
@@ -617,6 +647,37 @@ test("memory pressure retains one-rung coarsening and truthfully reports unmet c
   scheduler.dispose();
 });
 
+test("memory pressure parks a coarse standard floor without loading or retrying", async () => {
+  const clock = makeClock(), loads = [];
+  const scheduler = createLodScheduler({ ...clock, minimumLevel: 1, memoryPressure: () => true,
+    loadLevel: async (_cid, level) => { loads.push(level); return {}; }, applyLevel: () => true });
+  scheduler.setComponents([{ cid: "coarse", diagonal: 100, level: 0 }]);
+  scheduler.onCameraSample(sampleWith({ coarse: 10000 })); clock.fire(); await drain();
+  assert.deepEqual(loads, []);
+  assert.equal(scheduler.snapshot().standardSettled, false);
+  assert.equal(scheduler.snapshot().qualitySettled, false);
+  assert.deepEqual(scheduler.snapshot().unmetTargets.map(({ currentLevel, targetLevel, reason }) =>
+    ({ currentLevel, targetLevel, reason })), [{ currentLevel: 0, targetLevel: 1, reason: "memory-pressure" }]);
+  clock.fire(); await drain();
+  assert.deepEqual(loads, [], "an idle pressure floor cannot schedule its own retry loop");
+  scheduler.dispose();
+});
+
+test("offscreen pressure denial is neither a standard target nor a user-facing memory limitation", async () => {
+  const clock = makeClock(), limitations = [];
+  const scheduler = createLodScheduler({ ...clock, minimumLevel: 1, memoryPressure: () => true,
+    reserveLevel: () => ({ ok: false, detail: { requestedBytes: 10 } }),
+    onLimitation: detail => limitations.push(detail), loadLevel: async () => ({}), applyLevel: () => true });
+  scheduler.setComponents([{ cid: "offscreen", diagonal: 100, level: 3 }]);
+  scheduler.onCameraSample({ ...sampleWith({ offscreen: 10000 }), visibleFor: () => false });
+  clock.fire(); await drain();
+  assert.deepEqual(limitations, []);
+  assert.deepEqual(scheduler.snapshot().unmetTargets, []);
+  assert.equal(scheduler.snapshot().belowMinimum, 0);
+  assert.equal(scheduler.snapshot().standardSettled, true);
+  scheduler.dispose();
+});
+
 test("accepted pressure coarsening cannot oscillate back through its ceiling without fresh camera intent", async () => {
   const clock = makeClock(), loads = [];
   let scheduler;
@@ -673,20 +734,21 @@ test("pressure ceilings tighten only after admitted adoption and never cross the
   floor.dispose();
 });
 
-test("idle telemetry reports a blocked intermediate floor step rather than pending final-floor work", async () => {
+test("idle telemetry reports a blocked visible floor target rather than pending work", async () => {
   for (const failure of ["memory", "load"]) {
     const clock = makeClock();
     const scheduler = createLodScheduler({ ...clock, minimumLevel: 2,
       reserveLevel: () => ({ ok: failure !== "memory" }),
       loadLevel: async () => { throw new Error("floor load failed"); }, applyLevel: () => true });
-    scheduler.setComponents([{ cid: "offscreen", diagonal: 100, level: 0 }]);
-    scheduler.onCameraSample({ ...sampleWith({ offscreen: 10000 }), visibleFor: () => false });
+    scheduler.setComponents([{ cid: "visible", diagonal: 100, level: 0 }]);
+    scheduler.onCameraSample(sampleWith({ visible: 10000 }));
     clock.fire(); await drain();
     const target = scheduler.snapshot().unmetTargets[0];
     assert.equal(target.currentLevel, 0);
     assert.equal(target.targetLevel, 2);
-    assert.equal(target.blockedLevel, 1);
+    assert.equal(target.blockedLevel, undefined);
     assert.equal(target.reason, failure === "memory" ? "memory-denied" : "load-failed");
+    if (failure === "load") assert.deepEqual(target.detail, { name: "Error", message: "floor load failed" });
     assert.equal(scheduler.snapshot().qualitySettled, false);
     scheduler.dispose();
   }

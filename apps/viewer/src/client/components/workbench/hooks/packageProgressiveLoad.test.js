@@ -1051,6 +1051,73 @@ test("the admitted decoded estimate is passed to the component load", async () =
   assert.deepEqual(estimates, [150], "worker ownership receives the exact admitted estimate");
 });
 
+test("a stale probed body releases hit admission and retries through cold admission", async () => {
+  const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
+  const probe = { object: "stale", byteLength: 8, decodedBytes: 12 };
+  const hints = [];
+  const reservations = [];
+  const releases = [];
+  const loads = [];
+  await createProgressivePackageLoader({
+    descriptor,
+    maxInFlightBytes: 400,
+    sourceExpansionRatio: 10,
+    sizeHint: async (_cid, _component, { rejectedCacheObjects, skipCacheProbes }) => {
+      hints.push({ rejected: [...rejectedCacheObjects], skipCacheProbes });
+      return rejectedCacheObjects.has(probe.object)
+        ? { sourceBytes: 5, cacheProbe: null }
+        : { sourceBytes: null, cacheProbe: probe };
+    },
+    reserveLoad: ({ estimatedBytes, cacheProbe }) => {
+      reservations.push({ estimatedBytes, cacheProbe });
+      return { ok: true, token: reservations.length };
+    },
+    releaseLoad: (token) => releases.push(token),
+    retryCacheProbeMiss: (error) => error?.code === "TESS_CACHE_PROBE_MISS",
+    loadComponent: async (_cid, _component, { cacheProbe }) => {
+      loads.push(cacheProbe);
+      if (cacheProbe) throw Object.assign(new Error("gone"), { code: "TESS_CACHE_PROBE_MISS" });
+      return fakeComponent("c0");
+    },
+    onPublish: () => {},
+  }).run();
+  assert.deepEqual(hints, [
+    { rejected: [], skipCacheProbes: false },
+    { rejected: ["stale"], skipCacheProbes: false },
+  ]);
+  assert.deepEqual(reservations.map(({ estimatedBytes }) => estimatedBytes), [20, 100]);
+  assert.deepEqual(loads, [probe, null]);
+  assert.deepEqual(releases, [1, 2]);
+});
+
+test("changing stale cache rows are bounded before cold admission", async () => {
+  const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
+  const hints = [];
+  let probeNumber = 0;
+  const result = await createProgressivePackageLoader({
+    descriptor,
+    maxInFlightBytes: 400,
+    sizeHint: async (_cid, _component, { skipCacheProbes }) => {
+      hints.push(skipCacheProbes);
+      return skipCacheProbes
+        ? { sourceBytes: 1, cacheProbe: null }
+        : { sourceBytes: null, cacheProbe: {
+            object: `stale-${probeNumber += 1}`,
+            byteLength: 8,
+            decodedBytes: 12,
+          } };
+    },
+    retryCacheProbeMiss: (error) => error?.code === "TESS_CACHE_PROBE_MISS",
+    loadComponent: async (_cid, _component, { cacheProbe }) => {
+      if (cacheProbe) throw Object.assign(new Error("gone"), { code: "TESS_CACHE_PROBE_MISS" });
+      return fakeComponent("c0");
+    },
+    onPublish: () => {},
+  }).run();
+  assert.deepEqual(hints, [false, false, true]);
+  assert.equal(result.loaded, 1);
+});
+
 test("a transient global miss waits for admitted work and leaves no stale limitation", async () => {
   const descriptor = makeDescriptor({ componentCount: 5, occurrenceCount: 5 });
   const { loadComponent } = makeLoader(descriptor, { componentFloats: () => 12 });

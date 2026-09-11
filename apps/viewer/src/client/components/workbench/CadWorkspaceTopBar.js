@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   Check,
+  Circle,
+  CircleAlert,
   CircleCheck,
   Contrast,
   Copy,
@@ -79,6 +81,38 @@ function fileSheetLabel(fileSheetKind) {
     return "STEP sheet";
   }
   return "file sheet";
+}
+
+function ViewportQualityIndicator({ qualityStatus }) {
+  if (!qualityStatus?.state) {
+    return null;
+  }
+  const state = qualityStatus.state;
+  const Icon = state === "standard" ? CircleCheck
+    : state === "preview" ? Circle
+      : state === "refining" ? LoaderCircle
+        : CircleAlert;
+  const iconClassName = state === "standard"
+    ? "text-primary"
+    : state === "limited"
+      ? "text-amber-500 dark:text-amber-300"
+      : state === "error"
+        ? "text-destructive dark:text-red-300"
+        : "text-muted-foreground";
+  return (
+    <span
+      role="status"
+      data-quality-state={state}
+      title={qualityStatus.title}
+      className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+    >
+      <Icon
+        className={`${iconClassName} size-3.5 shrink-0 ${state === "refining" ? "animate-spin" : ""}`}
+        aria-hidden="true"
+      />
+      <span className="max-w-32 truncate">{qualityStatus.label}</span>
+    </span>
+  );
 }
 
 function sourceFormatForEntry(entry, entrySourceFormat) {
@@ -973,6 +1007,7 @@ export default function CadWorkspaceTopBar({
   followEdits = false,
   onFollowEditsChange,
   editingStatus = "",
+  qualityStatus = null,
   annotationError = "",
   sidebarLabelForEntry,
   directoryTree = null,
@@ -1185,6 +1220,7 @@ export default function CadWorkspaceTopBar({
               </Button>
             </div>
           ) : null}
+          <ViewportQualityIndicator qualityStatus={qualityStatus} />
           {annotationError ? <span role="alert" className="max-w-48 truncate text-xs text-destructive" title={annotationError}>Annotations unavailable</span> : null}
           {/* A plain toggle for the theme sidebar, matching the file-sheet
               button beside it. Theme selection lives inside the sidebar. */}

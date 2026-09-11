@@ -120,9 +120,16 @@ the build — detection only; it keeps serving.
   stages or fails. Reuse requires the same runtime surface input, concrete
   surface object and tessellation; placements and appearance come from the new
   tree. Snapshot source isolation is unchanged.
-- Assemblies with at least 64 unique components start at a coarser display
-  tessellation. Smaller assemblies keep the standard level, except an
-  individually oversized component may start coarse if its estimate fits.
+- Assemblies with at least 64 unique components can start at a coarser display
+  tessellation when standard meshes are not cached. Cached standard meshes are
+  preferred immediately, subject to their probed decode size and admission.
+  Smaller assemblies start at the standard level, except an individually
+  oversized component may start coarse if its estimate fits. Coarse geometry
+  is a temporary preview: visible components automatically reach at least the
+  standard level, preserving its angular smoothness even when projected chord
+  error alone would permit a coarser mesh. Close inspection can request finer
+  detail. The top bar distinguishes preview, refinement, standard detail and
+  limited or failed refinement; STEP save status remains separate.
   Refinement uses the camera and disposable memory budget; exact geometry,
   measurements and explicit mesh-export tolerances remain unchanged.
   Static assemblies sample full transformed occurrence bounds against the camera

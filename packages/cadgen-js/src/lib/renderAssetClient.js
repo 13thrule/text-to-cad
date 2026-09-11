@@ -815,6 +815,7 @@ async function loadSurfPayloadInline(url, { signal, tessellation, identity, capa
   const cached = await getCachedComponentEntry(surfaceInput, tessellation || {}, {
     signal,
     probe: identity?.tessellationProbe || null,
+    strictProbe: Boolean(identity?.tessellationProbe),
   });
   const cachedIndex = surfIndexFromCacheEntry(cached);
   // Render-only cache hits are complete without the exact-surface container.

@@ -11,7 +11,9 @@ import {
   encodeComponentTessellation,
   encodeTessellationCacheBatch,
   float64Hex,
+  getCachedEntryBytes,
   getCachedComponentEntries,
+  isTessellationCacheProbeMissError,
   resolvedTessellationIdentity,
   setTessellationCacheProvider,
   surfIndexFromCacheEntry,
@@ -278,6 +280,32 @@ test("provider batch and writeback accept only entries bound to requested L", as
   const hits = await getCachedComponentEntries([D, D2], Q);
   assert.deepEqual([...hits.keys()], [D]);
   assert.equal(hits.get(D).identity.surfaceObject, O);
+});
+
+test("a vanished probed body is an explicit retry boundary only when requested", async (t) => {
+  t.after(() => setTessellationCacheProvider(null));
+  const entry = encodedEntry();
+  const key = tessellationCacheKey(D, Q);
+  const facts = tessellationPayloadFacts(entry, { tessellationInput: key });
+  const object = createHash("sha256").update(entry).digest("hex");
+  const row = validateTessellationProbeRow({ schemaVersion: 1, object, ...facts });
+  setTessellationCacheProvider({
+    async probeMany() { return [row]; },
+    async getProbed() { return null; },
+  });
+  assert.equal(await getCachedEntryBytes(D, Q, { probe: row }), null);
+  await assert.rejects(
+    getCachedEntryBytes(D, Q, { probe: row, strictProbe: true }),
+    (error) => isTessellationCacheProbeMissError(error) && error.probe.object === row.object,
+  );
+});
+
+test("strict probe admission also rejects a provider lost before body read", async () => {
+  setTessellationCacheProvider(null);
+  await assert.rejects(
+    getCachedEntryBytes(D, Q, { probe: { object: "gone" }, strictProbe: true }),
+    isTessellationCacheProbeMissError,
+  );
 });
 
 test("HTTP provider probes metadata before an exact bounded object read", async (t) => {

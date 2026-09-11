@@ -1,9 +1,41 @@
-import { LOD_DEFAULT_LEVEL } from "cadgen-js/lib/surf/lodPolicy.js";
+import { LOD_DEFAULT_LEVEL, lodTessellationForLevel } from "cadgen-js/lib/surf/lodPolicy.js";
+import { probeCachedTessellationEntries } from "cadgen-js/lib/surf/tessellationCache.js";
 
 export const LARGE_ASSEMBLY_INITIAL_COARSE_COMPONENTS = 64;
 export const DEFAULT_SURF_DECODE_EXPANSION_ESTIMATE = 64;
 export const COARSE_SURF_DECODE_EXPANSION_ESTIMATE = 32;
 export const INITIAL_DECODE_ESTIMATE_FLOOR_BYTES = 64 * 1024 * 1024;
+
+// A large assembly only needs a coarse first pass when standard meshes are
+// missing. Prefer the existing standard entry, including when its SURF has
+// been reclaimed. Probe metadata before body allocation; the loader still
+// reserves memory and verifies the exact object before displaying it.
+export async function probeInitialDisplayLod({
+  surfaceInput, surfaceObject, maxInFlightBytes, signal,
+  rejectedCacheObjects = new Set(),
+  probeEntries = probeCachedTessellationEntries,
+}) {
+  for (const level of [LOD_DEFAULT_LEVEL, 0]) {
+    const hits = await probeEntries([surfaceInput], lodTessellationForLevel(level), { signal });
+    const cacheProbe = hits.get(surfaceInput);
+    if (!cacheProbe || (surfaceObject && surfaceObject !== cacheProbe.surfaceObject)) continue;
+    if (rejectedCacheObjects.has(cacheProbe.object)) continue;
+    const estimatedBytes = Number(cacheProbe.byteLength) + Number(cacheProbe.decodedBytes);
+    if (!Number.isSafeInteger(estimatedBytes) || estimatedBytes <= 0 || estimatedBytes > maxInFlightBytes) continue;
+    return {
+      cacheProbe,
+      plan: {
+        level,
+        sourceExpansionRatio: level === 0
+          ? COARSE_SURF_DECODE_EXPANSION_ESTIMATE : DEFAULT_SURF_DECODE_EXPANSION_ESTIMATE,
+        estimatedBytes,
+        fitsDecodeCap: true,
+        reason: level === 0 ? "warm-coarse-cache" : "warm-standard-cache",
+      },
+    };
+  }
+  return null;
+}
 
 export function estimateInitialSurfDecodeBytes(
   surfBytes,

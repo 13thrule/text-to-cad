@@ -96,8 +96,9 @@ viewer looks worse is consistent with this real quality reduction.
 The required correction is to treat coarse detail as an initial preview and
 restore at least standard detail for visible components when resources permit,
 or use a refinement criterion that also accounts for angular quality. Preserve
-memory admission and report any quality limitation. **Full standard-quality
-browser completion has not yet been measured**, and the 34.16-second figure
+memory admission and report any quality limitation. The [subsequent quality
+fix](VIEWER-QUALITY-20260911.md) measures standard browser completion at 85.81
+seconds cold and 1.22–1.32 seconds warm. The 34.16-second figure
 must not be compared against a higher-quality FreeCAD render as if settings
 matched. The independently verified standard-detail snapshot speedup remains
 valid and produced identical pixels.

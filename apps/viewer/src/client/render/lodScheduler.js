@@ -70,7 +70,7 @@ export function createLodScheduler({
   // (cid:level) loads that failed since the last camera/retry epoch. Without this
   // memo a persistently failing load busy-loops the drain (fail -> finally ->
   // re-plan -> same item); with it the failure parks until the camera moves.
-  const failed = new Map(); // cid:level -> load/adoption failure reason
+  const failed = new Map(); // cid:level -> { reason, detail? }
   // A successful intermediate adoption supplies measured bytes for a new
   // estimate. Only that changed current rung permits another admission check.
   const denied = new Map(); // cid:current:requested -> admission detail
@@ -203,6 +203,7 @@ export function createLodScheduler({
         cid,
         currentLevel: state.level,
         visible: lastSample.visibleFor?.(cid) !== false,
+        selected: lastSample.selectedFor?.(cid) === true,
         sample: {
           diagonal: state.diagonal,
           cameraDistance,
@@ -230,13 +231,13 @@ export function createLodScheduler({
   }
 
   function qualityStatus(entries = lastSample ? entriesForPlan() : [], pressure = lastPressure) {
-    const byCid = new Map(entries.map((entry) => [entry.cid, entry]));
+    const eligible = entries.filter((entry) => entry.visible);
     const unmetTargets = [];
-    for (const [cid, state] of components) {
-      const entry = byCid.get(cid);
-      const cameraTargetLevel = entry?.visible
-        ? Math.max(floorLevel, settledLevel(entry.sample, state.level, levels))
-        : Math.max(floorLevel, state.level);
+    for (const entry of eligible) {
+      const cid = entry.cid;
+      const state = components.get(cid);
+      if (!state) continue;
+      const cameraTargetLevel = Math.max(floorLevel, settledLevel(entry.sample, state.level, levels));
       const blockedCoarsen = pressure && state.level > floorLevel && blocked(cid, state.level, state.level - 1);
       const targetLevel = blockedCoarsen ? state.level - 1 : cameraTargetLevel;
       if (targetLevel === state.level) continue;
@@ -247,18 +248,25 @@ export function createLodScheduler({
         blockedLevel = state.level + 1;
       }
       const detail = denied.get(`${cid}:${state.level}:${blockedLevel}`);
+      const failure = failed.get(`${cid}:${blockedLevel}`);
       const ceiling = pressureCeilings.get(cid);
       const pressureLimited = (blockedCoarsen && !detail) || (pressure && targetLevel > state.level) ||
         (ceiling !== undefined && targetLevel > ceiling);
       const reason = pressureLimited ? "memory-pressure"
-        : failed.get(`${cid}:${blockedLevel}`) || (detail ? "memory-denied" : "pending");
+        : failure?.reason || (detail ? "memory-denied" : "pending");
       unmetTargets.push({ cid, currentLevel: state.level, targetLevel, reason,
         ...(blockedCoarsen ? { cameraTargetLevel } : {}),
         ...(ceiling !== undefined ? { pressureCeiling: ceiling } : {}),
-        ...(blockedLevel !== targetLevel ? { blockedLevel } : {}), ...(detail ? { detail } : {}) });
+        ...(blockedLevel !== targetLevel ? { blockedLevel } : {}),
+        ...(detail || failure?.detail ? { detail: detail || failure.detail } : {}) });
     }
+    const belowMinimum = eligible.filter(({ currentLevel }) => currentLevel < floorLevel).length;
     return {
+      scope: "visible-components",
+      eligibleComponentCount: eligible.length,
+      belowMinimum,
       qualitySettled: !disposed && !sceneFailed && !!lastSample && occupied.size === 0 && timer === null && collectionTimer === null && unmetTargets.length === 0,
+      standardSettled: !disposed && !sceneFailed && !!lastSample && belowMinimum === 0,
       sceneFailed,
       memoryPressure: pressure,
       unmetTargets,
@@ -266,10 +274,21 @@ export function createLodScheduler({
     };
   }
 
-  function parkFailure(task, reason) {
+  function failureDetail(error) {
+    if (!error) return null;
+    if (typeof error === "string") return { message: error };
+    if (typeof error !== "object") return { message: String(error) };
+    const message = String(error.message || "LOD operation failed");
+    const name = String(error.name || "Error");
+    return { name, message };
+  }
+
+  function parkFailure(task, reason, error = null) {
     if (!disposed && !task.controller.signal.aborted &&
         task.modelEpoch === modelEpoch && task.sampleEpoch === sampleEpoch) {
-      failed.set(`${task.cid}:${task.level}`, reason);
+      const detail = failureDetail(error);
+      failed.set(`${task.cid}:${task.level}`, { cid: task.cid, level: task.level, reason,
+        ...(detail ? { detail } : {}) });
     }
   }
 
@@ -281,28 +300,19 @@ export function createLodScheduler({
       const policyLevel = pressure
         ? nextLevel(entry.sample, entry.currentLevel, levels)
         : settledLevel(entry.sample, entry.currentLevel, levels);
-      if (policyLevel === entry.currentLevel) continue;
       const targetLevel = Math.max(floorLevel, policyLevel);
+      if (targetLevel === entry.currentLevel) continue;
       const admittedTarget = !pressure && targetLevel > entry.currentLevel
         ? Math.min(targetLevel, pressureCeilings.get(entry.cid) ?? targetLevel) : targetLevel;
       const level = pressure
         ? (blocked(entry.cid, entry.currentLevel, targetLevel) ? null : targetLevel)
         : availableLevel(entry.cid, entry.currentLevel, admittedTarget);
       if (level === null || level === entry.currentLevel || (pressure && level > entry.currentLevel)) continue;
-      plan.push({ cid: entry.cid, level, targetLevel, errorPx: projectedChordErrorPx({
+      plan.push({ cid: entry.cid, level, targetLevel, visible: true, selected: entry.selected, errorPx: projectedChordErrorPx({
         ...entry.sample, chordRel: levels[entry.currentLevel],
       }) });
     }
-    plan.sort((a, b) => b.errorPx - a.errorPx);
-    if (!pressure && floorLevel > 0) {
-      const planned = new Set(plan.map((item) => item.cid));
-      for (const [cid, state] of components) {
-        const level = state.level + 1;
-        if (occupied.has(cid)) continue;
-        if (state.level >= floorLevel || planned.has(cid) || blocked(cid, state.level, level)) continue;
-        plan.push({ cid, level, targetLevel: floorLevel, errorPx: 0 });
-      }
-    }
+    plan.sort((a, b) => Number(b.selected) - Number(a.selected) || b.errorPx - a.errorPx);
     if (pressure) {
       const planned = new Set(plan.map((item) => `${item.cid}:${item.level}`));
       for (const entry of entries) {
@@ -315,6 +325,8 @@ export function createLodScheduler({
             cid: entry.cid,
             level,
             targetLevel: level,
+            visible: entry.visible,
+            selected: entry.selected,
             errorPx: entry.visible ? projectedChordErrorPx({
               ...entry.sample,
               chordRel: levels[entry.currentLevel],
@@ -332,7 +344,8 @@ export function createLodScheduler({
         const aCoarsens = aCurrent > a.level;
         const bCoarsens = bCurrent > b.level;
         if (aCoarsens !== bCoarsens) return aCoarsens ? -1 : 1;
-        return aCoarsens ? a.errorPx - b.errorPx : b.errorPx - a.errorPx;
+        if (!aCoarsens) return Number(b.selected) - Number(a.selected) || b.errorPx - a.errorPx;
+        return Number(a.visible) - Number(b.visible) || Number(a.selected) - Number(b.selected) || a.errorPx - b.errorPx;
       });
     }
     return plan;
@@ -358,9 +371,9 @@ export function createLodScheduler({
     return !disposed && !task.controller.signal.aborted && task.modelEpoch === modelEpoch && occupied.get(task.cid) === task;
   }
 
-  function loadFailed(task, reason = "load-failed") {
+  function loadFailed(task, reason = "load-failed", error = null) {
     if (occupied.get(task.cid) !== task) return;
-    parkFailure(task, reason);
+    parkFailure(task, reason, error);
     releaseTask(task, true);
     sealReason ||= "failure";
   }
@@ -378,7 +391,9 @@ export function createLodScheduler({
       if (hasOtherOwners) transientDenied.set(task.cid, ownershipSerial);
       else {
         denied.set(`${task.cid}:${task.currentLevel}:${task.level}`, adjustment.detail || {});
-        onLimitation?.(adjustment.detail || { cid: task.cid, level: task.level, preservingCurrentView: true });
+        if (task.visible !== false) onLimitation?.(adjustment.detail || {
+          cid: task.cid, level: task.level, preservingCurrentView: true,
+        });
       }
       sealReason ||= "admission";
       return false;
@@ -413,7 +428,7 @@ export function createLodScheduler({
       return prepareLevel ? prepareLevel(task.cid, task.level, payload, { signal: task.controller.signal }) : payload;
     }).then(payload => {
       finishPrepared(task, payload);
-    }).catch(() => loadFailed(task)).finally(() => {
+    }).catch((error) => loadFailed(task, "load-failed", error)).finally(() => {
       if (loading === task) loading = null;
       pump();
     });
@@ -459,12 +474,14 @@ export function createLodScheduler({
           if (current) current.level = task.level;
           if (task.pressure && task.level < task.currentLevel && task.sampleEpoch === sampleEpoch)
             pressureCeilings.set(task.cid, Math.max(floorLevel, Math.min(pressureCeilings.get(task.cid) ?? task.level, task.level)));
-        } else if (currentOwner) parkFailure(task, outcome?.status === "scene-failed" ? "scene-failed" : "adoption-refused");
+        } else if (currentOwner) parkFailure(task,
+          outcome?.status === "scene-failed" ? "scene-failed" : "adoption-refused",
+          outcome?.error || outcome?.detail);
       }
       try { if (accepted) onAdopted?.(tasks.map(({ cid, level }) => ({ cid, level })), outcome); }
       finally { for (const task of tasks) releaseTask(task, !accepted && !retained, false); changed(); }
-    }).catch(() => {
-      for (const task of tasks) { parkFailure(task, "load-failed"); releaseTask(task, true, false); }
+    }).catch((error) => {
+      for (const task of tasks) { parkFailure(task, "load-failed", error); releaseTask(task, true, false); }
       changed();
     }).finally(() => {
       telemetry.adoptionMs += Math.max(0, now() - owner.startedAt);
@@ -515,10 +532,11 @@ export function createLodScheduler({
           return;
         }
         denied.set(`${cid}:${currentLevel}:${level}`, reservation.detail || {});
-        onLimitation?.({ ...(reservation.detail || {}), cid, currentLevel, level, targetLevel, preservingCurrentView: true });
+        if (request.visible !== false) onLimitation?.({ ...(reservation.detail || {}), cid, currentLevel, level, targetLevel, preservingCurrentView: true });
         continue;
       }
-      const task = { cid, level, currentLevel, pressure, controller: new AbortController(), sampleEpoch, modelEpoch,
+      const task = { cid, level, currentLevel, pressure, visible: request.visible,
+        controller: new AbortController(), sampleEpoch, modelEpoch,
         reservations: reservation.token ? [reservation.token] : [], reservedBytes: Number(reservation.bytes) || 0,
         status: "loading", payload: null };
       occupied.set(cid, task);
@@ -554,10 +572,10 @@ export function createLodScheduler({
         return counts;
       }, {}),
       minimumLevel: floorLevel,
-      belowMinimum: [...components.values()].filter((state) => state.level < floorLevel).length,
       busy: occupied.size > 0,
       pendingEvaluation: timer !== null,
       failedLevels: failed.size,
+      failures: [...failed.values()].map((failure) => ({ ...failure })),
       deniedAttempts: denied.size,
       pressureLimitedComponents: pressureCeilings.size,
       ...qualityStatus(),

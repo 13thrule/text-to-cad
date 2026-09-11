@@ -37,6 +37,7 @@ import { tessellateComponent } from "./surf/tessellate.js";
 import {
   edgeClassesFromSurfIndex,
   encodeComponentTessellation,
+  isTessellationCacheProbeMissError,
   setTessellationCacheProvider,
   tessellationCacheKey,
   tessellationPayloadFacts,
@@ -745,6 +746,47 @@ test("cached display with a corrupt v4 body falls back to surf and repairs the e
   assert.ok(meshData.indices.length > 0);
   assert.equal(fetches, 1, "corrupt cache bytes are a recoverable miss");
   assert.equal(puts, 1, "the complete display entry replaces the incomplete one");
+});
+
+test("an admitted cache probe does not silently fall through to cold tessellation", async (t) => {
+  const surfBytes = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "surf/fixtures/sun_gear.surf"));
+  const surfBuffer = surfBytes.buffer.slice(surfBytes.byteOffset, surfBytes.byteOffset + surfBytes.byteLength);
+  const { index, floats } = parseSurf(surfBuffer);
+  const url = `https://cache.test/strict/components/strict-${Date.now()}.surf`;
+  const identity = identityForSurfTest(url);
+  const entry = encodeComponentTessellation(tessellateComponent(index, floats), {
+    surfaceInput: identity.surfaceInput,
+    surfaceObject: identity.surfaceObject,
+    edgeClasses: edgeClassesFromSurfIndex(index),
+  });
+  const facts = tessellationPayloadFacts(entry, {
+    tessellationInput: tessellationCacheKey(identity.surfaceInput),
+  });
+  const probe = validateTessellationProbeRow({
+    schemaVersion: 1,
+    object: createHash("sha256").update(entry).digest("hex"),
+    ...facts,
+  });
+  let fetches = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    fetches += 1;
+    return new Response(surfBuffer.slice(0), { status: 200 });
+  };
+  setTessellationCacheProvider({
+    async probeMany() { return [probe]; },
+    async getProbed() { return null; },
+  });
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    setTessellationCacheProvider(null);
+  });
+
+  await assert.rejects(
+    loadSurf(url, { identity: { ...identity, tessellationProbe: probe } }),
+    isTessellationCacheProbeMissError,
+  );
+  assert.equal(fetches, 0, "cold work waits for a fresh admission");
 });
 
 test("obsolete concrete surf levels release browser cache references only", async (t) => {

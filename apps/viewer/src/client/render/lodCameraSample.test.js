@@ -10,10 +10,11 @@ function fixture(entries) {
   const camera = new THREE.OrthographicCamera(-5, 5, 5, -5, 1, 20);
   camera.position.set(0, 0, 10); camera.lookAt(0, 0, 0);
   const components = new Map();
-  const displayRecords = entries.map(([cid, partBounds]) => {
+  const displayRecords = entries.map(([cid, partBounds], index) => {
     if (!components.has(cid)) components.set(cid, { centers: [], diagonal: 2, level: 0 });
     components.get(cid).centers.push(partBounds.min.map((value, axis) => (value + partBounds.max[axis]) / 2));
-    return { sourcePart: { componentId: cid }, partBounds, mesh: { visible: true }, material: { visible: true } };
+    return { partId: `${cid}.${index}`, sourcePart: { componentId: cid }, partBounds,
+      mesh: { visible: true }, material: { visible: true } };
   });
   return { runtime: { camera, modelGroup: new THREE.Group(), renderer: { domElement: { clientHeight: 1000 } }, displayRecords }, components };
 }
@@ -44,6 +45,17 @@ test("a repeated component uses the nearest visible occurrence, ignoring display
   assert.equal(s.distanceFor("same"), 10);
   assert.equal(s.visibility.visibleOccurrences, 1); assert.equal(s.visibility.excludedOccurrences, 1);
   assert.equal(s.visibility.excludedComponents, 0);
+});
+
+test("camera samples map live occurrence selection to component priority", () => {
+  const f = fixture([["small", cube(0)], ["large", cube(1)]]);
+  const selected = sample(f, { selectedPartIds: ["small"] });
+  assert.equal(selected.selectedFor("small"), true);
+  assert.equal(selected.selectedFor("large"), false);
+  assert.equal(selected.visibility.selectedComponents, 1);
+  const wholeModel = sample(f, { selectedPartIds: ["__model__"] });
+  assert.equal(wholeModel.selectedFor("small"), true);
+  assert.equal(wholeModel.selectedFor("large"), true);
 });
 
 test("occurrence bounds include base placement once; rotated mirrored/nonuniform group and parent transforms stay live", () => {
@@ -107,20 +119,25 @@ test("perspective cameras also retain intersecting boxes and see camera-parent t
   assert.equal(sample(f).visibleFor("center"), false);
 });
 
-test("visibility exclusion preserves the scheduler's canonical floor for every component", async () => {
+test("visibility exclusion defers the floor until a camera resample reveals the component", async () => {
   const f = fixture([["offscreen", cube(20)], ["also-offscreen", cube(-20)]]);
-  for (const minimumLevel of [0, 1]) {
-    let timer; const loads = [];
-    const scheduler = createLodScheduler({ minimumLevel,
-      setTimeoutFn: fn => { timer = fn; return 1; }, clearTimeoutFn: () => {},
-      loadLevel: async (cid, level) => { loads.push([cid, level]); return {}; }, applyLevel: () => {} });
-    scheduler.setComponents([...f.components].map(([cid, value]) => ({ cid, ...value })));
-    scheduler.onCameraSample(sample(f)); timer();
-    for (let i = 0; i < 20; i++) await Promise.resolve();
-    assert.equal(loads.length, minimumLevel ? 2 : 0);
-    for (const cid of f.components.keys()) assert.equal(scheduler.levelOf(cid), minimumLevel);
-    assert.equal(scheduler.busy(), false); scheduler.dispose();
-  }
+  let timer; const loads = [];
+  const scheduler = createLodScheduler({ minimumLevel: 1,
+    setTimeoutFn: fn => { timer = fn; return 1; }, clearTimeoutFn: () => {},
+    loadLevel: async (cid, level) => { loads.push([cid, level]); return {}; }, applyLevel: () => {} });
+  scheduler.setComponents([...f.components].map(([cid, value]) => ({ cid, ...value })));
+  scheduler.onCameraSample(sample(f)); timer();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  assert.deepEqual(loads, []);
+  assert.equal(scheduler.snapshot().belowMinimum, 0);
+  assert.equal(scheduler.snapshot().scope, "visible-components");
+  for (const cid of f.components.keys()) assert.equal(scheduler.levelOf(cid), 0);
+  f.runtime.camera.left = -30; f.runtime.camera.right = 30; f.runtime.camera.updateProjectionMatrix();
+  scheduler.onCameraSample(sample(f)); timer();
+  for (let i = 0; i < 40; i++) await Promise.resolve();
+  assert.deepEqual(loads, [["offscreen", 1], ["also-offscreen", 1]]);
+  for (const cid of f.components.keys()) assert.equal(scheduler.levelOf(cid), 1);
+  assert.equal(scheduler.busy(), false); scheduler.dispose();
 });
 
 test("pressure releases offscreen L3 first, while normal exclusion retains existing detail and pressure honors the floor", async () => {

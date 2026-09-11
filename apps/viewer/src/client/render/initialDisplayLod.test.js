@@ -7,9 +7,72 @@ import {
   LARGE_ASSEMBLY_INITIAL_COARSE_COMPONENTS,
   estimateInitialSurfDecodeBytes,
   initialDisplayLodPlan,
+  probeInitialDisplayLod,
 } from "./initialDisplayLod.js";
 
 const MIB = 1024 * 1024;
+
+function cachedProbes(standard, coarse) {
+  const requested = [];
+  return {
+    requested,
+    probeEntries: async ([input], options) => {
+      const level = options ? 0 : 1;
+      requested.push(level);
+      const row = level ? standard : coarse;
+      return new Map(row ? [[input, row]] : []);
+    },
+  };
+}
+
+test("warm assemblies choose standard before coarse without requiring a SURF URL", async () => {
+  const standard = { surfaceObject: "exact", byteLength: MIB, decodedBytes: 3 * MIB };
+  const cache = cachedProbes(standard, { ...standard, decodedBytes: MIB });
+  const hit = await probeInitialDisplayLod({ surfaceInput: "input", maxInFlightBytes: 256 * MIB, ...cache });
+  assert.equal(hit.plan.level, 1);
+  assert.equal(hit.cacheProbe, standard);
+  assert.equal(hit.plan.estimatedBytes, 4 * MIB);
+  assert.deepEqual(cache.requested, [1]);
+});
+
+test("a missing, mismatched, or oversized standard entry can fall back to admitted coarse", async () => {
+  const coarse = { surfaceObject: "exact", byteLength: MIB, decodedBytes: 3 * MIB };
+  for (const standard of [null, { ...coarse, surfaceObject: "different" },
+    { ...coarse, decodedBytes: 256 * MIB }, { ...coarse, decodedBytes: NaN }]) {
+    const cache = cachedProbes(standard, coarse);
+    const hit = await probeInitialDisplayLod({ surfaceInput: "input", surfaceObject: "exact",
+      maxInFlightBytes: 256 * MIB, ...cache });
+    assert.equal(hit.plan.level, 0);
+    assert.equal(hit.cacheProbe, coarse);
+    assert.deepEqual(cache.requested, [1, 0]);
+  }
+});
+
+test("a standard body rejected after admission falls back to coarse metadata", async () => {
+  const standard = { object: "standard", surfaceObject: "exact", byteLength: MIB, decodedBytes: 3 * MIB };
+  const coarse = { object: "coarse", surfaceObject: "exact", byteLength: MIB, decodedBytes: MIB };
+  const cache = cachedProbes(standard, coarse);
+  const hit = await probeInitialDisplayLod({
+    surfaceInput: "input",
+    maxInFlightBytes: 256 * MIB,
+    rejectedCacheObjects: new Set(["standard"]),
+    ...cache,
+  });
+  assert.equal(hit.plan.level, 0);
+  assert.equal(hit.cacheProbe, coarse);
+  assert.deepEqual(cache.requested, [1, 0]);
+});
+
+test("unusable cache metadata leaves cold-load admission in charge", async () => {
+  const row = { surfaceObject: "exact", byteLength: MIB, decodedBytes: 256 * MIB };
+  assert.equal(await probeInitialDisplayLod({ surfaceInput: "input", maxInFlightBytes: 256 * MIB,
+    ...cachedProbes(row, row) }), null);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(probeInitialDisplayLod({ surfaceInput: "input", maxInFlightBytes: 256 * MIB,
+    signal: controller.signal, probeEntries: async (_inputs, _options, { signal }) => signal.throwIfAborted() }),
+  { name: "AbortError" });
+});
 
 test("large assemblies start coarse while small and medium packages keep the default", () => {
   assert.equal(initialDisplayLodPlan({ componentCount: 9, maxInFlightBytes: 256 * MIB }).level, 1);

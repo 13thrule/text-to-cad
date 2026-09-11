@@ -20,7 +20,7 @@ function clock() {
   };
 }
 const sample = (cameraKey = "fixed") => ({ cameraKey, camera: { kind: "perspective", fovYDeg: 45 },
-  viewportHeightPx: 1000, distanceFor: () => 10000, visibleFor: () => false });
+  viewportHeightPx: 1000, distanceFor: () => 10000, visibleFor: () => true });
 const components = (count, level = 0) => Array.from({ length: count }, (_, i) => ({ cid: String(i), diagonal: 10, level }));
 function fixture(options = {}, count = 9) {
   const time = clock(), loads = [], batches = [], releases = [], leases = new Set(), discards = []; let token = 0;

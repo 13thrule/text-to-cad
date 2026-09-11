@@ -174,6 +174,12 @@ takes an `origin` for hosts whose cache is not on the page's own origin. TESB
 body groups remain bounded at 32 MiB; the Node export provider uses the same
 immutable `objects/` and `index/mesh/` layout as Python.
 
+A caller admitted using a cache probe can request a strict read: a missing or
+invalid body reports a typed cache miss before tessellation starts. The viewer
+releases that reservation and probes another cached tier or resolves the exact
+surface under fresh cold-work admission. Cache loss never silently turns a
+cheap decoded-mesh request into unbudgeted surface tessellation.
+
 Scene geometry is the tessellator's INDEXED output: a surf component's
 meshData shares the tessellation's vertex, normal and index buffers by
 reference (a decoded `.tess` cache entry is copied out of its one entry
