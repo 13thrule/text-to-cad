@@ -350,7 +350,7 @@ def _runtime_versions() -> tuple[str, str, str]:
     import build123d
 
     versions = (getattr(build123d, "__version__", None),
-                getattr(OCP, "__version__", None), version("cadquery-ocp"))
+                getattr(OCP, "__version__", None), version("cadquery-ocp-novtk"))
     if any(not isinstance(value, str) or not value.strip() or "unknown" in value.lower()
            for value in versions):
         raise ValueError("op memo requires known build123d and OCP versions for persistent reuse")
@@ -361,7 +361,7 @@ def _op_index_key(key: tuple) -> str:
     """Bind disk entries to the operation, scheme, loaded OCP and distribution."""
     build123d_version, ocp_version, distribution_version = _runtime_versions()
     scheme = (f"v{_OP_MEMO_VERSION}-b123d{build123d_version}"
-              f"-ocp{ocp_version}-cadquery-ocp{distribution_version}")
+              f"-ocp{ocp_version}-cadquery-ocp-novtk{distribution_version}")
     return hashlib.sha256((scheme + "\0" + repr(key)).encode("utf-8")).hexdigest()
 
 

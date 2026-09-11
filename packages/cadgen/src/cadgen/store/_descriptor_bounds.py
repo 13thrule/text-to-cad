@@ -35,17 +35,18 @@ class Ineligible(ValueError):
 @lru_cache(maxsize=1)
 def _native_identity() -> str:
     # OCP.__version__ is exported by the loaded native extension, not inferred
-    # from build123d. Include distribution identity too; absent identity misses.
+    # from build123d. Include the required no-VTK provider identity too; an
+    # installation using a different provider must not share this disk key.
     import OCP
     from importlib.metadata import PackageNotFoundError, version
     native = getattr(OCP, "__version__", None)
     try:
-        binding = version("cadquery-ocp")
+        binding = version("cadquery-ocp-novtk")
     except PackageNotFoundError as error:
         raise Ineligible("missing native binding identity") from error
     if type(native) is not str or not native or native == "unknown" or not binding:
         raise Ineligible("unsupported native identity")
-    return f"native={native};binding={binding}"
+    return f"native={native};provider=cadquery-ocp-novtk;binding={binding}"
 
 
 def _box_values(value: Any) -> tuple[float, ...]:
