@@ -26,13 +26,13 @@ const animationMs=Number(args['animation-ms'] || 0);
 const minimumLevel=Number(args['min-lod'] || 0);
 if(!Number.isInteger(minimumLevel)||minimumLevel<0||minimumLevel>3)throw new Error('--min-lod must be 0–3');
 if (!Number.isInteger(animationMs) || animationMs < 0 || animationMs > 30000) throw new Error('--animation-ms must be 0–30000');
+const editCycles=Number(args['edit-cycles'] || 0);
+if(!Number.isInteger(editCycles)||editCycles<0||editCycles>12||(editCycles>0&&editCycles<4))throw new Error('--edit-cycles must be 0 or 4–12; plateau checks require two observations of each revision');
 const loadTimings=[];
 const runtimeFingerprintAtStart=viewerRuntimeFingerprint();
 const startedAt=new Date().toISOString();
 const servedClientProof=await verifyServedViewerClient(base);
 const repo=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
-const editCycles=Number(args['edit-cycles'] || 0);
-if(!Number.isInteger(editCycles)||editCycles<0||editCycles>12)throw new Error('--edit-cycles must be 0–12');
 let editFixture=null;
 if(editCycles>0){
   const target=path.resolve(args['edit-target'] || ''), variant=path.resolve(args['edit-variant'] || '');
@@ -288,10 +288,14 @@ if(animation){
   result.assertions.animationGpuPlateau=animation.before.gpu.liveBytes===animation.after.gpu.liveBytes && animation.before.gpu.liveBufferCount===animation.after.gpu.liveBufferCount;
 }
 if(edits.length){
-  const baseline=edits.filter(edit=>!edit.variant).map(edit=>edit.snapshot);
-  result.assertions.editGpuPlateau=baseline.length>1 && new Set(baseline.map(s=>s.gpu.liveBytes)).size===1 && new Set(baseline.map(s=>s.gpu.liveBufferCount)).size===1;
+  const fixtureSamples=[true,false].map(variant=>edits.filter(edit=>edit.variant===variant).map(edit=>edit.snapshot));
+  result.assertions.editGpuPlateau=fixtureSamples.every(samples=>
+    samples.length>1 &&
+    new Set(samples.map(s=>s.gpu.liveBytes)).size===1 &&
+    new Set(samples.map(s=>s.gpu.liveBufferCount)).size===1
+  );
   result.assertions.editWorkersReclaimed=edits.every(edit=>(edit.snapshot.probe?.memoryPolicy?.retainedByCategory?.workerResidentEstimated||0)===0);
-  result.editPlateau={kind:'saved STEP byte replacement in the same tab; source execution excluded',target:editFixture.target,variant:editFixture.variant,heapUsed:edits.map(edit=>edit.snapshot.heap?.used),ownedBytes:edits.map(edit=>edit.snapshot.probe?.memoryPolicy?.estimatedOwnedBytes),gpuBytes:edits.map(edit=>edit.snapshot.gpu.liveBytes)};
+  result.editPlateau={kind:'saved STEP byte replacement in the same tab; source execution excluded',target:editFixture.target,variant:editFixture.variant,fixtureIdentity:edits.map(edit=>edit.variant?'variant':'original'),heapUsed:edits.map(edit=>edit.snapshot.heap?.used),ownedBytes:edits.map(edit=>edit.snapshot.probe?.memoryPolicy?.estimatedOwnedBytes),gpuBytes:edits.map(edit=>edit.snapshot.gpu.liveBytes),gpuBufferCounts:edits.map(edit=>edit.snapshot.gpu.liveBufferCount)};
 }
 result.environment={node:process.version,platform:process.platform,arch:process.arch,cpu:os.cpus()[0]?.model,totalMemoryBytes:os.totalmem(),revision,runtimeChangesAtStart:runtimeChanges,runtimeChangesAtEnd:git('status','--porcelain','--','packages/cadgen-js/src','apps/viewer/src','packages/cadgen/src/cadgen'),url:base,file:repeatedFile,other:otherFile,browserCache:'fresh profile initially; same profile for switches',tessellationCache:'preexisting server cache; neither cleared nor controlled by this harness',viewport:{width:1400,height:900},angle:'metal',lod:'default',minimumLevel};
 fs.mkdirSync(path.dirname(path.resolve(args.out)),{recursive:true});

@@ -7,7 +7,7 @@ import os
 import shutil
 from pathlib import Path
 
-from common import REPO, model_path, sha256, write_json
+from common import REPO, model_path
 
 
 def fixture(directory: Path) -> None:
@@ -28,29 +28,17 @@ def fixture(directory: Path) -> None:
 
 def view(model: Path, store: Path, directory: Path) -> None:
     os.environ["CADGEN_CACHE_DIR"] = str(store)
-    from cadgen.store.objects import object_path
     from cadgen.store.records import read_record
-    from cadgen.store.trees import flatten
+    from cadgen.store.view import view_dir_for
 
     record = read_record(model) or {}
-    descriptor = flatten(record["tree"]) if record.get("tree") else None
-    if descriptor is None:
+    if not record.get("tree"):
         raise ValueError("Build the fixture into the supplied store before preparing its view")
-    # Read every immutable input before making the new view. This path never
-    # imports model source, CAD geometry, or STEP text and never changes a store.
-    assets = []
-    for cid, component in descriptor["components"].items():
-        for suffix in ("surf", "brep"):
-            digest = component[suffix]
-            payload = object_path(digest).read_bytes()
-            if sha256(payload) != digest:
-                raise ValueError(f"Corrupt {suffix} object for component {cid}")
-            assets.append((cid, suffix, payload))
-    directory.mkdir(parents=True, exist_ok=False)
-    (directory / "components").mkdir()
-    for cid, suffix, payload in assets:
-        (directory / "components" / f"{cid}.{suffix}").write_bytes(payload)
-    write_json(directory / "assembly.json", descriptor)
+    # Preparing a display benchmark explicitly resolves missing derived SURF
+    # through the artifact pool, outside its measured meshing phase. Native
+    # geometry trees no longer require display objects to be complete.
+    source = view_dir_for(record["tree"])
+    shutil.copytree(source, directory)
     print(directory)
 
 

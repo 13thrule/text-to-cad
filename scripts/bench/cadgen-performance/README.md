@@ -40,9 +40,10 @@ export PYTHONPATH="$PWD/packages/cadgen/src"
 The fixture preparation copies the checked-in nine-part planetary model and
 changes only its output decorators: one local `planetary.step`, without mesh
 exports or a kinematics sidecar. It refuses to overwrite an existing source.
-The view preparation reads the completed model record, flattens its pinned tree,
-checks the referenced BREP/SURF object hashes, and copies those immutable bytes.
-It does not import model code, parse STEP, or import OCCT. A view is a fixed
+The view preparation reads the completed model record and resolves the pinned
+tree's display view through the artifact pool before copying its immutable
+BREP/SURF inputs. Missing surfaces are derived outside the measured mesh phase;
+this does not run model source or parse STEP. A view is a fixed
 snapshot, so later model/store changes do not alter the meshing inputs.
 
 Use an isolated fixture and store. Stop other builds, browser CAD loading, and
@@ -111,7 +112,10 @@ tab. It records retained heap/owned/GPU bytes after every complete replacement
 and restores the target's original bytes and timestamps in `finally`. The paths
 must be under `models/`, the bytes must differ, and annotation sidecars are
 refused. These measurements cover saved-file replacement, excluding model
-execution and preview publication. Use disposable fixture copies.
+execution and preview publication. Use disposable fixture copies and at least
+four edit cycles: the plateau check needs two settled observations of each
+revision and compares GPU bytes and buffer counts within that revision. The
+harness rejects one to three edit cycles before contacting the viewer.
 
 For a bounded large STEP load, `scripts/bench/viewer-memory/measure.mjs`
 requires the current client's complete component publication: a visible
