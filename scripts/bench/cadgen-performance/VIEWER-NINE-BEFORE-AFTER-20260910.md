@@ -1,5 +1,10 @@
 # Nine-part viewer before/after — 2026-09-10
 
+These measurements apply to the recorded source fingerprints. The later
+[medium ownership and recovery checks](VIEWER-OWNERSHIP-INTEGRATED-20260910.md)
+validate `8971f760d` and the alert correction in `c07488e1d`; they are separate
+functional evidence, not a replacement matched latency comparison.
+
 ## Original reviewed viewer
 
 The original `7aa3e85be76f305437abd3d7aba26e38b28e43cb` viewer rendered the
@@ -57,7 +62,7 @@ Setup failures and the exact isolated source/dependency proof are retained in
 those reports.
 
 
-## Final integrated viewer
+## Matched integrated viewer checkpoint
 
 The same STEP bytes were served from a precompiled canonical document in a
 separate owned store, with fresh Chromium profiles and the same locked libraries.
@@ -85,7 +90,7 @@ workers versus eight originally. The current cold run had nine expected cache
 404 misses; cached runs had none. There were no crashes or in-page errors.
 Raw current data: [four samples](results/viewer-nine-after-locked-20260910.json).
 
-## Current lifecycle validation
+## Matched lifecycle checkpoint
 
 [Lifecycle report](results/viewer-lifecycle-locked-20260910.json) covers a
 24-occurrence/two-component fixture, six switches to and from the nine-part

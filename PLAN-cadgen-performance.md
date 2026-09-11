@@ -130,11 +130,15 @@ last runtime changes.
   Full cleanup and failed-publication recovery are committed in `8971f760d`;
   independent review, 1,015 shared tests and 486 viewer tests pass. Separate
   browser checks pass 90 assertions, and the restored-alert fix in `c07488e1d`
-  passes 15 further assertions. Bounded grouping of detail
-  requests is being developed in an isolated copy. It must retain leases
-  through actual adoption or disposal, preserve matching selectors, and never
-  restore an old scene into a newer model. Grouping should reduce repeated
-  whole-assembly work; its effect must be measured on the moderate fixtures.
+  passes 15 further assertions. Bounded grouping is committed in `9be4f5424`:
+  at most four component replacements, one scheduler loader and one publication
+  awaiting actual adoption. The combined client passes 32 more browser assertions
+  covering two-component rollback with selected-face preservation and stale
+  replies across model switches; 506 viewer tests pass. The
+  [alternating moderate comparison](scripts/bench/cadgen-performance/VIEWER-LOD-BATCH-MODERATE-20260910.md)
+  reduces six scene publications to two. Against the same candidate at size one,
+  refinement completes about 42 ms sooner, while first refined draw arrives
+  7–11 ms later. Three samples per condition do not establish a general speedup.
   Cold fine-detail meshing is a separate investigation, now using the planetary
   and small curved corpora. Browser probes continue to verify actual served
   client/worker bytes and installed dependency versions.
@@ -142,8 +146,12 @@ last runtime changes.
   `2709968dc` comparison passes all 64 calls and exact-output/pin checks, but
   new-geometry saves still regress in that window; its preview median is 267 ms.
   See the [qualified split checkpoint](scripts/bench/cadgen-performance/WARM-COMPARISON-20260910.md#later-split-only-checkpoint-september-11).
-  Finish the moderate-fixture browser comparison. Current package validation passes
-  1,593 Python tests, 1,015 shared JS tests and 486 viewer tests. The current
+  A private, bounded exact-bounds provider is under review; any publication-order
+  change must preserve owned geometry/appearance snapshots and child-output
+  waiting. It does not remove new-output STEP readback. See the
+  [feasibility analysis](scripts/bench/cadgen-performance/DEFERRED-ASSEMBLY-FEASIBILITY-20260911.md).
+  Current package validation passes
+  1,593 Python tests, 1,015 shared JS tests and 506 viewer tests. The
   `8971f760d` installed wheel/source-free export checks pass, with 182 Python
   files and 29 runtime files matching source, wheel and installation. Later
   runtime changes require their relevant checks again.

@@ -52,7 +52,16 @@ The alert-only follow-up on `c07488e1d` passes 15 more assertions: after actual
 restoration the obsolete error overlay clears while selection and exact
 mesh/selector pairing remain. Its 486 viewer tests and canonical bundle/check
 pass. Injected delays and faults are functional probes, not performance measurements.
-Bounded grouping of detail requests is being implemented in an isolated copy.
+Bounded grouping is committed in `9be4f5424`. The integrated client passes
+**506 viewer tests and 1,015 shared JavaScript tests**, plus canonical bundling
+and freshness checks. The [moderate batch study](VIEWER-LOD-BATCH-MODERATE-20260910.md)
+passes nine alternating measured runs. Two subsequent combined-main functional
+checks pass **32 assertions**: exact two-component restoration across all 24
+occurrences with the selected face and matching selectors, and delayed-reply
+rejection across a model switch. All reservations, staged buffers and workers
+drain. The restoration close-up and complete planetary smoke were visually
+reviewed. Existing user viewers remain running; private measurement instances
+closed. The new wheel's viewer assets still require their final packaging check.
 
 The [matched selection retention study](VIEWER-SELECTION-RETENTION-20260911.md)
 shows the same 246 detail adoptions retaining 9 workspace contexts instead of

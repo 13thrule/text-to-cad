@@ -1,0 +1,4176 @@
+{
+  "condition": "old",
+  "stage": "warmup",
+  "index": 1,
+  "startedAt": "2026-09-11T01:22:45.991Z",
+  "qualification": "Planetary nine-part private browser. Same current Python backend and canonical store; independent frozen frontend conditions. No forced GC or allocation sampling. First refined draw is a WebGL submission after actual CPU/Three adoption, not GPU completion. Composition call count is inferred from publication notifications; composition duration is not separately instrumented.",
+  "before": {
+    "kind": "old",
+    "root": "/private/tmp/cadgen-performance-20260910/viewer-baseline-c07488e1d",
+    "manifest": "b8f66fea835d9b8af1df5817b77e139a41613c1c19ba560197dd8ab554b85153",
+    "verifiedFiles": 714,
+    "frontend": {
+      "scopes": [
+        "apps/viewer/src",
+        "packages/cadgen-js/src"
+      ],
+      "files": 436,
+      "sha256": "0b7b1b67a9ddc9611b8126993e2d69929fde40a16ade375117052914cf588a8e"
+    },
+    "dist": {
+      "scopes": [
+        "apps/viewer/dist"
+      ],
+      "files": 22,
+      "sha256": "e92d1df1dae49813e7602c336fa054738701637b5a8fc77bed009b752d494567"
+    },
+    "backend": {
+      "scopes": [
+        "packages/cadgen/src/cadgen"
+      ],
+      "files": 187,
+      "sha256": "0157e8ff221c5bb428da8798704f7e223932d4d601ce1f7e2e0df1f404eaa139"
+    },
+    "dependencies": {
+      "apps/viewer/three": {
+        "version": "0.185.1",
+        "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/apps/viewer/node_modules/three/package.json",
+        "sha256": "1d5c438acdc1fe5a52fb8ede2e417afd91fec91d22275c40f7b739591b24e4df"
+      },
+      "apps/viewer/react": {
+        "version": "18.3.1",
+        "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/apps/viewer/node_modules/react/package.json",
+        "sha256": "d4e68a5c96babb20cad1daafea8b78822eae45b341552cf5418d06a5304fa64c"
+      },
+      "packages/cadgen-js/three": {
+        "version": "0.185.1",
+        "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen-js/node_modules/three/package.json",
+        "sha256": "1d5c438acdc1fe5a52fb8ede2e417afd91fec91d22275c40f7b739591b24e4df"
+      },
+      "packages/cadgen-js/three-mesh-bvh": {
+        "version": "0.9.14",
+        "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen-js/node_modules/three-mesh-bvh/package.json",
+        "sha256": "d5c6a97866c5b2fc84009da322e9304e764e40c35d600c1a3851a3cf590a5edf"
+      }
+    }
+  },
+  "served": {
+    "dist": "/private/tmp/cadgen-performance-20260910/viewer-baseline-c07488e1d/apps/viewer/dist",
+    "matches": true,
+    "files": [
+      {
+        "path": "/",
+        "bytes": 1750,
+        "sha256": "4ac38592e352942e694c216b979921a0da3cde736ad86fc88a1cb38c19461649"
+      },
+      {
+        "path": "/assets/index-C3AyN2uh.js",
+        "bytes": 1073890,
+        "sha256": "e322f4d72640142812c9f99c3dc8fe220b78f11c4a530da41dd8c9be5c3e6732"
+      },
+      {
+        "path": "/assets/vendor-react-DqJhD6MJ.js",
+        "bytes": 165206,
+        "sha256": "0354e752e866cdcef8a7d64b570c2f4c049d5e116390ffa8de71371e65324a3e"
+      },
+      {
+        "path": "/assets/vendor-three-BFncJjhR.js",
+        "bytes": 877893,
+        "sha256": "87b2eade24e963938c03ffa8014aa60ff298da7d4ade96aef713e8de2a7ef525"
+      },
+      {
+        "path": "/assets/vendor-ui-pdltCN0Z.js",
+        "bytes": 138106,
+        "sha256": "9a6d4555b95048bb585800bd497289c9c0c22d3128b6a2524475cfffb85a2b8c"
+      },
+      {
+        "path": "/assets/vendor-icons-DGUzLxE6.js",
+        "bytes": 14568,
+        "sha256": "6cc61a9996afcc25ba4f37b9e33b6b2ed59782fd40f4f12dca68514224715ecc"
+      },
+      {
+        "path": "/assets/index-k_YIz_ZS.css",
+        "bytes": 97908,
+        "sha256": "b622433a8f94db7d43c1ebed4426eee7f866f8046821c127bd8549bb758ced72"
+      }
+    ],
+    "workers": [
+      {
+        "path": "/assets/glbMeshWorker-BKAG73hs.js",
+        "bytes": 197641,
+        "sha256": "fe763ffd228d6cdc8ea2784f8726b14e816d87ef4b5677b4d6be8ea5d6f04c0f"
+      },
+      {
+        "path": "/assets/raycastBvhWorker-Bx8Ori6S.js",
+        "bytes": 138869,
+        "sha256": "501d2dcdd14e8d37fe41505b7676dadf93e108fbc3c2f46d90957262b07d2c19"
+      },
+      {
+        "path": "/assets/stlMeshWorker-k-Bj4GhT.js",
+        "bytes": 2343,
+        "sha256": "39dead3f3c1dd36a37fbeaca3cee4c33ecbd56dec066d862d9d060ad9b98281a"
+      },
+      {
+        "path": "/assets/surfWorker-Bhjj_KyM.js",
+        "bytes": 81432,
+        "sha256": "c72ec65fabc1487d0f1f98f20ca62bb0ffd73fe133533865b38da43a1b697629"
+      }
+    ]
+  },
+  "server": {
+    "pid": 4050,
+    "python": "/Users/jakefitzgerald/robots/text-to-cad/.venv/bin/python",
+    "cadgen": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen/src/cadgen/__init__.py",
+    "viewer": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen/src/cadgen/viewer/__init__.py",
+    "cwd": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/viewer-matched-nine-after",
+    "cache": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/viewer-matched-nine-after/store",
+    "dist": "/private/tmp/cadgen-performance-20260910/viewer-baseline-c07488e1d/apps/viewer/dist",
+    "kernelLoadedBeforeLaunch": false
+  },
+  "fixture": {
+    "path": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/viewer-matched-nine-after/planetary.step",
+    "sha256": "406dd2e19b6a4ea3a623abd19b03708b7d9e97b4402ba4161c737eb31f10fdca"
+  },
+  "samples": [
+    {
+      "label": "initial",
+      "at": 158.2999997138977,
+      "selection": {
+        "selectedPartIds": [],
+        "selectedReferenceIds": [],
+        "hiddenPartIds": []
+      },
+      "source": null,
+      "actualSource": null,
+      "sceneRecords": 0,
+      "partRows": [],
+      "recordRows": [],
+      "selectors": null,
+      "adoption": {
+        "requested": 0,
+        "adopted": 0,
+        "restored": 0,
+        "rejected": 0,
+        "lastWaitMs": 0,
+        "maxWaitMs": 0,
+        "pending": 0,
+        "phase": null,
+        "pendingMs": 0
+      },
+      "lod": {
+        "componentCount": 0,
+        "levelCounts": {},
+        "minimumLevel": 0,
+        "belowMinimum": 0,
+        "busy": false,
+        "pendingEvaluation": false,
+        "failedLevels": 0,
+        "deniedAttempts": 0,
+        "pressureLimitedComponents": 0,
+        "qualitySettled": false,
+        "sceneFailed": false,
+        "memoryPressure": false,
+        "unmetTargets": [],
+        "disposed": false,
+        "visibility": null
+      },
+      "memory": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 0,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 0,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 0,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {},
+        "retainedBytes": 0,
+        "inFlightBytes": 0,
+        "estimatedOwnedBytes": 0,
+        "availableBytes": 1342177280,
+        "reservationCount": 0,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "workers": {
+        "created": 0,
+        "terminated": 0,
+        "live": 0,
+        "peakLive": 0
+      },
+      "meshCost": null,
+      "alerts": [],
+      "sceneSync": {
+        "count": 0,
+        "totalMs": 0
+      },
+      "draw": {
+        "first": null,
+        "last": 157,
+        "count": 2
+      },
+      "cacheWrites": {
+        "active": 0,
+        "activeBytes": 0,
+        "peakActive": 0,
+        "peakBytes": 0,
+        "total": 0,
+        "totalBytes": 0
+      },
+      "batch": {
+        "phases": [],
+        "publications": [],
+        "lod": [],
+        "max": {
+          "occupied": 0,
+          "loading": 0,
+          "adopting": 0,
+          "stagingBytes": 0
+        }
+      }
+    },
+    {
+      "label": "initial",
+      "at": 268,
+      "selection": {
+        "selectedPartIds": [],
+        "selectedReferenceIds": [],
+        "hiddenPartIds": []
+      },
+      "source": 9,
+      "actualSource": 9,
+      "sceneRecords": 8,
+      "partRows": [
+        {
+          "id": "o1.1",
+          "cid": "e3b435921ef6a6de",
+          "level": 1,
+          "mesh": 1,
+          "triangles": 1360
+        },
+        {
+          "id": "o1.3",
+          "cid": "4cf9e8d906793585",
+          "level": 1,
+          "mesh": 2,
+          "triangles": 704
+        },
+        {
+          "id": "o1.4",
+          "cid": "70a2ac46088fe2b9",
+          "level": 1,
+          "mesh": 3,
+          "triangles": 600
+        },
+        {
+          "id": "o1.5",
+          "cid": "63e3b1b98b79e8dc",
+          "level": 1,
+          "mesh": 4,
+          "triangles": 422
+        },
+        {
+          "id": "o1.6",
+          "cid": "d57a4f31e80a006d",
+          "level": 1,
+          "mesh": 5,
+          "triangles": 600
+        },
+        {
+          "id": "o1.7",
+          "cid": "9d09f8d6959b3039",
+          "level": 1,
+          "mesh": 6,
+          "triangles": 422
+        },
+        {
+          "id": "o1.8",
+          "cid": "135a73d9614490fb",
+          "level": 1,
+          "mesh": 7,
+          "triangles": 600
+        },
+        {
+          "id": "o1.9",
+          "cid": "5fbbbeb5f2c47ca0",
+          "level": 1,
+          "mesh": 8,
+          "triangles": 422
+        }
+      ],
+      "recordRows": [
+        {
+          "id": "o1.1",
+          "mesh": 1,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.3",
+          "mesh": 2,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.4",
+          "mesh": 3,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.5",
+          "mesh": 4,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.6",
+          "mesh": 5,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.7",
+          "mesh": 6,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.8",
+          "mesh": 7,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.9",
+          "mesh": 8,
+          "visible": true,
+          "materialVisible": true
+        }
+      ],
+      "selectors": null,
+      "adoption": {
+        "requested": 0,
+        "adopted": 0,
+        "restored": 0,
+        "rejected": 0,
+        "lastWaitMs": 0,
+        "maxWaitMs": 0,
+        "pending": 0,
+        "phase": null,
+        "pendingMs": 0
+      },
+      "lod": {
+        "componentCount": 8,
+        "levelCounts": {
+          "1": 8
+        },
+        "minimumLevel": 0,
+        "belowMinimum": 0,
+        "busy": false,
+        "pendingEvaluation": true,
+        "failedLevels": 0,
+        "deniedAttempts": 0,
+        "pressureLimitedComponents": 0,
+        "qualitySettled": false,
+        "sceneFailed": false,
+        "memoryPressure": false,
+        "unmetTargets": [
+          {
+            "cid": "135a73d9614490fb",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "5fbbbeb5f2c47ca0",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "63e3b1b98b79e8dc",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "70a2ac46088fe2b9",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "9d09f8d6959b3039",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "d57a4f31e80a006d",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          }
+        ],
+        "disposed": false,
+        "visibility": {
+          "components": 8,
+          "occurrences": 8,
+          "visibleOccurrences": 8,
+          "excludedOccurrences": 0,
+          "fallbackOccurrences": 0,
+          "visibleComponents": 8,
+          "excludedComponents": 0,
+          "fallbackComponents": 0,
+          "pendingOccurrences": 0,
+          "dynamicFailOpen": 0
+        }
+      },
+      "memory": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 295928,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 254480,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 536870912,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {
+          "workerInFlight": 134217728
+        },
+        "retainedBytes": 537421320,
+        "inFlightBytes": 134217728,
+        "estimatedOwnedBytes": 671639048,
+        "availableBytes": 670538232,
+        "reservationCount": 1,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "probe": {
+        "occurrences": 8,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 8,
+        "edgeInstances": 8,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 16,
+        "buffers": 40,
+        "materials": 24,
+        "surfaceBytes": 198096,
+        "edgeBytes": 56384,
+        "bvhBytes": 0,
+        "bvhGeometries": 0,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 295928,
+        "selectorCpuBytes": 0,
+        "gpuEstimatedBytes": 254480,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 8,
+            "typedBytes": 239544,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 8,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 16,
+            "limit": 24,
+            "bytes": 239544,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "additionalAssetCaches": {
+          "surfPayload": {
+            "entries": 8,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 8,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 16,
+            "limit": 24,
+            "bytes": 239544,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 295928,
+            "selectors": 0,
+            "bvh": 0,
+            "gpuEstimated": 254480,
+            "deformation": 0,
+            "assetCaches": 0,
+            "workerResidentEstimated": 536870912,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {
+            "workerInFlight": 134217728
+          },
+          "retainedBytes": 537421320,
+          "inFlightBytes": 134217728,
+          "estimatedOwnedBytes": 671639048,
+          "availableBytes": 670538232,
+          "reservationCount": 1,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 268.3999996185303
+      },
+      "workers": {
+        "created": 4,
+        "terminated": 0,
+        "live": 4,
+        "peakLive": 4
+      },
+      "meshCost": {
+        "meshRevision": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c",
+        "composed": {
+          "triangleCount": 5130,
+          "typedArrayBytes": 239544
+        },
+        "componentTotalBytes": 239544,
+        "componentTotalTriangles": 5130,
+        "componentCount": 8,
+        "occurrenceCount": 8,
+        "totalComponents": 9,
+        "loadedComponents": 8,
+        "publishCount": 1,
+        "final": false,
+        "at": 215.19999980926514
+      },
+      "zoom": "100%",
+      "alerts": [],
+      "sceneSync": {
+        "count": 1,
+        "totalMs": 8.600000381469727,
+        "last": {
+          "atMs": 232,
+          "ms": 8.6,
+          "mode": "rebuild",
+          "records": 8,
+          "reason": ""
+        }
+      },
+      "draw": {
+        "first": 240.2999997138977,
+        "last": 263.69999980926514,
+        "count": 36
+      },
+      "cacheWrites": {
+        "active": 0,
+        "activeBytes": 0,
+        "peakActive": 0,
+        "peakBytes": 0,
+        "total": 0,
+        "totalBytes": 0
+      },
+      "batch": {
+        "phases": [],
+        "publications": [
+          {
+            "at": 215.19999980926514,
+            "components": 8,
+            "occurrences": 8,
+            "final": false
+          }
+        ],
+        "lod": [],
+        "max": {
+          "occupied": 0,
+          "loading": 0,
+          "adopting": 0,
+          "stagingBytes": 0
+        }
+      }
+    },
+    {
+      "label": "initial",
+      "at": 348.09999990463257,
+      "selection": {
+        "selectedPartIds": [],
+        "selectedReferenceIds": [],
+        "hiddenPartIds": []
+      },
+      "source": 11,
+      "actualSource": 11,
+      "sceneRecords": 9,
+      "partRows": [
+        {
+          "id": "o1.1",
+          "cid": "e3b435921ef6a6de",
+          "level": 1,
+          "mesh": 1,
+          "triangles": 1360
+        },
+        {
+          "id": "o1.2",
+          "cid": "e6e8d9f9c0a177dd",
+          "level": 1,
+          "mesh": 10,
+          "triangles": 1352
+        },
+        {
+          "id": "o1.3",
+          "cid": "4cf9e8d906793585",
+          "level": 1,
+          "mesh": 2,
+          "triangles": 704
+        },
+        {
+          "id": "o1.4",
+          "cid": "70a2ac46088fe2b9",
+          "level": 1,
+          "mesh": 3,
+          "triangles": 600
+        },
+        {
+          "id": "o1.5",
+          "cid": "63e3b1b98b79e8dc",
+          "level": 1,
+          "mesh": 4,
+          "triangles": 422
+        },
+        {
+          "id": "o1.6",
+          "cid": "d57a4f31e80a006d",
+          "level": 1,
+          "mesh": 5,
+          "triangles": 600
+        },
+        {
+          "id": "o1.7",
+          "cid": "9d09f8d6959b3039",
+          "level": 1,
+          "mesh": 6,
+          "triangles": 422
+        },
+        {
+          "id": "o1.8",
+          "cid": "135a73d9614490fb",
+          "level": 1,
+          "mesh": 7,
+          "triangles": 600
+        },
+        {
+          "id": "o1.9",
+          "cid": "5fbbbeb5f2c47ca0",
+          "level": 1,
+          "mesh": 8,
+          "triangles": 422
+        }
+      ],
+      "recordRows": [
+        {
+          "id": "o1.1",
+          "mesh": 1,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.2",
+          "mesh": 10,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.3",
+          "mesh": 2,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.4",
+          "mesh": 3,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.5",
+          "mesh": 4,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.6",
+          "mesh": 5,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.7",
+          "mesh": 6,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.8",
+          "mesh": 7,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.9",
+          "mesh": 8,
+          "visible": true,
+          "materialVisible": true
+        }
+      ],
+      "selectors": null,
+      "adoption": {
+        "requested": 0,
+        "adopted": 0,
+        "restored": 0,
+        "rejected": 0,
+        "lastWaitMs": 0,
+        "maxWaitMs": 0,
+        "pending": 0,
+        "phase": null,
+        "pendingMs": 0
+      },
+      "lod": {
+        "componentCount": 9,
+        "levelCounts": {
+          "1": 9
+        },
+        "minimumLevel": 0,
+        "belowMinimum": 0,
+        "busy": false,
+        "pendingEvaluation": true,
+        "failedLevels": 0,
+        "deniedAttempts": 0,
+        "pressureLimitedComponents": 0,
+        "qualitySettled": false,
+        "sceneFailed": false,
+        "memoryPressure": false,
+        "unmetTargets": [
+          {
+            "cid": "135a73d9614490fb",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "5fbbbeb5f2c47ca0",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "63e3b1b98b79e8dc",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "70a2ac46088fe2b9",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "9d09f8d6959b3039",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "d57a4f31e80a006d",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          }
+        ],
+        "disposed": false,
+        "visibility": {
+          "components": 9,
+          "occurrences": 9,
+          "visibleOccurrences": 9,
+          "excludedOccurrences": 0,
+          "fallbackOccurrences": 0,
+          "visibleComponents": 9,
+          "excludedComponents": 0,
+          "fallbackComponents": 0,
+          "pendingOccurrences": 0,
+          "dynamicFailOpen": 0
+        }
+      },
+      "memory": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 410076,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 342972,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 0,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {},
+        "retainedBytes": 753048,
+        "inFlightBytes": 0,
+        "estimatedOwnedBytes": 753048,
+        "availableBytes": 1341424232,
+        "reservationCount": 0,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "probe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 258336,
+        "edgeBytes": 84636,
+        "bvhBytes": 0,
+        "bvhGeometries": 0,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 410076,
+        "selectorCpuBytes": 0,
+        "gpuEstimatedBytes": 342972,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 325440,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 18,
+            "limit": 24,
+            "bytes": 325440,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "additionalAssetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 18,
+            "limit": 24,
+            "bytes": 325440,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 410076,
+            "selectors": 0,
+            "bvh": 0,
+            "gpuEstimated": 342972,
+            "deformation": 0,
+            "assetCaches": 0,
+            "workerResidentEstimated": 0,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 753048,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 753048,
+          "availableBytes": 1341424232,
+          "reservationCount": 0,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 348.5
+      },
+      "workers": {
+        "created": 4,
+        "terminated": 4,
+        "live": 0,
+        "peakLive": 4
+      },
+      "meshCost": {
+        "meshRevision": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c",
+        "composed": {
+          "triangleCount": 6482,
+          "typedArrayBytes": 325440
+        },
+        "componentTotalBytes": 325440,
+        "componentTotalTriangles": 6482,
+        "componentCount": 9,
+        "occurrenceCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 270.5
+      },
+      "zoom": "100%",
+      "alerts": [],
+      "sceneSync": {
+        "count": 2,
+        "totalMs": 10.600000381469727,
+        "last": {
+          "atMs": 277,
+          "ms": 2,
+          "mode": "reuse",
+          "records": 9,
+          "reason": ""
+        }
+      },
+      "draw": {
+        "first": 240.2999997138977,
+        "last": 292.5,
+        "count": 94
+      },
+      "cacheWrites": {
+        "active": 0,
+        "activeBytes": 0,
+        "peakActive": 0,
+        "peakBytes": 0,
+        "total": 0,
+        "totalBytes": 0
+      },
+      "batch": {
+        "phases": [],
+        "publications": [
+          {
+            "at": 215.19999980926514,
+            "components": 8,
+            "occurrences": 8,
+            "final": false
+          },
+          {
+            "at": 270.5,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          }
+        ],
+        "lod": [],
+        "max": {
+          "occupied": 0,
+          "loading": 0,
+          "adopting": 0,
+          "stagingBytes": 0
+        }
+      }
+    },
+    {
+      "label": "initial",
+      "at": 427.3999996185303,
+      "selection": {
+        "selectedPartIds": [],
+        "selectedReferenceIds": [],
+        "hiddenPartIds": []
+      },
+      "source": 11,
+      "actualSource": 11,
+      "sceneRecords": 9,
+      "partRows": [
+        {
+          "id": "o1.1",
+          "cid": "e3b435921ef6a6de",
+          "level": 1,
+          "mesh": 1,
+          "triangles": 1360
+        },
+        {
+          "id": "o1.2",
+          "cid": "e6e8d9f9c0a177dd",
+          "level": 1,
+          "mesh": 10,
+          "triangles": 1352
+        },
+        {
+          "id": "o1.3",
+          "cid": "4cf9e8d906793585",
+          "level": 1,
+          "mesh": 2,
+          "triangles": 704
+        },
+        {
+          "id": "o1.4",
+          "cid": "70a2ac46088fe2b9",
+          "level": 1,
+          "mesh": 3,
+          "triangles": 600
+        },
+        {
+          "id": "o1.5",
+          "cid": "63e3b1b98b79e8dc",
+          "level": 1,
+          "mesh": 4,
+          "triangles": 422
+        },
+        {
+          "id": "o1.6",
+          "cid": "d57a4f31e80a006d",
+          "level": 1,
+          "mesh": 5,
+          "triangles": 600
+        },
+        {
+          "id": "o1.7",
+          "cid": "9d09f8d6959b3039",
+          "level": 1,
+          "mesh": 6,
+          "triangles": 422
+        },
+        {
+          "id": "o1.8",
+          "cid": "135a73d9614490fb",
+          "level": 1,
+          "mesh": 7,
+          "triangles": 600
+        },
+        {
+          "id": "o1.9",
+          "cid": "5fbbbeb5f2c47ca0",
+          "level": 1,
+          "mesh": 8,
+          "triangles": 422
+        }
+      ],
+      "recordRows": [
+        {
+          "id": "o1.1",
+          "mesh": 1,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.2",
+          "mesh": 10,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.3",
+          "mesh": 2,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.4",
+          "mesh": 3,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.5",
+          "mesh": 4,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.6",
+          "mesh": 5,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.7",
+          "mesh": 6,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.8",
+          "mesh": 7,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.9",
+          "mesh": 8,
+          "visible": true,
+          "materialVisible": true
+        }
+      ],
+      "selectors": null,
+      "adoption": {
+        "requested": 0,
+        "adopted": 0,
+        "restored": 0,
+        "rejected": 0,
+        "lastWaitMs": 0,
+        "maxWaitMs": 0,
+        "pending": 0,
+        "phase": null,
+        "pendingMs": 0
+      },
+      "lod": {
+        "componentCount": 9,
+        "levelCounts": {
+          "1": 9
+        },
+        "minimumLevel": 0,
+        "belowMinimum": 0,
+        "busy": false,
+        "pendingEvaluation": true,
+        "failedLevels": 0,
+        "deniedAttempts": 0,
+        "pressureLimitedComponents": 0,
+        "qualitySettled": false,
+        "sceneFailed": false,
+        "memoryPressure": false,
+        "unmetTargets": [
+          {
+            "cid": "135a73d9614490fb",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "5fbbbeb5f2c47ca0",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "63e3b1b98b79e8dc",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "70a2ac46088fe2b9",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "9d09f8d6959b3039",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          },
+          {
+            "cid": "d57a4f31e80a006d",
+            "currentLevel": 1,
+            "targetLevel": 0,
+            "reason": "pending"
+          }
+        ],
+        "disposed": false,
+        "visibility": {
+          "components": 9,
+          "occurrences": 9,
+          "visibleOccurrences": 9,
+          "excludedOccurrences": 0,
+          "fallbackOccurrences": 0,
+          "visibleComponents": 9,
+          "excludedComponents": 0,
+          "fallbackComponents": 0,
+          "pendingOccurrences": 0,
+          "dynamicFailOpen": 0
+        }
+      },
+      "memory": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 410076,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 342972,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 0,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {},
+        "retainedBytes": 753048,
+        "inFlightBytes": 0,
+        "estimatedOwnedBytes": 753048,
+        "availableBytes": 1341424232,
+        "reservationCount": 0,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "probe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 258336,
+        "edgeBytes": 84636,
+        "bvhBytes": 0,
+        "bvhGeometries": 0,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 410076,
+        "selectorCpuBytes": 0,
+        "gpuEstimatedBytes": 342972,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 325440,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 18,
+            "limit": 24,
+            "bytes": 325440,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "additionalAssetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 18,
+            "limit": 24,
+            "bytes": 325440,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 410076,
+            "selectors": 0,
+            "bvh": 0,
+            "gpuEstimated": 342972,
+            "deformation": 0,
+            "assetCaches": 0,
+            "workerResidentEstimated": 0,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 753048,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 753048,
+          "availableBytes": 1341424232,
+          "reservationCount": 0,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 427.69999980926514
+      },
+      "workers": {
+        "created": 4,
+        "terminated": 4,
+        "live": 0,
+        "peakLive": 4
+      },
+      "meshCost": {
+        "meshRevision": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c",
+        "composed": {
+          "triangleCount": 6482,
+          "typedArrayBytes": 325440
+        },
+        "componentTotalBytes": 325440,
+        "componentTotalTriangles": 6482,
+        "componentCount": 9,
+        "occurrenceCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 270.5
+      },
+      "zoom": "100%",
+      "alerts": [],
+      "sceneSync": {
+        "count": 2,
+        "totalMs": 10.600000381469727,
+        "last": {
+          "atMs": 277,
+          "ms": 2,
+          "mode": "reuse",
+          "records": 9,
+          "reason": ""
+        }
+      },
+      "draw": {
+        "first": 240.2999997138977,
+        "last": 292.5,
+        "count": 94
+      },
+      "cacheWrites": {
+        "active": 0,
+        "activeBytes": 0,
+        "peakActive": 0,
+        "peakBytes": 0,
+        "total": 0,
+        "totalBytes": 0
+      },
+      "batch": {
+        "phases": [],
+        "publications": [
+          {
+            "at": 215.19999980926514,
+            "components": 8,
+            "occurrences": 8,
+            "final": false
+          },
+          {
+            "at": 270.5,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          }
+        ],
+        "lod": [],
+        "max": {
+          "occupied": 0,
+          "loading": 0,
+          "adopting": 0,
+          "stagingBytes": 0
+        }
+      }
+    },
+    {
+      "label": "initial",
+      "at": 564.0999999046326,
+      "selection": {
+        "selectedPartIds": [],
+        "selectedReferenceIds": [],
+        "hiddenPartIds": []
+      },
+      "source": 18,
+      "actualSource": 18,
+      "sceneRecords": 9,
+      "partRows": [
+        {
+          "id": "o1.1",
+          "cid": "e3b435921ef6a6de",
+          "level": 1,
+          "mesh": 1,
+          "triangles": 1360
+        },
+        {
+          "id": "o1.2",
+          "cid": "e6e8d9f9c0a177dd",
+          "level": 1,
+          "mesh": 10,
+          "triangles": 1352
+        },
+        {
+          "id": "o1.3",
+          "cid": "4cf9e8d906793585",
+          "level": 1,
+          "mesh": 2,
+          "triangles": 704
+        },
+        {
+          "id": "o1.4",
+          "cid": "70a2ac46088fe2b9",
+          "level": 0,
+          "mesh": 12,
+          "triangles": 576
+        },
+        {
+          "id": "o1.5",
+          "cid": "63e3b1b98b79e8dc",
+          "level": 0,
+          "mesh": 13,
+          "triangles": 376
+        },
+        {
+          "id": "o1.6",
+          "cid": "d57a4f31e80a006d",
+          "level": 0,
+          "mesh": 14,
+          "triangles": 576
+        },
+        {
+          "id": "o1.7",
+          "cid": "9d09f8d6959b3039",
+          "level": 0,
+          "mesh": 15,
+          "triangles": 376
+        },
+        {
+          "id": "o1.8",
+          "cid": "135a73d9614490fb",
+          "level": 0,
+          "mesh": 16,
+          "triangles": 576
+        },
+        {
+          "id": "o1.9",
+          "cid": "5fbbbeb5f2c47ca0",
+          "level": 0,
+          "mesh": 17,
+          "triangles": 376
+        }
+      ],
+      "recordRows": [
+        {
+          "id": "o1.1",
+          "mesh": 1,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.2",
+          "mesh": 10,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.3",
+          "mesh": 2,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.4",
+          "mesh": 12,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.5",
+          "mesh": 13,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.6",
+          "mesh": 14,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.7",
+          "mesh": 15,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.8",
+          "mesh": 16,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.9",
+          "mesh": 17,
+          "visible": true,
+          "materialVisible": true
+        }
+      ],
+      "selectors": null,
+      "adoption": {
+        "requested": 6,
+        "adopted": 6,
+        "restored": 0,
+        "rejected": 0,
+        "lastWaitMs": 3.200000286102295,
+        "maxWaitMs": 5.800000190734863,
+        "pending": 0,
+        "phase": null,
+        "pendingMs": 0
+      },
+      "lod": {
+        "componentCount": 9,
+        "levelCounts": {
+          "0": 6,
+          "1": 3
+        },
+        "minimumLevel": 0,
+        "belowMinimum": 0,
+        "busy": false,
+        "pendingEvaluation": false,
+        "failedLevels": 0,
+        "deniedAttempts": 0,
+        "pressureLimitedComponents": 0,
+        "qualitySettled": true,
+        "sceneFailed": false,
+        "memoryPressure": false,
+        "unmetTargets": [],
+        "disposed": false,
+        "visibility": {
+          "components": 9,
+          "occurrences": 9,
+          "visibleOccurrences": 9,
+          "excludedOccurrences": 0,
+          "fallbackOccurrences": 0,
+          "visibleComponents": 9,
+          "excludedComponents": 0,
+          "fallbackComponents": 0,
+          "pendingOccurrences": 0,
+          "dynamicFailOpen": 0
+        }
+      },
+      "memory": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 401868,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 334764,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 0,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {},
+        "retainedBytes": 736632,
+        "inFlightBytes": 0,
+        "estimatedOwnedBytes": 736632,
+        "availableBytes": 1341440648,
+        "reservationCount": 0,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "probe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 250128,
+        "edgeBytes": 84636,
+        "bvhBytes": 0,
+        "bvhGeometries": 0,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 401868,
+        "selectorCpuBytes": 0,
+        "gpuEstimatedBytes": 334764,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 317232,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "additionalAssetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 401868,
+            "selectors": 0,
+            "bvh": 0,
+            "gpuEstimated": 334764,
+            "deformation": 0,
+            "assetCaches": 0,
+            "workerResidentEstimated": 0,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 736632,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 736632,
+          "availableBytes": 1341440648,
+          "reservationCount": 0,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 564.1999998092651
+      },
+      "workers": {
+        "created": 5,
+        "terminated": 5,
+        "live": 0,
+        "peakLive": 4
+      },
+      "meshCost": {
+        "meshRevision": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c",
+        "composed": {
+          "triangleCount": 6272,
+          "typedArrayBytes": 317232
+        },
+        "componentTotalBytes": 317232,
+        "componentTotalTriangles": 6272,
+        "componentCount": 9,
+        "occurrenceCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 524.3999996185303
+      },
+      "zoom": "100%",
+      "alerts": [],
+      "sceneSync": {
+        "count": 8,
+        "totalMs": 17.500000476837158,
+        "last": {
+          "atMs": 528,
+          "ms": 0.9,
+          "mode": "reuse",
+          "records": 9,
+          "reason": ""
+        }
+      },
+      "draw": {
+        "first": 240.2999997138977,
+        "last": 531.2999997138977,
+        "count": 268
+      },
+      "cacheWrites": {
+        "active": 0,
+        "activeBytes": 0,
+        "peakActive": 0,
+        "peakBytes": 0,
+        "total": 0,
+        "totalBytes": 0
+      },
+      "batch": {
+        "phases": [],
+        "publications": [
+          {
+            "at": 215.19999980926514,
+            "components": 8,
+            "occurrences": 8,
+            "final": false
+          },
+          {
+            "at": 270.5,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 486.69999980926514,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 496.7999997138977,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 504.59999990463257,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 512.0999999046326,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 518.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 524.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          }
+        ],
+        "lod": [
+          {
+            "at": 492.8999996185303,
+            "cid": "135a73d9614490fb",
+            "level": 0
+          },
+          {
+            "at": 501.59999990463257,
+            "cid": "70a2ac46088fe2b9",
+            "level": 0
+          },
+          {
+            "at": 508.8999996185303,
+            "cid": "d57a4f31e80a006d",
+            "level": 0
+          },
+          {
+            "at": 516.2999997138977,
+            "cid": "5fbbbeb5f2c47ca0",
+            "level": 0
+          },
+          {
+            "at": 522.1999998092651,
+            "cid": "63e3b1b98b79e8dc",
+            "level": 0
+          },
+          {
+            "at": 528.0999999046326,
+            "cid": "9d09f8d6959b3039",
+            "level": 0
+          }
+        ],
+        "max": {
+          "occupied": 1,
+          "loading": 0,
+          "adopting": 0,
+          "stagingBytes": 0
+        }
+      }
+    },
+    {
+      "label": "initial",
+      "at": 643.2999997138977,
+      "selection": {
+        "selectedPartIds": [],
+        "selectedReferenceIds": [],
+        "hiddenPartIds": []
+      },
+      "source": 18,
+      "actualSource": 18,
+      "sceneRecords": 9,
+      "partRows": [
+        {
+          "id": "o1.1",
+          "cid": "e3b435921ef6a6de",
+          "level": 1,
+          "mesh": 1,
+          "triangles": 1360
+        },
+        {
+          "id": "o1.2",
+          "cid": "e6e8d9f9c0a177dd",
+          "level": 1,
+          "mesh": 10,
+          "triangles": 1352
+        },
+        {
+          "id": "o1.3",
+          "cid": "4cf9e8d906793585",
+          "level": 1,
+          "mesh": 2,
+          "triangles": 704
+        },
+        {
+          "id": "o1.4",
+          "cid": "70a2ac46088fe2b9",
+          "level": 0,
+          "mesh": 12,
+          "triangles": 576
+        },
+        {
+          "id": "o1.5",
+          "cid": "63e3b1b98b79e8dc",
+          "level": 0,
+          "mesh": 13,
+          "triangles": 376
+        },
+        {
+          "id": "o1.6",
+          "cid": "d57a4f31e80a006d",
+          "level": 0,
+          "mesh": 14,
+          "triangles": 576
+        },
+        {
+          "id": "o1.7",
+          "cid": "9d09f8d6959b3039",
+          "level": 0,
+          "mesh": 15,
+          "triangles": 376
+        },
+        {
+          "id": "o1.8",
+          "cid": "135a73d9614490fb",
+          "level": 0,
+          "mesh": 16,
+          "triangles": 576
+        },
+        {
+          "id": "o1.9",
+          "cid": "5fbbbeb5f2c47ca0",
+          "level": 0,
+          "mesh": 17,
+          "triangles": 376
+        }
+      ],
+      "recordRows": [
+        {
+          "id": "o1.1",
+          "mesh": 1,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.2",
+          "mesh": 10,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.3",
+          "mesh": 2,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.4",
+          "mesh": 12,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.5",
+          "mesh": 13,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.6",
+          "mesh": 14,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.7",
+          "mesh": 15,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.8",
+          "mesh": 16,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.9",
+          "mesh": 17,
+          "visible": true,
+          "materialVisible": true
+        }
+      ],
+      "selectors": null,
+      "adoption": {
+        "requested": 6,
+        "adopted": 6,
+        "restored": 0,
+        "rejected": 0,
+        "lastWaitMs": 3.200000286102295,
+        "maxWaitMs": 5.800000190734863,
+        "pending": 0,
+        "phase": null,
+        "pendingMs": 0
+      },
+      "lod": {
+        "componentCount": 9,
+        "levelCounts": {
+          "0": 6,
+          "1": 3
+        },
+        "minimumLevel": 0,
+        "belowMinimum": 0,
+        "busy": false,
+        "pendingEvaluation": false,
+        "failedLevels": 0,
+        "deniedAttempts": 0,
+        "pressureLimitedComponents": 0,
+        "qualitySettled": true,
+        "sceneFailed": false,
+        "memoryPressure": false,
+        "unmetTargets": [],
+        "disposed": false,
+        "visibility": {
+          "components": 9,
+          "occurrences": 9,
+          "visibleOccurrences": 9,
+          "excludedOccurrences": 0,
+          "fallbackOccurrences": 0,
+          "visibleComponents": 9,
+          "excludedComponents": 0,
+          "fallbackComponents": 0,
+          "pendingOccurrences": 0,
+          "dynamicFailOpen": 0
+        }
+      },
+      "memory": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 401868,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 334764,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 0,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {},
+        "retainedBytes": 736632,
+        "inFlightBytes": 0,
+        "estimatedOwnedBytes": 736632,
+        "availableBytes": 1341440648,
+        "reservationCount": 0,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "probe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 250128,
+        "edgeBytes": 84636,
+        "bvhBytes": 0,
+        "bvhGeometries": 0,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 401868,
+        "selectorCpuBytes": 0,
+        "gpuEstimatedBytes": 334764,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 317232,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "additionalAssetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 401868,
+            "selectors": 0,
+            "bvh": 0,
+            "gpuEstimated": 334764,
+            "deformation": 0,
+            "assetCaches": 0,
+            "workerResidentEstimated": 0,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 736632,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 736632,
+          "availableBytes": 1341440648,
+          "reservationCount": 0,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 643.5999999046326
+      },
+      "workers": {
+        "created": 5,
+        "terminated": 5,
+        "live": 0,
+        "peakLive": 4
+      },
+      "meshCost": {
+        "meshRevision": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c",
+        "composed": {
+          "triangleCount": 6272,
+          "typedArrayBytes": 317232
+        },
+        "componentTotalBytes": 317232,
+        "componentTotalTriangles": 6272,
+        "componentCount": 9,
+        "occurrenceCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 524.3999996185303
+      },
+      "zoom": "100%",
+      "alerts": [],
+      "sceneSync": {
+        "count": 8,
+        "totalMs": 17.500000476837158,
+        "last": {
+          "atMs": 528,
+          "ms": 0.9,
+          "mode": "reuse",
+          "records": 9,
+          "reason": ""
+        }
+      },
+      "draw": {
+        "first": 240.2999997138977,
+        "last": 531.2999997138977,
+        "count": 268
+      },
+      "cacheWrites": {
+        "active": 0,
+        "activeBytes": 0,
+        "peakActive": 0,
+        "peakBytes": 0,
+        "total": 0,
+        "totalBytes": 0
+      },
+      "batch": {
+        "phases": [],
+        "publications": [
+          {
+            "at": 215.19999980926514,
+            "components": 8,
+            "occurrences": 8,
+            "final": false
+          },
+          {
+            "at": 270.5,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 486.69999980926514,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 496.7999997138977,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 504.59999990463257,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 512.0999999046326,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 518.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 524.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          }
+        ],
+        "lod": [
+          {
+            "at": 492.8999996185303,
+            "cid": "135a73d9614490fb",
+            "level": 0
+          },
+          {
+            "at": 501.59999990463257,
+            "cid": "70a2ac46088fe2b9",
+            "level": 0
+          },
+          {
+            "at": 508.8999996185303,
+            "cid": "d57a4f31e80a006d",
+            "level": 0
+          },
+          {
+            "at": 516.2999997138977,
+            "cid": "5fbbbeb5f2c47ca0",
+            "level": 0
+          },
+          {
+            "at": 522.1999998092651,
+            "cid": "63e3b1b98b79e8dc",
+            "level": 0
+          },
+          {
+            "at": 528.0999999046326,
+            "cid": "9d09f8d6959b3039",
+            "level": 0
+          }
+        ],
+        "max": {
+          "occupied": 1,
+          "loading": 0,
+          "adopting": 0,
+          "stagingBytes": 0
+        }
+      }
+    },
+    {
+      "label": "initial",
+      "at": 723.2999997138977,
+      "selection": {
+        "selectedPartIds": [],
+        "selectedReferenceIds": [],
+        "hiddenPartIds": []
+      },
+      "source": 18,
+      "actualSource": 18,
+      "sceneRecords": 9,
+      "partRows": [
+        {
+          "id": "o1.1",
+          "cid": "e3b435921ef6a6de",
+          "level": 1,
+          "mesh": 1,
+          "triangles": 1360
+        },
+        {
+          "id": "o1.2",
+          "cid": "e6e8d9f9c0a177dd",
+          "level": 1,
+          "mesh": 10,
+          "triangles": 1352
+        },
+        {
+          "id": "o1.3",
+          "cid": "4cf9e8d906793585",
+          "level": 1,
+          "mesh": 2,
+          "triangles": 704
+        },
+        {
+          "id": "o1.4",
+          "cid": "70a2ac46088fe2b9",
+          "level": 0,
+          "mesh": 12,
+          "triangles": 576
+        },
+        {
+          "id": "o1.5",
+          "cid": "63e3b1b98b79e8dc",
+          "level": 0,
+          "mesh": 13,
+          "triangles": 376
+        },
+        {
+          "id": "o1.6",
+          "cid": "d57a4f31e80a006d",
+          "level": 0,
+          "mesh": 14,
+          "triangles": 576
+        },
+        {
+          "id": "o1.7",
+          "cid": "9d09f8d6959b3039",
+          "level": 0,
+          "mesh": 15,
+          "triangles": 376
+        },
+        {
+          "id": "o1.8",
+          "cid": "135a73d9614490fb",
+          "level": 0,
+          "mesh": 16,
+          "triangles": 576
+        },
+        {
+          "id": "o1.9",
+          "cid": "5fbbbeb5f2c47ca0",
+          "level": 0,
+          "mesh": 17,
+          "triangles": 376
+        }
+      ],
+      "recordRows": [
+        {
+          "id": "o1.1",
+          "mesh": 1,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.2",
+          "mesh": 10,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.3",
+          "mesh": 2,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.4",
+          "mesh": 12,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.5",
+          "mesh": 13,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.6",
+          "mesh": 14,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.7",
+          "mesh": 15,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.8",
+          "mesh": 16,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.9",
+          "mesh": 17,
+          "visible": true,
+          "materialVisible": true
+        }
+      ],
+      "selectors": null,
+      "adoption": {
+        "requested": 6,
+        "adopted": 6,
+        "restored": 0,
+        "rejected": 0,
+        "lastWaitMs": 3.200000286102295,
+        "maxWaitMs": 5.800000190734863,
+        "pending": 0,
+        "phase": null,
+        "pendingMs": 0
+      },
+      "lod": {
+        "componentCount": 9,
+        "levelCounts": {
+          "0": 6,
+          "1": 3
+        },
+        "minimumLevel": 0,
+        "belowMinimum": 0,
+        "busy": false,
+        "pendingEvaluation": false,
+        "failedLevels": 0,
+        "deniedAttempts": 0,
+        "pressureLimitedComponents": 0,
+        "qualitySettled": true,
+        "sceneFailed": false,
+        "memoryPressure": false,
+        "unmetTargets": [],
+        "disposed": false,
+        "visibility": {
+          "components": 9,
+          "occurrences": 9,
+          "visibleOccurrences": 9,
+          "excludedOccurrences": 0,
+          "fallbackOccurrences": 0,
+          "visibleComponents": 9,
+          "excludedComponents": 0,
+          "fallbackComponents": 0,
+          "pendingOccurrences": 0,
+          "dynamicFailOpen": 0
+        }
+      },
+      "memory": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 401868,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 334764,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 0,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {},
+        "retainedBytes": 736632,
+        "inFlightBytes": 0,
+        "estimatedOwnedBytes": 736632,
+        "availableBytes": 1341440648,
+        "reservationCount": 0,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "probe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 250128,
+        "edgeBytes": 84636,
+        "bvhBytes": 0,
+        "bvhGeometries": 0,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 401868,
+        "selectorCpuBytes": 0,
+        "gpuEstimatedBytes": 334764,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 317232,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "additionalAssetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 401868,
+            "selectors": 0,
+            "bvh": 0,
+            "gpuEstimated": 334764,
+            "deformation": 0,
+            "assetCaches": 0,
+            "workerResidentEstimated": 0,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 736632,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 736632,
+          "availableBytes": 1341440648,
+          "reservationCount": 0,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 723.5
+      },
+      "workers": {
+        "created": 5,
+        "terminated": 5,
+        "live": 0,
+        "peakLive": 4
+      },
+      "meshCost": {
+        "meshRevision": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c",
+        "composed": {
+          "triangleCount": 6272,
+          "typedArrayBytes": 317232
+        },
+        "componentTotalBytes": 317232,
+        "componentTotalTriangles": 6272,
+        "componentCount": 9,
+        "occurrenceCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 524.3999996185303
+      },
+      "zoom": "100%",
+      "alerts": [],
+      "sceneSync": {
+        "count": 8,
+        "totalMs": 17.500000476837158,
+        "last": {
+          "atMs": 528,
+          "ms": 0.9,
+          "mode": "reuse",
+          "records": 9,
+          "reason": ""
+        }
+      },
+      "draw": {
+        "first": 240.2999997138977,
+        "last": 531.2999997138977,
+        "count": 268
+      },
+      "cacheWrites": {
+        "active": 0,
+        "activeBytes": 0,
+        "peakActive": 0,
+        "peakBytes": 0,
+        "total": 0,
+        "totalBytes": 0
+      },
+      "batch": {
+        "phases": [],
+        "publications": [
+          {
+            "at": 215.19999980926514,
+            "components": 8,
+            "occurrences": 8,
+            "final": false
+          },
+          {
+            "at": 270.5,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 486.69999980926514,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 496.7999997138977,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 504.59999990463257,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 512.0999999046326,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 518.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 524.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          }
+        ],
+        "lod": [
+          {
+            "at": 492.8999996185303,
+            "cid": "135a73d9614490fb",
+            "level": 0
+          },
+          {
+            "at": 501.59999990463257,
+            "cid": "70a2ac46088fe2b9",
+            "level": 0
+          },
+          {
+            "at": 508.8999996185303,
+            "cid": "d57a4f31e80a006d",
+            "level": 0
+          },
+          {
+            "at": 516.2999997138977,
+            "cid": "5fbbbeb5f2c47ca0",
+            "level": 0
+          },
+          {
+            "at": 522.1999998092651,
+            "cid": "63e3b1b98b79e8dc",
+            "level": 0
+          },
+          {
+            "at": 528.0999999046326,
+            "cid": "9d09f8d6959b3039",
+            "level": 0
+          }
+        ],
+        "max": {
+          "occupied": 1,
+          "loading": 0,
+          "adopting": 0,
+          "stagingBytes": 0
+        }
+      }
+    },
+    {
+      "label": "initial",
+      "at": 802.5,
+      "selection": {
+        "selectedPartIds": [],
+        "selectedReferenceIds": [],
+        "hiddenPartIds": []
+      },
+      "source": 18,
+      "actualSource": 18,
+      "sceneRecords": 9,
+      "partRows": [
+        {
+          "id": "o1.1",
+          "cid": "e3b435921ef6a6de",
+          "level": 1,
+          "mesh": 1,
+          "triangles": 1360
+        },
+        {
+          "id": "o1.2",
+          "cid": "e6e8d9f9c0a177dd",
+          "level": 1,
+          "mesh": 10,
+          "triangles": 1352
+        },
+        {
+          "id": "o1.3",
+          "cid": "4cf9e8d906793585",
+          "level": 1,
+          "mesh": 2,
+          "triangles": 704
+        },
+        {
+          "id": "o1.4",
+          "cid": "70a2ac46088fe2b9",
+          "level": 0,
+          "mesh": 12,
+          "triangles": 576
+        },
+        {
+          "id": "o1.5",
+          "cid": "63e3b1b98b79e8dc",
+          "level": 0,
+          "mesh": 13,
+          "triangles": 376
+        },
+        {
+          "id": "o1.6",
+          "cid": "d57a4f31e80a006d",
+          "level": 0,
+          "mesh": 14,
+          "triangles": 576
+        },
+        {
+          "id": "o1.7",
+          "cid": "9d09f8d6959b3039",
+          "level": 0,
+          "mesh": 15,
+          "triangles": 376
+        },
+        {
+          "id": "o1.8",
+          "cid": "135a73d9614490fb",
+          "level": 0,
+          "mesh": 16,
+          "triangles": 576
+        },
+        {
+          "id": "o1.9",
+          "cid": "5fbbbeb5f2c47ca0",
+          "level": 0,
+          "mesh": 17,
+          "triangles": 376
+        }
+      ],
+      "recordRows": [
+        {
+          "id": "o1.1",
+          "mesh": 1,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.2",
+          "mesh": 10,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.3",
+          "mesh": 2,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.4",
+          "mesh": 12,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.5",
+          "mesh": 13,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.6",
+          "mesh": 14,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.7",
+          "mesh": 15,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.8",
+          "mesh": 16,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.9",
+          "mesh": 17,
+          "visible": true,
+          "materialVisible": true
+        }
+      ],
+      "selectors": null,
+      "adoption": {
+        "requested": 6,
+        "adopted": 6,
+        "restored": 0,
+        "rejected": 0,
+        "lastWaitMs": 3.200000286102295,
+        "maxWaitMs": 5.800000190734863,
+        "pending": 0,
+        "phase": null,
+        "pendingMs": 0
+      },
+      "lod": {
+        "componentCount": 9,
+        "levelCounts": {
+          "0": 6,
+          "1": 3
+        },
+        "minimumLevel": 0,
+        "belowMinimum": 0,
+        "busy": false,
+        "pendingEvaluation": false,
+        "failedLevels": 0,
+        "deniedAttempts": 0,
+        "pressureLimitedComponents": 0,
+        "qualitySettled": true,
+        "sceneFailed": false,
+        "memoryPressure": false,
+        "unmetTargets": [],
+        "disposed": false,
+        "visibility": {
+          "components": 9,
+          "occurrences": 9,
+          "visibleOccurrences": 9,
+          "excludedOccurrences": 0,
+          "fallbackOccurrences": 0,
+          "visibleComponents": 9,
+          "excludedComponents": 0,
+          "fallbackComponents": 0,
+          "pendingOccurrences": 0,
+          "dynamicFailOpen": 0
+        }
+      },
+      "memory": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 401868,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 334764,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 0,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {},
+        "retainedBytes": 736632,
+        "inFlightBytes": 0,
+        "estimatedOwnedBytes": 736632,
+        "availableBytes": 1341440648,
+        "reservationCount": 0,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "probe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 250128,
+        "edgeBytes": 84636,
+        "bvhBytes": 0,
+        "bvhGeometries": 0,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 401868,
+        "selectorCpuBytes": 0,
+        "gpuEstimatedBytes": 334764,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 317232,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "additionalAssetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 401868,
+            "selectors": 0,
+            "bvh": 0,
+            "gpuEstimated": 334764,
+            "deformation": 0,
+            "assetCaches": 0,
+            "workerResidentEstimated": 0,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 736632,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 736632,
+          "availableBytes": 1341440648,
+          "reservationCount": 0,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 802.6999998092651
+      },
+      "workers": {
+        "created": 5,
+        "terminated": 5,
+        "live": 0,
+        "peakLive": 4
+      },
+      "meshCost": {
+        "meshRevision": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c",
+        "composed": {
+          "triangleCount": 6272,
+          "typedArrayBytes": 317232
+        },
+        "componentTotalBytes": 317232,
+        "componentTotalTriangles": 6272,
+        "componentCount": 9,
+        "occurrenceCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 524.3999996185303
+      },
+      "zoom": "100%",
+      "alerts": [],
+      "sceneSync": {
+        "count": 8,
+        "totalMs": 17.500000476837158,
+        "last": {
+          "atMs": 528,
+          "ms": 0.9,
+          "mode": "reuse",
+          "records": 9,
+          "reason": ""
+        }
+      },
+      "draw": {
+        "first": 240.2999997138977,
+        "last": 531.2999997138977,
+        "count": 268
+      },
+      "cacheWrites": {
+        "active": 0,
+        "activeBytes": 0,
+        "peakActive": 0,
+        "peakBytes": 0,
+        "total": 0,
+        "totalBytes": 0
+      },
+      "batch": {
+        "phases": [],
+        "publications": [
+          {
+            "at": 215.19999980926514,
+            "components": 8,
+            "occurrences": 8,
+            "final": false
+          },
+          {
+            "at": 270.5,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 486.69999980926514,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 496.7999997138977,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 504.59999990463257,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 512.0999999046326,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 518.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 524.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          }
+        ],
+        "lod": [
+          {
+            "at": 492.8999996185303,
+            "cid": "135a73d9614490fb",
+            "level": 0
+          },
+          {
+            "at": 501.59999990463257,
+            "cid": "70a2ac46088fe2b9",
+            "level": 0
+          },
+          {
+            "at": 508.8999996185303,
+            "cid": "d57a4f31e80a006d",
+            "level": 0
+          },
+          {
+            "at": 516.2999997138977,
+            "cid": "5fbbbeb5f2c47ca0",
+            "level": 0
+          },
+          {
+            "at": 522.1999998092651,
+            "cid": "63e3b1b98b79e8dc",
+            "level": 0
+          },
+          {
+            "at": 528.0999999046326,
+            "cid": "9d09f8d6959b3039",
+            "level": 0
+          }
+        ],
+        "max": {
+          "occupied": 1,
+          "loading": 0,
+          "adopting": 0,
+          "stagingBytes": 0
+        }
+      }
+    },
+    {
+      "label": "initial",
+      "at": 881,
+      "selection": {
+        "selectedPartIds": [],
+        "selectedReferenceIds": [],
+        "hiddenPartIds": []
+      },
+      "source": 18,
+      "actualSource": 18,
+      "sceneRecords": 9,
+      "partRows": [
+        {
+          "id": "o1.1",
+          "cid": "e3b435921ef6a6de",
+          "level": 1,
+          "mesh": 1,
+          "triangles": 1360
+        },
+        {
+          "id": "o1.2",
+          "cid": "e6e8d9f9c0a177dd",
+          "level": 1,
+          "mesh": 10,
+          "triangles": 1352
+        },
+        {
+          "id": "o1.3",
+          "cid": "4cf9e8d906793585",
+          "level": 1,
+          "mesh": 2,
+          "triangles": 704
+        },
+        {
+          "id": "o1.4",
+          "cid": "70a2ac46088fe2b9",
+          "level": 0,
+          "mesh": 12,
+          "triangles": 576
+        },
+        {
+          "id": "o1.5",
+          "cid": "63e3b1b98b79e8dc",
+          "level": 0,
+          "mesh": 13,
+          "triangles": 376
+        },
+        {
+          "id": "o1.6",
+          "cid": "d57a4f31e80a006d",
+          "level": 0,
+          "mesh": 14,
+          "triangles": 576
+        },
+        {
+          "id": "o1.7",
+          "cid": "9d09f8d6959b3039",
+          "level": 0,
+          "mesh": 15,
+          "triangles": 376
+        },
+        {
+          "id": "o1.8",
+          "cid": "135a73d9614490fb",
+          "level": 0,
+          "mesh": 16,
+          "triangles": 576
+        },
+        {
+          "id": "o1.9",
+          "cid": "5fbbbeb5f2c47ca0",
+          "level": 0,
+          "mesh": 17,
+          "triangles": 376
+        }
+      ],
+      "recordRows": [
+        {
+          "id": "o1.1",
+          "mesh": 1,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.2",
+          "mesh": 10,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.3",
+          "mesh": 2,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.4",
+          "mesh": 12,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.5",
+          "mesh": 13,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.6",
+          "mesh": 14,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.7",
+          "mesh": 15,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.8",
+          "mesh": 16,
+          "visible": true,
+          "materialVisible": true
+        },
+        {
+          "id": "o1.9",
+          "mesh": 17,
+          "visible": true,
+          "materialVisible": true
+        }
+      ],
+      "selectors": null,
+      "adoption": {
+        "requested": 6,
+        "adopted": 6,
+        "restored": 0,
+        "rejected": 0,
+        "lastWaitMs": 3.200000286102295,
+        "maxWaitMs": 5.800000190734863,
+        "pending": 0,
+        "phase": null,
+        "pendingMs": 0
+      },
+      "lod": {
+        "componentCount": 9,
+        "levelCounts": {
+          "0": 6,
+          "1": 3
+        },
+        "minimumLevel": 0,
+        "belowMinimum": 0,
+        "busy": false,
+        "pendingEvaluation": false,
+        "failedLevels": 0,
+        "deniedAttempts": 0,
+        "pressureLimitedComponents": 0,
+        "qualitySettled": true,
+        "sceneFailed": false,
+        "memoryPressure": false,
+        "unmetTargets": [],
+        "disposed": false,
+        "visibility": {
+          "components": 9,
+          "occurrences": 9,
+          "visibleOccurrences": 9,
+          "excludedOccurrences": 0,
+          "fallbackOccurrences": 0,
+          "visibleComponents": 9,
+          "excludedComponents": 0,
+          "fallbackComponents": 0,
+          "pendingOccurrences": 0,
+          "dynamicFailOpen": 0
+        }
+      },
+      "memory": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 401868,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 334764,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 0,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {},
+        "retainedBytes": 736632,
+        "inFlightBytes": 0,
+        "estimatedOwnedBytes": 736632,
+        "availableBytes": 1341440648,
+        "reservationCount": 0,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "probe": {
+        "occurrences": 9,
+        "edgeObjects": 0,
+        "edgeInstanceSets": 9,
+        "edgeInstances": 9,
+        "surfaceInstanceSets": 0,
+        "surfaceInstances": 0,
+        "surfaceInstanceBytes": 0,
+        "geometries": 18,
+        "buffers": 45,
+        "materials": 27,
+        "surfaceBytes": 250128,
+        "edgeBytes": 84636,
+        "bvhBytes": 0,
+        "bvhGeometries": 0,
+        "faceIdBytes": 0,
+        "faceIdArrays": 0,
+        "pickBytes": 0,
+        "pickGeometries": 0,
+        "deformationBytes": 0,
+        "displayCpuBytes": 401868,
+        "selectorCpuBytes": 0,
+        "gpuEstimatedBytes": 334764,
+        "assetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 317232,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "additionalAssetCaches": {
+          "surfPayload": {
+            "entries": 9,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "selector": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "displayEdge": {
+            "entries": 0,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "glb": {
+            "entries": 3,
+            "typedBytes": 0,
+            "manifestRows": 0
+          },
+          "surfLeash": {
+            "entries": 12,
+            "limit": 24,
+            "bytes": 317232,
+            "maxBytes": 268435456,
+            "minEntries": 4
+          }
+        },
+        "memoryPolicy": {
+          "budgetBytes": 1610612736,
+          "gpuHeadroomBytes": 268435456,
+          "ownedLimitBytes": 1342177280,
+          "replacementHeadroomBytes": 134217728,
+          "retainedByCategory": {
+            "displayCpu": 401868,
+            "selectors": 0,
+            "bvh": 0,
+            "gpuEstimated": 334764,
+            "deformation": 0,
+            "assetCaches": 0,
+            "workerResidentEstimated": 0,
+            "replacementPending": 0
+          },
+          "inFlightByCategory": {},
+          "retainedBytes": 736632,
+          "inFlightBytes": 0,
+          "estimatedOwnedBytes": 736632,
+          "availableBytes": 1341440648,
+          "reservationCount": 0,
+          "lastLimitation": null,
+          "hardRssCap": false
+        },
+        "at": 881.2999997138977
+      },
+      "workers": {
+        "created": 5,
+        "terminated": 5,
+        "live": 0,
+        "peakLive": 4
+      },
+      "meshCost": {
+        "meshRevision": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c",
+        "composed": {
+          "triangleCount": 6272,
+          "typedArrayBytes": 317232
+        },
+        "componentTotalBytes": 317232,
+        "componentTotalTriangles": 6272,
+        "componentCount": 9,
+        "occurrenceCount": 9,
+        "totalComponents": 9,
+        "loadedComponents": 9,
+        "publishCount": 2,
+        "final": true,
+        "at": 524.3999996185303
+      },
+      "zoom": "100%",
+      "alerts": [],
+      "sceneSync": {
+        "count": 8,
+        "totalMs": 17.500000476837158,
+        "last": {
+          "atMs": 528,
+          "ms": 0.9,
+          "mode": "reuse",
+          "records": 9,
+          "reason": ""
+        }
+      },
+      "draw": {
+        "first": 240.2999997138977,
+        "last": 531.2999997138977,
+        "count": 268
+      },
+      "cacheWrites": {
+        "active": 0,
+        "activeBytes": 0,
+        "peakActive": 0,
+        "peakBytes": 0,
+        "total": 0,
+        "totalBytes": 0
+      },
+      "batch": {
+        "phases": [],
+        "publications": [
+          {
+            "at": 215.19999980926514,
+            "components": 8,
+            "occurrences": 8,
+            "final": false
+          },
+          {
+            "at": 270.5,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 486.69999980926514,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 496.7999997138977,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 504.59999990463257,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 512.0999999046326,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 518.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          },
+          {
+            "at": 524.3999996185303,
+            "components": 9,
+            "occurrences": 9,
+            "final": true
+          }
+        ],
+        "lod": [
+          {
+            "at": 492.8999996185303,
+            "cid": "135a73d9614490fb",
+            "level": 0
+          },
+          {
+            "at": 501.59999990463257,
+            "cid": "70a2ac46088fe2b9",
+            "level": 0
+          },
+          {
+            "at": 508.8999996185303,
+            "cid": "d57a4f31e80a006d",
+            "level": 0
+          },
+          {
+            "at": 516.2999997138977,
+            "cid": "5fbbbeb5f2c47ca0",
+            "level": 0
+          },
+          {
+            "at": 522.1999998092651,
+            "cid": "63e3b1b98b79e8dc",
+            "level": 0
+          },
+          {
+            "at": 528.0999999046326,
+            "cid": "9d09f8d6959b3039",
+            "level": 0
+          }
+        ],
+        "max": {
+          "occupied": 1,
+          "loading": 0,
+          "adopting": 0,
+          "stagingBytes": 0
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "httpFailures": [],
+  "peakRss": {
+    "browser": {
+      "rssBytes": 97927168,
+      "largestPidBytes": 97927168,
+      "processCount": 1
+    },
+    "gpu-process": {
+      "rssBytes": 106102784,
+      "largestPidBytes": 106102784,
+      "processCount": 1
+    },
+    "utility": {
+      "rssBytes": 48971776,
+      "largestPidBytes": 48971776,
+      "processCount": 1
+    },
+    "renderer": {
+      "rssBytes": 196231168,
+      "largestPidBytes": 196231168,
+      "processCount": 1
+    }
+  },
+  "assertions": {},
+  "browserVersion": "148.0.7778.96",
+  "phaseResults": [],
+  "navigationAt": "2026-09-11T01:22:46.239Z",
+  "initial": {
+    "label": "initial",
+    "at": 881,
+    "selection": {
+      "selectedPartIds": [],
+      "selectedReferenceIds": [],
+      "hiddenPartIds": []
+    },
+    "source": 18,
+    "actualSource": 18,
+    "sceneRecords": 9,
+    "partRows": [
+      {
+        "id": "o1.1",
+        "cid": "e3b435921ef6a6de",
+        "level": 1,
+        "mesh": 1,
+        "triangles": 1360
+      },
+      {
+        "id": "o1.2",
+        "cid": "e6e8d9f9c0a177dd",
+        "level": 1,
+        "mesh": 10,
+        "triangles": 1352
+      },
+      {
+        "id": "o1.3",
+        "cid": "4cf9e8d906793585",
+        "level": 1,
+        "mesh": 2,
+        "triangles": 704
+      },
+      {
+        "id": "o1.4",
+        "cid": "70a2ac46088fe2b9",
+        "level": 0,
+        "mesh": 12,
+        "triangles": 576
+      },
+      {
+        "id": "o1.5",
+        "cid": "63e3b1b98b79e8dc",
+        "level": 0,
+        "mesh": 13,
+        "triangles": 376
+      },
+      {
+        "id": "o1.6",
+        "cid": "d57a4f31e80a006d",
+        "level": 0,
+        "mesh": 14,
+        "triangles": 576
+      },
+      {
+        "id": "o1.7",
+        "cid": "9d09f8d6959b3039",
+        "level": 0,
+        "mesh": 15,
+        "triangles": 376
+      },
+      {
+        "id": "o1.8",
+        "cid": "135a73d9614490fb",
+        "level": 0,
+        "mesh": 16,
+        "triangles": 576
+      },
+      {
+        "id": "o1.9",
+        "cid": "5fbbbeb5f2c47ca0",
+        "level": 0,
+        "mesh": 17,
+        "triangles": 376
+      }
+    ],
+    "recordRows": [
+      {
+        "id": "o1.1",
+        "mesh": 1,
+        "visible": true,
+        "materialVisible": true
+      },
+      {
+        "id": "o1.2",
+        "mesh": 10,
+        "visible": true,
+        "materialVisible": true
+      },
+      {
+        "id": "o1.3",
+        "mesh": 2,
+        "visible": true,
+        "materialVisible": true
+      },
+      {
+        "id": "o1.4",
+        "mesh": 12,
+        "visible": true,
+        "materialVisible": true
+      },
+      {
+        "id": "o1.5",
+        "mesh": 13,
+        "visible": true,
+        "materialVisible": true
+      },
+      {
+        "id": "o1.6",
+        "mesh": 14,
+        "visible": true,
+        "materialVisible": true
+      },
+      {
+        "id": "o1.7",
+        "mesh": 15,
+        "visible": true,
+        "materialVisible": true
+      },
+      {
+        "id": "o1.8",
+        "mesh": 16,
+        "visible": true,
+        "materialVisible": true
+      },
+      {
+        "id": "o1.9",
+        "mesh": 17,
+        "visible": true,
+        "materialVisible": true
+      }
+    ],
+    "selectors": null,
+    "adoption": {
+      "requested": 6,
+      "adopted": 6,
+      "restored": 0,
+      "rejected": 0,
+      "lastWaitMs": 3.200000286102295,
+      "maxWaitMs": 5.800000190734863,
+      "pending": 0,
+      "phase": null,
+      "pendingMs": 0
+    },
+    "lod": {
+      "componentCount": 9,
+      "levelCounts": {
+        "0": 6,
+        "1": 3
+      },
+      "minimumLevel": 0,
+      "belowMinimum": 0,
+      "busy": false,
+      "pendingEvaluation": false,
+      "failedLevels": 0,
+      "deniedAttempts": 0,
+      "pressureLimitedComponents": 0,
+      "qualitySettled": true,
+      "sceneFailed": false,
+      "memoryPressure": false,
+      "unmetTargets": [],
+      "disposed": false,
+      "visibility": {
+        "components": 9,
+        "occurrences": 9,
+        "visibleOccurrences": 9,
+        "excludedOccurrences": 0,
+        "fallbackOccurrences": 0,
+        "visibleComponents": 9,
+        "excludedComponents": 0,
+        "fallbackComponents": 0,
+        "pendingOccurrences": 0,
+        "dynamicFailOpen": 0
+      }
+    },
+    "memory": {
+      "budgetBytes": 1610612736,
+      "gpuHeadroomBytes": 268435456,
+      "ownedLimitBytes": 1342177280,
+      "replacementHeadroomBytes": 134217728,
+      "retainedByCategory": {
+        "displayCpu": 401868,
+        "selectors": 0,
+        "bvh": 0,
+        "gpuEstimated": 334764,
+        "deformation": 0,
+        "assetCaches": 0,
+        "workerResidentEstimated": 0,
+        "replacementPending": 0
+      },
+      "inFlightByCategory": {},
+      "retainedBytes": 736632,
+      "inFlightBytes": 0,
+      "estimatedOwnedBytes": 736632,
+      "availableBytes": 1341440648,
+      "reservationCount": 0,
+      "lastLimitation": null,
+      "hardRssCap": false
+    },
+    "probe": {
+      "occurrences": 9,
+      "edgeObjects": 0,
+      "edgeInstanceSets": 9,
+      "edgeInstances": 9,
+      "surfaceInstanceSets": 0,
+      "surfaceInstances": 0,
+      "surfaceInstanceBytes": 0,
+      "geometries": 18,
+      "buffers": 45,
+      "materials": 27,
+      "surfaceBytes": 250128,
+      "edgeBytes": 84636,
+      "bvhBytes": 0,
+      "bvhGeometries": 0,
+      "faceIdBytes": 0,
+      "faceIdArrays": 0,
+      "pickBytes": 0,
+      "pickGeometries": 0,
+      "deformationBytes": 0,
+      "displayCpuBytes": 401868,
+      "selectorCpuBytes": 0,
+      "gpuEstimatedBytes": 334764,
+      "assetCaches": {
+        "surfPayload": {
+          "entries": 9,
+          "typedBytes": 317232,
+          "manifestRows": 0
+        },
+        "selector": {
+          "entries": 0,
+          "typedBytes": 0,
+          "manifestRows": 0
+        },
+        "displayEdge": {
+          "entries": 0,
+          "typedBytes": 0,
+          "manifestRows": 0
+        },
+        "glb": {
+          "entries": 3,
+          "typedBytes": 0,
+          "manifestRows": 0
+        },
+        "surfLeash": {
+          "entries": 12,
+          "limit": 24,
+          "bytes": 317232,
+          "maxBytes": 268435456,
+          "minEntries": 4
+        }
+      },
+      "additionalAssetCaches": {
+        "surfPayload": {
+          "entries": 9,
+          "typedBytes": 0,
+          "manifestRows": 0
+        },
+        "selector": {
+          "entries": 0,
+          "typedBytes": 0,
+          "manifestRows": 0
+        },
+        "displayEdge": {
+          "entries": 0,
+          "typedBytes": 0,
+          "manifestRows": 0
+        },
+        "glb": {
+          "entries": 3,
+          "typedBytes": 0,
+          "manifestRows": 0
+        },
+        "surfLeash": {
+          "entries": 12,
+          "limit": 24,
+          "bytes": 317232,
+          "maxBytes": 268435456,
+          "minEntries": 4
+        }
+      },
+      "memoryPolicy": {
+        "budgetBytes": 1610612736,
+        "gpuHeadroomBytes": 268435456,
+        "ownedLimitBytes": 1342177280,
+        "replacementHeadroomBytes": 134217728,
+        "retainedByCategory": {
+          "displayCpu": 401868,
+          "selectors": 0,
+          "bvh": 0,
+          "gpuEstimated": 334764,
+          "deformation": 0,
+          "assetCaches": 0,
+          "workerResidentEstimated": 0,
+          "replacementPending": 0
+        },
+        "inFlightByCategory": {},
+        "retainedBytes": 736632,
+        "inFlightBytes": 0,
+        "estimatedOwnedBytes": 736632,
+        "availableBytes": 1341440648,
+        "reservationCount": 0,
+        "lastLimitation": null,
+        "hardRssCap": false
+      },
+      "at": 881.2999997138977
+    },
+    "workers": {
+      "created": 5,
+      "terminated": 5,
+      "live": 0,
+      "peakLive": 4
+    },
+    "meshCost": {
+      "meshRevision": "f6847e4925b22616119112667e9ce4f85621d2cc85190c467fef8a21466b8a5c",
+      "composed": {
+        "triangleCount": 6272,
+        "typedArrayBytes": 317232
+      },
+      "componentTotalBytes": 317232,
+      "componentTotalTriangles": 6272,
+      "componentCount": 9,
+      "occurrenceCount": 9,
+      "totalComponents": 9,
+      "loadedComponents": 9,
+      "publishCount": 2,
+      "final": true,
+      "at": 524.3999996185303
+    },
+    "zoom": "100%",
+    "alerts": [],
+    "sceneSync": {
+      "count": 8,
+      "totalMs": 17.500000476837158,
+      "last": {
+        "atMs": 528,
+        "ms": 0.9,
+        "mode": "reuse",
+        "records": 9,
+        "reason": ""
+      }
+    },
+    "draw": {
+      "first": 240.2999997138977,
+      "last": 531.2999997138977,
+      "count": 268
+    },
+    "cacheWrites": {
+      "active": 0,
+      "activeBytes": 0,
+      "peakActive": 0,
+      "peakBytes": 0,
+      "total": 0,
+      "totalBytes": 0
+    },
+    "batch": {
+      "phases": [],
+      "publications": [
+        {
+          "at": 215.19999980926514,
+          "components": 8,
+          "occurrences": 8,
+          "final": false
+        },
+        {
+          "at": 270.5,
+          "components": 9,
+          "occurrences": 9,
+          "final": true
+        },
+        {
+          "at": 486.69999980926514,
+          "components": 9,
+          "occurrences": 9,
+          "final": true
+        },
+        {
+          "at": 496.7999997138977,
+          "components": 9,
+          "occurrences": 9,
+          "final": true
+        },
+        {
+          "at": 504.59999990463257,
+          "components": 9,
+          "occurrences": 9,
+          "final": true
+        },
+        {
+          "at": 512.0999999046326,
+          "components": 9,
+          "occurrences": 9,
+          "final": true
+        },
+        {
+          "at": 518.3999996185303,
+          "components": 9,
+          "occurrences": 9,
+          "final": true
+        },
+        {
+          "at": 524.3999996185303,
+          "components": 9,
+          "occurrences": 9,
+          "final": true
+        }
+      ],
+      "lod": [
+        {
+          "at": 492.8999996185303,
+          "cid": "135a73d9614490fb",
+          "level": 0
+        },
+        {
+          "at": 501.59999990463257,
+          "cid": "70a2ac46088fe2b9",
+          "level": 0
+        },
+        {
+          "at": 508.8999996185303,
+          "cid": "d57a4f31e80a006d",
+          "level": 0
+        },
+        {
+          "at": 516.2999997138977,
+          "cid": "5fbbbeb5f2c47ca0",
+          "level": 0
+        },
+        {
+          "at": 522.1999998092651,
+          "cid": "63e3b1b98b79e8dc",
+          "level": 0
+        },
+        {
+          "at": 528.0999999046326,
+          "cid": "9d09f8d6959b3039",
+          "level": 0
+        }
+      ],
+      "max": {
+        "occupied": 1,
+        "loading": 0,
+        "adopting": 0,
+        "stagingBytes": 0
+      }
+    }
+  },
+  "outcome": "failed",
+  "error": "locator.click: Timeout 4000ms exceeded.\nCall log:\n\u001b[2m  - waiting for getByRole('treeitem').filter({ hasText: /^f1\\b/ }).first()\u001b[22m\n\n    at run (/private/tmp/cadgen-performance-20260910/batch-browser-comparison.mjs:36:366)\n    at async file:///private/tmp/cadgen-performance-20260910/batch-browser-comparison.mjs:43:573",
+  "finishedAt": "2026-09-11T01:22:51.385Z"
+}
