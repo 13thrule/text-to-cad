@@ -134,8 +134,11 @@ import {
   canonicalCadRefCopyText,
   withFileRefPrefix,
   computeNextSelectionIds,
+  modelReferenceActivationDecision,
   orderedStringListEqual,
   parseAssemblyPartReferenceSelectionId,
+  pendingReferenceActivationMatches,
+  topologyCompositionKeyMatches,
   uniqueStringList
 } from "@/workbench/referenceSelection";
 import {
@@ -4089,7 +4092,7 @@ export default function CadWorkspace({
     selectedEntryHasReferences &&
     referenceState.fileRef === fileKey(selectedEntry) &&
     referenceState.referenceHash === buildReferenceCacheKey(selectedEntry) &&
-    (referenceState.loadedTopologyKey || "*") === requestedTopologyKey;
+    topologyCompositionKeyMatches(referenceState.loadedTopologyKey, requestedTopologyKey);
   const selectedSelectorRuntime = selectedReferencesMatch ? referenceState?.selectorRuntime || null : null;
   const selectedStepParameterRuntime = useMemo(() => {
     if (
@@ -6063,47 +6066,49 @@ export default function CadWorkspace({
     if (stepUpdateInProgress || stepModuleTreeSelectionDisabled) {
       return;
     }
+    // A newer gesture supersedes any click waiting for selector topology. If
+    // this gesture also needs topology, its exact file/tree/id replaces it below.
+    pendingModelReferenceActivationRef.current = null;
     const nextReferenceId = String(referenceId || "").trim();
-    if (
+    const topologyReference = effectiveActiveReferenceMap.get(nextReferenceId) || null;
+    const deferForTopology = Boolean(
       selectedEntry &&
       selectedEntryHasReferences &&
       effectiveRenderFormat === RENDER_FORMAT.STEP &&
       !selectedReferencesMatch
-    ) {
+    );
+    const decision = modelReferenceActivationDecision(nextReferenceId, {
+      topologyReference,
+      assemblyMode: viewerInAssemblyMode,
+      resolvePartId: resolvePickedAssemblyPartId,
+      deferForTopology,
+      referenceKnown: effectiveActiveReferenceMap.has(nextReferenceId)
+    });
+    if (decision.kind === "clear") {
+      clearAssemblySelection();
+      return;
+    }
+    if (decision.kind === "reference") {
+      toggleReferenceSelection(decision.referenceId, { multiSelect });
+      return;
+    }
+    if (decision.kind === "part") {
+      togglePartSelection(decision.partId, {
+        multiSelect,
+        renderPartId: decision.renderPartId
+      });
+      return;
+    }
+    if (decision.kind === "defer") {
       pendingModelReferenceActivationRef.current = nextReferenceId
         ? { fileRef: fileKey(selectedEntry), tree: selectedEntry.hash, referenceId: nextReferenceId, multiSelect }
         : null;
       setRequestedTopologyFileRef(fileKey(selectedEntry));
-      return;
     }
-    if (!nextReferenceId) {
-      clearAssemblySelection();
-      return;
-    }
-    const topologyReference = effectiveActiveReferenceMap.get(nextReferenceId) || null;
-    if (topologyReference && isViewerTopologyReference(topologyReference)) {
-      toggleReferenceSelection(nextReferenceId, { multiSelect });
-      return;
-    }
-    if (viewerInAssemblyMode) {
-      const pickedPartId = nextReferenceId;
-      const nextPartId = resolvePickedAssemblyPartId(pickedPartId);
-      if (!nextPartId) {
-        clearAssemblySelection();
-        return;
-      }
-      togglePartSelection(nextPartId, { multiSelect, renderPartId: pickedPartId });
-      return;
-    }
-    if (!effectiveActiveReferenceMap.has(nextReferenceId)) {
-      return;
-    }
-    toggleReferenceSelection(nextReferenceId, { multiSelect });
   }, [
     clearAssemblySelection,
     effectiveRenderFormat,
     effectiveActiveReferenceMap,
-    isViewerTopologyReference,
     resolvePickedAssemblyPartId,
     selectedEntry,
     selectedEntryHasReferences,
@@ -6121,7 +6126,10 @@ export default function CadWorkspace({
   useEffect(() => {
     const pending = pendingModelReferenceActivationRef.current;
     if (!pending) return;
-    if (pending.fileRef !== fileKey(selectedEntry) || pending.tree !== selectedEntry?.hash) {
+    if (!pendingReferenceActivationMatches(pending, {
+      fileRef: fileKey(selectedEntry),
+      tree: selectedEntry?.hash
+    })) {
       pendingModelReferenceActivationRef.current = null;
       return;
     }
