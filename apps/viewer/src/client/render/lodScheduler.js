@@ -72,12 +72,14 @@ export function createLodScheduler({
   let timer = null;
   let inFlight = null; // { cid, level, controller, reservation }
   let disposed = false;
+  let sceneFailed = false;
   const floorLevel = normalizeLodLevel(minimumLevel);
 
   function setComponents(list, { preserveLevels = false } = {}) {
     const hadModel = components.size > 0 || lastSample !== null || inFlight !== null;
     if (!preserveLevels) {
       modelEpoch += 1;
+      sceneFailed = false;
       lastSample = null;
       lastPressure = false;
       if (timer !== null) {
@@ -104,7 +106,7 @@ export function createLodScheduler({
     if (!preserveLevels || !inFlight || !components.has(inFlight.cid)) {
       cancelInFlight();
     }
-    if (!preserveLevels && hadModel) onIdle?.(qualityStatus());
+    if (!preserveLevels && hadModel && !inFlight) onIdle?.(qualityStatus());
     if (preserveLevels && lastSample && timer === null && !inFlight) {
       timer = setTimeoutFn(() => { timer = null; evaluate(); }, debounceMs);
     }
@@ -114,8 +116,9 @@ export function createLodScheduler({
     if (inFlight) {
       const task = inFlight;
       task.controller.abort();
-      releaseReservation(task);
-      inFlight = null;
+      // Published geometry can still belong to the renderer. Its apply promise
+      // settles only after adoption/restoration/disposal; keep the lease and
+      // block new work until that retiring owner finishes.
     }
   }
 
@@ -217,7 +220,8 @@ export function createLodScheduler({
         ...(blockedLevel !== targetLevel ? { blockedLevel } : {}), ...(detail ? { detail } : {}) });
     }
     return {
-      qualitySettled: !disposed && !!lastSample && !inFlight && timer === null && unmetTargets.length === 0,
+      qualitySettled: !disposed && !sceneFailed && !!lastSample && !inFlight && timer === null && unmetTargets.length === 0,
+      sceneFailed,
       memoryPressure: pressure,
       unmetTargets,
       disposed,
@@ -295,6 +299,7 @@ export function createLodScheduler({
 
   function evaluate() {
     if (disposed || !lastSample || inFlight) return;
+    if (sceneFailed) { onIdle?.(qualityStatus()); return; }
     // Each denied iteration removes a distinct candidate. Keep a large model's
     // denial drain off the call stack; only successful adoption changes state.
     let request;
@@ -341,6 +346,11 @@ export function createLodScheduler({
         if (state) {
           const commitLevel = (applied) => {
             if (disposed || controller.signal.aborted) return;
+            if (applied?.status === "scene-failed") {
+              sceneFailed = true;
+              parkFailure(task, "scene-failed");
+              return;
+            }
             if (applied === false) {
               // A refused scene adoption is a failed attempt, not permission
               // to immediately requeue the same level in a microtask loop.
@@ -372,9 +382,9 @@ export function createLodScheduler({
         inFlight = null;
         // More work may be queued behind the swap (other components, or the
         // next rung of this one) — keep draining until the plan is empty.
-        if (!disposed) {
+        if (!disposed && lastSample) {
           evaluate();
-        }
+        } else onIdle?.(qualityStatus());
       });
   }
 
@@ -385,7 +395,7 @@ export function createLodScheduler({
       timer = null;
     }
     cancelInFlight();
-    onIdle?.(qualityStatus());
+    if (!inFlight) onIdle?.(qualityStatus());
   }
 
   return {

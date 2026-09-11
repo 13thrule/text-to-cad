@@ -1,151 +1,215 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import * as THREE from "three";
-import { buildModel } from "cadgen-js/common/cadScene.js";
-import { buildComposedPackageMeshData } from "cadgen-js/lib/assembly/meshData.js";
-import { createLodSceneAdoption } from "./lodSceneAdoption.js";
-import { createLodScheduler } from "./lodScheduler.js";
+import { createLodSceneAdoption, lodOccurrenceProof } from "./lodSceneAdoption.js";
+import { updateLodMeshState, updateLodReferenceState } from "./lodPublication.js";
 
-const bounds = { min: [0, 0, 0], max: [2, 1, 1] };
-function mesh(version) {
-  return { version, vertices: new Float32Array([0, 0, 0, 1 + version / 10, 0, 0, 0, 1, 0]),
-    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]), indices: new Uint32Array([0, 1, 2]), bounds,
-    parts: [{ id: "surface", vertexCount: 3, triangleCount: 1 }] };
-}
-function source(rows) {
-  return { bounds, parts: rows.map(([id, cid, value]) => ({ id, occurrenceId: id, componentId: cid,
-    sourceMesh: value, sourceMeshKey: `${cid}:${value.version}`, bounds, vertexCount: 3, triangleCount: 1 })) };
+function source(mesh, extra = []) {
+  return { parts: ["a1", "a2"].map(id => ({ id, occurrenceId: id, componentId: "a", sourceMesh: mesh })).concat(extra) };
 }
 function fixture() {
-  const payload = mesh(1);
-  const published = source([["a1", "a", payload], ["a2", "a", payload]]);
-  let ctx = { file: "same.step", meshHash: "revision-a", meshData: published }, time = 0;
-  const tracker = createLodSceneAdoption({ currentContext: () => ctx, now: () => time });
-  return { payload, published, tracker, get ctx() { return ctx; }, set ctx(value) { ctx = value; },
-    advance: value => { time += value; },
-    expect: signal => tracker.expect({ context: ctx, source: published, componentId: "a", componentMesh: payload, signal }) };
+  const baseMesh = {}, mesh = {}, base = source(baseMesh), candidate = source(mesh);
+  const descriptor = Object.freeze({ occurrences: Object.freeze(["a1", "a2"].map(id => Object.freeze({ id, component: "a" }))) });
+  let context = { file: "same.step", meshHash: "revision", meshData: base }, current = candidate, restored = base;
+  let commits = 0, recoveries = 0, failures = 0;
+  const tracker = createLodSceneAdoption({ currentContext: () => context });
+  return { baseMesh, mesh, base, candidate, descriptor, tracker,
+    get context() { return context; }, set context(value) { context = value; },
+    set current(value) { current = value; }, set restored(value) { restored = value; },
+    get counts() { return { commits, recoveries, failures }; },
+    expect(signal, options = {}) { return tracker.expect({ context, source: candidate, descriptor,
+      componentId: "a", componentMesh: mesh, baseMesh, baseSource: base, signal,
+      currentSource: () => current, currentBaseSource: () => restored,
+      commit: () => { commits++; context.meshData = current; },
+      restore: () => { recoveries++; return restored; }, failed: () => { failures++; }, ...options }); },
+    publish() { tracker.published(candidate); },
+  };
 }
-async function ticks(count = 12) { for (let i = 0; i < count; i++) await Promise.resolve(); }
+async function ticks() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
 
-test("only actual current source adoption releases the exact component payload", async () => {
+test("committed source stays old until exact actual adoption; publication is not ownership completion", async () => {
   const f = fixture(); let done = false;
-  const promise = f.expect().then(value => { done = true; return value; });
-  await ticks(); assert.equal(done, false); assert.equal(f.tracker.snapshot().pending, 1);
-  assert.equal(f.tracker.adopted({ ...f.published }), false, "equal-looking source is not adopted identity");
+  const promise = f.expect().then(outcome => { done = true; return outcome; }); f.publish();
+  assert.equal(f.context.meshData, f.base); assert.equal(f.tracker.adopted({ ...f.candidate }), false);
   await ticks(); assert.equal(done, false);
-  f.advance(35); assert.equal(f.tracker.adopted(f.published), true);
-  assert.equal(await promise, true);
-  assert.deepEqual(f.tracker.snapshot(), { requested: 1, adopted: 1, rejected: 0, lastWaitMs: 35, maxWaitMs: 35, pending: 0, pendingMs: 0 });
+  assert.equal(f.tracker.adopted(f.candidate), true);
+  assert.equal((await promise).status, "adopted"); assert.equal(f.context.meshData, f.candidate);
+  assert.deepEqual(f.counts, { commits: 1, recoveries: 0, failures: 0 });
+  assert.equal(f.tracker.snapshot().pending, 0);
 });
 
-test("progressive supersession acknowledges the current larger source carrying every exact occurrence", async () => {
-  const f = fixture(), promise = f.expect();
-  const expanded = source([["a1", "a", f.payload], ["a2", "a", f.payload], ["b1", "b", mesh(0)]]);
-  f.ctx.meshData = expanded;
-  assert.equal(f.tracker.adopted(f.published), false);
-  assert.equal(f.tracker.snapshot().pending, 1);
-  assert.equal(f.tracker.adopted(expanded), true); assert.equal(await promise, true);
+test("complete descriptor proof rejects missing, duplicate, extra and wrong-payload occurrences", () => {
+  const f = fixture();
+  const prove = lodOccurrenceProof({ source: f.candidate, descriptor: f.descriptor, componentId: "a", componentMesh: f.mesh });
+  for (const parts of [f.candidate.parts.slice(1), [f.candidate.parts[0], f.candidate.parts[0]],
+    [...f.candidate.parts, { ...f.candidate.parts[0], id: "extra", occurrenceId: "extra" }],
+    f.candidate.parts.map(part => ({ ...part, sourceMesh: {} }))]) assert.equal(prove({ parts }), false);
+  assert.equal(prove(f.candidate), true);
+  assert.equal(lodOccurrenceProof({ descriptor: { occurrences: [{ id: "a1", component: "a" }, { id: "a1", component: "a" }] },
+    componentId: "a", componentMesh: f.mesh })(f.candidate), false);
 });
 
-test("immutable descriptor composition publishes all occurrences of each available component together", async () => {
-  const occurrences = Object.freeze([
-    Object.freeze({ id: "a1", component: "a" }), Object.freeze({ id: "b1", component: "b" }),
-    Object.freeze({ id: "a2", component: "a" }),
-  ]);
-  const descriptor = Object.freeze({ occurrences, assembly: { root: { id: "root", nodeType: "assembly",
-    children: occurrences.map(({ id }) => ({ id, nodeType: "part", children: [] })) } } });
-  const a = mesh(1), first = buildComposedPackageMeshData(descriptor, { a });
-  assert.deepEqual(first.parts.map(part => part.id), ["a1", "a2"]);
-  const ctx = { file: "same.step", meshHash: "revision", meshData: first };
-  const tracker = createLodSceneAdoption({ currentContext: () => ctx });
-  const adopted = tracker.expect({ context: ctx, source: first, componentId: "a", componentMesh: a });
-  ctx.meshData = buildComposedPackageMeshData(descriptor, { a, b: mesh(0) }, { previous: first });
-  assert.deepEqual(ctx.meshData.parts.filter(part => part.componentId === "a").map(part => part.id), ["a1", "a2"]);
-  assert.equal(tracker.adopted(ctx.meshData), true);
-  assert.equal(await adopted, true);
+test("progressive supersession accepts every exact requested occurrence in the current larger source", async () => {
+  const f = fixture(), promise = f.expect(); f.publish();
+  const larger = source(f.mesh, [{ id: "b1", componentId: "b", sourceMesh: {} }]); f.current = larger;
+  assert.equal(f.tracker.adopted(f.candidate), false); assert.equal(f.tracker.snapshot().pending, 1);
+  assert.equal(f.tracker.adopted(larger), true); assert.equal((await promise).status, "adopted");
 });
 
-test("wrong payload, missing/duplicate/unexpected occurrences reject and clear references", async () => {
-  for (const rows of [
-    f => [["a1", "a", mesh(1)], ["a2", "a", f.payload]],
-    f => [["a1", "a", f.payload]],
-    f => [["a1", "a", f.payload], ["a1", "a", f.payload]],
-    f => [["a1", "a", f.payload], ["other", "a", f.payload]],
-  ]) {
-    const f = fixture(), promise = f.expect(); f.ctx.meshData = source(rows(f));
-    assert.equal(f.tracker.adopted(f.ctx.meshData), false); assert.equal(await promise, false);
-    assert.equal(f.tracker.snapshot().pending, 0);
+test("failure holds ownership through disposal and restoration, without committing candidate maps", async () => {
+  const f = fixture(); let done = false;
+  const promise = f.expect().then(outcome => { done = true; return outcome; }); f.publish();
+  f.tracker.failed(f.candidate); await ticks(); assert.equal(done, false);
+  f.tracker.disposed(f.candidate, { recover: true }); await ticks();
+  assert.equal(done, false); assert.equal(f.tracker.snapshot().phase, "restoring");
+  assert.equal(f.context.meshData, f.base); assert.equal(f.counts.commits, 0);
+  assert.equal(f.tracker.adopted(f.base), true); assert.equal((await promise).status, "restored");
+  assert.deepEqual(f.counts, { commits: 0, recoveries: 1, failures: 0 });
+});
+
+test("failed restoration releases only after its teardown and reports a fatal outcome", async () => {
+  const f = fixture(), promise = f.expect(); f.publish();
+  f.tracker.disposed(f.candidate, { recover: true });
+  f.tracker.failed(f.base); assert.equal(f.tracker.snapshot().pending, 1);
+  f.tracker.disposed(f.base, { recover: true });
+  assert.equal((await promise).status, "disposed-failed"); assert.equal(f.counts.failures, 1);
+  assert.equal(f.counts.commits, 0);
+});
+
+test("cleanup failure is not a disposal proof and keeps the owner pending", async () => {
+  const f = fixture(); let done = false;
+  const promise = f.expect().then(outcome => { done = true; return outcome; }); f.publish();
+  f.tracker.failed(f.candidate, { cleanupFailed: true }); await ticks();
+  assert.equal(done, false); assert.equal(f.tracker.snapshot().phase, "cleanup-failed");
+  f.tracker.cancel(); await ticks(); assert.equal(done, false);
+  f.tracker.disposed(f.candidate); assert.equal((await promise).status, "cancelled");
+});
+
+test("abort before publication settles immediately; abort after publication waits for renderer disposal", async () => {
+  const f = fixture(), before = new AbortController(); const first = f.expect(before.signal);
+  before.abort(); assert.equal((await first).status, "cancelled");
+  const after = new AbortController(); let done = false;
+  const second = f.expect(after.signal).then(outcome => { done = true; return outcome; }); f.publish();
+  after.abort(); await ticks(); assert.equal(done, false);
+  assert.throws(() => f.expect(), /still owns/);
+  f.tracker.disposed(f.candidate); assert.equal((await second).status, "cancelled");
+  const third = f.expect(); f.publish(); before.abort(); after.abort();
+  assert.equal(f.tracker.snapshot().pending, 1); f.tracker.adopted(f.candidate); await third;
+});
+
+test("same-file revision/model switch cannot release an old publication before replacement really adopts", async () => {
+  for (const mutate of [f => { f.context = { ...f.context }; }, f => { f.context.meshHash = "other"; }, f => { f.context = null; }]) {
+    const f = fixture(); let done = false;
+    const promise = f.expect().then(outcome => { done = true; return outcome; }); f.publish(); mutate(f);
+    f.tracker.checkContext(); await ticks(); assert.equal(done, false);
+    f.tracker.adopted({ parts: [] }); assert.equal((await promise).status, "cancelled"); assert.equal(f.counts.commits, 0);
   }
 });
 
-test("same-file context/revision changes reject stale adoption even when geometry is shared", async () => {
-  for (const change of [f => { f.ctx = { ...f.ctx }; }, f => { f.ctx.meshHash = "revision-b"; }, f => { f.ctx = null; }]) {
-    const f = fixture(), promise = f.expect(); change(f);
-    assert.equal(f.tracker.adopted(f.published), false); assert.equal(await promise, false);
-    assert.equal(f.tracker.snapshot().pending, 0);
+test("queued old-base acknowledgments cannot settle the candidate, including after abort", async () => {
+  for (const abort of [false, true]) {
+    const f = fixture(), controller = new AbortController(), promise = f.expect(controller.signal); f.publish();
+    if (abort) controller.abort();
+    assert.equal(f.tracker.adopted(f.base), true);
+    await ticks(); assert.equal(f.tracker.snapshot().pending, 1); assert.equal(f.counts.commits, 0);
+    f.tracker.adopted(f.candidate);
+    assert.equal((await promise).status, abort ? "cancelled" : "adopted");
   }
 });
 
-test("abort/replacement removes prior listeners; stale failure cannot reject a newer source", async () => {
-  const f = fixture(), first = new AbortController(), second = new AbortController();
-  const old = f.expect(first.signal); const current = f.expect(second.signal);
-  assert.equal(await old, false); first.abort();
-  assert.equal(f.tracker.snapshot().pending, 1);
-  f.tracker.failed({ ...f.published }); assert.equal(f.tracker.snapshot().pending, 1);
-  second.abort(); assert.equal(await current, false); assert.equal(f.tracker.snapshot().pending, 0);
-  const alreadyAborted = new AbortController(); alreadyAborted.abort();
-  assert.equal(await f.expect(alreadyAborted.signal), false);
+test("only committed exact receipts abandon a rejected update; replay cannot resurrect a retired command", async () => {
+  const f = fixture(), command = { source: f.candidate }, controller = new AbortController();
+  const promise = f.expect(controller.signal, { command }); f.publish();
+  const before = { value: { meshData: f.base }, reference: { oldSelectors: true }, receipt: null };
+  const proposed = { meshData: f.candidate };
+  const choose = current => controller.signal.aborted ? current : proposed;
+  const abandonedRender = updateLodMeshState(before, choose, command);
+  assert.equal(abandonedRender.receipt.accepted, true);
+  controller.abort();
+  const committed = updateLodMeshState(before, choose, command);
+  assert.equal(committed.value, before.value); assert.equal(committed.receipt.accepted, false);
+  f.tracker.adopted(f.base); await ticks(); assert.equal(f.tracker.snapshot().pending, 1);
+  f.tracker.committed(committed.receipt);
+  assert.equal((await promise).status, "cancelled"); assert.equal(command.source, null);
+  assert.equal(updateLodMeshState(committed, () => proposed, command), committed);
+  const next = f.expect(); f.publish(); f.tracker.committed(committed.receipt);
+  assert.equal(f.tracker.snapshot().pending, 1, "old receipt cannot settle a newer request");
+  f.tracker.adopted(f.candidate); await next;
 });
 
-test("current render failure, unmount and refused model-switch publication settle false", async () => {
-  for (const cancel of [f => f.tracker.failed(f.published), f => f.tracker.failed(null),
-    f => f.tracker.cancel(), f => { f.ctx = null; f.tracker.checkContext(); }]) {
-    const f = fixture(), promise = f.expect(); cancel(f);
-    assert.equal(await promise, false); assert.equal(f.tracker.snapshot().pending, 0);
-    assert.equal(f.tracker.adopted(f.published), false, "late callback cannot resurrect a settled request");
-  }
+test("accepted receipt keeps ownership pending, matches payload rather than state identity, and pairs selectors", async () => {
+  const f = fixture(), selectors = { currentLevel: 2 }, command = { source: f.candidate, reference: selectors };
+  const promise = f.expect(null, { command }); f.publish();
+  const before = { value: { meshData: f.candidate }, reference: {}, receipt: null };
+  const accepted = updateLodMeshState(before, current => current, command);
+  assert.equal(accepted.receipt.accepted, true); assert.equal(accepted.reference, selectors);
+  f.tracker.committed(accepted.receipt); assert.equal(f.tracker.snapshot().pending, 1);
+  f.tracker.adopted(f.candidate); await promise;
+  assert.equal(command.source, null); assert.equal(command.reference, null, "receipt retains no former model payload");
+  assert.equal(updateLodMeshState(accepted, current => current), accepted);
+  assert.equal(updateLodReferenceState(accepted, current => current), accepted);
+  assert.equal(updateLodMeshState(accepted, { file: "different.step" }).receipt, null);
 });
 
-test("scheduler reservation spans real scene adoption and blocks the next cached component", async () => {
-  const base = mesh(0), a = mesh(1), b = mesh(2);
-  const ctx = { file: "same.step", meshHash: "revision", meshData: source([["a1", "a", base], ["b1", "b", base]]) };
-  const tracker = createLodSceneAdoption({ currentContext: () => ctx });
-  const scene = buildModel(THREE, ctx.meshData, { renderPartsIndividually: true });
-  const reservations = new Set(), released = [], loads = [];
-  let timer;
-  const scheduler = createLodScheduler({ minimumLevel: 1,
-    setTimeoutFn: fn => { timer = fn; return 1; }, clearTimeoutFn: () => {},
-    reserveLevel: ({ cid }) => { reservations.add(cid); return { ok: true, token: cid }; },
-    releaseLevel: cid => { reservations.delete(cid); released.push(cid); },
-    loadLevel: async cid => { loads.push(cid); return cid === "a" ? a : b; },
-    applyLevel: (cid, level, payload, { signal }) => {
-      ctx.meshData = source(ctx.meshData.parts.map(part => [part.id, part.componentId, part.componentId === cid ? payload : part.sourceMesh]));
-      return tracker.expect({ context: ctx, source: ctx.meshData, componentId: cid, componentMesh: payload, signal });
-    } });
-  scheduler.setComponents([{ cid: "a", diagonal: 2, level: 0 }, { cid: "b", diagonal: 2, level: 0 }]);
-  scheduler.onCameraSample({ camera: { kind: "orthographic", visibleWorldHeight: 10000 }, viewportHeightPx: 1000, distanceFor: () => 1000 });
-  timer(); await ticks();
-  assert.deepEqual(loads, ["a"]); assert.deepEqual([...reservations], ["a"]); assert.equal(scheduler.levelOf("a"), 0);
-  assert.notEqual(scene.source, ctx.meshData);
-  scene.update({ source: ctx.meshData });
-  assert.equal(scene.displayRecords.find(record => record.partId === "a1").sourcePart.sourceMesh, a);
-  assert.equal(tracker.adopted(scene.source), true); await ticks();
-  assert.deepEqual(loads, ["a", "b"]); assert.deepEqual(released, ["a"]); assert.deepEqual([...reservations], ["b"]);
-  scene.update({ source: ctx.meshData }); assert.equal(tracker.adopted(scene.source), true); await ticks();
-  assert.deepEqual(released, ["a", "b"]); assert.equal(reservations.size, 0); assert.equal(tracker.snapshot().pending, 0);
-  assert.deepEqual(scheduler.snapshot().levelCounts, { 1: 2 });
-  scheduler.dispose(); scene.dispose();
+test("ordinary updates preserve not-yet-committed rejection receipt without retaining it after acknowledgment", async () => {
+  const f = fixture(), command = { source: f.candidate }, promise = f.expect(null, { command }); f.publish();
+  const state = { value: { meshData: f.base }, reference: {}, receipt: null };
+  const rejected = updateLodMeshState(state, value => value, command);
+  const next = updateLodMeshState(rejected, { ...state.value, backgroundError: "replacement failed" });
+  assert.equal(next.receipt, rejected.receipt);
+  f.tracker.committed(next.receipt); assert.equal((await promise).status, "cancelled");
+  const later = updateLodMeshState(next, { ...next.value }); assert.equal(later.receipt, null);
 });
 
-test("refused asynchronous adoption parks once, releases once, and retries only after a new camera sample", async () => {
-  let timer, loads = 0, releases = 0;
-  const scheduler = createLodScheduler({ minimumLevel: 1,
-    setTimeoutFn: fn => { timer = fn; return 1; }, clearTimeoutFn: () => {},
-    reserveLevel: () => ({ ok: true, token: "reservation" }), releaseLevel: () => { releases++; },
-    loadLevel: async () => { loads++; return {}; }, applyLevel: async () => false });
-  const sample = { camera: { kind: "orthographic", visibleWorldHeight: 10000 }, viewportHeightPx: 1000, distanceFor: () => 1000 };
-  scheduler.setComponents([{ cid: "a", diagonal: 2, level: 0 }]); scheduler.onCameraSample(sample); timer(); await ticks(40);
-  assert.equal(loads, 1); assert.equal(releases, 1); assert.equal(scheduler.snapshot().failedLevels, 1); assert.equal(scheduler.busy(), false);
-  scheduler.onCameraSample(sample); timer(); await ticks(40);
-  assert.equal(loads, 2); assert.equal(releases, 2); scheduler.dispose(); assert.equal(releases, 2);
+test("disposal recognizes a superseded progressive source and cannot strand its retiring lease", async () => {
+  const f = fixture(), sources = new WeakSet([f.candidate]), controller = new AbortController();
+  const middle = source(f.mesh, [{ id: "b1", componentId: "b", sourceMesh: {} }]);
+  const latest = source(f.mesh, [{ id: "c1", componentId: "c", sourceMesh: {} }]);
+  sources.add(middle); sources.add(latest);
+  const promise = f.expect(controller.signal, { candidateSources: sources }); f.publish(); f.current = latest;
+  assert.equal(f.tracker.adopted(middle), true); assert.equal(f.tracker.snapshot().pending, 1);
+  controller.abort(); f.tracker.disposed(middle);
+  assert.equal((await promise).status, "cancelled");
+});
+
+test("restoration uses a separate replay-fenced receipt and retires the original candidate command", async () => {
+  const f = fixture(), candidateCommand = { source: f.candidate }; let recovery;
+  const promise = f.expect(null, { command: candidateCommand, restore: command => {
+    recovery = command; command.source = f.base; command.reference = { baseSelectors: true }; return f.base;
+  } }); f.publish(); f.tracker.disposed(f.candidate, { recover: true });
+  assert.equal(candidateCommand.retired, true); assert.equal(candidateCommand.source, null);
+  const state = { value: { meshData: f.candidate }, reference: {}, receipt: null };
+  assert.equal(updateLodMeshState(state, { meshData: f.candidate }, candidateCommand), state);
+  const abandonedRender = updateLodMeshState(state, { meshData: f.base }, recovery);
+  assert.equal(abandonedRender.receipt.accepted, true);
+  f.context = { meshHash: "replacement", meshData: {} }; f.tracker.checkContext();
+  const committed = updateLodMeshState(state, current => current, recovery);
+  f.tracker.committed(committed.receipt);
+  assert.equal((await promise).status, "cancelled"); assert.equal(recovery.retired, true);
+  assert.equal(updateLodMeshState(committed, { meshData: f.base }, recovery), committed);
+});
+
+test("a stale empty clear is not disposal, while final renderer teardown retires a queued restoration", async () => {
+  const f = fixture(), promise = f.expect(); f.publish();
+  f.tracker.disposed(null); assert.equal(f.tracker.snapshot().pending, 1);
+  f.tracker.disposed(f.candidate, { recover: true });
+  f.tracker.cancel(); f.tracker.disposed(null, { terminal: true });
+  assert.equal((await promise).status, "cancelled");
+});
+
+test("a rejected replay cannot abandon geometry after cleanup failed, even with its exact receipt", async () => {
+  const f = fixture(), command = { source: f.candidate }, promise = f.expect(null, { command }); f.publish();
+  f.tracker.failed(f.candidate, { cleanupFailed: true });
+  const rejected = updateLodMeshState({ value: { meshData: f.base } }, value => value, command);
+  f.tracker.committed(rejected.receipt); assert.equal(f.tracker.snapshot().pending, 1);
+  assert.equal(f.tracker.adopted(f.candidate), false, "an unresolved partial cleanup cannot certify adoption");
+  f.tracker.cancel(); f.tracker.disposed(f.candidate); assert.equal((await promise).status, "cancelled");
+});
+
+test("cancelled obsolete progressive adoption waits for the exact latest queued source or its disposal", async () => {
+  const f = fixture(), controller = new AbortController(), sources = new WeakSet([f.candidate]);
+  const latest = source(f.mesh, [{ id: "other", componentId: "b", sourceMesh: {} }]); sources.add(latest);
+  const promise = f.expect(controller.signal, { candidateSources: sources }); f.publish(); f.current = latest;
+  controller.abort(); assert.equal(f.tracker.adopted(f.candidate), true);
+  assert.equal(f.tracker.snapshot().pending, 1); assert.equal(f.counts.commits, 0);
+  f.tracker.adopted(latest); assert.equal((await promise).status, "cancelled"); assert.equal(f.counts.commits, 1);
 });

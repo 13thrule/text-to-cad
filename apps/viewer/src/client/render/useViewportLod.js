@@ -16,6 +16,7 @@ import { createLodScheduler } from "./lodScheduler.js";
 import { syncSurfWorkerMemory } from "./surfWorkerMemoryPolicy.js";
 import { viewerMemoryPolicy } from "./viewerMemoryPolicy.js";
 import { estimateViewportLodMemory } from "./viewportLodMemory.js";
+import { lodPayloadRequest } from "./lodPayloadRequest.js";
 
 function publishLodMemoryLimitation(detail) {
   if (typeof window === "undefined") return;
@@ -101,18 +102,21 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
           currentLevel: component.level,
           level,
         });
+        const request = lodPayloadRequest(component, level);
         return loadRenderSurfPayloadAtLevel(component.surfUrl, {
           signal,
           tessellation: lodTessellationForLevel(level),
           identity: component.identity,
           selectors: selectorsRef.current?.(cid) === true,
           memoryEstimateBytes: workerTemporaryBytes,
-        }).finally(() => {
+        }).then(payload => ({ ...payload, lodRequest: request })).finally(() => {
           syncSurfWorkerMemory();
         });
       },
       applyLevel: async (cid, level, payload, { signal }) => {
-        if (await applyRef.current?.(cid, level, payload, { signal }) === false || signal.aborted) return false;
+        const outcome = await applyRef.current?.(cid, level, payload, { signal });
+        if (outcome?.status === "scene-failed") return outcome;
+        if (outcome === false || signal.aborted) return false;
         const component = componentsRef.current.get(cid);
         if (component && payload?.meshData) {
           component.meshBytes = estimateMeshRenderCost(payload.meshData).typedArrayBytes;

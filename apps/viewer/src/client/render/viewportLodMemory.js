@@ -12,11 +12,15 @@ export function estimateViewportLodMemory({ meshBytes, currentLevel, level }) {
   const nextMeshBytes = Math.ceil(currentBytes * Math.max(0.2, toleranceRatio, angleRatio));
   const replacementBytes = nextMeshBytes * LOD_SELECTOR_AND_GPU_ESTIMATE_MULTIPLIER;
   const workerTemporaryBytes = nextMeshBytes * LOD_WORKER_TEMP_ESTIMATE_MULTIPLIER;
+  // The previous payload remains available for full-scene recovery until
+  // adoption is confirmed, including after the renderer accounts the new one.
+  const heldPreviousBytes = Math.ceil(currentBytes * LOD_SELECTOR_AND_GPU_ESTIMATE_MULTIPLIER);
   return {
     currentBytes,
     nextMeshBytes,
     replacementBytes,
     workerTemporaryBytes,
-    admissionBytes: replacementBytes + workerTemporaryBytes,
+    heldPreviousBytes,
+    admissionBytes: replacementBytes + workerTemporaryBytes + heldPreviousBytes,
   };
 }

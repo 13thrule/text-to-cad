@@ -1,5 +1,6 @@
 "use client";
 
+import { disposeViewerCadScene } from "../render/lodSceneCleanup.js";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Minus, Plus, RotateCcw } from "lucide-react";
@@ -1444,7 +1445,6 @@ function disposeSceneObject(object) {
     object.userData.beforeDispose(object);
     delete object.userData.beforeDispose;
   }
-  object.parent?.remove(object);
   if (object.geometry?.userData?.cadSceneCachedGeometry !== true) {
     object.geometry?.dispose?.();
   }
@@ -1454,6 +1454,7 @@ function disposeSceneObject(object) {
     material?.alphaMap?.dispose?.();
     material?.dispose?.();
   }
+  object.parent?.remove(object);
 }
 
 // Read-only debug/test seam (like __cadModelPlacement): how long each scene
@@ -1733,7 +1734,7 @@ const CadViewer = forwardRef(function CadViewer({
   lodCameraChangeRef.current = onLodCameraChange;
   const meshSourceAdoptionRef = useRef(onMeshSourceAdoption);
   meshSourceAdoptionRef.current = onMeshSourceAdoption;
-  useEffect(() => () => { meshSourceAdoptionRef.current?.(null, false); }, []);
+
   const viewerAlertChangeRef = useRef(onViewerAlertChange);
   // The last { title, message } the scene-effects pass raised, so it can be
   // deduplicated across frames and cleared when a pass runs clean.
@@ -3326,6 +3327,7 @@ const CadViewer = forwardRef(function CadViewer({
     applyInitialPerspective,
     updateGridHelper: updateActiveGridHelper,
     clearSceneGroup,
+    onSceneDisposed: source => meshSourceAdoptionRef.current?.(source, false, { disposed: true, terminal: true }),
     disposeSceneObject,
     disposeTexture,
     syncViewPlaneOrientation,
@@ -3633,38 +3635,21 @@ const CadViewer = forwardRef(function CadViewer({
     const clearDisplayedModel = ({ preserveModelIdentity = false, releaseGpu = true } = {}) => {
       staticSceneResetRef.current.invalidate();
       cancelCameraTransition(runtime);
-      runtime.cadScene?.dispose?.({ releaseGpu });
-      runtime.cadScene = null;
-      clearSceneGroup(runtime.stageGroup);
-      clearSceneGroup(modelGroup);
-      clearSceneGroup(edgesGroup);
-      clearSceneGroup(facePickGroup);
-      clearSceneGroup(edgePickGroup);
-      clearSceneGroup(vertexPickGroup);
-      runtime.facePickMesh = null;
-      runtime.edgePickLines = null;
-      runtime.vertexPickPoints = null;
-      runtime.edgePickObjects = [];
-      runtime.topologyDisplayEdgeLine = null;
-      runtime.topologyDisplayEdgeTransformByRecord = false;
-      runtime.displayRecords = [];
-      if (!preserveModelIdentity) {
-        runtime.hasVisibleModel = false;
-        runtime.activeModelKey = "";
-      }
+      const disposedSource = disposeViewerCadScene(runtime, { clearSceneGroup, preserveModelIdentity, releaseGpu });
       runtime.requestRender();
+      return disposedSource;
     };
 
     if (isLoading) {
-      clearDisplayedModel();
-      meshSourceAdoptionRef.current?.(meshData, false);
+      const disposedSource = clearDisplayedModel();
+      meshSourceAdoptionRef.current?.(disposedSource, false, { disposed: true });
       setError("");
       return;
     }
 
     if (!hasMeshGeometry(meshData)) {
-      clearDisplayedModel();
-      meshSourceAdoptionRef.current?.(meshData, false);
+      const disposedSource = clearDisplayedModel();
+      meshSourceAdoptionRef.current?.(disposedSource, false, { disposed: true });
       return;
     }
 
@@ -4089,12 +4074,38 @@ const CadViewer = forwardRef(function CadViewer({
         source: meshData, runtime, visualState: currentPartVisualState, clipState: clipSettingsRef.current,
       });
     }
-    meshSourceAdoptionRef.current?.(meshData,
-      runtime.cadScene === cadScene && runtime.activeModelKey === (modelKey || "") && cadScene.source === meshData);
+    const adopted = runtime.cadScene === cadScene && runtime.activeModelKey === (modelKey || "") && cadScene.source === meshData;
+    if (meshSourceAdoptionRef.current?.(meshData, adopted) === false) {
+      throw new Error("The displayed detail does not match its requested component occurrences.");
+    }
     } catch (error) {
       staticSceneResetRef.current.invalidate();
-      meshSourceAdoptionRef.current?.(meshData, false);
-      throw error;
+      if (error?.failedCadScene) {
+        // Initial construction can fail before buildModel returns. Its typed
+        // cleanup failure transfers the still-owned scene to this host.
+        runtime.cadScene = error.failedCadScene;
+        runtime.displayRecords = error.failedCadScene.displayRecords;
+        modelGroup.add(error.failedCadScene.modelGroup);
+        edgesGroup.add(error.failedCadScene.edgesGroup);
+      }
+      // Reconciliation is in-place: a failure may have disposed old records
+      // and attached new orphans. Full teardown precedes any recovery/release.
+      let recovery;
+      try {
+        clearDisplayedModel();
+        recovery = meshSourceAdoptionRef.current?.(meshData, false, { disposed: true, recover: true });
+      } catch (cleanupError) {
+        meshSourceAdoptionRef.current?.(meshData, false, { cleanupFailed: true });
+        viewerAlertChangeRef.current?.({ severity: "error", title: "Scene cleanup failed",
+          message: "Detail work has stopped because scene ownership could not be released. Reload the viewer." });
+        setError(cleanupError instanceof Error ? cleanupError.message : String(cleanupError));
+        return;
+      }
+      viewerAlertChangeRef.current?.({ severity: "error", title: "Detail update failed",
+        message: recovery?.recovering
+          ? "The partial scene was cleared. The previous view is being restored; reload if restoration fails."
+          : "The scene was cleared after the display failed. Reload the model to continue." });
+      setError(error instanceof Error ? error.message : String(error));
     }
   }, [
     meshGeometrySource,

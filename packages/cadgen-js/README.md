@@ -34,6 +34,11 @@ snapshot renderer and the node builders in `bin/`).
   stored tree or component tessellation. Session state and UI remain in the app.
 - **Resource ownership**: component geometry and edge textures can have more
   than one scene owner; only the last release disposes shared GPU/BVH state.
+  Full scene disposal includes host-reparented groups and records attached by
+  an interrupted reconciliation. Cleanup retires completed ownership steps;
+  a thrown disposal remains retryable and cannot release another scene's share
+  twice. Failed initial construction cleans its partial scene before throwing,
+  or transfers the still-owned scene with an explicit cleanup error for retry.
   Render-only loads do not construct selector topology until requested.
   Viewport refinement keeps this demand boundary: unused components replace
   only display arrays; a component with active topology replaces its selectors

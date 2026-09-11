@@ -19,6 +19,8 @@ import { buildSelectorBundleFromSurf } from "cadgen-js/lib/surf/surfSelectorBund
 import { buildGlbFaceIdsForPart, TOPOLOGY_FACE_ID_NONE } from "cadgen-js/lib/viewer/selectorPickGroups.js";
 
 import {
+  baseLodReferenceComposition,
+  reconcileLodReferencePublication,
   buildPackageOccurrenceRuntimes,
   composePackageSelectorRuntime,
   compositionUsesComponent,
@@ -222,4 +224,34 @@ test("an obsolete reference job stops before publishing", async () => {
     isCurrent: () => current
   });
   assert.equal(result, null);
+});
+
+test("late selectors preserve unrelated CIDs in the candidate and exact base-level recovery overlay", () => {
+  const low = loadLevel(0.2), high = loadLevel(0.01), unrelated = loadLevel(0.1);
+  const composition = { entry: ENTRY, loadedTopologyKey: "newly-demanded-subset",
+    occurrencesToLoad: [...OCCURRENCES, { id: "other", component: "other" }],
+    bundleByCid: { c0: high.bundle, other: unrelated.bundle } };
+  const base = baseLodReferenceComposition(composition, { cid: "c0" }, low.bundle);
+  assert.equal(base.occurrencesToLoad, composition.occurrencesToLoad);
+  assert.equal(base.loadedTopologyKey, composition.loadedTopologyKey);
+  assert.equal(base.bundleByCid.other, unrelated.bundle); assert.equal(base.bundleByCid.c0, low.bundle);
+  assert.equal(composition.bundleByCid.c0, high.bundle, "candidate remains immutable");
+  const baseRuntime = composePackageSelectorRuntime(ENTRY, base.occurrencesToLoad, base.bundleByCid);
+  assert.equal(faceIdInvariant(low.meshData, baseRuntime).ok, true);
+  assert.equal(baseLodReferenceComposition(composition, { cid: "not-demanded" }, null), composition);
+  assert.equal(baseLodReferenceComposition(composition, { cid: "c0", phase: "restoring" }, null), composition);
+  assert.throws(() => baseLodReferenceComposition(composition, { cid: "c0" }, null), /Previous detail/);
+});
+
+test("reference publication rechecks pending ownership after base-selector and live-selector awaits", async () => {
+  const first = { cid: "a" }, second = { cid: "b" };
+  let pending = first, current = true, calls = 0;
+  const result = await reconcileLodReferencePublication({ pendingForContext: () => pending,
+    loadBaseBundle: async owner => { if (owner === first) pending = second; return owner.cid; },
+    reconcile: async () => { calls++; return { current: pending.cid }; }, isCurrent: () => current });
+  assert.equal(result.pending, second); assert.equal(result.baseBundle, "b"); assert.equal(calls, 2);
+  const stopped = await reconcileLodReferencePublication({ pendingForContext: () => pending,
+    loadBaseBundle: async () => { current = false; return "unused"; },
+    reconcile: async () => { throw new Error("must not publish after abort"); }, isCurrent: () => current });
+  assert.equal(stopped, null);
 });

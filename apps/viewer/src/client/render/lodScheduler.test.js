@@ -435,7 +435,7 @@ test("an admitted intermediate supplies real bytes for one new final-target esti
     reserveLevel: ({ currentLevel, level }) => {
       const estimate = estimateViewportLodMemory({ meshBytes, currentLevel, level });
       estimates.push([currentLevel, level, meshBytes]);
-      return estimate.admissionBytes <= 2000 ? { ok: true, token: `L${level}` } : { ok: false, detail: estimate };
+      return estimate.admissionBytes <= 2400 ? { ok: true, token: `L${level}` } : { ok: false, detail: estimate };
     },
     releaseLevel: token => releases.push(token),
     loadLevel: async (_cid, level) => { loads.push(level); return { level }; },
@@ -695,7 +695,7 @@ test("idle telemetry reports a blocked intermediate floor step rather than pendi
   }
 });
 
-test("clearing or replacing a model performs immediate idle cleanup; late old rejection cannot clean a newer task", async () => {
+test("replacing a model waits for the retiring owner's cleanup before starting new work", async () => {
   const clock = makeClock(), old = deferred(), next = deferred();
   const idle = [], loads = [];
   const scheduler = createLodScheduler({ ...clock,
@@ -705,16 +705,16 @@ test("clearing or replacing a model performs immediate idle cleanup; late old re
   scheduler.onCameraSample(sampleWith({ old: 60 })); clock.fire();
   scheduler.onCameraSample(sampleWith({ old: 60 }));
   scheduler.setComponents([]);
-  assert.equal(idle.length, 1, "aborted loader may have replaced its isolate; package cleanup cannot wait on late finally");
+  assert.equal(idle.length, 0, "abort alone is not proof that published data stopped being owned");
   assert.equal(clock.count(), 0, "the old package's debounce is canceled too");
   scheduler.setComponents([{ cid: "next", diagonal: 100, level: 0 }]);
   scheduler.onCameraSample(sampleWith({ next: 60 })); clock.fire();
   old.reject(new Error("old worker stopped")); await drain();
-  assert.equal(idle.length, 1, "old completion cannot release a newer active pool");
+  assert.equal(idle.length, 0, "old completion cannot release a newer active pool");
   assert.deepEqual(loads, ["old", "next"]);
   assert.equal(scheduler.busy(), true);
   next.resolve({}); await drain();
-  assert.equal(idle.length, 2);
+  assert.equal(idle.length, 1);
   scheduler.dispose();
 });
 

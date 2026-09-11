@@ -233,7 +233,6 @@ function disposeSceneObject(object, { disposeCachedGeometry = false } = {}) {
   while (object.children?.length) {
     disposeSceneObject(object.children[0], { disposeCachedGeometry });
   }
-  object.parent?.remove(object);
   if (typeof object.userData?.beforeDispose === "function") {
     object.userData.beforeDispose(object);
     delete object.userData.beforeDispose;
@@ -242,6 +241,8 @@ function disposeSceneObject(object, { disposeCachedGeometry = false } = {}) {
     object.geometry?.dispose?.();
   }
   disposeMaterial(object.material);
+  // Keep an object reachable for retry if a cleanup callback throws.
+  object.parent?.remove(object);
 }
 
 function clearGroup(group, options = {}) {
@@ -1837,19 +1838,19 @@ function disposeCadEdgeInstanceSet(runtime, set) {
   for (const material of set.materials) {
     runtime.unregisterScreenSpaceLineMaterial(material);
   }
-  set.object.parent?.remove(set.object);
   set.dispose();
-  runtime.cadEdgeInstanceSets.delete(set);
   // The segment texture is cached on the component (a later scene reuses its
   // arrays); its GPU copy goes when no live set draws it, and three re-uploads
   // it on the next use.
   const owners = (segmentTextureOwners.get(set.segments) || 1) - 1;
   if (owners === 0) {
-    segmentTextureOwners.delete(set.segments);
     set.segments.texture.dispose();
+    segmentTextureOwners.delete(set.segments);
   } else {
     segmentTextureOwners.set(set.segments, owners);
   }
+  set.object.parent?.remove(set.object);
+  runtime.cadEdgeInstanceSets.delete(set);
 }
 
 function disposeCadEdgeInstanceSets(runtime) {
@@ -1895,6 +1896,7 @@ function syncRecordGeometryOwnership(runtime, keptRecords, { releaseGpu = true }
   for (const geometry of kept) {
     if (!runtime.ownedGeometries.has(geometry)) {
       geometryOwners.set(geometry, (geometryOwners.get(geometry) || 0) + 1);
+      runtime.ownedGeometries.add(geometry);
     }
   }
   for (const geometry of runtime.ownedGeometries) {
@@ -1904,14 +1906,16 @@ function syncRecordGeometryOwnership(runtime, keptRecords, { releaseGpu = true }
     const owners = (geometryOwners.get(geometry) || 1) - 1;
     if (owners > 0) {
       geometryOwners.set(geometry, owners);
+      runtime.ownedGeometries.delete(geometry);
       continue;
     }
-    geometryOwners.delete(geometry);
     if (releaseGpu) {
       geometry.boundsTree = null;
       delete geometry.userData.__bvhQueued;
       geometry.dispose();
     }
+    geometryOwners.delete(geometry);
+    runtime.ownedGeometries.delete(geometry);
   }
   runtime.ownedGeometries = kept;
 }
@@ -2445,9 +2449,6 @@ export function buildModel(THREE, source, settings = {}) {
     syncClip(runtime, nextSettings.clip, runtime.bounds, nextSettings.modelOffset || modelGroup.position);
   };
 
-  rebuild(currentSettings);
-  applyMutableState(currentSettings);
-
   const api = {
     get source() {
       return activeSource;
@@ -2522,18 +2523,51 @@ export function buildModel(THREE, source, settings = {}) {
       if (disposed) {
         return;
       }
-      disposed = true;
       if (activeParameterSetup) {
         cleanupParameterRuntime(runtime, activeParameters, currentSettings.callbacks);
       }
+      // A failed reconciliation can have attached new records before installing
+      // its result array. Include their cached geometries in THIS scene's final
+      // release, without disposing geometry another scene still owns.
+      for (const group of [modelGroup, edgesGroup]) {
+        group.traverse((object) => {
+          const geometry = object.geometry;
+          if (geometry?.userData?.cadSceneCachedGeometry === true && !runtime.ownedGeometries.has(geometry)) {
+            runtime.ownedGeometries.add(geometry);
+            geometryOwners.set(geometry, (geometryOwners.get(geometry) || 0) + 1);
+          }
+        });
+      }
       dissolveCadSurfaceInstanceSets(runtime.cadSurfaceInstanceSets, modelGroup);
       disposeCadEdgeInstanceSets(runtime);
+      // Hosts may reparent these groups out of root (the viewer does). Clearing
+      // root alone would leave their records, materials and orphaned objects.
+      clearGroup(modelGroup);
+      clearGroup(edgesGroup);
+      modelGroup.removeFromParent();
+      edgesGroup.removeFromParent();
       clearGroup(root);
+      root.removeFromParent();
       syncRecordGeometryOwnership(runtime, [], { releaseGpu });
       runtime.displayRecords = [];
       runtime.records = [];
+      disposed = true;
     }
   };
+
+  try {
+    rebuild(currentSettings);
+    applyMutableState(currentSettings);
+  } catch (error) {
+    try { api.dispose(); }
+    catch (cleanupError) {
+      const failure = new Error("CAD scene construction and cleanup failed", { cause: error });
+      failure.cleanupError = cleanupError;
+      failure.failedCadScene = api;
+      throw failure;
+    }
+    throw error;
+  }
 
   return api;
 }

@@ -1627,3 +1627,41 @@ test("a deformed tube's private edges keep per-class thickness", () => {
   assert.deepEqual(Array.from(record.edges.children[0].geometry.attributes.instanceStart.data.array).slice(0, 3), [0, 0, 0]);
   scene.dispose();
 });
+
+test("failed surface-instance disposal retains reachability and retries only unfinished resources", () => {
+  const component = surfComponentMeshData();
+  const scene = buildModel(THREE, twoComponentPackage(component, component, [0, 1, 2]), { renderPartsIndividually: true });
+  const set = [...scene.runtime.cadSurfaceInstanceSets][0];
+  assert.ok(set);
+  let objectDisposals = 0, materialDisposals = 0;
+  set.object.addEventListener("dispose", () => { objectDisposals++; });
+  const fail = () => { materialDisposals++; throw new Error("instance material cleanup"); };
+  set.object.material.addEventListener("dispose", fail);
+  assert.throws(() => scene.dispose(), /instance material cleanup/);
+  assert.equal(set.disposed, false); assert.equal(set.object.parent, scene.modelGroup);
+  assert.ok(set.records.every(record => record.surfaceInstance?.set === set));
+  set.object.material.removeEventListener("dispose", fail);
+  scene.dispose();
+  assert.equal(objectDisposals, 1, "successful instance GPU disposal is not repeated");
+  assert.equal(materialDisposals, 1); assert.equal(set.disposed, true); assert.equal(set.object.parent, null);
+  assert.ok(set.records.every(record => !record.surfaceInstance));
+  assert.equal(scene.runtime.ownedGeometries.size, 0);
+});
+
+test("failed edge-instance disposal retains its set and another scene's shared segment texture", () => {
+  const component = surfComponentMeshData(), input = twoComponentPackage(component, component, [0, 1]);
+  const scene = buildModel(THREE, input, { renderPartsIndividually: true });
+  const other = buildModel(THREE, input, { renderPartsIndividually: true });
+  const set = scene.displayRecords[0].edgeInstance.set;
+  let textureDisposals = 0, instanceDisposals = 0;
+  set.segments.texture.addEventListener("dispose", () => { textureDisposals++; });
+  set.instanceTexture.addEventListener("dispose", () => { instanceDisposals++; });
+  const fail = () => { throw new Error("edge material cleanup"); };
+  set.material.addEventListener("dispose", fail);
+  assert.throws(() => scene.dispose(), /edge material cleanup/);
+  assert.equal(set.disposed, false); assert.equal(set.object.parent, scene.edgesGroup);
+  assert.ok(scene.runtime.cadEdgeInstanceSets.has(set));
+  set.material.removeEventListener("dispose", fail);
+  scene.dispose(); assert.equal(instanceDisposals, 1); assert.equal(textureDisposals, 0);
+  other.dispose(); assert.equal(textureDisposals, 1);
+});

@@ -152,6 +152,17 @@ export function renderMemoryAccounting(runtime) {
       totals.edgeInstances += 1;
     }
   }
+  if (runtime?.sceneCleanupFailed) {
+    for (const [group, kind] of [[runtime.modelGroup, "surface"], [runtime.edgesGroup, "edge"], [runtime.stageGroup, "surface"]]) {
+      group?.traverse?.(object => { visit(object, kind); countFaceIds(object); });
+    }
+    for (const part of (runtime.cadScene?.meshData || runtime.retiringCadSource)?.parts || []) {
+      if (part.sourceMesh && !seenSourceMeshes.has(part.sourceMesh)) {
+        seenSourceMeshes.add(part.sourceMesh);
+        displayCpuBytes += retainMeshBackingBytes(part.sourceMesh, seenArrayBuffers);
+      }
+    }
+  }
   // Instanced CAD edges: one draw per component; its segment texture (shared
   // by every occurrence, cached on the component), instance texture and quad.
   const seenSegmentTextures = new Set();

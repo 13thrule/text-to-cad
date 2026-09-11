@@ -1,3 +1,4 @@
+import { disposeViewerCadScene } from "../../../render/lodSceneCleanup.js";
 import { useEffect } from "react";
 import { isEditableTarget } from "../../../ui/dom";
 import {
@@ -60,6 +61,7 @@ export function useViewerRuntime({
   applyInitialPerspective,
   updateGridHelper,
   clearSceneGroup,
+  onSceneDisposed,
   disposeSceneObject,
   disposeTexture,
   syncViewPlaneOrientation,
@@ -890,12 +892,8 @@ export function useViewerRuntime({
         window.removeEventListener("blur", clearKeyboardOrbit);
         document.removeEventListener("visibilitychange", handleVisibilityChange);
         runtime.controls.dispose();
-        clearSceneGroup(runtime.stageGroup);
-        clearSceneGroup(runtime.modelGroup);
-        clearSceneGroup(runtime.edgesGroup);
-        clearSceneGroup(runtime.facePickGroup);
-        clearSceneGroup(runtime.edgePickGroup);
-        clearSceneGroup(runtime.vertexPickGroup);
+        const disposedSource = disposeViewerCadScene(runtime, { clearSceneGroup });
+        onSceneDisposed?.(disposedSource);
         disposeSceneObject(runtime.gridHelper);
         disposeSceneObject(runtime.axesHelper);
         disposeTexture(runtime.sceneBackgroundTexture);

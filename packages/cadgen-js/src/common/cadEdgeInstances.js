@@ -492,11 +492,14 @@ export class CadEdgeInstances {
     if (this.disposed) {
       return;
     }
+    this.disposedResources ||= new Set();
+    for (const resource of [this.instanceTexture, this.material, this.highlightMaterial, this.geometry]) {
+      if (resource && !this.disposedResources.has(resource)) {
+        resource.dispose();
+        this.disposedResources.add(resource);
+      }
+    }
     this.disposed = true;
-    this.instanceTexture?.dispose();
-    this.material.dispose();
-    this.highlightMaterial.dispose();
-    this.geometry.dispose();
   }
 }
 

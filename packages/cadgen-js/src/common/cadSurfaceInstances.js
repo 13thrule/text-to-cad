@@ -265,15 +265,15 @@ export function buildCadSurfaceInstanceSets(THREE, records, modelGroup) {
 
 function disposeSurfaceInstanceSet(set, modelGroup) {
   if (!set || set.disposed) return;
-  set.disposed = true;
-  (set.object.parent || modelGroup)?.remove(set.object);
-  set.object.dispose?.();
-  set.object.material?.dispose?.();
+  if (!set.objectDisposed) { set.object.dispose?.(); set.objectDisposed = true; }
+  if (!set.materialDisposed) { set.object.material?.dispose?.(); set.materialDisposed = true; }
   for (const record of set.records) {
     record.surfaceInstance = null;
     record.material.visible = true;
     delete record.mesh.userData.cadSurfaceInstanceProxy;
   }
+  (set.object.parent || modelGroup)?.remove(set.object);
+  set.disposed = true;
 }
 
 export function dissolveCadSurfaceInstanceSets(sets, modelGroup) {

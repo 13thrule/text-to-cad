@@ -136,7 +136,17 @@ the build — detection only; it keeps serving.
   This acknowledgment schedules rendering; it is not a GPU upload-completion
   fence. Modeled upload ownership remains separate. A superseding progressive
   publication can satisfy it only with the same context, revision, occurrence
-  set and exact payload; switch, abort, unmount or scene failure cancels it.
+  set and exact payload. Cancellation requests cleanup: switch, abort or unmount
+  retains an outstanding reservation until actual replacement, restoration or
+  complete disposal proves that the renderer has released its previous owner.
+  Pending component maps remain separate from adopted maps. Display geometry
+  and demanded selectors publish as one matching state pair, with commit receipts
+  fencing abandoned or replayed React updates. A failed scene update clears its
+  partial records before rebuilding the last adopted mesh/selector pair; it never
+  reconciles against already-disposed records. Restoration preserves unrelated
+  progressive components and completed selector loads. A second construction
+  failure stops detail work and reports an error. Cleanup failure keeps ownership
+  charged until a real cleanup retry succeeds.
   A static component publication can reuse the main adoption's completed reset
   only in that same React render. Later visual or clipping changes still run
   normally, as do transitions out of modules, animation, drawings or poses.
@@ -158,6 +168,9 @@ the build — detection only; it keeps serving.
   Progressive display and later detail swaps share unchanged occurrence rows
   and tree metadata; changing tessellation alone does not rebuild every tree
   leaf. Placement, appearance and changed bounds still update their records.
+  Selection pruning preserves unchanged selected, referenced and hidden ID
+  arrays, preventing detail publications from retaining historical workspace
+  render contexts through unnecessary selection updates.
   A component that cannot fit even at the coarse level
   reports a limitation and preserves the current view. Estimates and sampled
   resource totals are a soft budget, not a hard browser RSS limit.

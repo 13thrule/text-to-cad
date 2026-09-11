@@ -61,6 +61,29 @@ export function swapCompositionBundle(composition, cid, bundle) {
   };
 }
 
+// Reference loads can finish while a display replacement still owns its old
+// scene. Keep both exact selector levels ready for the same newly demanded
+// occurrence subset, and recheck if adoption changed during either await.
+export async function reconcileLodReferencePublication({ pendingForContext, loadBaseBundle, reconcile, isCurrent, maxPasses = 16 }) {
+  for (let pass = 0; pass < maxPasses && isCurrent(); pass++) {
+    const pending = pendingForContext();
+    const phase = pending?.phase;
+    const baseBundle = pending && phase !== "restoring" ? await loadBaseBundle(pending) : null;
+    if (!isCurrent()) return null;
+    const bundles = await reconcile();
+    if (!bundles || !isCurrent()) return null;
+    if (pendingForContext() === pending && pending?.phase === phase) return { bundles, pending, baseBundle };
+  }
+  if (!isCurrent()) return null;
+  throw new Error("Selector publication could not settle on the displayed component LOD");
+}
+
+export function baseLodReferenceComposition(composition, pending, baseBundle) {
+  if (!pending || pending.phase === "restoring" || !compositionUsesComponent(composition, pending.cid)) return composition;
+  if (!baseBundle) throw new Error("Previous detail's selector bundle is unavailable");
+  return swapCompositionBundle(composition, pending.cid, baseBundle);
+}
+
 // Resolve selector bundles against the LOD state that is live immediately
 // before composition. Initial selector fetches can overlap a viewport LOD
 // swap; their result is exact for the level they requested, but no longer for
