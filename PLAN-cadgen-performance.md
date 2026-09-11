@@ -192,6 +192,11 @@ last runtime changes.
   and four package-boundary tests pass. Committed as `d706cf1f0`, it passes all
   1,628 package tests and a fresh isolated-wheel export/viewer check. This modest
   gain does not remove process startup or surface extraction.
+  Manual GC also now retains current-schema document-index trees and their
+  complete linked closure after source records are forgotten. External mesh
+  output hashes are not mistaken for store-object roots. Eleven focused tests
+  cover cleanup, forgetting and package boundaries; this removes an avoidable
+  recompilation path without changing geometry or display outputs.
   The medium repeated-assembly lifecycle already exercises selection, orbit,
   animation, file switches and six saved-file replacements with stable owned
   geometry/GPU allocation totals.

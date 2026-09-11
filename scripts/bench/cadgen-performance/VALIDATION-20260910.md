@@ -446,3 +446,27 @@ thread; browser worker latency still requires the measured browser check.
 worker path, so it needs no extra worker route. All 1,545 backend test results
 above still apply: no Python runtime changed after that suite. The current
 full-hand and installed-wheel gates remain pending.
+
+## Later backend and cache-cleanup checkpoints
+
+The large hand was subsequently removed from active acceptance at the user's
+request. Current experiments use the nine-part planetary assembly, 24 repeated
+instances and small structural/curved fixtures. The current combined results
+and exact qualifications are in [the progress summary](SUMMARY-20260911.md).
+
+Runtime commit `d706cf1f0` passes all **1,628 package Python tests**, including
+the viewer backend, after bounded linked-result publication and raw-compile
+cleanup. The isolated wheel matches all 217 installed package files to source;
+decorated child composition, source-free saved exports and all 22 served viewer
+assets pass. See the [package run](results/package-cold-compile-20260911.json)
+and [installed-wheel proof](results/installed-wheel-cold-compile-20260911.json.gz).
+
+The subsequent GC fix adds current-schema document-index roots to reachability.
+It passes **11 targeted tests** covering component/document closures, deletion
+of obsolete indexes, exclusion of external-output mesh hashes, existing linked
+record retention, real `store forget` builds and package boundaries. Runtime
+and log hashes are recorded in the [focused proof](results/gc-document-roots-20260911.json).
+The initial sandbox run passed the eight non-IPC checks; three real-build tests
+could not bind their local broker socket. The complete rerun with local IPC
+enabled passed in 17.896 seconds. No performance timing is inferred from this
+correctness suite, and no large assembly was used.

@@ -582,10 +582,12 @@ or source to recover an artifact.
 
 `cadgen store gc [--dry-run] [--grace-hours H]` — mark and sweep. Reachable =
 every object referenced (transitively, through links) from a record's result
-and document trees, plus the
+and document trees or a current-schema document index, plus the
 objects component/op/mesh entries point at, plus anything modified within the
 grace period (default 1 h — the window in which a build may still hold a pin
-to a child's previous tree). No age sweeps, no per-tier rules. GC does not
+to a child's previous tree). A saved document retains its geometry even after
+model/output records are forgotten. Its mesh ledger records hashes of external
+output files; those hashes do not root store objects. No age sweeps, no per-tier rules. GC does not
 consult the daemon: the grace period is the whole protection for a build in
 flight, so do not sweep with `--grace-hours 0` while anything is building.
 Nothing runs GC automatically.
