@@ -8,10 +8,8 @@ import CadRenderPane from "./workbench/CadRenderPane";
 import { useViewportLod } from "../render/useViewportLod";
 import { lodSceneMayMove } from "../render/lodCameraSample.js";
 import FileViewerSidebar from "./workbench/FileViewerSidebar";
-import {
-  ThemeEditorPanel,
-  buildDisplaySettingsTab
-} from "./workbench/ThemeSettingsPopover";
+import { buildDisplaySettingsTab } from "./workbench/DisplaySettingsTab";
+import { buildRenderSettingsTab } from "./workbench/RenderSettingsTab";
 import MeshFileSheet from "./workbench/MeshFileSheet";
 import { DXF_PREVIEW_REFERENCE_THICKNESS_MM } from "cadgen-js/lib/dxf/previewGlb";
 import { dxfDataIsDocument } from "cadgen-js/lib/dxf/parseDxf";
@@ -70,25 +68,22 @@ import {
   applyColorSchemeToDocument,
   DARK_COLOR_SCHEME_ID,
   readColorSchemePreference,
-  resolveColorSchemeMode
+  resolveColorSchemeMode,
+  writeColorSchemePreference
 } from "@/ui/colorScheme";
 import { useSystemPrefersDark } from "@/ui/useSystemPrefersDark";
 import { useChromeBackdropColor } from "@/ui/useChromeBackdropColor";
 import { sceneBackdropEdgeColor } from "../workbench/chromeBackdrop.js";
-import { resolveCadThemeSettings } from "../workbench/cadTheme.js";
-import {
-  CUSTOM_THEME_ID,
-  getThemePresetIdForSettings,
-  normalizeThemeSettings,
-  resolveThemeSettingsForId
-} from "cadgen-js/lib/themeSettings";
 import {
   displayModeForcesEdges,
   displayModeIsWireframe,
-  normalizeDisplayEdgeSettings,
   normalizeDisplaySettings
 } from "cadgen-js/lib/displaySettings";
-import { clonePerspectiveSnapshot } from "cadgen-js/lib/perspective";
+import { resolveSceneSettings } from "cadgen-js/common/sceneSettings.js";
+import {
+  annotatePerspectiveSnapshot,
+  clonePerspectiveSnapshot
+} from "cadgen-js/lib/perspective";
 import {
   ASSET_STATUS,
   DOCUMENT_TITLE,
@@ -165,17 +160,12 @@ import {
 } from "cadgen-js/lib/render/meshCost";
 import {
   cadWorkspaceDefaultFileSheetWidthForViewport,
-  createDirectorySessionThemeSlice,
   cloneDrawingStrokes,
   cloneTabSnapshot,
   createTabRecord,
   drawingStrokesEqual,
   readCadDirectorySessionState,
-  readThemeSettingsState,
-  readDirectoryThemeSettingsState,
   writeCadDirectorySessionState,
-  writeThemeState,
-  writeThemeSettings,
   tabSnapshotEqual,
   CAD_WORKSPACE_DEFAULT_SIDEBAR_WIDTH,
   CAD_WORKSPACE_DEFAULT_TAB_TOOLS_WIDTH
@@ -187,6 +177,22 @@ import {
   readFileSessionState,
   writeFileSessionState
 } from "@/workbench/fileSessionState";
+import {
+  DEFAULT_RENDER_PAYLOAD,
+  createRenderSessionState,
+  parseRenderSettingsText,
+  renderCameraSeed,
+  renderCameraSnapshot,
+  renderPayloadForCopy,
+  renderSessionForPayloadApply,
+  renderVisualPayload,
+  renderVisualSettingsKey,
+  resolveRenderSessionQuality,
+  resolveRenderCameraSnapshot,
+  replaceRenderAppearance,
+  replaceRenderPreset,
+  setRenderSetting
+} from "@/workbench/renderSessionState.js";
 import {
   CAD_DIRECTORY_STORAGE_EVENT_ACTION,
   cadDirectoryStorageEventAction
@@ -1066,6 +1072,19 @@ function entryWithoutRenderAssets(entry) {
   return next;
 }
 
+function scopedWorkspacePerspective(snapshot, modelKey, entry) {
+  const normalized = clonePerspectiveSnapshot(snapshot);
+  if (!normalized) {
+    return null;
+  }
+  const robot = isRobotRenderFormat(entrySourceFormat(entry));
+  return annotatePerspectiveSnapshot(normalized, {
+    modelKey,
+    sceneScaleMode: robot ? "urdf" : "cad",
+    coordinateSystem: robot ? "cad-z-up-robot-framing-v2" : "cad-z-up-v1"
+  });
+}
+
 export default function CadWorkspace({
   manifestEntries: manifestEntriesProp = [],
   manifestRevision = 0,
@@ -1081,7 +1100,6 @@ export default function CadWorkspace({
     prefersDark: systemPrefersDark
   });
   const uiPrefersDark = resolvedColorSchemeMode === DARK_COLOR_SCHEME_ID;
-  const themeReadOptions = useMemo(() => ({ prefersDark: uiPrefersDark }), [uiPrefersDark]);
   const chromeBackdropColor = useChromeBackdropColor(uiPrefersDark);
   const manifestEntries = Array.isArray(manifestEntriesProp) ? manifestEntriesProp : [];
   const catalogEntries = manifestEntries;
@@ -1143,6 +1161,8 @@ export default function CadWorkspace({
   const [isolatedAssemblyNodeIds, setIsolatedAssemblyNodeIds] = useState([]);
   const [viewerContextMenu, setViewerContextMenu] = useState(null);
   const [displaySettings, setDisplaySettings] = useState(() => normalizeDisplaySettings());
+  const [renderSession, setRenderSession] = useState(createRenderSessionState);
+  const [viewerPerspective, setViewerPerspective] = useState(null);
   const [hoveredListPartId, setHoveredListPartId] = useState("");
   const [hoveredModelPartId, setHoveredModelPartId] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
@@ -1161,26 +1181,6 @@ export default function CadWorkspace({
   const [fileSheetOpenIntent, setFileSheetOpenIntent] = useState(readInitialFileSheetOpen);
   const [viewerAlertOpen, setViewerAlertOpen] = useState(false);
   const [viewerRuntimeAlert, setViewerRuntimeAlert] = useState(null);
-  // One active theme id plus at most one custom settings blob. Presets are
-  // read-only; editing anything moves the active theme to "custom".
-  const [themeState, setThemeState] = useState(() => readDirectoryThemeSettingsState(themeReadOptions));
-  const themeReadOptionsRef = useRef(themeReadOptions);
-  useEffect(() => {
-    if (themeReadOptionsRef.current === themeReadOptions) return;
-    themeReadOptionsRef.current = themeReadOptions;
-    // Re-resolve the current choice, preserving edits that have not reached
-    // the debounced directory-session persistence yet.
-    setThemeState(current => ({
-      ...current,
-      settings: resolveThemeSettingsForId(current.themeId, {
-        custom: current.custom,
-        ...themeReadOptions
-      })
-    }));
-  }, [themeReadOptions]);
-  const themeSettings = themeState.settings;
-  const themeId = themeState.themeId;
-  const [themeEditing, setThemeEditing] = useState(false);
   // Which way a drawing is being looked at. Session state on purpose: it is a way of looking
   // at the model open right now, not a preference worth outliving the tab.
   const [drawingViewMode, setDrawingViewMode] = useState("3d");
@@ -1209,39 +1209,81 @@ export default function CadWorkspace({
   // re-mesh from these; the URL carries the package version, so a rebuild refetches.
   const drawingGeometryCacheRef = useRef(new Map());
   const [drawingGeometry, setDrawingGeometry] = useState(null);
-  const resolvedThemeSettings = useMemo(() => resolveCadThemeSettings(themeSettings, themeId, {
-    prefersDark: uiPrefersDark,
-    chromeBackdropColor
-  }), [chromeBackdropColor, themeId, themeSettings, uiPrefersDark]);
+  const renderVisualKey = renderVisualSettingsKey(renderSession.payload);
+  const resolvedVisualScene = useMemo(() => resolveSceneSettings({
+    appearance: colorSchemePreference,
+    prefersDark: systemPrefersDark,
+    render: renderSession.enabled ? renderVisualPayload(renderSession.payload) : null,
+    display: renderSession.enabled ? null : displaySettings
+  }), [
+    colorSchemePreference,
+    displaySettings,
+    renderSession.enabled,
+    renderVisualKey,
+    systemPrefersDark
+  ]);
+  const resolvedCamera = useMemo(() => resolveSceneSettings({
+    appearance: colorSchemePreference,
+    prefersDark: systemPrefersDark,
+    render: renderSession.enabled ? {
+      studio: renderSession.payload.studio,
+      appearance: renderSession.payload.appearance,
+      quality: renderSession.payload.quality,
+      ...(renderSession.payload.camera ? { camera: renderSession.payload.camera } : {})
+    } : null,
+    camera: renderSession.enabled ? null : { projection: renderSession.cadProjection }
+  }).camera, [
+    colorSchemePreference,
+    renderSession.cadProjection,
+    renderSession.enabled,
+    renderSession.payload.appearance,
+    renderSession.payload.camera,
+    renderSession.payload.quality,
+    renderSession.payload.studio,
+    systemPrefersDark
+  ]);
+  const resolvedQuality = useMemo(() => resolveRenderSessionQuality(renderSession, {
+    appearance: colorSchemePreference,
+    prefersDark: systemPrefersDark
+  }), [
+    colorSchemePreference,
+    renderSession.enabled,
+    renderSession.payload.quality,
+    systemPrefersDark
+  ]);
+  const resolvedScene = useMemo(() => ({
+    ...resolvedVisualScene,
+    camera: resolvedCamera,
+    quality: resolvedQuality,
+    render: {
+      ...resolvedVisualScene.render,
+      payload: renderSession.enabled ? renderSession.payload : null
+    }
+  }), [resolvedCamera, resolvedQuality, resolvedVisualScene, renderSession.enabled, renderSession.payload]);
+  const resolvedThemeSettings = resolvedScene.render.settings;
   const sceneBackdrop = useMemo(
     () => sceneBackdropEdgeColor(resolvedThemeSettings.background, chromeBackdropColor),
     [chromeBackdropColor, resolvedThemeSettings]
   );
-  const resolvedDisplayEdgeSettings = useMemo(() => {
-    // Edge theme — colour, opacity, thickness — is fixed, not a user
-    // setting. It comes from the cadgen-js defaults, or from a theme that styles its
-    // own linework (e.g. Terminal's neon-green outline). Whether edges draw at
-    // all is still decided by the display MODE, not here.
-    //
-    // Persisted per-file edge settings written by an older build are ignored
-    // rather than merged: with the controls gone they could never be changed
-    // back, so a stale value would be stuck forever.
-    const themeEdges = resolvedThemeSettings.edges;
-    if (themeEdges && themeEdges.enabled === true) {
-      return normalizeDisplayEdgeSettings(themeEdges);
-    }
-    return normalizeDisplayEdgeSettings();
-  }, [resolvedThemeSettings]);
+  const resolvedDisplayEdgeSettings = resolvedScene.display.edges;
   const updateDisplaySettings = useCallback((nextValue) => {
-    setDisplaySettings((current) => normalizeDisplaySettings(
-      typeof nextValue === "function" ? nextValue(current) : nextValue
-    ));
-  }, []);
+    const next = normalizeDisplaySettings(
+      typeof nextValue === "function" ? nextValue(resolvedScene.display) : nextValue,
+      { fallback: resolvedScene.display }
+    );
+    if (renderSession.enabled) {
+      setRenderSession((current) => createRenderSessionState({
+        ...current,
+        payload: { ...current.payload, display: next }
+      }));
+      return;
+    }
+    setDisplaySettings(next);
+  }, [renderSession.enabled, resolvedScene.display]);
   const [previewMode, setPreviewMode] = useState(false);
   const [tabToolsWidth, setTabToolsWidth] = useState(readInitialFileSheetWidth);
   const [fileSheetWidthIsCustom, setFileSheetWidthIsCustom] = useState(readInitialFileSheetWidthIsCustom);
   const [drawingTool, setDrawingTool] = useState(DRAWING_TOOL.FREEHAND);
-  const [viewerPerspective, setViewerPerspective] = useState(null);
   const [tabToolMode, setTabToolMode] = useState(TAB_TOOL_MODE.REFERENCES);
   const [drawingStrokes, setDrawingStrokes] = useState([]);
   const [drawingUndoStack, setDrawingUndoStack] = useState([]);
@@ -2755,6 +2797,7 @@ export default function CadWorkspace({
   const { onCameraMoved: onLodCameraMoved } = useViewportLod({
     viewerRef,
     modelKey: viewportQualityModelKey,
+    quality: resolvedScene.quality,
     lodPackage,
     applyComponentLodBatch,
     prepareComponentLodPayload,
@@ -2763,10 +2806,11 @@ export default function CadWorkspace({
     // an offscreen part without a camera event when re-enabled.
     dynamicScene: lodSceneMayMove({ robot: isUrdfView, drawing: selectedEntryIsDrawing,
       kinematics: selectedStepModuleDefinition, kinematicsLoading: selectedStepModuleLoading,
-      renderModuleUrl: selectedRenderModuleUrl, exploded: displaySettings?.exploded?.enabled })
+      renderModuleUrl: selectedRenderModuleUrl, exploded: resolvedScene.display?.exploded?.enabled })
   });
   const viewportQualityStatus = useViewportQualityStatus({
     modelKey: viewportQualityModelKey,
+    quality: resolvedScene.quality,
     file: selectedEntry?.file || "",
     hasGeometry: Boolean(selectedMeshData),
     // A progressive assembly's first paint is a real preview, but more
@@ -2781,6 +2825,11 @@ export default function CadWorkspace({
   const fileSessionSaveTimerRef = useRef(0);
   const openTabsRef = useRef(openTabs);
   const activePerspectiveRef = useRef(null);
+  // A copied CLI camera may name a preset or direction without carrying a
+  // fitted position. Resolve it only after this model's bounds are available;
+  // fitting it against the previous tab (or origin fallback) would persist the
+  // wrong framing for the model.
+  const pendingRenderCameraRef = useRef(null);
   const tabToolsResizeStateRef = useRef(null);
   const selectedFileSheetKeyRef = useRef("");
   const cadDirectorySessionBootstrappedRef = useRef(false);
@@ -2806,18 +2855,13 @@ export default function CadWorkspace({
       typeof value === "function" ? value(current) : value
     ));
   }, []);
-  const directorySessionThemeSlice = useMemo(
-    () => createDirectorySessionThemeSlice(themeState),
-    [themeState]
-  );
   useEffect(() => {
     writeCadDirectorySessionState({
       fileViewerOpen: sidebarOpen,
       fileViewerExpandedDirectoryIds: fileViewerDirectoryStateInitialized ? fileViewerExpandedDirectoryIdList : null,
       fileViewerWidthPx: sidebarWidth,
       fileSheetOpen: tabToolsOpen,
-      fileSheetWidthPx: fileSheetWidthIsCustom ? tabToolsWidth : defaultFileSheetWidth,
-      theme: directorySessionThemeSlice
+      fileSheetWidthPx: fileSheetWidthIsCustom ? tabToolsWidth : defaultFileSheetWidth
     }, {
       defaultFileSheetWidthPx: defaultFileSheetWidth,
       onWriteError: handlePersistenceWriteError
@@ -2831,8 +2875,7 @@ export default function CadWorkspace({
     sidebarOpen,
     sidebarWidth,
     tabToolsOpen,
-    tabToolsWidth,
-    directorySessionThemeSlice
+    tabToolsWidth
   ]);
 
   useEffect(() => {
@@ -2841,46 +2884,10 @@ export default function CadWorkspace({
     }
     setTabToolsWidth(defaultFileSheetWidth);
   }, [defaultFileSheetWidth, fileSheetWidthIsCustom]);
-  // The file sheet and the theme sidebar are the same right-hand panel with
-  // different contents: one open flag, one width, one resize handle, one inset
-  // on the 3D viewport. Anything that sizes or offsets the panel uses this.
-  const desktopRightPanelOpen = isDesktop && !previewMode && (
-    themeEditing ||
-    (tabToolsOpen && !!selectedFileSheetKind && selectedFileSheetHasSections)
-  );
+  const desktopRightPanelOpen = isDesktop && !previewMode &&
+    tabToolsOpen && !!selectedFileSheetKind && selectedFileSheetHasSections;
   const effectiveSidebarOpen = sidebarOpen && !previewMode;
   const desktopSidebarOpen = isDesktop && effectiveSidebarOpen && !previewMode;
-
-  // Selecting a preset (or System) is the only "reset": it swaps the active
-  // theme wholesale. The custom slot is kept so the user can flip back to it.
-  const selectTheme = useCallback((nextThemeId) => {
-    writeThemeState(nextThemeId, { onWriteError: handlePersistenceWriteError });
-    setThemeState(readThemeSettingsState(themeReadOptions));
-  }, [handlePersistenceWriteError, themeReadOptions]);
-
-  // Any settings edit lands in the single custom slot and makes it active,
-  // unless it happens to reproduce a preset exactly.
-  const updateThemeSettings = useCallback((updater) => {
-    setThemeState((current) => {
-      const next = typeof updater === "function" ? updater(current.settings) : updater;
-      const settings = normalizeThemeSettings(next);
-      writeThemeSettings(settings, { onWriteError: handlePersistenceWriteError });
-      const matchingPresetId = getThemePresetIdForSettings(settings);
-      return {
-        themeId: matchingPresetId || CUSTOM_THEME_ID,
-        custom: matchingPresetId ? current.custom : settings,
-        settings
-      };
-    });
-  }, [handlePersistenceWriteError]);
-
-  // The theme sidebar and the file sheet are mutually exclusive. Opening one
-  // closes the other outright — rather than merely hiding it behind the new
-  // panel — so that closing the panel you opened leaves nothing open, and the
-  // other sidebar has to be reopened deliberately.
-  const closeThemeEditor = useCallback(() => {
-    setThemeEditing(false);
-  }, []);
 
   // DXF settings are PER FILE, remembered for the session: each drawing keeps its own
   // thickness/bends/style/layers in sessionStorage under its entry key, so switching files
@@ -3077,17 +3084,6 @@ export default function CadWorkspace({
     }
   }, [drawingViewMode]);
 
-  const handleToggleThemeEditor = useCallback(() => {
-    setThemeEditing((current) => {
-      if (current) {
-        return false;
-      }
-      setViewerAlertOpen(false);
-      setTabToolsOpen(false);
-      return true;
-    });
-  }, [setTabToolsOpen]);
-
   const handleViewerAlertChange = useCallback((nextAlert) => {
     setViewerRuntimeAlert(nextAlert || null);
   }, []);
@@ -3167,7 +3163,7 @@ export default function CadWorkspace({
 
   const handleStartFileSheetResize = useCallback((event) => {
     // Gate on the shared right-panel flag, not the file sheet specifically:
-    // the theme sidebar is the same panel and resizes the same width.
+    // the settings sheet is the same panel and resizes to the same width.
     if (event.button !== 0 || !desktopRightPanelOpen) {
       return;
     }
@@ -3399,11 +3395,31 @@ export default function CadWorkspace({
     const snapshotAnimationElapsedSec = animationState.playing
       ? getAnimationClock()
       : animationState.elapsedSec;
+    const activeCamera = renderCameraSnapshot(activePerspectiveRef.current);
+    const snapshotRenderSession = createRenderSessionState(renderSession.enabled
+      ? {
+          ...renderSession,
+          payload: activeCamera
+            ? {
+                ...renderSession.payload,
+                camera: {
+                  ...renderCameraSeed(activeCamera),
+                  projection: activeCamera.projection || resolvedScene.camera.projection
+                }
+              }
+            : renderSession.payload
+        }
+      : {
+          ...renderSession,
+          cadCamera: activeCamera || renderSession.cadCamera,
+          cadProjection: activeCamera?.projection || renderSession.cadProjection
+        });
     return createFileSessionSnapshot({
       fileKey: targetFileKey,
       entry: targetEntry,
       slices: {
-        ...(entrySourceFormat(targetEntry) === RENDER_FORMAT.STEP ? { display: displaySettings } : {}),
+        ...(entrySourceFormat(targetEntry) !== RENDER_FORMAT.DXF ? { display: displaySettings } : {}),
+        render: snapshotRenderSession,
         tab: buildActiveTabSnapshot(),
         stepModule: {
           enabled: stepModuleEnabled,
@@ -3430,6 +3446,8 @@ export default function CadWorkspace({
     displaySettings,
     jointValuesByFileRef,
     largeFileState,
+    renderSession,
+    resolvedScene.camera.projection,
     selectedEntry,
     stepModuleEnabled,
     stepModuleParameterValues,
@@ -3477,7 +3495,7 @@ export default function CadWorkspace({
     }, 180);
   }, [clearFileSessionSaveTimer, selectedEntry, writeFileSessionForEntry]);
 
-  const applyEntrySessionState = useCallback((key, fileSessionState = null) => {
+  const applyEntrySessionState = useCallback((key, fileSessionState = null, meshBounds = null) => {
     const normalizedKey = String(key || "").trim();
     if (!normalizedKey) {
       return;
@@ -3485,11 +3503,38 @@ export default function CadWorkspace({
     const sessionState = fileSessionState || readEntrySessionState(normalizedKey);
     setLargeFileState(normalizeLargeFileState(sessionState?.slices?.largeFile));
     const entry = entryMap.get(normalizedKey);
-    setDisplaySettings(
-      entrySourceFormat(entry) === RENDER_FORMAT.STEP
-        ? normalizeDisplaySettings(sessionState?.slices?.display)
-        : normalizeDisplaySettings()
-    );
+    const supportsDisplaySettings = entrySourceFormat(entry) !== RENDER_FORMAT.DXF;
+    setDisplaySettings(supportsDisplaySettings
+      ? normalizeDisplaySettings(sessionState?.slices?.display)
+      : normalizeDisplaySettings());
+    const nextRenderSession = createRenderSessionState(sessionState?.slices?.render);
+    setRenderSession(nextRenderSession);
+    pendingRenderCameraRef.current = null;
+    const renderCameraSpec = nextRenderSession.enabled
+      ? resolveSceneSettings({
+          appearance: colorSchemePreference,
+          prefersDark: systemPrefersDark,
+          render: nextRenderSession.payload
+        }).camera
+      : null;
+    let restoredCamera = nextRenderSession.enabled
+      ? renderCameraSnapshot(renderCameraSpec)
+      : nextRenderSession.cadCamera;
+    if (nextRenderSession.enabled && !restoredCamera && meshBounds) {
+      restoredCamera = resolveRenderCameraSnapshot(renderCameraSpec, meshBounds, {
+        sceneScale: isRobotRenderFormat(entrySourceFormat(entry)) ? "urdf" : "cad"
+      });
+    } else if (nextRenderSession.enabled && !restoredCamera) {
+      pendingRenderCameraRef.current = {
+        key: normalizedKey,
+        camera: renderCameraSpec
+      };
+    }
+    if (restoredCamera) {
+      const scopedCamera = scopedWorkspacePerspective(restoredCamera, normalizedKey, entry);
+      activePerspectiveRef.current = scopedCamera;
+      setViewerPerspective(scopedCamera);
+    }
 
     const stepModuleSlice = sessionState?.slices?.stepModule || null;
     if (stepModuleSlice) {
@@ -3527,7 +3572,13 @@ export default function CadWorkspace({
         return next;
       });
     }
-  }, [animationLoadState, entryMap, readEntrySessionState]);
+  }, [
+    animationLoadState,
+    colorSchemePreference,
+    entryMap,
+    readEntrySessionState,
+    systemPrefersDark
+  ]);
 
   const fileSheetSelectionKeyForTab = useCallback((key) => {
     const normalizedKey = String(key || "").trim();
@@ -3537,7 +3588,11 @@ export default function CadWorkspace({
 
   const applyTabRecord = useCallback((tabRecord) => {
     const nextTab = createTabRecord(tabRecord?.key || "", tabRecord || {});
-    const nextPerspective = clonePerspectiveSnapshot(nextTab.camera);
+    const nextPerspective = scopedWorkspacePerspective(
+      nextTab.camera,
+      nextTab.key,
+      entryMap.get(nextTab.key)
+    );
     selectedFileSheetKeyRef.current = fileSheetSelectionKeyForTab(nextTab.key);
     setReferenceQuery(nextTab.referenceQuery);
     selectedReferenceIdsRef.current = nextTab.selectedReferenceIds;
@@ -3564,7 +3619,7 @@ export default function CadWorkspace({
     setDrawingUndoStack(nextTab.drawingUndoStack);
     setDrawingRedoStack(nextTab.drawingRedoStack);
     setSelectedKey(nextTab.key);
-  }, [fileSheetSelectionKeyForTab]);
+  }, [entryMap, fileSheetSelectionKeyForTab]);
 
   const resetActiveDirectory = useCallback(() => {
     selectedReferenceIdsRef.current = [];
@@ -3579,6 +3634,7 @@ export default function CadWorkspace({
     setHiddenPartIds([]);
     setIsolatedAssemblyNodeIds([]);
     setDisplaySettings(normalizeDisplaySettings());
+    setRenderSession(createRenderSessionState());
     setLargeFileState(normalizeLargeFileState(DEFAULT_LARGE_FILE_STATE));
     setHoveredListReferenceId("");
     setHoveredModelReferenceId("");
@@ -3662,7 +3718,7 @@ export default function CadWorkspace({
     }
 
     applyTabRecord(nextTab);
-    applyEntrySessionState(key, restoredSessionState);
+    applyEntrySessionState(key, restoredSessionState, cachedMeshState?.meshData?.bounds || null);
   }, [
     applyEntrySessionState,
     applyTabRecord,
@@ -3753,27 +3809,35 @@ export default function CadWorkspace({
   }, [colorSchemePreference, systemPrefersDark]);
 
   useEffect(() => {
+    const syncColorSchemePreference = () => {
+      setColorSchemePreference(readColorSchemePreference());
+    };
     const handleStorage = (event) => {
       const action = cadDirectoryStorageEventAction(event.key);
-      if (action === CAD_DIRECTORY_STORAGE_EVENT_ACTION.IGNORE) {
-        return;
-      }
       if (action === CAD_DIRECTORY_STORAGE_EVENT_ACTION.COLOR_SCHEME) {
-        setColorSchemePreference(readColorSchemePreference());
-        return;
+        syncColorSchemePreference();
       }
-      try {
-        setThemeState(readThemeSettingsState(themeReadOptions));
-      } catch (error) {
-        console.warn("Failed to sync theme from another tab", error);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        syncColorSchemePreference();
       }
     };
 
     window.addEventListener("storage", handleStorage);
+    window.addEventListener("focus", syncColorSchemePreference);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
       window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("focus", syncColorSchemePreference);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [themeReadOptions]);
+  }, []);
+
+  const handleColorSchemePreferenceChange = useCallback((nextPreference) => {
+    writeColorSchemePreference(nextPreference, { onWriteError: handlePersistenceWriteError });
+    setColorSchemePreference(readColorSchemePreference());
+  }, [handlePersistenceWriteError]);
 
   useEffect(() => {
     selectedReferenceIdsRef.current = selectedReferenceIds;
@@ -4202,8 +4266,8 @@ export default function CadWorkspace({
   const selectedStepDisplayEdgesRequested =
     effectiveRenderFormat === RENDER_FORMAT.STEP &&
     selectedEntryHasDisplayEdges &&
-    !displayModeIsWireframe(displaySettings.mode) &&
-    (displayModeForcesEdges(displaySettings.mode) || resolvedDisplayEdgeSettings.enabled !== false);
+    !displayModeIsWireframe(resolvedScene.display.mode) &&
+    (displayModeForcesEdges(resolvedScene.display.mode) || resolvedDisplayEdgeSettings.enabled !== false);
   const selectedTopologyExplicitlyEnabled = largeFileState.selectableTopologyEnabled === true;
   const selectedTopologyLargeByCost = Boolean(
     isLargeStepGlbEntry(selectedEntry) ||
@@ -6851,15 +6915,6 @@ export default function CadWorkspace({
       return;
     }
     setViewerAlertOpen(false);
-    // Opening the file sheet while the theme sidebar is up replaces it.
-    if (themeEditing) {
-      setThemeEditing(false);
-      setTabToolsOpen(true);
-      if (!isDesktop) {
-        setSidebarOpen(false);
-      }
-      return;
-    }
     setTabToolsOpen((current) => {
       const nextOpen = !current;
       if (nextOpen && !isDesktop) {
@@ -6867,7 +6922,7 @@ export default function CadWorkspace({
       }
       return nextOpen;
     });
-  }, [themeEditing, isDesktop, selectedFileSheetKind, setTabToolsOpen]);
+  }, [isDesktop, selectedFileSheetKind, setTabToolsOpen]);
 
   const handleCopyFileAssetReference = useCallback(async (entry, asset = "output", assetInfo = null, referenceKind = "path") => {
     const fileRef = entry ? fileKey(entry) : "";
@@ -6991,7 +7046,187 @@ export default function CadWorkspace({
     setDrawingStrokes([]);
     setDrawingUndoStack([]);
     setDrawingRedoStack([]);
-  }, [scheduleActiveFileSessionSave, onLodCameraMoved]);
+  }, [onLodCameraMoved, scheduleActiveFileSessionSave]);
+
+  const applyActiveCamera = useCallback((camera) => {
+    let snapshot = null;
+    try {
+      snapshot = resolveRenderCameraSnapshot(camera, selectedMeshData?.bounds || null, {
+        sceneScale: isUrdfView ? "urdf" : "cad"
+      });
+    } catch {
+      snapshot = renderCameraSnapshot(camera);
+    }
+    if (snapshot) {
+      viewerRef.current?.setPerspective?.(snapshot);
+    }
+    const scopedSnapshot = scopedWorkspacePerspective(snapshot, selectedKey, selectedEntry);
+    activePerspectiveRef.current = scopedSnapshot;
+    setViewerPerspective(scopedSnapshot);
+  }, [isUrdfView, selectedEntry, selectedKey, selectedMeshData?.bounds]);
+
+  useEffect(() => {
+    const pending = pendingRenderCameraRef.current;
+    if (
+      !pending ||
+      pending.key !== selectedKey ||
+      !selectedMeshData?.bounds
+    ) {
+      return;
+    }
+    pendingRenderCameraRef.current = null;
+    applyActiveCamera(pending.camera);
+  }, [applyActiveCamera, selectedKey, selectedMeshData?.bounds]);
+
+  const handleRenderEnabledChange = useCallback((enabled) => {
+    if (enabled === renderSession.enabled) {
+      return;
+    }
+    if (enabled) {
+      const cadCamera = renderCameraSnapshot(activePerspectiveRef.current) || renderSession.cadCamera;
+      const payload = renderSession.payload.camera || !cadCamera
+        ? renderSession.payload
+        : { ...renderSession.payload, camera: renderCameraSeed(cadCamera) };
+      const next = createRenderSessionState({
+        ...renderSession,
+        enabled: true,
+        cadCamera,
+        cadProjection: resolvedScene.camera.projection,
+        payload
+      });
+      setRenderSession(next);
+      applyActiveCamera(resolveSceneSettings({
+        appearance: colorSchemePreference,
+        prefersDark: systemPrefersDark,
+        render: next.payload
+      }).camera);
+      return;
+    }
+
+    const activeRenderCamera = renderCameraSnapshot(activePerspectiveRef.current);
+    const next = createRenderSessionState({
+      ...renderSession,
+      enabled: false,
+      payload: activeRenderCamera
+        ? {
+            ...renderSession.payload,
+            camera: {
+              ...renderCameraSeed(activeRenderCamera),
+              projection: resolvedScene.camera.projection
+            }
+          }
+        : renderSession.payload
+    });
+    setRenderSession(next);
+    const restoreCamera = next.cadCamera
+      ? { ...next.cadCamera, projection: next.cadProjection }
+      : activeRenderCamera
+        ? { ...activeRenderCamera, projection: next.cadProjection }
+        : { projection: next.cadProjection };
+    applyActiveCamera(restoreCamera);
+  }, [
+    applyActiveCamera,
+    colorSchemePreference,
+    renderSession,
+    resolvedScene.camera.projection,
+    systemPrefersDark
+  ]);
+
+  const handleRenderStudioChange = useCallback((studio) => {
+    setRenderSession((current) => createRenderSessionState({
+      ...current,
+      payload: replaceRenderPreset(current.payload, { studio })
+    }));
+  }, []);
+
+  const handleRenderAppearanceChange = useCallback((appearance) => {
+    setRenderSession((current) => createRenderSessionState({
+      ...current,
+      payload: replaceRenderAppearance(current.payload, appearance)
+    }));
+  }, []);
+
+  const handleRenderQualityChange = useCallback((quality) => {
+    setRenderSession((current) => createRenderSessionState({
+      ...current,
+      payload: { ...current.payload, quality }
+    }));
+  }, []);
+
+  const handleRenderSettingChange = useCallback((path, value) => {
+    setRenderSession((current) => createRenderSessionState({
+      ...current,
+      payload: setRenderSetting(current.payload, path, value)
+    }));
+  }, []);
+
+  const handleProjectionChange = useCallback((projection) => {
+    const camera = renderCameraSnapshot(activePerspectiveRef.current);
+    if (renderSession.enabled) {
+      const payload = {
+        ...renderSession.payload,
+        camera: {
+          ...(renderCameraSeed(camera) || renderSession.payload.camera || {}),
+          projection
+        }
+      };
+      setRenderSession(createRenderSessionState({ ...renderSession, payload }));
+    } else {
+      setRenderSession(createRenderSessionState({
+        ...renderSession,
+        cadCamera: camera ? { ...camera, projection } : renderSession.cadCamera,
+        cadProjection: projection
+      }));
+    }
+    if (camera) {
+      applyActiveCamera({ ...camera, projection });
+    }
+  }, [applyActiveCamera, renderSession]);
+
+  const handleRenderReset = useCallback(() => {
+    const camera = renderCameraSnapshot(activePerspectiveRef.current);
+    const payload = {
+      ...DEFAULT_RENDER_PAYLOAD,
+      ...(camera ? { camera: renderCameraSeed(camera) } : {})
+    };
+    const next = createRenderSessionState({ ...renderSession, enabled: true, payload });
+    setRenderSession(next);
+    applyActiveCamera(resolveSceneSettings({
+      appearance: colorSchemePreference,
+      prefersDark: systemPrefersDark,
+      render: next.payload
+    }).camera);
+  }, [applyActiveCamera, colorSchemePreference, renderSession, systemPrefersDark]);
+
+  const handleRenderPayloadPaste = useCallback((text) => {
+    const payload = parseRenderSettingsText(text, {
+      appearance: colorSchemePreference,
+      prefersDark: systemPrefersDark
+    });
+    const next = renderSessionForPayloadApply(renderSession, payload, {
+      activeCamera: activePerspectiveRef.current,
+      activeProjection: resolvedScene.camera.projection
+    });
+    setRenderSession(next);
+    applyActiveCamera(resolveSceneSettings({
+      appearance: colorSchemePreference,
+      prefersDark: systemPrefersDark,
+      render: next.payload
+    }).camera);
+  }, [
+    applyActiveCamera,
+    colorSchemePreference,
+    renderSession,
+    resolvedScene.camera.projection,
+    systemPrefersDark
+  ]);
+
+  const handleRenderPayloadCopy = useCallback(() => {
+    return renderPayloadForCopy(renderSession, {
+      activeCamera: activePerspectiveRef.current,
+      activeProjection: resolvedScene.camera.projection
+    });
+  }, [renderSession, resolvedScene.camera.projection]);
 
   useCadWorkspaceShortcuts({
     copyStatus,
@@ -7000,7 +7235,6 @@ export default function CadWorkspace({
     setScreenshotStatus,
     previewMode,
     viewerAlertOpen,
-    themeSheetOpen: false,
     tabToolsOpen,
     isDesktop,
     sidebarOpen,
@@ -7014,7 +7248,6 @@ export default function CadWorkspace({
     handleRedoDrawing,
     setPreviewMode,
     setViewerAlertOpen,
-    setThemeEditing,
     setTabToolsOpen,
     setSidebarOpen,
     setTabToolMode
@@ -7047,7 +7280,6 @@ export default function CadWorkspace({
       sidebarOpen,
       tabToolsOpen,
       tabToolMode,
-      themeEditing,
       viewerAlertOpen
     };
     setCopyStatus("");
@@ -7056,7 +7288,6 @@ export default function CadWorkspace({
     setDrawingUndoStack([]);
     setDrawingRedoStack([]);
     setViewerAlertOpen(false);
-    setThemeEditing(false);
     setSidebarOpen(false);
     setTabToolsOpen(false);
     setPreviewMode(true);
@@ -7083,7 +7314,6 @@ export default function CadWorkspace({
     setPreviewMode(false);
     if (previousUiState) {
       setViewerAlertOpen(previousUiState.viewerAlertOpen);
-      setThemeEditing(previousUiState.themeEditing);
       setSidebarOpen(previousUiState.sidebarOpen);
       setTabToolsOpen(previousUiState.tabToolsOpen);
       setTabToolMode(previousUiState.tabToolMode);
@@ -7138,7 +7368,7 @@ export default function CadWorkspace({
     activeReferenceTreeNodeId;
   const canUndoDrawing = drawingUndoStack.length > 0;
   const canRedoDrawing = drawingRedoStack.length > 0;
-  const fileSheetOpen = !!selectedFileSheetKind && selectedFileSheetHasSections && tabToolsOpen && !previewMode && !themeEditing;
+  const fileSheetOpen = !!selectedFileSheetKind && selectedFileSheetHasSections && tabToolsOpen && !previewMode;
   const activeSidebarWidth = desktopSidebarOpen
     ? resolvedDesktopPanelWidths.sidebarWidth
     : 0;
@@ -7182,20 +7412,30 @@ export default function CadWorkspace({
   ];
   // Handed over unconditionally: the pane gates it on the `displayModes` capability, so
   // gating it a second time here only creates a place for the two to disagree.
-  const renderDisplaySettings = displaySettings;
-  const themeTabs = [
-    // One tab for everything about how this file is drawn right now: display
-    // mode, plus the section-plane and exploded-view transforms. All three are
-    // per-file session state. The theme is global, not file-specific —
-    // it lives in the navbar-triggered theme editor (ThemeEditorPanel).
+  const renderDisplaySettings = resolvedScene.display;
+  const settingsTabs = [
     supportsDisplayModes
       ? buildDisplaySettingsTab({
-          displaySettings,
+          displaySettings: resolvedScene.display,
           updateDisplaySettings,
+          projection: resolvedScene.camera.projection,
+          onProjectionChange: handleProjectionChange,
           clipBounds: selectedMeshData?.bounds || null,
           explodeMeshData: selectedMeshData || null
         })
-      : null
+      : null,
+    buildRenderSettingsTab({
+      enabled: renderSession.enabled,
+      scene: resolvedScene,
+      onEnabledChange: handleRenderEnabledChange,
+      onStudioChange: handleRenderStudioChange,
+      onAppearanceChange: handleRenderAppearanceChange,
+      onQualityChange: handleRenderQualityChange,
+      onSettingsValueChange: handleRenderSettingChange,
+      onReset: handleRenderReset,
+      onCopyPayload: handleRenderPayloadCopy,
+      onApplyPayload: handleRenderPayloadPaste
+    })
   ].filter(Boolean);
 
   return (
@@ -7244,7 +7484,10 @@ export default function CadWorkspace({
           viewerServerInfo={viewerServerInfo}
           viewerPerspective={viewerPerspective}
           viewerPerspectiveRef={activePerspectiveRef}
+          projection={resolvedScene.camera.projection}
           themeSettings={resolvedThemeSettings}
+          materialOverrides={resolvedScene.render.materialOverrides}
+          quality={resolvedScene.quality}
           displaySettings={renderDisplaySettings}
           previewMode={previewMode}
           viewportFrameInsets={viewportFrameInsets}
@@ -7342,8 +7585,8 @@ export default function CadWorkspace({
           fileSheetKind={selectedFileSheetHasSections ? selectedFileSheetKind : ""}
           fileSheetOpen={fileSheetOpen}
           onToggleFileSheet={handleToggleFileSheet}
-          themeEditing={themeEditing}
-          onToggleThemeEditor={handleToggleThemeEditor}
+          colorSchemePreference={colorSchemePreference}
+          onColorSchemePreferenceChange={handleColorSchemePreferenceChange}
         />
 
         <div className="pointer-events-none relative min-h-0 flex-1 overflow-hidden">
@@ -7520,7 +7763,7 @@ export default function CadWorkspace({
                 }}
                 viewerServerInfo={viewerServerInfo}
                 suppressDynamicMetadataStatus={selectedArtifactGenerating}
-                themeTabs={themeTabs}
+                settingsTabs={settingsTabs}
                 openSectionIds={effectiveFileSheetOpenSectionIds}
                 onOpenSectionIdsChange={handleFileSheetOpenSectionIdsChange}
               />
@@ -7552,7 +7795,7 @@ export default function CadWorkspace({
                 } : null}
                 viewerServerInfo={viewerServerInfo}
                 suppressDynamicMetadataStatus={selectedArtifactGenerating}
-                themeTabs={themeTabs}
+                settingsTabs={settingsTabs}
                 openSectionIds={effectiveFileSheetOpenSectionIds}
                 onOpenSectionIdsChange={handleFileSheetOpenSectionIdsChange}
               />
@@ -7571,7 +7814,7 @@ export default function CadWorkspace({
                 onStartResize={handleStartFileSheetResize}
                 viewerServerInfo={viewerServerInfo}
                 suppressDynamicMetadataStatus={selectedArtifactGenerating}
-                themeTabs={[
+                settingsTabs={[
                   buildDxfMaterialTab({
                     thicknessMm: drawingThicknessMm,
                     onThicknessChange: setDrawingThicknessMm,
@@ -7600,7 +7843,7 @@ export default function CadWorkspace({
                     hiddenLayers: drawingHiddenLayers,
                     onLayerVisibilityChange: handleDrawingLayerVisibilityChange
                   })] : []),
-                  ...themeTabs
+                  ...settingsTabs
                 ]}
                 openSectionIds={effectiveFileSheetOpenSectionIds}
                 onOpenSectionIdsChange={handleFileSheetOpenSectionIdsChange}
@@ -7619,7 +7862,7 @@ export default function CadWorkspace({
                 onStartResize={handleStartFileSheetResize}
                 viewerServerInfo={viewerServerInfo}
                 suppressDynamicMetadataStatus={selectedArtifactGenerating}
-                themeTabs={themeTabs}
+                settingsTabs={settingsTabs}
                 openSectionIds={effectiveFileSheetOpenSectionIds}
                 onOpenSectionIdsChange={handleFileSheetOpenSectionIdsChange}
                 measurements={measureMeasurements}
@@ -7631,21 +7874,6 @@ export default function CadWorkspace({
               />
             ) : null}
 
-            {themeEditing ? (
-              <ThemeEditorPanel
-                open
-                isDesktop={isDesktop}
-                width={activeSheetWidth || tabToolsWidth}
-                onClose={closeThemeEditor}
-                onStartResize={handleStartFileSheetResize}
-                themeSettings={themeSettings}
-                themeId={themeId}
-                resolvedColorSchemeMode={resolvedColorSchemeMode}
-                prefersDark={uiPrefersDark}
-                onSelectTheme={selectTheme}
-                updateThemeSettings={updateThemeSettings}
-              />
-            ) : null}
           </div>
         </div>
 

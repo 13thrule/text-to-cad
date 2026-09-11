@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { dispatchViewportLodStatus, syncViewportLodLimitation, viewportLodMinimumLevel } from "./useViewportLod.js";
+import { dispatchViewportLodStatus, syncViewportLodLimitation, viewportLodMinimumLevel, viewportLodSampleForQuality } from "./useViewportLod.js";
+import { settledLevel } from "cadgen-js/lib/surf/lodPolicy.js";
 import { createViewerMemoryPolicy } from "./viewerMemoryPolicy.js";
 
 test("partial fallback retains the unresolved camera target and only clears after it resolves", () => {
@@ -66,4 +67,27 @@ test("LOD status dispatch preserves the full scheduler snapshot for UI consumers
   dispatchViewportLodStatus(status, target, EventStub);
   assert.equal(events[0].type, "cad:lod-status");
   assert.equal(events[0].detail, status);
+});
+
+test("high definition tightens screen error through the existing tessellation ladder", () => {
+  const camera = { kind: "orthographic", visibleWorldHeight: 100 };
+  const sample = { camera, cameraKey: "camera-a", viewportHeightPx: 600, distanceFor: () => 100 };
+  const standard = viewportLodSampleForQuality(sample, "standard");
+  const high = viewportLodSampleForQuality(sample, { id: "high" });
+  assert.equal(standard.viewportHeightPx, 600);
+  assert.equal(high.viewportHeightPx, 1200);
+  const component = { diagonal: 100, cameraDistance: 100 };
+  assert.equal(settledLevel({ ...component, ...standard }, 1), 1);
+  assert.equal(settledLevel({ ...component, ...high }, 1), 2);
+  assert.equal(high.camera, camera);
+  assert.equal(high.distanceFor, sample.distanceFor);
+  assert.equal(sample.viewportHeightPx, 600);
+  assert.equal(viewportLodMinimumLevel(null), 1);
+});
+
+test("quality changes are fresh camera intent but identical quality samples preserve pressure ceilings", () => {
+  const sample = { cameraKey: "camera-a", viewportHeightPx: 600 };
+  assert.equal(viewportLodSampleForQuality(sample, "high").cameraKey, viewportLodSampleForQuality(sample, "high").cameraKey);
+  assert.notEqual(viewportLodSampleForQuality(sample, "high").cameraKey, viewportLodSampleForQuality(sample, "standard").cameraKey);
+  assert.equal(Object.hasOwn(viewportLodSampleForQuality({ viewportHeightPx: 600 }, "high"), "cameraKey"), false);
 });

@@ -1,5 +1,23 @@
 import * as THREE from "three";
 
+export const CAMERA_PROJECTION = Object.freeze({
+  PERSPECTIVE: "perspective",
+  ORTHOGRAPHIC: "orthographic"
+});
+
+export function normalizeCameraProjection(value, fallback = CAMERA_PROJECTION.PERSPECTIVE) {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  if (normalizedValue === CAMERA_PROJECTION.ORTHOGRAPHIC) {
+    return CAMERA_PROJECTION.ORTHOGRAPHIC;
+  }
+  if (normalizedValue === CAMERA_PROJECTION.PERSPECTIVE) {
+    return CAMERA_PROJECTION.PERSPECTIVE;
+  }
+  return fallback === CAMERA_PROJECTION.ORTHOGRAPHIC
+    ? CAMERA_PROJECTION.ORTHOGRAPHIC
+    : CAMERA_PROJECTION.PERSPECTIVE;
+}
+
 export const WORLD_UP = Object.freeze([0, 0, 1]);
 export const TOP_VIEW_UP = Object.freeze([0, 1, 0]);
 
@@ -18,7 +36,17 @@ export const RENDER_CAMERA_PRESETS = Object.freeze({
 export const RENDER_VIEW_PRESETS = RENDER_CAMERA_PRESETS;
 
 const DEFAULT_CAMERA_PRESET = "iso";
-const CAMERA_SPEC_KEYS = Object.freeze(["preset", "position", "target", "up", "zoom", "direction", "name"]);
+export const CAMERA_SPEC_KEYS = Object.freeze([
+  "preset",
+  "position",
+  "target",
+  "up",
+  "zoom",
+  "orthographicHalfHeight",
+  "direction",
+  "name",
+  "projection"
+]);
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -35,23 +63,30 @@ function normalizeVector(value, {
   nonZero = false,
   strict = true
 } = {}) {
-  if (value === undefined || value === null) {
+  if (value === undefined) {
     if (required && strict) {
       throw new Error(`${fieldName} must be a three-number array`);
     }
     return null;
   }
-  if (!Array.isArray(value) || value.length < 3) {
+  if (value === null) {
     if (strict) {
       throw new Error(`${fieldName} must be a three-number array`);
     }
     return null;
   }
-  const vector = [
-    Number(value[0]),
-    Number(value[1]),
-    Number(value[2])
-  ];
+  if (!Array.isArray(value) || value.length !== 3) {
+    if (strict) {
+      throw new Error(`${fieldName} must be a three-number array`);
+    }
+    return null;
+  }
+  const vector = strict
+    ? [value[0], value[1], value[2]]
+    : [Number(value[0]), Number(value[1]), Number(value[2])];
+  if (strict && !vector.every((entry) => typeof entry === "number")) {
+    throw new Error(`${fieldName} must contain only finite numbers`);
+  }
   if (!vector.every(Number.isFinite)) {
     if (strict) {
       throw new Error(`${fieldName} must contain only finite numbers`);
@@ -75,11 +110,40 @@ export function normalizeCameraZoom(value, fallback = 1, {
   fieldName = "camera.zoom",
   strict = false
 } = {}) {
-  if (value === undefined || value === null || value === "") {
+  if (value === undefined) {
     return fallback;
   }
-  const numericValue = Number(value);
-  if (Number.isFinite(numericValue) && numericValue > 0) {
+  if (value === null) {
+    if (strict) {
+      throw new Error(`${fieldName} must be a positive finite number`);
+    }
+    return fallback;
+  }
+  const numericValue = strict ? value : Number(value);
+  if ((!strict || typeof value === "number") && Number.isFinite(numericValue) && numericValue > 0) {
+    return numericValue;
+  }
+  if (strict) {
+    throw new Error(`${fieldName} must be a positive finite number`);
+  }
+  return fallback;
+}
+
+export function normalizeOrthographicHalfHeight(value, fallback = null, {
+  fieldName = "camera.orthographicHalfHeight",
+  strict = false
+} = {}) {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (value === null) {
+    if (strict) {
+      throw new Error(`${fieldName} must be a positive finite number`);
+    }
+    return fallback;
+  }
+  const numericValue = strict ? value : Number(value);
+  if ((!strict || typeof value === "number") && Number.isFinite(numericValue) && numericValue > 0) {
     return numericValue;
   }
   if (strict) {
@@ -100,7 +164,7 @@ function cameraPresetByName(name, {
   presets = RENDER_CAMERA_PRESETS,
   strict = true
 } = {}) {
-  const raw = String(name || DEFAULT_CAMERA_PRESET).trim().toLowerCase();
+  const raw = String(name ?? DEFAULT_CAMERA_PRESET).trim().toLowerCase();
   if (presets[raw]) {
     return clonePreset(presets[raw]);
   }
@@ -152,16 +216,31 @@ function validateCameraSpecKeys(spec) {
   }
 }
 
+function normalizeCameraSpecProjection(value, fallback, { strict = true } = {}) {
+  if (value === undefined || value === null) {
+    return normalizeCameraProjection(fallback, CAMERA_PROJECTION.ORTHOGRAPHIC);
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === CAMERA_PROJECTION.ORTHOGRAPHIC || normalized === CAMERA_PROJECTION.PERSPECTIVE) {
+    return normalized;
+  }
+  if (strict) {
+    throw new Error("camera.projection must be 'orthographic' or 'perspective'");
+  }
+  return normalizeCameraProjection(fallback, CAMERA_PROJECTION.ORTHOGRAPHIC);
+}
+
 export function normalizeCameraSpec(rawCamera = DEFAULT_CAMERA_PRESET, {
   presets = RENDER_CAMERA_PRESETS,
-  strict = true
+  strict = true,
+  defaultProjection = CAMERA_PROJECTION.ORTHOGRAPHIC
 } = {}) {
   const parsedJson = typeof rawCamera === "string"
     ? parseCameraJsonString(rawCamera, { strict })
     : null;
   const source = parsedJson || rawCamera;
   if (!isPlainObject(source)) {
-    const preset = cameraPresetByName(source || DEFAULT_CAMERA_PRESET, { presets, strict });
+    const preset = cameraPresetByName(source ?? DEFAULT_CAMERA_PRESET, { presets, strict });
     return {
       sourceKind: "string",
       name: preset.name,
@@ -171,10 +250,14 @@ export function normalizeCameraSpec(rawCamera = DEFAULT_CAMERA_PRESET, {
       target: null,
       up: preset.up,
       zoom: 1,
+      orthographicHalfHeight: null,
+      projection: normalizeCameraSpecProjection(undefined, defaultProjection, { strict }),
       hasExplicitPosition: false,
       hasExplicitTarget: false,
       hasExplicitUp: false,
-      hasExplicitZoom: false
+      hasExplicitZoom: false,
+      hasExplicitOrthographicHalfHeight: false,
+      hasExplicitProjection: false
     };
   }
 
@@ -200,6 +283,7 @@ export function normalizeCameraSpec(rawCamera = DEFAULT_CAMERA_PRESET, {
     strict
   }) || preset.up || [...WORLD_UP];
   const hasExplicitZoom = Object.prototype.hasOwnProperty.call(source, "zoom");
+  const hasExplicitOrthographicHalfHeight = Object.prototype.hasOwnProperty.call(source, "orthographicHalfHeight");
   // The preset still supplies direction/up fallbacks below, but it names the
   // camera only when the caller actually asked for it: an explicit
   // {direction, up, zoom} camera is "custom", not the default preset's name.
@@ -212,10 +296,14 @@ export function normalizeCameraSpec(rawCamera = DEFAULT_CAMERA_PRESET, {
     target,
     up,
     zoom: normalizeCameraZoom(source.zoom, 1, { strict, fieldName: "camera.zoom" }),
+    orthographicHalfHeight: normalizeOrthographicHalfHeight(source.orthographicHalfHeight, null, { strict }),
+    projection: normalizeCameraSpecProjection(source.projection, defaultProjection, { strict }),
     hasExplicitPosition: Object.prototype.hasOwnProperty.call(source, "position"),
     hasExplicitTarget: Object.prototype.hasOwnProperty.call(source, "target"),
     hasExplicitUp: Object.prototype.hasOwnProperty.call(source, "up"),
-    hasExplicitZoom
+    hasExplicitZoom,
+    hasExplicitOrthographicHalfHeight,
+    hasExplicitProjection: Object.prototype.hasOwnProperty.call(source, "projection")
   };
 }
 
@@ -270,12 +358,19 @@ export function resolveCameraView(rawCamera = DEFAULT_CAMERA_PRESET, options = {
         nonZero: true,
         strict: false
       }) || [...RENDER_CAMERA_PRESETS[DEFAULT_CAMERA_PRESET].direction];
-  return {
+  const view = {
     name: spec.name,
     direction,
     up: [...(spec.up || WORLD_UP)],
-    zoom: spec.zoom
+    zoom: spec.zoom,
+    projection: spec.projection
   };
+  if (spec.position) view.position = [...spec.position];
+  if (spec.target) view.target = [...spec.target];
+  if (spec.orthographicHalfHeight != null) {
+    view.orthographicHalfHeight = spec.orthographicHalfHeight;
+  }
+  return view;
 }
 
 export function resolveCameraSnapshot(rawCamera = DEFAULT_CAMERA_PRESET, bounds = null, {
@@ -313,6 +408,8 @@ export function resolveCameraSnapshot(rawCamera = DEFAULT_CAMERA_PRESET, bounds 
     target: target.toArray(),
     up: up.normalize().toArray(),
     zoom: spec.zoom,
+    orthographicHalfHeight: spec.orthographicHalfHeight,
+    projection: spec.projection,
     direction: resolvedDirection.normalize().toArray(),
     view: {
       name: spec.name,
@@ -325,6 +422,8 @@ export function resolveCameraSnapshot(rawCamera = DEFAULT_CAMERA_PRESET, bounds 
     hasExplicitTarget: spec.hasExplicitTarget,
     hasExplicitUp: spec.hasExplicitUp,
     hasExplicitZoom: spec.hasExplicitZoom,
+    hasExplicitOrthographicHalfHeight: spec.hasExplicitOrthographicHalfHeight,
+    hasExplicitProjection: spec.hasExplicitProjection,
     radius,
     size: size.toArray()
   };
@@ -332,9 +431,5 @@ export function resolveCameraSnapshot(rawCamera = DEFAULT_CAMERA_PRESET, bounds 
 
 export function cameraSpecUsesPerspectiveProjection(rawCamera = DEFAULT_CAMERA_PRESET, options = {}) {
   const spec = normalizeCameraSpec(rawCamera, options);
-  return spec.sourceKind === "object" && (
-    spec.hasExplicitPosition ||
-    spec.hasExplicitTarget ||
-    spec.hasExplicitUp
-  );
+  return spec.projection === CAMERA_PROJECTION.PERSPECTIVE;
 }

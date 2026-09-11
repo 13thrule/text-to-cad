@@ -24,6 +24,19 @@ import {
 import {
   createCadWebGlRenderer
 } from "./webglRenderer.js";
+import {
+  BASE_VIEWER_THEME,
+  createStageFloorGlowPlane,
+  createStageFloorPlane,
+  createStageShadowPlane,
+  getStageFloorSize
+} from "../lib/viewer/stageTheme.js";
+import {
+  clampSceneModelRadius,
+  getLightingScopeRadius,
+  getProportionalLightingScopeRadius,
+  getShadowCameraSettings
+} from "../lib/viewer/sceneScale.js";
 
 export const RENDER_SCENE_SCALE = Object.freeze({
   CAD: "cad",
@@ -267,8 +280,37 @@ export async function applyEnvironment(scene, themeSettings, warnings = []) {
   }
 }
 
-export function applyLighting(scene, themeSettings) {
+function modelRadiusFromBounds(bounds, sceneScale) {
+  const min = Array.isArray(bounds?.min) ? bounds.min : [0, 0, 0];
+  const max = Array.isArray(bounds?.max) ? bounds.max : [0, 0, 0];
+  return clampSceneModelRadius(new THREE.Vector3(
+    toFiniteNumber(max[0]) - toFiniteNumber(min[0]),
+    toFiniteNumber(max[1]) - toFiniteNumber(min[1]),
+    toFiniteNumber(max[2]) - toFiniteNumber(min[2])
+  ).length() / 2, sceneScale);
+}
+
+function lightingScaleForRadius(radius, sceneScale) {
+  return getProportionalLightingScopeRadius(radius, sceneScale) /
+    Math.max(getLightingScopeRadius(sceneScale), 1e-9);
+}
+
+function setScaledPosition(light, position, scale, fallback = { x: 0, y: 0, z: 0 }) {
+  light.position.set(
+    toFiniteNumber(position?.x, fallback.x) * scale,
+    toFiniteNumber(position?.y, fallback.y) * scale,
+    toFiniteNumber(position?.z, fallback.z) * scale
+  );
+}
+
+export function applyLighting(scene, themeSettings, {
+  bounds = null,
+  sceneScale = RENDER_SCENE_SCALE.CAD,
+  shadowMapSize = 2048
+} = {}) {
   const lighting = themeSettings.lighting || {};
+  const radius = bounds ? modelRadiusFromBounds(bounds, sceneScale) : null;
+  const positionScale = radius == null ? 1 : lightingScaleForRadius(radius, sceneScale);
   const addIfEnabled = (light, enabled) => {
     light.visible = enabled;
     scene.add(light);
@@ -289,13 +331,26 @@ export function applyLighting(scene, themeSettings) {
     lighting.directional?.color || "#ffffff",
     toFiniteNumber(lighting.directional?.intensity, 1)
   );
-  directional.position.set(
-    toFiniteNumber(lighting.directional?.position?.x, 160),
-    toFiniteNumber(lighting.directional?.position?.y, -140),
-    toFiniteNumber(lighting.directional?.position?.z, 240)
-  );
+  setScaledPosition(directional, lighting.directional?.position, positionScale, { x: 160, y: -140, z: 240 });
   directional.castShadow = true;
   addIfEnabled(directional, lighting.directional?.enabled !== false);
+  if (bounds && directional.shadow?.camera) {
+    const shadow = getShadowCameraSettings(sceneScale, {
+      radius,
+      keyLightDistance: directional.position.length()
+    });
+    directional.shadow.mapSize.set(shadowMapSize, shadowMapSize);
+    directional.shadow.bias = -0.00025;
+    directional.shadow.normalBias = shadow.normalBias;
+    directional.shadow.radius = shadow.radius;
+    directional.shadow.camera.left = -shadow.extent;
+    directional.shadow.camera.right = shadow.extent;
+    directional.shadow.camera.top = shadow.extent;
+    directional.shadow.camera.bottom = -shadow.extent;
+    directional.shadow.camera.near = 0.1;
+    directional.shadow.camera.far = shadow.far;
+    directional.shadow.camera.updateProjectionMatrix?.();
+  }
 
   // Fill and rim mirror the interactive viewer's soft secondary directionals.
   // Theme settings arrive NORMALIZED (normalizeThemeSettings always carries
@@ -304,52 +359,37 @@ export function applyLighting(scene, themeSettings) {
     lighting.fill?.color || DEFAULT_FILL_LIGHT_SETTINGS.color,
     toFiniteNumber(lighting.fill?.intensity, DEFAULT_FILL_LIGHT_SETTINGS.intensity)
   );
-  fill.position.set(
-    toFiniteNumber(lighting.fill?.position?.x, DEFAULT_FILL_LIGHT_SETTINGS.position.x),
-    toFiniteNumber(lighting.fill?.position?.y, DEFAULT_FILL_LIGHT_SETTINGS.position.y),
-    toFiniteNumber(lighting.fill?.position?.z, DEFAULT_FILL_LIGHT_SETTINGS.position.z)
-  );
+  setScaledPosition(fill, lighting.fill?.position, positionScale, DEFAULT_FILL_LIGHT_SETTINGS.position);
   addIfEnabled(fill, lighting.fill?.enabled !== false);
 
   const rim = new THREE.DirectionalLight(
     lighting.rim?.color || DEFAULT_RIM_LIGHT_SETTINGS.color,
     toFiniteNumber(lighting.rim?.intensity, DEFAULT_RIM_LIGHT_SETTINGS.intensity)
   );
-  rim.position.set(
-    toFiniteNumber(lighting.rim?.position?.x, DEFAULT_RIM_LIGHT_SETTINGS.position.x),
-    toFiniteNumber(lighting.rim?.position?.y, DEFAULT_RIM_LIGHT_SETTINGS.position.y),
-    toFiniteNumber(lighting.rim?.position?.z, DEFAULT_RIM_LIGHT_SETTINGS.position.z)
-  );
+  setScaledPosition(rim, lighting.rim?.position, positionScale, DEFAULT_RIM_LIGHT_SETTINGS.position);
   addIfEnabled(rim, lighting.rim?.enabled !== false);
 
   const spot = new THREE.SpotLight(
     lighting.spot?.color || "#ffffff",
     toFiniteNumber(lighting.spot?.intensity, 0),
-    toFiniteNumber(lighting.spot?.distance, 0),
+    toFiniteNumber(lighting.spot?.distance, 0) * positionScale,
     toFiniteNumber(lighting.spot?.angle, Math.PI / 6)
   );
-  spot.position.set(
-    toFiniteNumber(lighting.spot?.position?.x, 160),
-    toFiniteNumber(lighting.spot?.position?.y, -120),
-    toFiniteNumber(lighting.spot?.position?.z, 140)
-  );
+  setScaledPosition(spot, lighting.spot?.position, positionScale, { x: 160, y: -120, z: 140 });
   addIfEnabled(spot, lighting.spot?.enabled === true);
   scene.add(spot.target);
 
   const point = new THREE.PointLight(
     lighting.point?.color || "#ffffff",
     toFiniteNumber(lighting.point?.intensity, 0),
-    toFiniteNumber(lighting.point?.distance, 0)
+    toFiniteNumber(lighting.point?.distance, 0) * positionScale
   );
-  point.position.set(
-    toFiniteNumber(lighting.point?.position?.x, -120),
-    toFiniteNumber(lighting.point?.position?.y, 80),
-    toFiniteNumber(lighting.point?.position?.z, 140)
-  );
+  setScaledPosition(point, lighting.point?.position, positionScale, { x: -120, y: 80, z: 140 });
   addIfEnabled(point, lighting.point?.enabled === true);
+  return { directional, fill, rim, spot, point, radius, positionScale };
 }
 
-export function addFloor(scene, bounds, themeSettings, sceneScale, settingsByScale) {
+export function addFloor(scene, bounds, themeSettings, sceneScale, settingsByScale, guideSettings = null) {
   const floor = themeSettings.floor || {};
   const mode = floor.mode || THEME_FLOOR_MODES.STAGE;
   const floorEnabled = floor.enabled === true || (
@@ -357,19 +397,19 @@ export function addFloor(scene, bounds, themeSettings, sceneScale, settingsBySca
       && mode !== THEME_FLOOR_MODES.NONE
       && mode !== THEME_FLOOR_MODES.GRID
   );
-  const gridSettings = floor.grid && typeof floor.grid === "object" && !Array.isArray(floor.grid)
-    ? floor.grid
+  const gridSettings = guideSettings?.grid && typeof guideSettings.grid === "object" && !Array.isArray(guideSettings.grid)
+    ? guideSettings.grid
     : {};
-  const gridEnabled = gridSettings.enabled === true || mode === THEME_FLOOR_MODES.GRID;
-  const axisSettings = floor.axis && typeof floor.axis === "object" && !Array.isArray(floor.axis)
-    ? floor.axis
+  const gridEnabled = gridSettings.enabled === true;
+  const axisSettings = guideSettings?.axis && typeof guideSettings.axis === "object" && !Array.isArray(guideSettings.axis)
+    ? guideSettings.axis
     : {};
   const axisEnabled = axisSettings.enabled === true;
   if (!floorEnabled && !gridEnabled && !axisEnabled) {
     return;
   }
   const settings = renderSceneScaleSettings(sceneScale, settingsByScale);
-  const { center, radius } = centerAndRadiusFromBounds(bounds, sceneScale, settingsByScale);
+  const { radius } = centerAndRadiusFromBounds(bounds, sceneScale, settingsByScale);
   // The stage floor sits at world z=0, matching the viewer
   // (resolveRuntimeModelFloorZ in lib/viewer/modelRuntime.js). This path used to
   // glue the floor to bounds.min[2], which silently re-grounded EVERY model: a
@@ -378,10 +418,8 @@ export function addFloor(scene, bounds, themeSettings, sceneScale, settingsBySca
   // grounded. Follow the model only downward, so geometry below z=0 pushes the
   // floor down rather than clipping through it.
   const boundsMinZ = Array.isArray(bounds?.min) ? toFiniteNumber(bounds.min[2]) : 0;
-  // followModel is a floor-dependent trait: it only acts when the stage floor
-  // plane exists (matching normalizeThemeSettings). Grid/axis-only canvases
-  // stay pinned to world z=0, so geometry authored below z=0 visibly extends
-  // below the grid instead of dragging the reference plane with it.
+  // The presentation floor may follow geometry below z=0. Inspection guides
+  // are independent scene references and always stay at the world origin.
   const followModel = floorEnabled && floor.followModel !== false;
   const minZ = followModel ? Math.min(0, boundsMinZ) : 0;
   const gridSize = Math.max(radius * 3, settings.minFloorSize);
@@ -394,8 +432,8 @@ export function addFloor(scene, bounds, themeSettings, sceneScale, settingsBySca
     const grid = new THREE.GridHelper(
       gridSize,
       Math.max(8, Math.round(28 * gridDensity)),
-      gridSettings.centerColor || floor.color || DEFAULT_FLOOR_GRID_SETTINGS.centerColor,
-      gridSettings.cellColor || floor.color || DEFAULT_FLOOR_GRID_SETTINGS.cellColor
+      gridSettings.centerColor || DEFAULT_FLOOR_GRID_SETTINGS.centerColor,
+      gridSettings.cellColor || DEFAULT_FLOOR_GRID_SETTINGS.cellColor
     );
     const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
     for (const material of materials) {
@@ -409,13 +447,12 @@ export function addFloor(scene, bounds, themeSettings, sceneScale, settingsBySca
       material.toneMapped = false;
     }
     grid.rotation.x = Math.PI / 2;
-    grid.position.set(center.x, center.y, minZ - 0.02);
+    grid.position.set(0, 0, 0);
     scene.add(grid);
   }
   if (axisEnabled) {
-    // Vertical line through the world origin, matching the viewer's
-    // updateOriginAxis so a snapshot shows the same reference the viewer does,
-    // depth-tested so model surfaces in front of it hide it.
+    // Vertical line through the world origin, depth-tested so model surfaces
+    // in front of it hide it.
     const axisLength = Math.max(radius, 1) * FLOOR_AXIS_RADIUS_MULTIPLE;
     const axis = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([
@@ -432,23 +469,30 @@ export function addFloor(scene, bounds, themeSettings, sceneScale, settingsBySca
         toneMapped: false
       })
     );
-    axis.position.set(0, 0, minZ);
+    axis.position.set(0, 0, 0);
     scene.add(axis);
   }
   if (!floorEnabled) {
     return;
   }
-  const plane = new THREE.Mesh(
-    new THREE.PlaneGeometry(gridSize, gridSize),
-    new THREE.ShadowMaterial({
-      color: floor.color || "#f1f5f9",
-      opacity: clamp(toFiniteNumber(floor.shadowOpacity, 0.24), 0, 1)
-    })
+  const stageSize = getStageFloorSize(radius, sceneScale);
+  const lightingScopeRadius = getProportionalLightingScopeRadius(radius, sceneScale);
+  scene.add(createStageFloorPlane(THREE, BASE_VIEWER_THEME, themeSettings, stageSize, minZ, 0));
+  const glow = createStageFloorGlowPlane(
+    THREE,
+    themeSettings,
+    lightingScopeRadius,
+    stageSize,
+    minZ,
+    sceneScale
   );
-  plane.rotation.x = 0;
-  plane.position.set(center.x, center.y, minZ - 0.03);
-  plane.receiveShadow = true;
-  scene.add(plane);
+  if (glow) {
+    scene.add(glow);
+  }
+  const shadow = createStageShadowPlane(THREE, themeSettings, stageSize, minZ);
+  if (shadow) {
+    scene.add(shadow);
+  }
 }
 
 export function boundsCorners(bounds) {
@@ -471,7 +515,7 @@ export function boundsCorners(bounds) {
 }
 
 export function framePadding(job = {}) {
-  const rawPadding = job.render?.padding ?? job.render?.paddingPercent ?? job.padding ?? job.paddingPercent;
+  const rawPadding = job.output?.padding ?? job.output?.paddingPercent;
   return clamp(toFiniteNumber(rawPadding, 0.04), 0, 0.15);
 }
 
@@ -513,7 +557,16 @@ export function fitOrthographicCamera(camera, view, bounds, width, height, {
   camera.up.set(...resolvedCamera.up);
   camera.lookAt(target);
   const aspect = Math.max(width / Math.max(height, 1), 0.01);
-  const halfHeight = lockedHalfHeight || frameHalfHeightForView(resolvedCamera.view, bounds, width, height, padding, sceneScale, settingsByScale);
+  const explicitHalfHeight = lockedHalfHeight == null
+    ? resolvedCamera.orthographicHalfHeight
+    : null;
+  const halfHeight = lockedHalfHeight || explicitHalfHeight || frameHalfHeightForView(resolvedCamera.view, bounds, width, height, padding, sceneScale, settingsByScale);
+  // A canonical half-height is the stored orthographic frustum before camera
+  // zoom, matching the interactive camera's cadHalfHeight. Automatic and
+  // sequence fits already fold zoom into their computed half-height.
+  camera.zoom = explicitHalfHeight
+    ? normalizeCameraZoom(resolvedCamera.zoom, 1)
+    : 1;
   camera.top = halfHeight;
   camera.bottom = -halfHeight;
   camera.left = -halfHeight * aspect;
@@ -525,6 +578,8 @@ export function fitOrthographicCamera(camera, view, bounds, width, height, {
 }
 
 export function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, {
+  framePoints = null,
+  padding = 0.12,
   sceneScale = RENDER_SCENE_SCALE.CAD,
   settingsByScale,
   strict = true
@@ -541,8 +596,57 @@ export function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, 
   camera.zoom = normalizeCameraZoom(resolvedCamera.zoom, 1);
   camera.near = Math.max(resolvedCamera.radius / 1200, 0.01);
   camera.far = Math.max(resolvedCamera.radius * 600, settings.minCameraFar, 2000);
-  camera.lookAt(new THREE.Vector3(...resolvedCamera.target));
+  const target = new THREE.Vector3(...resolvedCamera.target);
+  camera.lookAt(target);
+  camera.updateMatrixWorld(true);
+
+  // A supplied position is authored framing. Automatic cameras instead fit
+  // their subject to the requested output aspect and padding. The old fixed
+  // 3.2-radius distance left flat and round parts occupying barely half the
+  // image, especially in Render's default perspective projection.
+  if (!resolvedCamera.hasExplicitPosition) {
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    const screenUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+    const backward = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 2).normalize();
+    const relative = new THREE.Vector3();
+    const aspect = camera.aspect;
+    const safeContentScale = Math.max(1 - (clamp(toFiniteNumber(padding, 0.12), 0, 0.45) * 2), 0.1);
+    // Camera zoom remains an explicit compositional zoom, matching the
+    // orthographic snapshot contract. It intentionally does not disappear
+    // into the automatic distance calculation.
+    const verticalSlope = Math.max(Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * safeContentScale, 1e-6);
+    const horizontalSlope = Math.max(verticalSlope * aspect, 1e-6);
+    const nearClearance = camera.near * 2;
+    let distance = Math.max(settings.minCameraDistance || 0, nearClearance);
+    let pointCount = 0;
+    const includePoint = (point) => {
+      if (!point?.isVector3 || ![point.x, point.y, point.z].every(Number.isFinite)) {
+        return;
+      }
+      relative.copy(point).sub(target);
+      const depthOffset = relative.dot(backward);
+      distance = Math.max(
+        distance,
+        depthOffset + Math.abs(relative.dot(right)) / horizontalSlope,
+        depthOffset + Math.abs(relative.dot(screenUp)) / verticalSlope,
+        depthOffset + nearClearance
+      );
+      pointCount += 1;
+    };
+    if (framePoints && typeof framePoints[Symbol.iterator] === "function") {
+      for (const point of framePoints) includePoint(point);
+    }
+    if (!pointCount) {
+      for (const point of boundsCorners(bounds)) includePoint(point);
+    }
+    camera.position.copy(target).addScaledVector(backward, distance);
+    camera.lookAt(target);
+    resolvedCamera.position = camera.position.toArray();
+    resolvedCamera.direction = backward.toArray();
+    resolvedCamera.view.direction = backward.toArray();
+  }
   camera.updateProjectionMatrix();
+  camera.updateMatrixWorld(true);
   return resolvedCamera;
 }
 
@@ -560,8 +664,8 @@ export function lockedFrameHalfHeight(outputs, bounds, width, height, job, scene
 
 export function outputSize(output, job) {
   return {
-    width: Math.max(1, Math.floor(toFiniteNumber(output.width, job.width || 1400))),
-    height: Math.max(1, Math.floor(toFiniteNumber(output.height, job.height || 900)))
+    width: Math.max(1, Math.floor(toFiniteNumber(output.width, job.output?.width || 1400))),
+    height: Math.max(1, Math.floor(toFiniteNumber(output.height, job.output?.height || 900)))
   };
 }
 
@@ -576,7 +680,7 @@ export function configurePngRenderer(width, height, job, themeSettings, {
   renderer.toneMappingExposure = Math.max(toFiniteNumber(themeSettings.lighting?.toneMappingExposure, 1), 0.05);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.setPixelRatio(clamp(toFiniteNumber(job.render?.renderScale, job.renderScale || defaultRenderScale), 1, 3));
+  renderer.setPixelRatio(clamp(toFiniteNumber(job.output?.renderScale, defaultRenderScale), 1, 3));
   renderer.setSize(width, height, false);
   document.body.innerHTML = "";
   document.body.appendChild(renderer.domElement);
@@ -588,11 +692,7 @@ export function dataUrlFromRenderer(renderer, mime = "image/png") {
 }
 
 export function shouldBurnInViewLabels(job = {}) {
-  return typeof job.render?.viewLabels === "boolean"
-    ? job.render.viewLabels
-    : typeof job.viewLabels === "boolean"
-      ? job.viewLabels
-      : false;
+  return typeof job.output?.viewLabels === "boolean" ? job.output.viewLabels : false;
 }
 
 export function drawBurnedInLabel(context, label, width, height, {

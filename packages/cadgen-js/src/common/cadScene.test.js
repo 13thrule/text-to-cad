@@ -439,7 +439,7 @@ function assertClose(actual, expected, message, epsilon = 1e-3) {
 test("buildModel draws a surf component's CAD edges as ONE instanced screen-space draw with per-class colour, opacity and thickness", () => {
   const scene = buildModel(THREE, surfComponentMeshData(), {
     theme: cloneThemePresetSettings("workbench-light"),
-    displayMode: CAD_DISPLAY_MODE.SOLID,
+    displayMode: CAD_DISPLAY_MODE.SHADED_EDGES,
     renderPartsIndividually: true,
     edgeRendering: { mode: "screen-space", LineSegments2, LineSegmentsGeometry, LineMaterial }
   });
@@ -514,7 +514,7 @@ test("buildModel draws a surf component's CAD edges as ONE instanced screen-spac
   transparent.dispose();
 
   // Rendered mode draws no linework at all; wireframe draws the mesh wires instead.
-  const rendered = buildModel(THREE, surfComponentMeshData(), { displayMode: CAD_DISPLAY_MODE.RENDERED, renderPartsIndividually: true });
+  const rendered = buildModel(THREE, surfComponentMeshData(), { displayMode: CAD_DISPLAY_MODE.SHADED, renderPartsIndividually: true });
   assert.equal(rendered.displayRecords[0].edges, null);
   assert.equal(rendered.displayRecords[0].edgeInstance, null);
   rendered.dispose();
@@ -785,17 +785,16 @@ test("buildModel rebuilds the instanced edge draw when edge class settings chang
   const theme = cloneThemePresetSettings("workbench-light");
   const scene = buildModel(THREE, surfComponentMeshData(), {
     theme,
-    displayMode: CAD_DISPLAY_MODE.SOLID,
+    displayMode: CAD_DISPLAY_MODE.SHADED_EDGES,
     renderPartsIndividually: true
   });
   const originalSet = scene.displayRecords[0].edgeInstance.set;
   const originalSegments = originalSet.segments;
 
   scene.update({
-    displayMode: CAD_DISPLAY_MODE.SOLID,
-    theme: {
-      ...theme,
-      edges: {
+    displayMode: CAD_DISPLAY_MODE.SHADED_EDGES,
+    theme,
+    edgeSettings: {
         ...DEFAULT_DISPLAY_EDGE_SETTINGS,
         color: "#0055ff",
         classes: {
@@ -810,7 +809,6 @@ test("buildModel rebuilds the instanced edge draw when edge class settings chang
           }
         }
       }
-    }
   });
 
   const set = scene.displayRecords[0].edgeInstance.set;
@@ -820,7 +818,7 @@ test("buildModel rebuilds the instanced edge draw when edge class settings chang
   assert.equal(set.segments.segmentCount, 3, "tangent switched off: only the three feature segments remain");
   assert.equal(set.uniforms.cadClassWidth.value.x, 2.5, "feature thickness follows the class setting");
   assert.equal(scene.edgesGroup.children.length, 1);
-  scene.update({ theme });
+  scene.update({ theme, edgeSettings: DEFAULT_DISPLAY_EDGE_SETTINGS });
   assert.equal(scene.displayRecords[0].edgeInstance.set.segments, originalSegments, "the previous style's segment texture is cached");
   scene.dispose();
 });
@@ -892,7 +890,7 @@ test("buildModel display modes control edges, transparency, and flat surfaces", 
   const theme = cloneThemePresetSettings("workbench-light");
   const renderedScene = buildModel(THREE, sampleMeshData(), {
     theme,
-    displayMode: CAD_DISPLAY_MODE.RENDERED,
+    displayMode: CAD_DISPLAY_MODE.SHADED,
     renderPartsIndividually: true
   });
   assert.equal(renderedScene.displayRecords[0].edges, null);
@@ -978,14 +976,9 @@ test("buildModel uses part records when only source opacity differs", () => {
 test("buildModel ignores deprecated mesh edge detail and keeps wireframe all-edge mode", () => {
   const baseTheme = cloneThemePresetSettings("workbench-light");
   const deprecatedDetailScene = buildModel(THREE, squareMeshData(), {
-    theme: {
-      ...baseTheme,
-      edges: {
-        ...DEFAULT_DISPLAY_EDGE_SETTINGS,
-        topologyFilter: "all"
-      }
-    },
-    displayMode: CAD_DISPLAY_MODE.SOLID
+    theme: baseTheme,
+    edgeSettings: DEFAULT_DISPLAY_EDGE_SETTINGS,
+    displayMode: CAD_DISPLAY_MODE.SHADED_EDGES
   });
   const wireScene = buildModel(THREE, squareMeshData(), {
     theme: baseTheme,
@@ -1003,7 +996,7 @@ test("buildModel ignores deprecated mesh edge detail and keeps wireframe all-edg
 test("buildModel creates screen-space edges from declarative edge rendering options", () => {
   const scene = buildModel(THREE, squareMeshData(), {
     theme: cloneThemePresetSettings("workbench-light"),
-    displayMode: CAD_DISPLAY_MODE.SOLID,
+    displayMode: CAD_DISPLAY_MODE.SHADED_EDGES,
     edgeRendering: {
       mode: "screen-space",
       LineSegments2,
@@ -1023,16 +1016,14 @@ test("buildModel creates screen-space edges from declarative edge rendering opti
 test("buildModel can render silhouette contours without derived mesh edges", () => {
   const theme = cloneThemePresetSettings("workbench-light");
   const scene = buildModel(THREE, sampleMeshData(), {
-    theme: {
-      ...theme,
-      edges: {
-        ...DEFAULT_DISPLAY_EDGE_SETTINGS,
-        enabled: false,
-        silhouette: true,
-        silhouetteScale: 0.004
-      }
+    theme,
+    edgeSettings: {
+      ...DEFAULT_DISPLAY_EDGE_SETTINGS,
+      enabled: false,
+      silhouette: true,
+      silhouetteScale: 0.004
     },
-    displayMode: CAD_DISPLAY_MODE.RENDERED,
+    displayMode: CAD_DISPLAY_MODE.SHADED,
     silhouette: true,
     renderPartsIndividually: true
   });
@@ -1348,6 +1339,39 @@ test("exact source-part identity skips work only for rows owned by the current c
   assert.equal(record.material.roughness, 0.14);
   assert.equal(record.material.metalness, 0.72);
   scene.dispose();
+});
+
+test("explicit Render PBR edits override authored channels while studio values remain fallbacks", () => {
+  const source = sampleMeshData();
+  source.parts = source.parts.map((part, index) => ({
+    ...part,
+    material: index === 0 ? { roughness: 0.17, metalness: 0.83 } : null
+  }));
+  const materialSettings = {
+    defaultColor: "#b6c4ce",
+    roughness: 0.58,
+    metalness: 0.04,
+    clearcoat: 0.12,
+    clearcoatRoughness: 0.35,
+    opacity: 1
+  };
+  const authored = buildModel(THREE, source, { renderPartsIndividually: true, materialSettings });
+  assert.equal(authored.displayRecords[0].material.roughness, 0.17);
+  assert.equal(authored.displayRecords[0].material.metalness, 0.83);
+  assert.equal(authored.displayRecords[1].material.roughness, 0.58);
+  assert.equal(authored.displayRecords[1].material.metalness, 0.04);
+  authored.dispose();
+
+  const customized = buildModel(THREE, source, {
+    renderPartsIndividually: true,
+    materialSettings,
+    materialOverrides: { roughness: 0.08, metalness: 0.92 }
+  });
+  for (const record of customized.displayRecords) {
+    assert.equal(record.material.roughness, 0.08);
+    assert.equal(record.material.metalness, 0.92);
+  }
+  customized.dispose();
 });
 
 test("mutable public mesh rows observe replacement parent geometry and topology", () => {
@@ -1742,14 +1766,12 @@ test("a deformed tube's private edges keep per-class thickness", () => {
   const scene = buildModel(THREE, meshData, {
     renderPartsIndividually: true,
     edgeRendering: { LineSegments2, LineSegmentsGeometry, LineMaterial },
-    theme: {
-      edges: {
-        ...DEFAULT_DISPLAY_EDGE_SETTINGS,
-        classes: {
-          ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes,
-          feature: { ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes.feature, thickness: 2.5 },
-          tangent: { ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes.tangent, thickness: 0.75 }
-        }
+    edgeSettings: {
+      ...DEFAULT_DISPLAY_EDGE_SETTINGS,
+      classes: {
+        ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes,
+        feature: { ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes.feature, thickness: 2.5 },
+        tangent: { ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes.tangent, thickness: 0.75 }
       }
     }
   });

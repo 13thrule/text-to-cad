@@ -45,28 +45,58 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   render directly from its immutable object binding; selectors and a cache
   miss resolve the pinned surface asynchronously without recompiling geometry.
 
-## Themes
+## Appearance, Display, and Render
 
-App appearance and CAD scene themes are independent. The app follows its saved
-light/dark/system preference; System uses the live OS preference. Selecting a
-scene preset never changes panel colors. The UI uses neutral light and charcoal
-dark tokens with opaque panels and menus in `src/client/styles/globals.css`.
+App appearance is a global **System / Light / Dark** preference. System follows
+the live OS preference. A host-scoped `cad-viewer-appearance` cookie remembers
+the choice across browser sessions and viewer ports; a localStorage mirror
+notifies other tabs on the same origin and provides a fallback when cookies
+are blocked. The synchronous startup script applies the preference before the
+app mounts. Neutral light and charcoal panel tokens remain independent from
+the model's lighting and materials.
 
-The **System** scene chooses Light or Dark from the resolved app appearance and
-matches the document's `--background`. Explicit **Light**, **Dark**, **Cinematic**
-and **Custom** scenes retain their own backgrounds. Theme settings belong to
-the scene; the app resolves System before passing settings to the shared runtime.
-CLI snapshots have no app preference and use the settings supplied to them.
+**Display** owns projection, inspection style, edges, grid, origin axes, part
+color overrides, clipping, and exploded view. **Shaded with edges** shows shaded
+surfaces with CAD edges; **Shaded** shows those surfaces without edges. Neither
+mode selects a studio or changes geometry detail. Camera projection belongs to
+the shared camera configuration even though its control appears in Display.
+Grid and origin axes are world references, independent of the studio floor.
 
-These presets and theme semantics were ported from
-[PR #369](https://github.com/earthtojake/text-to-cad/pull/369), reviewed at
-`7f6d5b3939cda5d044c89ba54f2190f131428475`. Dark changes from blue slate to
-neutral charcoal; Light's scene values already matched. The port includes the
-opaque chrome and independent appearance behavior, with corrected cross-tab
-preference handling, System picker resolution and initial OS preference. It
-aligns the no-stylesheet fallback with the current charcoal token and lets a
-transparent canvas reveal the app background. It excludes
-the PR's desktop host, package migration and canvas layout changes.
+**Render** is the last inspector tab by default. Its enable switch applies a
+studio setup; changing inspector tabs does not disable it. The default studio
+follows app appearance, while explicit Bright and Dark studios retain their
+own setup. Lighting, environment, physical floor, materials, background, and
+exposure remain customizable. The existing toolbar owns image capture.
+
+Quality is independent of the studio. Normal CAD uses the Interactive policy;
+Render defaults to High, with Standard and Interactive available. These policies
+share the same renderer, tessellation ladder, cache entries, and memory budget.
+High tightens the visible geometry's screen-error target and increases the idle
+pixel-ratio cap. It refines the view without rebuilding the exact CAD geometry
+or the WebGL scene. The status indicator reports High detail only after that
+view's target settles, and reports when memory limits prevent extra detail.
+Snapshots use the same policy: High selects the existing L2 STEP tessellation
+and 2× capture scale unless explicit tessellation or output scale overrides it.
+
+Normal CAD settings and Render settings are separate per-model session state.
+Enabling Render applies its default projection and display settings plus that
+model's custom overrides. Disabling restores the CAD view; reenabling restores
+the customized Render view. Display controls show the effective values and
+edit the active view. These settings use sessionStorage with other per-model
+ephemeral state; they are not written beside models, into the geometry cache,
+or into global theme preferences. A normal geometry rebuild preserves the
+render setup. Closing the browser tab ends its session.
+
+The collapsed **Debug** section at the bottom of Render provides Copy/Paste
+Settings. Its JSON uses the same render contract as `cadgen step snapshot --render`;
+invalid settings fail before replacing the current setup. Keeping a JSON file
+is optional and manual. CLI snapshots default to a deterministic light CAD
+view; supplying `--render` opts into studio settings, and explicit camera or
+display options override the studio's defaults. Both clients resolve scene
+settings through the shared cadgen-js implementation. **Follow app** remains
+adaptive in copied settings; the CLI resolves it against its light default.
+Choose an explicit Light/Dark appearance or studio when the copied setup needs
+the same backdrop in both clients.
 
 ## Launching
 

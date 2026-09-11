@@ -146,7 +146,8 @@ src/
                    #   kinematicsRuntime + kinematicsModule (FK + sidecar ->
                    #   pose definition), animationRuntime (clips),
                    #   stepModule/stepModuleEffects (effects application),
-                   #   source (render-source loading), themeSettings,
+                   #   source (render-source loading), sceneSettings (shared
+                   #   CAD/Render contract), camera, themeSettings internals,
                    #   displaySettings, stepTopology
   lib/             # subsystems: surf/ (tessellation + caches), selectors/
                    #   (ref runtime), assembly/ (package composition),
@@ -163,6 +164,24 @@ Contract mirrors that must stay in lockstep (each has a sync test):
 `lib/cadRefs.js` ↔ `cadgen/cad_ref_syntax.py`;
 `common/kinematicsRuntime.js` ↔ `cadgen/_internal/kinematics_fk.py`;
 tessellation v4 keys, headers and mesh-index records ↔ `cadgen/store/meshes.py`.
+
+`common/sceneSettings.js` is the public scene-policy boundary shared by the
+Viewer and snapshot runtime. `resolveSceneSettings()` applies base CAD defaults,
+then an optional sparse Render envelope, then explicit camera/display overrides.
+The Render envelope is `{studio, appearance, quality, settings, camera, display}`.
+Camera owns projection; display owns mode, clipping, exploded view, edge style,
+world-origin guides, and part colors. Studio settings own materials, background,
+floor, environment, and lighting. Quality is independent from the studio preset:
+interactive and standard retain the canonical snapshot mesh rung, while high
+uses the bounded L2 rung and 2x snapshot render scale. Explicit
+`quality.tessellation` and `output.renderScale` remain authoritative.
+
+Canonical display modes are `shaded`, `shaded_edges`, `transparent`,
+`hidden_edges`, `hidden_lines_removed`, `unshaded`, and `wireframe`. Retired
+`rendered` and `solid` values fail with their replacements. Render material
+settings are fallbacks for authored PBR channels; only sparse explicit PBR edits
+become material overrides. `resolveDisplayMaterialSettings()` applies the shared
+Original, Single color, and Color by part policy without app state.
 
 Browser mesh-cache reads start with a bounded metadata probe. The client admits
 the encoded object and conservative decoded size before fetching a body, binds

@@ -163,7 +163,7 @@ export function resolveSourceBaseColor(THREE, {
 }
 
 export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
-  displayMode = CAD_DISPLAY_MODE.SOLID
+  displayMode = CAD_DISPLAY_MODE.SHADED_EDGES
 } = {}) {
   if (!record?.material || !materialSettings) {
     return;

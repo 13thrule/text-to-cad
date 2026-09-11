@@ -248,9 +248,8 @@ It takes the `.dxf` document only — a model script is refused by name (run
 `python <drawing>.py`, then snapshot the drawing it wrote). The command meshes
 the flat pattern on demand through the bundled Node one-shot and
 renders it through the shared snapshot CLI (`cadgen.snapshot_cli`) and the same
-headless browser runtime every rendering skill uses — so geometry and materials
-render identically to the CAD Viewer; the default `snapshot` theme differs from the
-viewport only by dropping the grid, origin axis and shadows.
+headless browser runtime every rendering skill uses. A normal snapshot uses
+deterministic light CAD lighting and hides grid and axis guides.
 
 OUT — the second positional — is written exactly as given, with a relative path resolved against the
 current working directory. The target is deleted before the render starts and the
@@ -262,13 +261,12 @@ don't-care case and gets a generated timestamped name inside it, printed on the
 `saved snapshot:` line.
 
 Grammar: `cadgen dxf snapshot TARGET [OUT] [flags]`. Flags: `--mode view|list`,
-`--camera`, `--theme`, `--size-profile`, `--width`/`--height`, `--job`,
-`--view-labels`, `--debug`, `--json`. Theme settings live under one `--theme`,
-mirroring the viewer's Theme tab; the default theme is `snapshot`, Workbench Light
-without the ground grid, origin axis or shadows. The command has no `--display`,
-and no selector, kinematics, section or exploded options at all — they are absent
-from `--help` rather than refused at runtime, because a drawing carries no CAD
-topology and display settings are CAD topology settings.
+`--camera`, `--render`, `--display`, `--size-profile`, `--width`/`--height`,
+`--job`, `--view-labels`, `--debug`, `--json`. `--render` opts into the shared
+studio scene and accepts a studio id, exported Render JSON, or a file path;
+`--camera` and `--display` override its camera and format-neutral display choices.
+A drawing has no selectors, kinematics, section mode, exploded assembly structure,
+or CAD-edge topology, and those combinations are absent or rejected clearly.
 
 No CLI inspects an existing `.dxf`. For entity/layer checks read it with `ezdxf`
 directly (it arrives with build123d), and `validate_dxf_file` for the drawing checks;

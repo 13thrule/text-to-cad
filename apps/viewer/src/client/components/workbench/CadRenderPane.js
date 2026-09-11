@@ -262,7 +262,10 @@ export default function CadRenderPane({
   viewerServerInfo = null,
   viewerPerspective,
   viewerPerspectiveRef,
+  projection = CAMERA_PROJECTION.ORTHOGRAPHIC,
   themeSettings,
+  materialOverrides = null,
+  quality = null,
   previewMode,
   viewportFrameInsets,
   viewerLoading,
@@ -369,17 +372,12 @@ export default function CadRenderPane({
   const hasParts = capabilities.parts;
   const hasTopology = capabilities.topology;
   const displaySettingsActive = capabilities.displayModes && !!displaySettings;
-  // Projection is a THEME trait, honoured by every format that declares it — not a
-  // STEP privilege. Leaving the others pinned to perspective meant the default
-  // workbench theme (which is orthographic) was being ignored by four formats out of
-  // five. A plan view additionally forces orthographic: a top-down lock still
+  // A plan view additionally forces orthographic: a top-down lock still
   // foreshortens off-centre under perspective, which is exactly what a plan view must
-  // not do.
+  // not do. Every other format receives projection from the resolved scene camera.
   const cadProjection = planMode
     ? CAMERA_PROJECTION.ORTHOGRAPHIC
-    : capabilities.themeProjection
-      ? normalizeCameraProjection(themeSettings?.projection)
-      : CAMERA_PROJECTION.PERSPECTIVE;
+    : normalizeCameraProjection(projection, CAMERA_PROJECTION.ORTHOGRAPHIC);
   const cadViewerBoundsAnimationActive = Boolean(
     boundsAnimationActive || resolvedStepAnimation?.playing
   );
@@ -514,6 +512,8 @@ export default function CadRenderPane({
         showEdges
         recomputeNormals={false}
         themeSettings={themeSettings}
+        materialOverrides={materialOverrides}
+        quality={quality}
         displaySettings={displaySettingsActive ? displaySettings : null}
         previewMode={previewMode}
         showViewPlane={!previewMode}

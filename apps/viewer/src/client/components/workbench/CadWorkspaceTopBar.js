@@ -35,6 +35,9 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -49,6 +52,7 @@ import {
   TooltipTrigger
 } from "@/components/ui/tooltip";
 import { cn } from "@/ui/utils";
+import { COLOR_SCHEMES } from "@/ui/colorScheme";
 import { copyTextToClipboard } from "@/ui/clipboard";
 import { entryIconStatus } from "@/workbench/entryIconStatus";
 import FileAccessContextMenu from "./FileAccessContextMenu";
@@ -88,11 +92,12 @@ function ViewportQualityIndicator({ qualityStatus }) {
     return null;
   }
   const state = qualityStatus.state;
-  const Icon = state === "standard" ? CircleCheck
+  const ready = state === "standard" || state === "high";
+  const Icon = ready ? CircleCheck
     : state === "preview" ? Circle
       : state === "refining" ? LoaderCircle
         : CircleAlert;
-  const iconClassName = state === "standard"
+  const iconClassName = ready
     ? "text-primary"
     : state === "limited"
       ? "text-amber-500 dark:text-amber-300"
@@ -1028,8 +1033,8 @@ export default function CadWorkspaceTopBar({
   fileSheetKind = "",
   fileSheetOpen = false,
   onToggleFileSheet,
-  themeEditing = false,
-  onToggleThemeEditor,
+  colorSchemePreference = "system",
+  onColorSchemePreferenceChange,
   navigationAvailable = true
 }) {
   const viewerVersion = String(viewerPackage.version || "").trim();
@@ -1076,7 +1081,7 @@ export default function CadWorkspaceTopBar({
   const fileSheetToggleLabel = fileSheetOpen
     ? `Collapse ${fileSheetLabel(fileSheetKind)}`
     : `Expand ${fileSheetLabel(fileSheetKind)}`;
-  const themeToggleLabel = themeEditing ? "Close theme settings" : "Open theme settings";
+  const appearanceLabel = "Appearance";
 
   return (
     <header
@@ -1222,21 +1227,34 @@ export default function CadWorkspaceTopBar({
           ) : null}
           <ViewportQualityIndicator qualityStatus={qualityStatus} />
           {annotationError ? <span role="alert" className="max-w-48 truncate text-xs text-destructive" title={annotationError}>Annotations unavailable</span> : null}
-          {/* A plain toggle for the theme sidebar, matching the file-sheet
-              button beside it. Theme selection lives inside the sidebar. */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={themeToggleLabel}
-            title={themeToggleLabel}
-            aria-pressed={themeEditing}
-            onClick={onToggleThemeEditor}
-            className={`${topBarIconButtonClasses} ${themeEditing ? activeIconButtonClasses : ""}`}
-          >
-            <Contrast className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
-            <span className="sr-only">{themeToggleLabel}</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={appearanceLabel}
+                title={appearanceLabel}
+                className={topBarIconButtonClasses}
+              >
+                <Contrast className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
+                <span className="sr-only">{appearanceLabel}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuLabel className="text-xs">Appearance</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={colorSchemePreference}
+                onValueChange={(value) => onColorSchemePreferenceChange?.(value)}
+              >
+                {COLOR_SCHEMES.map((option) => (
+                  <DropdownMenuRadioItem key={option.id} value={option.id} className="text-xs">
+                    {option.label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {showFileSheetToggle ? (
             <Button
@@ -1245,9 +1263,9 @@ export default function CadWorkspaceTopBar({
               size="icon"
               aria-label={fileSheetToggleLabel}
               title={fileSheetToggleLabel}
-              aria-pressed={fileSheetOpen && !themeEditing}
+              aria-pressed={fileSheetOpen}
               onClick={onToggleFileSheet}
-              className={`${topBarIconButtonClasses} ${fileSheetOpen && !themeEditing ? activeIconButtonClasses : ""}`}
+              className={`${topBarIconButtonClasses} ${fileSheetOpen ? activeIconButtonClasses : ""}`}
             >
               <SlidersHorizontal className={topBarIconClasses} />
               <span className="sr-only">{fileSheetToggleLabel}</span>

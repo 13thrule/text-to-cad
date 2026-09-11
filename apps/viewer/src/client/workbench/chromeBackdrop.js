@@ -1,6 +1,6 @@
 // The scene's backdrop when the active CAD theme is "System".
 //
-// A theme paints the scene, and every preset but one — and the custom theme —
+// The resolved studio paints the scene; the app background remains the fallback
 // paints the backdrop its own settings ask for: Cinematic's radial charcoal is
 // Cinematic. "System" is the one that means *follow the app*, so it paints the
 // chrome's own ground: the `--background` token on the document.

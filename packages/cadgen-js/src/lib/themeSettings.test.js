@@ -111,11 +111,8 @@ test("workbench-light preset uses neutral material treatment while preserving so
   assert.equal(cinematic.background.linearEnd, "#f0f4f9");
   assert.equal(cinematic.floor.mode, THEME_FLOOR_MODES.STAGE);
   assert.equal(cinematic.floor.enabled, false);
-  // No stage floor plane, but a faint ground grid and an origin axis to read
-  // part position against.
-  assert.equal(cinematic.floor.grid.enabled, true);
-  assert.equal(cinematic.floor.grid.opacity, 0.16);
-  assert.equal(cinematic.floor.axis.enabled, true);
+  assert.equal(Object.hasOwn(cinematic.floor, "grid"), false);
+  assert.equal(Object.hasOwn(cinematic.floor, "axis"), false);
   // followModel is coupled to the floor: with the workbench stage floor
   // disabled it normalizes to false, so the grid stays the true z=0 plane.
   assert.equal(cinematic.floor.followModel, false);
@@ -160,7 +157,7 @@ test("vibrant ships as a bright photoreal stage after cinematic", () => {
   assert.equal(THEME_PRESETS[3]?.id, "vibrant");
   assert.equal(vibrantPreset?.label, "Vibrant");
   assert.equal(vibrant.colorMode, THEME_COLOR_MODES.LIGHT);
-  assert.equal(vibrant.projection, "perspective");
+  assert.equal(Object.hasOwn(vibrant, "projection"), false);
   // Vibrant shows off each model's own colors; the palette is kept but not cycled.
   assert.equal(vibrant.materials.cycleColors, false);
   assert.equal(vibrant.materials.fillColors.length > 1, true);
@@ -179,41 +176,22 @@ test("vibrant ships as a bright photoreal stage after cinematic", () => {
   assert.equal(getThemePresetIdForSettings(vibrant), "vibrant");
 });
 
-test("projection is a per-theme trait: canvases orthographic, stages perspective", () => {
-  const orthographic = ["workbench-light", "workbench-dark"];
-  const perspective = ["cinematic", "vibrant", "blue", "pink", "clay-sunrise", "terminal"];
-  for (const id of orthographic) {
-    assert.equal(cloneThemePresetSettings(id).projection, "orthographic", `${id} projection`);
+test("camera projection is not retained by normalized themes", () => {
+  for (const id of THEME_PRESETS.map((preset) => preset.id)) {
+    assert.equal(Object.hasOwn(cloneThemePresetSettings(id), "projection"), false, `${id} projection`);
   }
-  for (const id of perspective) {
-    assert.equal(cloneThemePresetSettings(id).projection, "perspective", `${id} projection`);
-  }
-  // Themes predating the setting normalize to the orthographic default.
-  assert.equal(normalizeThemeSettings({}).projection, "orthographic");
-  assert.equal(normalizeThemeSettings({ projection: "perspective" }).projection, "perspective");
-  assert.equal(normalizeThemeSettings({ projection: "fisheye" }).projection, "orthographic");
+  assert.equal(Object.hasOwn(normalizeThemeSettings({ projection: "perspective" }), "projection"), false);
 });
 
-test("themes stay edge-agnostic unless they opt into their own outline", () => {
-  // Most themes carry no edges and leave the outline to per-file display
-  // settings; Terminal is the exception and owns a neon-green outline.
-  assert.equal(Object.hasOwn(cloneThemePresetSettings("workbench"), "edges"), false);
-  assert.equal(Object.hasOwn(cloneThemePresetSettings("cinematic"), "edges"), false);
-  assert.equal(Object.hasOwn(cloneThemePresetSettings("vibrant"), "edges"), false);
-  assert.equal(Object.hasOwn(cloneThemePresetSettings("blue"), "edges"), false);
-
-  const terminal = cloneThemePresetSettings("terminal");
-  assert.equal(terminal.edges.enabled, true);
-  assert.equal(terminal.edges.color, "#66ff99");
-
-  // When a theme declares edges, they normalize through the display-edge
-  // normalizer and survive on the theme.
+test("normalized themes never own CAD edge presentation", () => {
+  for (const id of THEME_PRESETS.map((preset) => preset.id)) {
+    assert.equal(Object.hasOwn(cloneThemePresetSettings(id), "edges"), false, `${id} edges`);
+  }
   const withEdges = normalizeThemeSettings({
     ...cloneThemePresetSettings("workbench"),
     edges: { enabled: true, color: "#ABC" }
   });
-  assert.equal(withEdges.edges.enabled, true);
-  assert.equal(withEdges.edges.color, "#aabbcc");
+  assert.equal(Object.hasOwn(withEdges, "edges"), false);
 });
 
 test("built-in theme preset ids stay explicit with cinematic third", () => {
@@ -247,7 +225,7 @@ test("cinematic ships as a real dark studio preset, not an alias", () => {
   assert.equal(cinematic.background.radialOuter, "#0a0a0d");
   assert.equal(cinematic.floor.mode, THEME_FLOOR_MODES.STAGE);
   assert.equal(cinematic.floor.enabled, true);
-  assert.equal(cinematic.floor.grid.enabled, true);
+  assert.equal(Object.hasOwn(cinematic.floor, "grid"), false);
   assert.equal(cinematic.floor.followModel, true);
   assert.equal(cinematic.environment.enabled, true);
   assert.equal(cinematic.environment.presetId, "studio-hdri-43");
@@ -331,10 +309,7 @@ test("stylized presets keep their palettes and declare an opinionated color mode
       cycleColors: false,
       backgroundColor: "#020403",
       floorColor: "#02120a",
-      // Terminal ships a transparent grid floor (no solid stage) and owns a
-      // neon-green outline, unlike the other stylized stages.
-      floorEnabled: false,
-      hasEdges: true
+      floorEnabled: false
     }
   ];
 
@@ -344,15 +319,12 @@ test("stylized presets keep their palettes and declare an opinionated color mode
     assert.equal(settings.materials.defaultColor, expectation.materialColor);
     assert.deepEqual(settings.materials.fillColors, expectation.fillColors);
     assert.equal(settings.materials.cycleColors, expectation.cycleColors);
-    assert.equal(Object.hasOwn(settings, "edges"), expectation.hasEdges === true);
+    assert.equal(Object.hasOwn(settings, "edges"), false);
     assert.equal(settings.background.solidColor, expectation.backgroundColor);
     assert.equal(settings.floor.color, expectation.floorColor);
     assert.equal(settings.floor.enabled, expectation.floorEnabled !== false, `${expectation.presetId} floor enabled`);
-    // Terminal keeps its grid even with the solid floor disabled.
-    if (expectation.floorEnabled === false) {
-      assert.equal(settings.floor.grid.enabled, true, `${expectation.presetId} grid enabled`);
-    }
-    assert.equal(settings.projection, "perspective", `${expectation.presetId} projection`);
+    assert.equal(Object.hasOwn(settings.floor, "grid"), false, `${expectation.presetId} guides`);
+    assert.equal(Object.hasOwn(settings, "projection"), false, `${expectation.presetId} projection`);
     assert.equal(getThemePresetIdForSettings(settings), expectation.presetId);
   }
 });
@@ -383,7 +355,7 @@ test("fill color normalization keeps up to fifty colors and syncs the default fi
   assert.equal(resolveThemeFillColor(normalized.materials, 51), "#000002");
 });
 
-test("floor grid settings normalize as theme-owned controls", () => {
+test("floor guides are dropped from normalized themes", () => {
   const normalized = normalizeThemeSettings({
     floor: {
       mode: "grid",
@@ -398,15 +370,8 @@ test("floor grid settings normalize as theme-owned controls", () => {
   });
 
   assert.equal(normalized.floor.mode, THEME_FLOOR_MODES.GRID);
-  assert.equal(normalized.floor.grid.centerColor, "#112233");
-  assert.equal(normalized.floor.grid.cellColor, "#456789");
-  assert.equal(normalized.floor.grid.opacity, 1);
-  assert.equal(normalized.floor.grid.density, MAX_FLOOR_GRID_DENSITY);
-
-  // Grid colors derive from the floor color, so they differ from the neutral defaults.
-  const fallback = normalizeThemeSettings({ floor: { color: "#111111" } });
-  assert.notEqual(fallback.floor.grid.centerColor, DEFAULT_FLOOR_GRID_SETTINGS.centerColor);
-  assert.equal(fallback.floor.grid.opacity, DEFAULT_FLOOR_GRID_SETTINGS.opacity);
+  assert.equal(Object.hasOwn(normalized.floor, "grid"), false);
+  assert.equal(Object.hasOwn(normalized.floor, "axis"), false);
 });
 
 test("disabled color cycling preserves palettes without rotating fills", () => {
@@ -482,17 +447,17 @@ test("the snapshot theme is Workbench Light without the scene furniture", () => 
   const snapshot = cloneThemePresetSettings(SNAPSHOT_THEME_ID);
   const light = cloneThemePresetSettings("workbench-light");
 
-  assert.equal(light.floor.grid.enabled, true, "workbench-light is the one WITH a grid");
-  assert.equal(light.floor.axis.enabled, true);
-  assert.equal(snapshot.floor.grid.enabled, false);
-  assert.equal(snapshot.floor.axis.enabled, false);
+  assert.equal(Object.hasOwn(light.floor, "grid"), false);
+  assert.equal(Object.hasOwn(light.floor, "axis"), false);
+  assert.equal(Object.hasOwn(snapshot.floor, "grid"), false);
+  assert.equal(Object.hasOwn(snapshot.floor, "axis"), false);
 
   // Everything a part is made of is inherited unchanged, so it reads in a snapshot exactly
   // as it does in the viewer.
   assert.deepEqual(snapshot.materials, light.materials);
   assert.deepEqual(snapshot.background, light.background);
   assert.deepEqual(snapshot.lighting, light.lighting);
-  assert.equal(snapshot.projection, light.projection);
+  assert.equal(Object.hasOwn(snapshot, "projection"), false);
 });
 
 test("the snapshot theme resolves by id but is never offered in the picker", () => {

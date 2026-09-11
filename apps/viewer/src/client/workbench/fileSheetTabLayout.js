@@ -14,10 +14,9 @@ import { FILE_SHEET_SECTION_IDS } from "./fileSheetSections.js";
 // existing reveal-on-select behavior keeps working.
 
 // Bumped to reset saved arrangements when the default pane assignment changes.
-// v5: the single Parameters tab became two — Pose and Animation — so a stored
-// v4 arrangement names a tab that no longer exists and knows nothing of the two
-// that replaced it.
-export const FILE_SHEET_TAB_LAYOUT_STORAGE_KEY = "cad-viewer:file-sheet-tab-layout:v5";
+// v6: Display now owns inspection presentation and Render is the final tab for
+// every 3D format. Reset old arrangements so the new tabs land consistently.
+export const FILE_SHEET_TAB_LAYOUT_STORAGE_KEY = "cad-viewer:file-sheet-tab-layout:v6";
 
 export const DEFAULT_FILE_SHEET_SPLIT_RATIO = 0.5;
 export const MIN_FILE_SHEET_SPLIT_RATIO = 0.2;
@@ -52,8 +51,8 @@ export function clampSplitRatio(ratio) {
 
 // Tabs that live in the top pane of a split layout; everything else defaults to
 // the bottom pane, in render order. STEP: the Tree on top, Reference/Pose/
-// Animation/Measure/Display below. DXF: Material on top (it always renders), the
-// conditional Bends/Layers tabs below.
+// Animation/Measure/Display/Render below. DXF: Material on top (it always
+// renders), the conditional Bends/Layers tabs below.
 const TOP_PANE_SECTION_IDS = Object.freeze(new Set([
   FILE_SHEET_SECTION_IDS.STEP_TREE,
   FILE_SHEET_SECTION_IDS.DXF_MATERIAL

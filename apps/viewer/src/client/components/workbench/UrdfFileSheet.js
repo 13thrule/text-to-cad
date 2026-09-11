@@ -268,7 +268,7 @@ export default function UrdfFileSheet({
   sdf = null,
   viewerServerInfo = null,
   suppressDynamicMetadataStatus = false,
-  themeTabs = [],
+  settingsTabs = [],
   openSectionIds = [],
   onOpenSectionIdsChange
 }) {
@@ -421,7 +421,7 @@ export default function UrdfFileSheet({
             )
       )
     } : null,
-    ...themeTabs
+    ...settingsTabs
   ];
 
   return (

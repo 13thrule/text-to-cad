@@ -26,7 +26,8 @@ export function useViewportQualityStatus({
   file = "",
   hasGeometry = false,
   modelComplete = false,
-  lodExpectedComponentCount = 0
+  lodExpectedComponentCount = 0,
+  quality = "interactive"
 } = {}) {
   const [lodRecord, setLodRecord] = useState(() => ({ modelKey, snapshot: readLodSnapshot() }));
   const [memoryRecord, setMemoryRecord] = useState(() => ({ modelKey, limitation: null }));
@@ -80,8 +81,9 @@ export function useViewportQualityStatus({
     modelComplete,
     lodExpectedComponentCount,
     lodSnapshot: currentLodSnapshot,
-    memoryLimitation
-  }), [currentLodSnapshot, hasGeometry, lodExpectedComponentCount, memoryLimitation, modelComplete]);
+    memoryLimitation,
+    quality
+  }), [currentLodSnapshot, hasGeometry, lodExpectedComponentCount, memoryLimitation, modelComplete, quality]);
 
   useEffect(() => {
     if (!status.firstPreviewReady && !status.standardQualityReady) {

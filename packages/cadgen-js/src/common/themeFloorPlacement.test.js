@@ -37,7 +37,7 @@ test("workbench light/dark render at true coordinates: floor off, placement pinn
     const floor = normalizeThemeSettings(preset.settings).floor;
     assert.equal(floor.enabled, false, `${id}: workbench has no stage floor`);
     assert.equal(floor.followModel, false, `${id}: placement never follows the model`);
-    assert.equal(floor.grid.enabled, true, `${id}: the reference grid stays on`);
+    assert.equal(Object.hasOwn(floor, "grid"), false, `${id}: guides are display-owned`);
   }
 });
 

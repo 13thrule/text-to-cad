@@ -94,6 +94,10 @@ export function useViewerRuntime({
     }
   }, [preserveInteractionPixelRatio, runtimeRef, runtimeResetToken]);
 
+  useEffect(() => {
+    runtimeRef.current?.setIdlePixelRatioCap?.(IDLE_PIXEL_RATIO_CAP);
+  }, [IDLE_PIXEL_RATIO_CAP, runtimeRef, runtimeResetToken]);
+
   // Runtime setup/teardown should run once per WebGL runtime epoch.
   useEffect(() => {
     let cancelled = false;
@@ -163,7 +167,9 @@ export function useViewerRuntime({
 
       const renderer = createWebGlRenderer(THREE);
       const softwareRendering = isSoftwareWebGlRenderer(renderer);
-      const idlePixelRatioCap = softwareRendering ? 1 : IDLE_PIXEL_RATIO_CAP;
+      let idlePixelRatioCap = softwareRendering
+        ? 1
+        : Math.max(Number(IDLE_PIXEL_RATIO_CAP) || 1, 0.25);
       const interactionPixelRatioCap = softwareRendering ? 1 : INTERACTION_PIXEL_RATIO_CAP;
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -359,6 +365,16 @@ export function useViewerRuntime({
         syncScreenSpaceLineMaterials();
         syncDrawingCanvasSize(runtimeRef.current);
         renderDrawingOverlay();
+      };
+
+      const setIdlePixelRatioCap = (nextCap) => {
+        idlePixelRatioCap = softwareRendering
+          ? 1
+          : Math.max(Number(nextCap) || 1, 0.25);
+        if (!interactionState.active) {
+          applyRenderQuality(idlePixelRatioCap, { interaction: false });
+          requestRender();
+        }
       };
 
       const fitCameraDepthRange = (runtime) => {
@@ -827,6 +843,7 @@ export function useViewerRuntime({
         },
         beginInteraction,
         scheduleIdleQuality,
+        setIdlePixelRatioCap,
         // Hooks a render type installs to tune the shared loop for its own frame
         // cost. All are inert on the mesh path, which leaves them at these
         // defaults.

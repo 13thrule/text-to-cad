@@ -177,7 +177,7 @@ test("file session tab state stores file sheet open section ids", () => {
     slices: {
       tab: {
         inspectedAssemblyNodeId: "module-a",
-        fileSheetOpenSectionIds: ["tree", "display", "theme"]
+        fileSheetOpenSectionIds: ["tree", "display", "render"]
       }
     }
   }), { storage });
@@ -187,7 +187,7 @@ test("file session tab state stores file sheet open section ids", () => {
   assert.deepEqual(restoredTab.fileSheetOpenSectionIds, [
     "tree",
     "display",
-    "theme"
+    "render"
   ]);
 });
 
@@ -339,6 +339,79 @@ test("file session state skips stale content-sensitive slices", () => {
   // Both halves of the sidecar ride the same signature: a rebuilt sidecar
   // invalidates the stored pose AND the stored playback position.
   assert.equal(restored.slices.animation, undefined);
+});
+
+test("display and Render setup survive ordinary geometry revisions", () => {
+  const storage = createMemoryStorage();
+  const oldEntry = stepEntry("parts/revised.step", "old-mesh", "old-module");
+  const nextEntry = stepEntry("parts/revised.step", "new-mesh", "new-module");
+
+  writeFileSessionState("models", oldEntry.file, createFileSessionSnapshot({
+    entry: oldEntry,
+    slices: {
+      tab: { selectedPartIds: ["old-solid"] },
+      display: { mode: "wireframe" },
+      render: {
+        enabled: true,
+        cadProjection: "orthographic",
+        payload: {
+          studio: "default",
+          appearance: "system",
+          quality: "standard",
+          settings: { materials: { roughness: 0.32 } }
+        }
+      }
+    }
+  }), { storage });
+
+  const restored = readFileSessionState("models", nextEntry.file, nextEntry, { storage });
+  assert.equal(restored.slices.tab, undefined);
+  assert.equal(restored.slices.display.mode, "wireframe");
+  assert.equal(restored.slices.render.enabled, true);
+  assert.equal(restored.slices.render.payload.quality, "standard");
+  assert.equal(restored.slices.render.payload.settings.materials.roughness, 0.32);
+});
+
+test("A to B to A restores distinct CAD and Render cameras", () => {
+  const storage = createMemoryStorage();
+  const entryA = stepEntry("parts/camera-a.step", "mesh-a", "module-a");
+  const entryB = stepEntry("parts/camera-b.step", "mesh-b", "module-b");
+  const cadA = { position: [10, 20, 30], target: [1, 2, 3], up: [0, 0, 1], projection: "orthographic", orthographicHalfHeight: 18 };
+  const renderA = { position: [40, 50, 60], target: [4, 5, 6], up: [0, 0, 1], projection: "perspective", orthographicHalfHeight: 21 };
+  const cadB = { position: [-10, -20, 15], target: [-1, -2, 0], up: [0, 0, 1], projection: "orthographic", orthographicHalfHeight: 35 };
+  const renderB = { position: [-40, -50, 25], target: [-4, -5, 0], up: [0, 0, 1], projection: "perspective", orthographicHalfHeight: 40 };
+
+  for (const [entry, cadCamera, renderCamera] of [
+    [entryA, cadA, renderA],
+    [entryB, cadB, renderB]
+  ]) {
+    writeFileSessionState("models", entry.file, createFileSessionSnapshot({
+      entry,
+      slices: {
+        render: {
+          enabled: true,
+          cadCamera,
+          cadProjection: cadCamera.projection,
+          payload: {
+            studio: "default",
+            appearance: "system",
+            quality: "high",
+            camera: renderCamera
+          }
+        }
+      }
+    }), { storage });
+  }
+
+  const restoredA = readFileSessionState("models", entryA.file, entryA, { storage }).slices.render;
+  const restoredB = readFileSessionState("models", entryB.file, entryB, { storage }).slices.render;
+  const restoredAAgain = readFileSessionState("models", entryA.file, entryA, { storage }).slices.render;
+
+  assert.deepEqual(restoredA.cadCamera, cadA);
+  assert.deepEqual(restoredA.payload.camera, renderA);
+  assert.deepEqual(restoredB.cadCamera, cadB);
+  assert.deepEqual(restoredB.payload.camera, renderB);
+  assert.deepEqual(restoredAAgain, restoredA);
 });
 
 test("pose and animation are stored as independent slices", () => {

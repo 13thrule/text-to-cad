@@ -57,6 +57,7 @@ import {
   displayModeShowsThroughEdges,
   resolveDisplayEdgeSettings
 } from "cadgen-js/lib/displaySettings";
+import { resolveDisplayMaterialSettings } from "cadgen-js/common/sceneSettings.js";
 import {
   clampSceneModelRadius,
   defaultSceneGridRadius,
@@ -133,6 +134,7 @@ import {
   staticSceneResetEligible
 } from "../render/staticSceneReset.js";
 import { sampleLodCamera, resampleLodAfterViewportResize } from "../render/lodCameraSample.js";
+import { sceneBuildStructuralKey } from "../render/sceneBuildSettings.js";
 import {
   buildSurfaceLinePositions,
   projectPointToSurfaceUv,
@@ -1026,12 +1028,14 @@ function readPerspectiveSnapshot(runtime) {
   if (!runtime?.camera || !runtime?.controls) {
     return null;
   }
+  const orthographicHalfHeight = readOrthographicHalfHeight(runtime);
   return {
     position: [runtime.camera.position.x, runtime.camera.position.y, runtime.camera.position.z],
     target: [runtime.controls.target.x, runtime.controls.target.y, runtime.controls.target.z],
     up: [runtime.camera.up.x, runtime.camera.up.y, runtime.camera.up.z],
     zoom: runtime.camera.zoom,
-    projection: runtimeCameraProjection(runtime)
+    projection: runtimeCameraProjection(runtime),
+    ...(orthographicHalfHeight ? { orthographicHalfHeight } : {})
   };
 }
 
@@ -1076,6 +1080,12 @@ function applyPerspectiveSnapshot(runtime, perspective, { scheduleIdle = true } 
   runtime.camera.position.set(...nextPerspective.position);
   runtime.controls.target.set(...nextPerspective.target);
   runtime.camera.up.set(...nextPerspective.up);
+  if (
+    Number.isFinite(nextPerspective.orthographicHalfHeight) &&
+    nextPerspective.orthographicHalfHeight > 0
+  ) {
+    setOrthographicCameraHalfHeight(runtime, nextPerspective.orthographicHalfHeight);
+  }
   if (Number.isFinite(nextPerspective.zoom) && nextPerspective.zoom > 0) {
     runtime.camera.zoom = nextPerspective.zoom;
     runtime.camera.updateProjectionMatrix?.();
@@ -1093,7 +1103,7 @@ function applyPerspectiveSnapshot(runtime, perspective, { scheduleIdle = true } 
 function transitionCameraToPerspectiveSnapshot(runtime, perspective, {
   durationMs = VIEW_PLANE_TRANSITION_MS,
   easing = CAMERA_TRANSITION_EASING.EASE_IN_OUT_CUBIC,
-  orthographicHalfHeight = null,
+  orthographicHalfHeight = undefined,
   resetZoomBaselineOnComplete = false
 } = {}) {
   const nextPerspective = clonePerspectiveSnapshot(perspective);
@@ -1115,7 +1125,7 @@ function transitionCameraToPerspectiveSnapshot(runtime, perspective, {
     ? Number(runtime.camera.userData?.cadHalfHeight)
     : null;
   const endOrthographicHalfHeight = runtime.camera?.isOrthographicCamera
-    ? Number(orthographicHalfHeight)
+    ? Number(orthographicHalfHeight ?? nextPerspective.orthographicHalfHeight)
     : null;
   if (
     ![endPosition.x, endPosition.y, endPosition.z, endTarget.x, endTarget.y, endTarget.z, endUp.x, endUp.y, endUp.z, endZoom]
@@ -1606,14 +1616,19 @@ function updateGridHelper(
   floorMode = THEME_FLOOR_MODES.STAGE,
   floorSettings = {}
 ) {
-  updateStageOriginAxis(runtime, viewerTheme, radius, floorZ, {
+  // Inspection guides live on the authored world plane. The physical Render
+  // floor may follow the model, but that placement belongs to stage effects.
+  updateStageOriginAxis(runtime, viewerTheme, radius, 0, {
     disposeSceneObject,
     floorSettings
   });
-  return updateStageGridHelper(runtime, viewerTheme, radius, floorZ, sceneScaleMode, floorMode, {
+  const result = updateStageGridHelper(runtime, viewerTheme, radius, 0, sceneScaleMode, floorMode, {
     disposeSceneObject,
     floorSettings
   });
+  runtime.gridFloorZ = floorZ;
+  runtime.floorMode = floorMode;
+  return result;
 }
 
 const CadViewer = forwardRef(function CadViewer({
@@ -1643,6 +1658,8 @@ const CadViewer = forwardRef(function CadViewer({
   recomputeNormals,
   theme = BASE_VIEWER_THEME,
   themeSettings = null,
+  materialOverrides = null,
+  quality = null,
   floorModeOverride = "",
   previewMode = false,
   showViewPlane = true,
@@ -1820,6 +1837,18 @@ const CadViewer = forwardRef(function CadViewer({
   const normalizedThemeSettings = normalizedViewerRenderState.themeSettings;
   const normalizedDisplaySettings = normalizedViewerRenderState.displaySettings;
   const normalizedDisplayMode = normalizedViewerRenderState.displayMode;
+  const normalizedMaterialSettings = useMemo(
+    () => resolveDisplayMaterialSettings(
+      normalizedThemeSettings.materials,
+      normalizedDisplaySettings.partColor
+    ),
+    [normalizedDisplaySettings.partColor, normalizedThemeSettings.materials]
+  );
+  const materialPartPolicyKey = `${
+    normalizedMaterialSettings.cycleColors === true &&
+    Array.isArray(normalizedMaterialSettings.fillColors) &&
+    normalizedMaterialSettings.fillColors.length > 1
+  }:${normalizedMaterialSettings.overrideSourceColors === true}`;
   const normalizedExplodedSettings = normalizedDisplaySettings.exploded;
   const explodeAmount = clamp(toNumber(normalizedExplodedSettings.amount, 1), 0, 1);
   const explodablePartCount = useMemo(() => renderableMeshParts(meshData).length, [meshData]);
@@ -1842,20 +1871,22 @@ const CadViewer = forwardRef(function CadViewer({
   // CAD edges come from the topology package, so this is the `topology` capability, not
   // "is this STEP". A second format that ships topology inherits the edge rendering.
   const shouldUseCadEdgeSource = hasCapability(renderFormat, "topology");
+  const displayEdgeSettingsKey = JSON.stringify(normalizedDisplaySettings.edges);
   const displayEdgeSettings = useMemo(
     () => resolveDisplayEdgeSettings(normalizedDisplaySettings),
-    [normalizedDisplaySettings]
+    [displayEdgeSettingsKey]
   );
   const wireframeMode = displayModeIsWireframe(normalizedDisplayMode);
   const displayModeForceEdges = displayModeForcesEdges(normalizedDisplayMode);
   const displayModeThroughEdges = displayModeShowsThroughEdges(normalizedDisplayMode);
+  const wireframeBackgroundKey = JSON.stringify(normalizedThemeSettings.background);
   const wireframeEdgeColor = useMemo(
     () => resolveWireframeEdgeColor({
       edgeColor: displayEdgeSettings?.color,
       themeSettings: normalizedThemeSettings,
       viewerTheme
     }),
-    [displayEdgeSettings, normalizedThemeSettings, viewerTheme]
+    [displayEdgeSettings, wireframeBackgroundKey, viewerTheme]
   );
   const wireframeEdgeOpacity = useMemo(() => {
     const baseOpacity = Number.isFinite(Number(displayEdgeSettings?.opacity))
@@ -1905,6 +1936,11 @@ const CadViewer = forwardRef(function CadViewer({
   }, [hiddenPartIds, visualEdgeSettings]);
   const normalizedClipSettings = normalizedViewerRenderState.clipSettings;
   const floorSettings = normalizedThemeSettings.floor || {};
+  const guideFloorSettings = useMemo(() => ({
+    ...floorSettings,
+    grid: normalizedDisplaySettings.guides.grid,
+    axis: normalizedDisplaySettings.guides.axis
+  }), [floorSettings, normalizedDisplaySettings.guides]);
   const defaultFloorMode = floorSettings.enabled === true
     ? THEME_FLOOR_MODES.STAGE
     : THEME_FLOOR_MODES.NONE;
@@ -1932,9 +1968,9 @@ const CadViewer = forwardRef(function CadViewer({
       floorZ,
       sceneScaleMode,
       floorMode,
-      normalizedThemeSettings.floor
+      guideFloorSettings
     );
-  }, [normalizedThemeSettings.floor]);
+  }, [guideFloorSettings]);
   const applyActiveSceneBackground = applySceneBackground;
   const edgesVisible = showEdges && shouldUseCadEdgeSource && displayModeShowsEdges(normalizedDisplayMode);
   const topologyDisplayEdgesVisible = shouldRenderTopologyDisplayEdges({
@@ -3348,7 +3384,9 @@ const CadViewer = forwardRef(function CadViewer({
     DEFAULT_ZOOM_SPEED,
     COARSE_POINTER_ZOOM_SPEED,
     INTERACTION_PIXEL_RATIO_CAP,
-    IDLE_PIXEL_RATIO_CAP,
+    IDLE_PIXEL_RATIO_CAP: Number(quality?.idlePixelRatioCap) > 0
+      ? Number(quality.idlePixelRatioCap)
+      : IDLE_PIXEL_RATIO_CAP,
     INTERACTION_IDLE_DELAY_MS,
     TRACKPAD_PINCH_ZOOM_SPEED,
     COARSE_POINTER_PINCH_ZOOM_SPEED,
@@ -3452,15 +3490,25 @@ const CadViewer = forwardRef(function CadViewer({
     runtime.spotLight.castShadow = false;
 
     const materialSettings = {
-      ...normalizedThemeSettings.materials,
-      envMapIntensity: normalizedThemeSettings.materials.envMapIntensity * (
+      ...normalizedMaterialSettings,
+      envMapIntensity: normalizedMaterialSettings.envMapIntensity * (
         normalizedThemeSettings.environment.enabled ? normalizedThemeSettings.environment.intensity : 0
       )
     };
-    for (const record of runtime.displayRecords || []) {
-      applyMaterialSettingsToRecord(runtime.THREE, record, materialSettings, {
-        displayMode: normalizedDisplayMode
+    if (runtime.cadScene) {
+      runtime.cadScene.update({
+        theme: normalizedThemeSettings,
+        materialSettings,
+        materialOverrides
       });
+      runtime.displayRecords = runtime.cadScene.displayRecords;
+    } else {
+      for (const record of runtime.displayRecords || []) {
+        applyMaterialSettingsToRecord(runtime.THREE, record, materialSettings, {
+          displayMode: normalizedDisplayMode,
+          materialOverrides
+        });
+      }
     }
     runtime.cadScene?.syncSurfaceInstances();
 
@@ -3497,6 +3545,8 @@ const CadViewer = forwardRef(function CadViewer({
   }, [
     defaultGridRadius,
     normalizedDisplayMode,
+    materialOverrides,
+    normalizedMaterialSettings,
     normalizedThemeSettings,
     normalizedSceneScaleMode,
     resolvedFloorMode,
@@ -3667,15 +3717,15 @@ const CadViewer = forwardRef(function CadViewer({
     try {
     const sceneSyncStartedAt = performance.now();
     const { controls } = runtime;
-    const hasFillRotation = normalizedThemeSettings.materials.cycleColors === true &&
-      Array.isArray(normalizedThemeSettings.materials.fillColors) &&
-      normalizedThemeSettings.materials.fillColors.length > 1;
+    const hasFillRotation = normalizedMaterialSettings.cycleColors === true &&
+      Array.isArray(normalizedMaterialSettings.fillColors) &&
+      normalizedMaterialSettings.fillColors.length > 1;
     const shouldRenderFillParts = hasFillRotation &&
       Array.isArray(meshData?.parts) &&
       meshData.parts.length > 0;
     const shouldRenderSourceColorParts =
       !wireframeMode &&
-      normalizedThemeSettings.materials?.overrideSourceColors !== true &&
+      normalizedMaterialSettings.overrideSourceColors !== true &&
       meshNeedsPartRenderingForSourceColors(meshData);
     const { renderParts: shouldRenderParts, parts: renderedParts } = resolveScenePartRendering({
       meshData,
@@ -3686,8 +3736,8 @@ const CadViewer = forwardRef(function CadViewer({
       pickMode
     });
     const materialSettings = {
-      ...normalizedThemeSettings.materials,
-      envMapIntensity: normalizedThemeSettings.materials.envMapIntensity * (
+      ...normalizedMaterialSettings,
+      envMapIntensity: normalizedMaterialSettings.envMapIntensity * (
         normalizedThemeSettings.environment.enabled ? normalizedThemeSettings.environment.intensity : 0
       )
     };
@@ -3724,12 +3774,11 @@ const CadViewer = forwardRef(function CadViewer({
     // is handed to the existing scene, which reconciles its records instead of
     // rebuilding them: occurrences already on screen keep their meshes,
     // materials, visual and deformation state and BVHs.
-    const sceneBuildKey = JSON.stringify({
-      theme: sceneTheme,
+    const sceneBuildKey = sceneBuildStructuralKey({
       displayMode: normalizedDisplayMode,
       applyDisplayModeEdgePolicy: !topologyDisplayEdgesVisible,
-      scale: normalizedSceneScaleMode,
-      materialSettings,
+      sceneScaleMode: normalizedSceneScaleMode,
+      edgeSettings: sceneTheme.edges,
       recomputeNormals,
       silhouette: topologyDisplayEdgesVisible && displayEdgeSettings.silhouette === true,
       wireframeEdgeColor
@@ -3772,7 +3821,13 @@ const CadViewer = forwardRef(function CadViewer({
     let cadScene;
     if (reuseScene) {
       cadScene = runtime.cadScene;
-      cadScene.update({ source: meshData, ...sceneModelSettings });
+      cadScene.update({
+        source: meshData,
+        theme: sceneTheme,
+        materialSettings,
+        materialOverrides,
+        ...sceneModelSettings
+      });
     } else {
       clearDisplayedModel({ releaseGpu: !runtime.hasVisibleModel || runtime.activeModelKey !== (modelKey || "") });
       cadScene = buildModel(THREE, meshData, {
@@ -3782,6 +3837,8 @@ const CadViewer = forwardRef(function CadViewer({
         scale: normalizedSceneScaleMode,
         baseTheme: viewerTheme,
         materialSettings,
+        materialOverrides,
+        edgeSettings: visualEdgeSettings,
         recomputeNormals,
         silhouette: topologyDisplayEdgesVisible && displayEdgeSettings.silhouette === true,
         parameterSetup: false,
@@ -4145,19 +4202,16 @@ const CadViewer = forwardRef(function CadViewer({
     selectorRuntime,
     displayEdgeRuntime,
     normalizedDisplayMode,
+    materialPartPolicyKey,
     normalizedSceneScaleMode,
     resolvedFloorMode,
     floorFollowsModel,
     viewerTheme,
-    normalizedThemeSettings.lighting,
-    normalizedThemeSettings.materials,
-    normalizedThemeSettings.environment,
     displayEdgeSettings,
     hiddenAwareVisualEdgeSettings,
     visualEdgeSettings,
     syncCameraZoomPercent,
-    wireframeEdgeColor,
-    updateActiveGridHelper
+    wireframeEdgeColor
   ]);
 
   useEffect(() => {

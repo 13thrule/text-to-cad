@@ -12,8 +12,7 @@ test("file sheet section defaults match current sheet behavior", () => {
   // layout resolves it as active, so this list stays empty.
   assert.deepEqual(defaultOpenFileSheetSectionIds("dxf"), []);
   assert.deepEqual(defaultOpenFileSheetSectionIds("step"), ["tree"]);
-  // In the tabbed layout the Tree is the only default-open section; Display is
-  // the default-active bottom tab, resolved by the tab layout, not this list.
+  // Render is the final available tab while the normal inspection tab opens first.
   assert.deepEqual(
     defaultOpenFileSheetSectionIds("step", { hasStepPosePanel: true, hasStepAnimationPanel: true }),
     ["tree"]
@@ -28,18 +27,18 @@ test("a robot's sheet does not advertise a Tree tab it cannot render", () => {
   // Robot links ARE selectable parts in the viewport as of R1, but the Tree PANEL still
   // lives inside StepFileSheet. Listing "tree" here without a section to render would put
   // an id in the rendered list that no sheet answers. See R1b.
-  assert.deepEqual(renderedFileSheetSectionIds("urdf"), ["joints"]);
-  assert.deepEqual(renderedFileSheetSectionIds("sdf"), ["sdf", "joints"]);
+  assert.deepEqual(renderedFileSheetSectionIds("urdf"), ["joints", "display", "render"]);
+  assert.deepEqual(renderedFileSheetSectionIds("sdf"), ["sdf", "joints", "display", "render"]);
 });
 
 test("rendered file sheet sections include closed-by-default sections", () => {
   // A drawing has controls of its own: thickness and bends are render-time parameters on the
   // cached prism, so they steer the viewport without touching the package.
   // One stacked surface: Material over Bends, no tab switch between them.
-  assert.deepEqual(renderedFileSheetSectionIds("dxf"), ["material"]);
+  assert.deepEqual(renderedFileSheetSectionIds("dxf"), ["material", "render"]);
   assert.deepEqual(
     renderedFileSheetSectionIds("dxf", { hasDxfBendsPanel: true, hasDxfLayersPanel: true }),
-    ["material", "bends", "dxfLayers"]
+    ["material", "bends", "dxfLayers", "render"]
   );
   assert.deepEqual(renderedFileSheetSectionIds("step", {
     hasStepPosePanel: true,
@@ -53,7 +52,8 @@ test("rendered file sheet sections include closed-by-default sections", () => {
     "pose",
     "animation",
     "measurements",
-    "display"
+    "display",
+    "render"
   ]);
   // The two systems are gated independently: a model may declare mates without
   // shipping clips, ship clips without declaring mates, or do neither.
@@ -62,23 +62,26 @@ test("rendered file sheet sections include closed-by-default sections", () => {
     "reference",
     "pose",
     "measurements",
-    "display"
+    "display",
+    "render"
   ]);
   assert.deepEqual(renderedFileSheetSectionIds("step", { hasStepAnimationPanel: true }), [
     "tree",
     "reference",
     "animation",
     "measurements",
-    "display"
+    "display",
+    "render"
   ]);
   assert.deepEqual(renderedFileSheetSectionIds("step"), [
     "tree",
     "reference",
     "measurements",
-    "display"
+    "display",
+    "render"
   ]);
-  assert.deepEqual(renderedFileSheetSectionIds("srdf"), ["joints"]);
-  assert.deepEqual(renderedFileSheetSectionIds("mesh"), ["measurements"]);
+  assert.deepEqual(renderedFileSheetSectionIds("srdf"), ["joints", "display", "render"]);
+  assert.deepEqual(renderedFileSheetSectionIds("mesh"), ["measurements", "display", "render"]);
 });
 
 test("viewer-origin selection reveals do not open the file sheet on mobile", () => {

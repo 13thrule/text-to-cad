@@ -1,7 +1,7 @@
 # Settings UI Guidelines
 
-The contract for every settings surface rendered inside a file sheet tab or the
-theme editor panel: the Theme editor, the per-file Display tab, and the DXF,
+The contract for every settings surface rendered inside a file sheet tab:
+the per-model Render and Display tabs, and the DXF,
 STEP, URDF/SDF, and mesh sheets. The tab strip, navbar, and
 sheet frame are out of scope — this document governs the *contents* of a tab.
 
@@ -24,7 +24,7 @@ Tab body                    px-0, vertical stack of sections
 - A tab body is a flat list of sections. Sections never nest.
 - **Every section carries a heading, and every row carries a label** — including
   a section that holds a single row, which shows both (`Material` / `Thickness`,
-  `Theme` / `Preset`, `Model` / `Mode`). A heading never stands in for a row's label: a labelless
+  `Studio` / `Preset`, `Model` / `Mode`). A heading never stands in for a row's label: a labelless
   row reads as an orphaned control, and a row whose only name is the heading
   above it cannot be scanned in a list. Name the group and the control
   differently; if the only honest name for both is the same word, the group is
@@ -34,6 +34,8 @@ Tab body                    px-0, vertical stack of sections
 - Everyday settings stay visible. Progressive disclosure is allowed only when a
   gate switch turns a whole feature off (Floor, Grid, Environment, a light):
   the switch stays, the dependent rows unmount.
+- Render's Debug section is an explicit exception: keep its Copy/Paste Settings
+  utilities collapsed at the bottom, separate from everyday scene controls.
 - A gate reaches every row it owns. Whether they unmount (Floor, Grid) or go
   disabled (Kinematics, Animation), the section picks one and applies it to all
   of them: one live control under an off switch reads as a control that still
@@ -277,6 +279,13 @@ Primitives only use theme tokens (`border`, `muted`, `accent`, `primary`,
 `sidebar-*`). Never hard-code a palette color in a sheet; if a primitive needs
 a fixed color pair (e.g. the switch track), it is defined once in
 `FileSheet.js` with its dark variant beside it.
+
+App appearance is global. Model CAD views, Render enablement, and studio
+customizations are per-model session state. Render is last in the default tab
+order; entering another tab never changes its enabled state. Display controls
+edit the active CAD or Render view, and enabling/disabling Render restores the
+corresponding camera and display settings. Do not add a second image-export
+action to this tab: image capture stays in the existing viewer toolbar.
 
 ## Checklist for a new settings row
 

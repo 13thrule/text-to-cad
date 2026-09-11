@@ -67,7 +67,7 @@ test("screen-space display edge creation registers material settings", () => {
       edgeOpacity: 0.84
     },
     partId: "part-a",
-    displayMode: "solid",
+    displayMode: "shaded_edges",
     thickness: 2
   }, materials);
 

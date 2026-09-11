@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { loadRenderSurfPayloadAtLevel, reclaimIdleSurfWorkers, releaseSurfWorkers, releaseRenderSurfLevel, renderAssetCacheStats } from "cadgen-js/lib/renderAssetClient.js";
 import { estimateMeshRenderCost } from "cadgen-js/lib/render/meshCost.js";
 import { LOD_DEFAULT_LEVEL, lodTessellationForLevel } from "cadgen-js/lib/surf/lodPolicy.js";
+import { normalizeSceneQuality, resolveSceneQuality, SCENE_QUALITY } from "cadgen-js/common/sceneSettings.js";
 
 import { createLodScheduler } from "./lodScheduler.js";
 import { syncSurfWorkerMemory } from "./surfWorkerMemoryPolicy.js";
@@ -56,8 +57,27 @@ export function dispatchViewportLodStatus(status, target = typeof window !== "un
   target.dispatchEvent(new EventClass("cad:lod-status", { detail: status }));
 }
 
+// Reuse the same screen-error scheduler and cache ladder. A finer quality
+// target changes the camera sample's effective resolution, never the model
+// identity or memory admission rules. Include it in camera intent so switching
+// quality can retry a previously limited target once, without retrying on every
+// geometry/accounting publication.
+export function viewportLodSampleForQuality(sample, quality = SCENE_QUALITY.INTERACTIVE) {
+  const policy = resolveSceneQuality(quality?.id || quality);
+  return {
+    ...sample,
+    viewportHeightPx: sample.viewportHeightPx / policy.targetPixelError,
+    ...(Object.hasOwn(sample, "cameraKey")
+      ? { cameraKey: JSON.stringify([sample.cameraKey, policy.id]) }
+      : {})
+  };
+}
+
 export function useViewportLod({ viewerRef, lodPackage, modelKey = "", applyComponentLodBatch,
-  prepareComponentLodPayload, componentLodNeedsSelectors, dynamicScene = false }) {
+  prepareComponentLodPayload, componentLodNeedsSelectors, dynamicScene = false,
+  quality = SCENE_QUALITY.INTERACTIVE }) {
+  const qualityId = normalizeSceneQuality(quality?.id || quality, { fallback: SCENE_QUALITY.INTERACTIVE });
+  const sampledQualityRef = useRef(null);
   const componentsRef = useRef(new Map());
   const displayBuffersRef = useRef(new Set());
   const refreshDisplayBuffers = () => {
@@ -93,7 +113,7 @@ export function useViewportLod({ viewerRef, lodPackage, modelKey = "", applyComp
     let scheduler = null;
     const snapshot = () => ({ file: lodPackageFileRef.current, modelKey: lodPackageModelKeyRef.current,
       ...scheduler.snapshot(),
-      staging: lodStagingSnapshot(), visibility: visibilityRef.current });
+      staging: lodStagingSnapshot(), visibility: visibilityRef.current, quality: sampledQualityRef.current });
     const publishStatus = () => {
       if (!scheduler || schedulerRef.current !== scheduler) return;
       dispatchViewportLodStatus(snapshot());
@@ -232,6 +252,7 @@ export function useViewportLod({ viewerRef, lodPackage, modelKey = "", applyComp
     lodPackageFileRef.current = file;
     lodPackageModelKeyRef.current = nextModelKey;
     visibilityRef.current = null;
+    if (!preserveLevels) sampledQualityRef.current = null;
     componentsRef.current = new Map(components.map((component) => [component.cid, component]));
     refreshDisplayBuffers();
     schedulerRef.current?.setComponents(
@@ -253,9 +274,10 @@ export function useViewportLod({ viewerRef, lodPackage, modelKey = "", applyComp
       return;
     }
     visibilityRef.current = sampler.visibility;
-    schedulerRef.current?.onCameraSample(sampler);
+    sampledQualityRef.current = qualityId;
+    schedulerRef.current?.onCameraSample(viewportLodSampleForQuality(sampler, qualityId));
     if (typeof window !== "undefined") dispatchViewportLodStatus(window.__cadViewportLod?.());
-  }, [viewerRef, dynamicScene]);
+  }, [viewerRef, dynamicScene, qualityId]);
 
   // Initial framing can notify before the package summary reaches this hook.
   // Sample once after installing the summary too: otherwise a stationary

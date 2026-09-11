@@ -6,7 +6,12 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 
-import { RENDER_TESSELLATION_FLOORS, loadSource, normalizeRenderTessellation } from "./source.js";
+import {
+  RENDER_TESSELLATION_FLOORS,
+  loadSource,
+  normalizeRenderTessellation,
+  tessellationForSnapshotQuality
+} from "./source.js";
 import { renderAssetSourceScope } from "../lib/renderAssetSourceScope.js";
 import {
   setTessellationCacheProvider, tessellationPayloadFacts, validateTessellationProbeRow,
@@ -109,9 +114,26 @@ test("snapshot tessellation is explicit, finite and restricted to exact surfaces
   assert.throws(() => normalizeRenderTessellation({ angleTolerance: 1e-6 }), /at least 0.005/);
   assert.deepEqual(normalizeRenderTessellation(RENDER_TESSELLATION_FLOORS), { ...RENDER_TESSELLATION_FLOORS });
   await assert.rejects(() => loadSource({ kind: "glb", meshData: meshData(),
-    render: { tessellation: { chordTolerance: .001 } } }), /only for STEP/);
+    quality: { tessellation: { chordTolerance: .001 } } }), /only for STEP/);
   await assert.rejects(() => loadSource({ kind: "step", meshData: meshData(),
-    render: { tessellation: { chordTolerance: .001 } } }), /exact-surface STEP package/);
+    quality: { tessellation: { chordTolerance: .001 } } }), /exact-surface STEP package/);
+});
+
+test("snapshot quality selects bounded shared tessellation policy", () => {
+  assert.deepEqual(tessellationForSnapshotQuality({}), {});
+  assert.deepEqual(tessellationForSnapshotQuality({ render: { quality: "standard" } }), {});
+  assert.deepEqual(
+    tessellationForSnapshotQuality({ render: { quality: "high" } }),
+    { chordTolerance: 0.0005, angleTolerance: 0.35 }
+  );
+  assert.deepEqual(
+    tessellationForSnapshotQuality({
+      render: { quality: "high" },
+      quality: { tessellation: { chordTolerance: 0.001 } }
+    }),
+    { chordTolerance: 0.001 }
+  );
+  assert.throws(() => tessellationForSnapshotQuality({ render: { quality: "ultra" } }), /Unknown scene quality/);
 });
 
 test("macro tessellation changes the rendered surface and uses its own cache entry", async (t) => {
@@ -134,7 +156,7 @@ test("macro tessellation changes the rendered surface and uses its own cache ent
     componentUrls: { roller: "/macro-fixture/roller.surf" }
   } };
   const coarse = await loadSource(base);
-  const fineJob = { ...base, render: { tessellation: { chordTolerance: .0001, angleTolerance: .025 } } };
+  const fineJob = { ...base, quality: { tessellation: { chordTolerance: .0001, angleTolerance: .025 } } };
   const fine = await loadSource(fineJob);
   assert.ok(fine.meshData.indices.length > coarse.meshData.indices.length);
   assert.notEqual(requested[0], requested[1]);

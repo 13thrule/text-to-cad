@@ -1,9 +1,7 @@
 import {
   CAMERA_PROJECTION,
   DEFAULT_DISPLAY_EDGE_SETTINGS,
-  DISABLED_DISPLAY_EDGE_SETTINGS,
-  normalizeCameraProjection,
-  normalizeDisplayEdgeSettings
+  DISABLED_DISPLAY_EDGE_SETTINGS
 } from "./displaySettings.js";
 
 export {
@@ -136,11 +134,6 @@ const THEME_MODE_COLOR_PATHS = Object.freeze([
   Object.freeze(["background", "radialInner"]),
   Object.freeze(["background", "radialOuter"]),
   Object.freeze(["floor", "color"]),
-  Object.freeze(["floor", "gridCenterColor"]),
-  Object.freeze(["floor", "gridCellColor"]),
-  Object.freeze(["floor", "grid", "centerColor"]),
-  Object.freeze(["floor", "grid", "cellColor"]),
-  Object.freeze(["floor", "axis", "color"]),
   Object.freeze(["lighting", "directional", "color"]),
   Object.freeze(["lighting", "spot", "color"]),
   Object.freeze(["lighting", "point", "color"]),
@@ -1605,14 +1598,12 @@ function normalizePosition(value, fallback) {
 function createThemeSettingsSignature(value = {}) {
   return JSON.stringify({
     colorMode: value?.colorMode || THEME_COLOR_MODES.SYSTEM,
-    projection: value?.projection || "",
     modeColors: value?.modeColors || {},
     materials: value?.materials || {},
     background: value?.background || {},
     floor: value?.floor || {},
     environment: value?.environment || {},
-    lighting: value?.lighting || {},
-    edges: value?.edges || null
+    lighting: value?.lighting || {}
   });
 }
 
@@ -1640,27 +1631,6 @@ export function normalizeThemeSettings(value = {}) {
   const fillColors = normalizeThemeFillColors(materials.fillColors, normalizedDefaultColor);
   const normalizedFloorColor = normalizeColor(floor.color, DEFAULT_THEME_SETTINGS.floor?.color || "#141416");
   const normalizedFloorMode = normalizeFloorMode(floor.mode, DEFAULT_THEME_SETTINGS.floor?.mode || THEME_FLOOR_MODES.STAGE);
-  const grid = floor.grid && typeof floor.grid === "object" && !Array.isArray(floor.grid)
-    ? floor.grid
-    : {};
-  const axis = floor.axis && typeof floor.axis === "object" && !Array.isArray(floor.axis)
-    ? floor.axis
-    : {};
-  const fallbackGridSettings = createFloorGridSettings(normalizedFloorColor).grid;
-  const normalizedGridCenterColor = normalizeColor(grid.centerColor, fallbackGridSettings.centerColor);
-  const normalizedGridCellColor = normalizeColor(grid.cellColor, fallbackGridSettings.cellColor);
-  const normalizedGridOpacity = normalizeNumber(
-    grid.opacity,
-    fallbackGridSettings.opacity,
-    0,
-    1
-  );
-  const normalizedGridDensity = normalizeNumber(
-    grid.density,
-    fallbackGridSettings.density,
-    MIN_FLOOR_GRID_DENSITY,
-    MAX_FLOOR_GRID_DENSITY
-  );
   const colorMode = normalizeThemeColorMode(
     source.colorMode,
     DEFAULT_THEME_SETTINGS?.colorMode || THEME_COLOR_MODES.SYSTEM
@@ -1668,13 +1638,6 @@ export function normalizeThemeSettings(value = {}) {
 
   const normalized = {
     colorMode,
-    // The camera projection is a theme trait: presentation stages read best in
-    // perspective, engineering canvases in orthographic. Absent projections
-    // normalize to the orthographic default.
-    projection: normalizeCameraProjection(
-      source.projection,
-      DEFAULT_THEME_SETTINGS?.projection || CAMERA_PROJECTION.ORTHOGRAPHIC
-    ),
     materials: {
       defaultColor: fillColors[0] || normalizedDefaultColor,
       fillColors,
@@ -1734,19 +1697,7 @@ export function normalizeThemeSettings(value = {}) {
       roughness: normalizeNumber(floor.roughness, DEFAULT_THEME_SETTINGS.floor?.roughness ?? 0.72, 0, 1),
       reflectivity: normalizeNumber(floor.reflectivity, DEFAULT_THEME_SETTINGS.floor?.reflectivity ?? 0.12, 0, 1),
       shadowOpacity: normalizeNumber(floor.shadowOpacity, DEFAULT_THEME_SETTINGS.floor?.shadowOpacity ?? 0.45, 0, 1),
-      horizonBlend: normalizeNumber(floor.horizonBlend, DEFAULT_THEME_SETTINGS.floor?.horizonBlend ?? 0, 0, 1),
-      grid: {
-        enabled: normalizeBoolean(grid.enabled, normalizedFloorMode === THEME_FLOOR_MODES.GRID),
-        centerColor: normalizedGridCenterColor,
-        cellColor: normalizedGridCellColor,
-        opacity: normalizedGridOpacity,
-        density: normalizedGridDensity
-      },
-      axis: {
-        enabled: normalizeBoolean(axis.enabled, DEFAULT_FLOOR_AXIS_SETTINGS.enabled),
-        color: normalizeColor(axis.color, normalizedGridCenterColor),
-        opacity: normalizeNumber(axis.opacity, DEFAULT_FLOOR_AXIS_SETTINGS.opacity, 0, 1)
-      }
+      horizonBlend: normalizeNumber(floor.horizonBlend, DEFAULT_THEME_SETTINGS.floor?.horizonBlend ?? 0, 0, 1)
     },
     environment: {
       enabled: normalizeBoolean(environment.enabled, DEFAULT_THEME_SETTINGS.environment.enabled),
@@ -1836,13 +1787,6 @@ export function normalizeThemeSettings(value = {}) {
       }
     }
   };
-  // Edge styling normally lives in per-file display settings, so themes stay
-  // edge-agnostic by default. A theme MAY opt in to its own outline (e.g.
-  // Terminal's neon-green linework); when it does, the viewer/snapshot use it
-  // as the base edge appearance. Only carry it when explicitly declared.
-  if (source.edges && typeof source.edges === "object" && !Array.isArray(source.edges)) {
-    normalized.edges = normalizeDisplayEdgeSettings(source.edges);
-  }
   normalized.modeColors = normalizeThemeModeColors(source.modeColors, normalized);
 
   return normalized;

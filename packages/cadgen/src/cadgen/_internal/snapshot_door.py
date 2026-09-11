@@ -58,7 +58,7 @@ def _run(
     job: Path | None,
     mode: str,
     camera: object,
-    theme: object,
+    render: object,
     display: object = None,
     kinematics: object = None,
     animation: object = None,
@@ -93,10 +93,9 @@ def _run(
     )
     # `None` is "not given" for each of these, which is not the same as the
     # default: the machinery distinguishes them through the `<name>_specified`
-    # flags, and a theme passed as its own default value must still count as
-    # a choice (it changes the size profile).
-    if theme is not None:
-        options.theme, options.theme_specified = theme, True
+    # flags, and an explicit Render preset must still count as a scene choice.
+    if render is not None:
+        options.render, options.render_specified = render, True
     if display is not None:
         options.display, options.display_specified = display, True
     if camera is not None:
@@ -146,7 +145,7 @@ def step_snapshot_verb(door: str):
         job: Path | None = None,
         mode: str = "view",
         camera: str | dict | None = None,
-        theme: str | dict | None = None,
+        render: str | dict | None = None,
         display: str | dict | None = None,
         kinematics: str | dict | None = None,
         animation: str | dict | None = None,
@@ -176,8 +175,9 @@ def step_snapshot_verb(door: str):
             {"jobs": [...]}. When given it wins: target/out are ignored, and
             a missing job file raises FileNotFoundError.
         mode: view (default), section, or list.
-        camera: a preset, an "azimuth:elevation" pair, or camera JSON.
-        theme: a saved theme id, theme-settings JSON, or a theme file path.
+        camera: a preset, an "azimuth:elevation" pair, or camera JSON;
+            orthographicHalfHeight preserves an orthographic view's scale.
+        render: a studio id, Render-envelope JSON, or a JSON file path.
         display: a display mode name, display-settings JSON, or a file path.
         kinematics: pose values — a declared preset name or {dof: value}
             JSON, validated against the model's kinematics declaration.
@@ -203,18 +203,19 @@ def step_snapshot_verb(door: str):
         return _run(
             kinds,
             target=target, out=out, job=job, mode=mode,
-            camera=camera, theme=theme, display=display, kinematics=kinematics,
+            camera=camera, render=render, display=display, kinematics=kinematics,
             animation=animation, time=time, video=video,
             focus=focus, hide=hide, width=width, height=height,
             size_profile=size_profile, view_labels=view_labels, debug=debug,
         )
 
+    snapshot.__cadgen_retired_options__ = {"--theme": "--render"}
     return snapshot
 
 
 def mesh_snapshot_verb(door: str):
     """The mesh/dxf-shaped verb: view/list renders of untyped geometry —
-    no display, kinematics, section mode, or selection (nothing to act on)."""
+    no kinematics, section mode, or selection (nothing to act on)."""
     kinds = DOOR_KINDS[door]
     suffixes = ", ".join(f".{kind}" for kind in kinds)
 
@@ -225,7 +226,8 @@ def mesh_snapshot_verb(door: str):
         job: Path | None = None,
         mode: str = "view",
         camera: str | dict | None = None,
-        theme: str | dict | None = None,
+        render: str | dict | None = None,
+        display: str | dict | None = None,
         width: int | None = None,
         height: int | None = None,
         size_profile: str = "",
@@ -244,8 +246,10 @@ def mesh_snapshot_verb(door: str):
         job: a render-job JSON file — one job, an array of them, or
             {"jobs": [...]}. When given it wins: target/out are ignored.
         mode: view (default) or list.
-        camera: a preset, an "azimuth:elevation" pair, or camera JSON.
-        theme: a saved theme id, theme-settings JSON, or a theme file path.
+        camera: a preset, an "azimuth:elevation" pair, or camera JSON;
+            orthographicHalfHeight preserves an orthographic view's scale.
+        render: a studio id, Render-envelope JSON, or a JSON file path.
+        display: display settings supported by this input kind.
         width: output width in pixels, overriding the size profile.
         height: output height in pixels, overriding the size profile.
         size_profile: simple, diagnostic, labeled, assembly, presentation,
@@ -256,11 +260,12 @@ def mesh_snapshot_verb(door: str):
         return _run(
             kinds,
             target=target, out=out, job=job, mode=mode,
-            camera=camera, theme=theme, width=width, height=height,
+            camera=camera, render=render, display=display, width=width, height=height,
             size_profile=size_profile, view_labels=view_labels, debug=debug,
         )
 
     snapshot.__doc__ = snapshot.__doc__.replace("{suffixes}", suffixes)
+    snapshot.__cadgen_retired_options__ = {"--theme": "--render"}
     return snapshot
 
 
@@ -277,7 +282,8 @@ def robot_snapshot_verb(door: str):
         mode: str = "view",
         joint_values: str | dict | None = None,
         camera: str | dict | None = None,
-        theme: str | dict | None = None,
+        render: str | dict | None = None,
+        display: str | dict | None = None,
         width: int | None = None,
         height: int | None = None,
         size_profile: str = "",
@@ -298,8 +304,10 @@ def robot_snapshot_verb(door: str):
         mode: view (default) or list.
         joint_values: {joint: degrees} JSON posing the robot; joints not
             named stay at the rest pose.
-        camera: a preset, an "azimuth:elevation" pair, or camera JSON.
-        theme: a saved theme id, theme-settings JSON, or a theme file path.
+        camera: a preset, an "azimuth:elevation" pair, or camera JSON;
+            orthographicHalfHeight preserves an orthographic view's scale.
+        render: a studio id, Render-envelope JSON, or a JSON file path.
+        display: display settings supported by this robot input.
         width: output width in pixels, overriding the size profile.
         height: output height in pixels, overriding the size profile.
         size_profile: simple, diagnostic, labeled, assembly, presentation,
@@ -310,12 +318,13 @@ def robot_snapshot_verb(door: str):
         return _run(
             kinds,
             target=target, out=out, job=job, mode=mode,
-            joint_values=joint_values, camera=camera, theme=theme,
+            joint_values=joint_values, camera=camera, render=render, display=display,
             width=width, height=height, size_profile=size_profile,
             view_labels=view_labels, debug=debug,
         )
 
     snapshot.__doc__ = snapshot.__doc__.replace("{suffixes}", suffixes)
+    snapshot.__cadgen_retired_options__ = {"--theme": "--render"}
     return snapshot
 
 
@@ -331,7 +340,7 @@ def polymorphic_snapshot_verb():
         job: Path | None = None,
         mode: str = "view",
         camera: str | dict | None = None,
-        theme: str | dict | None = None,
+        render: str | dict | None = None,
         display: str | dict | None = None,
         kinematics: str | dict | None = None,
         animation: str | dict | None = None,
@@ -348,16 +357,19 @@ def polymorphic_snapshot_verb():
     ) -> SnapshotResult:
         """Render any supported input, routed by suffix.
 
-        target: the file to render — STEP/STP, model script, STL/3MF/GLB,
-            DXF, or a robot description (URDF/SRDF/SDF).
+        target: the document to render — STEP/STP, STL/3MF/GLB, DXF, or a
+            robot description (URDF/SRDF/SDF). Run model scripts first, then
+            snapshot the document they write.
         out: destination image path (written EXACTLY there, cleared first),
             or a directory for a generated timestamped name.
         job: a render-job JSON file — one job, an array of them, or
             {"jobs": [...]}; jobs may mix formats. When given it wins.
         mode: view (default), section (STEP only), or list.
-        camera: a preset, an "azimuth:elevation" pair, or camera JSON.
-        theme: a saved theme id, theme-settings JSON, or a theme file path.
-        display: display settings (STEP inputs only).
+        camera: a preset, an "azimuth:elevation" pair, or camera JSON;
+            orthographicHalfHeight preserves an orthographic view's scale.
+        render: a studio id, Render-envelope JSON, or a JSON file path.
+        display: shared display settings; CAD-edge and exploded modes require
+            STEP topology.
         kinematics: pose values for a STEP model's kinematics — a preset
             name or {dof: value} JSON.
         animation: one still frame of a STEP model's clip — the clip name
@@ -380,12 +392,12 @@ def polymorphic_snapshot_verb():
         return _run(
             ALL_KINDS,
             target=target, out=out, job=job, mode=mode,
-            camera=camera, theme=theme, display=display, kinematics=kinematics,
+            camera=camera, render=render, display=display, kinematics=kinematics,
             animation=animation, time=time, video=video,
             joint_values=joint_values, focus=focus, hide=hide,
             width=width, height=height, size_profile=size_profile,
             view_labels=view_labels, debug=debug,
         )
 
+    snapshot.__cadgen_retired_options__ = {"--theme": "--render"}
     return snapshot
-

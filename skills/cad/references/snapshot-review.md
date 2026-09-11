@@ -43,17 +43,19 @@ Prefer a single `view` JSON job with these outputs:
     { "path": "/tmp/render/top_ortho.png", "camera": "top" },
     { "path": "/tmp/render/front_ortho.png", "camera": "front" }
   ],
-  "render": { "viewLabels": true, "padding": 0.12, "sizeProfile": "diagnostic" }
+  "output": { "viewLabels": true, "padding": 0.12, "sizeProfile": "diagnostic" }
 }
 ```
 
 The two opposed isometric views guarantee every face appears in at least one image — rear, left, and bottom features are covered by default, not by suspicion. The top ortho is the primary pattern/symmetry check and the front ortho the profile check.
 
-Set `input` to the primary STEP/STP artifact using a relative or absolute path (documents only — a `.py` model script is refused: run it first, then snapshot the STEP it wrote). The snapshot CLI derives its internal render root from that input path. It defaults to `theme: "snapshot"` and `display.mode: "solid"`. `snapshot` is a render-only theme — Workbench Light with the ground grid, origin axis and shadows removed, because in a still image those read as geometry rather than as orientation. It is not offered in the CAD Viewer's theme picker; pass `theme: "workbench-light"` to match the viewport exactly; labeled/section views default to 1600x1200 when dimensions are omitted. Use `render.sizeProfile: "assembly"` or `"assembly-large"` for complex assemblies that need 1800x1200 or 1920x1440. For CAD review packets, use still-image render modes `view` and `section`; set `display.mode` to `solid`, `transparent`, `hidden_edges`, `hidden_lines_removed`, or `wireframe` when the visual check benefits from explicit CAD linework. The MODE is the edge switch: `solid` means shaded-with-edges, and those four modes plus `wireframe` always draw linework. For shaded surfaces with no CAD linework set `display.mode: "rendered"` (or `"unshaded"`). `display.edges` styles the linework the mode draws — colour, thickness, opacity, per-class — and has NO `enabled` key: a job that sets `display.edges.enabled` is refused, because it could never change the image.
+Set `input` to the primary STEP/STP artifact using a relative or absolute path (documents only — a `.py` model script is refused: run it first, then snapshot the STEP it wrote). The snapshot CLI derives its internal render root from that input path. With no `render` key it uses deterministic light CAD lighting, an orthographic isometric camera and normal shaded-with-edges display, with grid and axis guides disabled for still evidence. Labeled/section views default to 1600x1200 when dimensions are omitted. Use `output.sizeProfile: "assembly"` or `"assembly-large"` for complex assemblies that need 1800x1200 or 1920x1440. For CAD review packets, use still-image render modes `view` and `section`; set `display.mode` to `shaded_edges`, `transparent`, `hidden_edges`, `hidden_lines_removed`, or `wireframe` when the visual check benefits from explicit CAD linework. For shaded surfaces with no CAD linework set `display.mode: "shaded"` (or `"unshaded"`). `display.edges` carries the viewer's edge styling settings for modes that draw linework.
+
+An explicit `render` envelope opts into the viewer's Render scene. The compact form is `{"studio":"default"}`; the full copy/paste shape is `{"studio":...,"appearance":...,"quality":...,"settings":...,"camera":...,"display":...}`. Studio ids are `default`, `studio-light`, `studio-dark`, `blue`, `pink`, `clay-sunrise`, and `terminal`; quality is `interactive`, `standard`, or `high` and defaults to high in Render. The `settings` object owns materials, background, floor, environment and lighting. Camera owns projection and `orthographicHalfHeight`, a positive finite world-space half-height that preserves an orthographic view's scale; it may remain in a perspective camera payload for a later lens switch. Display owns mode, clipping, exploded view, edge styles, guides and part colour. Keep the envelope sparse: omitted material channels preserve authored PBR values. Top-level `camera` and `display` are explicit per-job overrides and win over the Render envelope. `--render` accepts a studio id, inline envelope, or JSON file; `--theme` is retired.
 
 Use `--focus '#o1.2' ...` to emphasize specific part or subassembly occurrence refs — in `view` renders the focused refs keep full opacity while the rest of the assembly is ghosted in place (framing and context are preserved); in `section` mode focus isolates the refs entirely. Use `--hide '#o1.2' ...` to omit parts from the render in every mode. Do not combine focus and hide in the same snapshot command or job. These filters accept occurrence refs only, not face, edge, vertex, or shape selectors.
 
-For close macro views, a JSON job can set `render.tessellation` to
+For close macro views, a JSON job can set `quality.tessellation` to
 `{"chordTolerance": 0.0005, "angleTolerance": 0.10}`. Chord tolerance is
 relative to each component's bounding diagonal; angle tolerance is radians.
 These positive numeric overrides retessellate the exact STEP surfaces and use
@@ -65,11 +67,12 @@ that exhausts the renderer instead of improving the image, and the job is
 refused. The largest named still profile is `presentation-large` (2800×1800).
 Existing mesh documents cannot be retessellated this way.
 
-`render` is a closed schema like the job itself: `sizeProfile`, `padding`,
-`paddingPercent`, `viewLabels`, `tightFrame`, `transparent`, `renderScale`,
-`scale`/`sceneScale`/`sceneScaleMode`, and `tessellation`. Any other key is
-refused rather than ignored, so a misspelling cannot render the wrong thing
-quietly.
+Scene setup, output capture and geometric sampling are separate closed objects.
+`render` is the Render envelope described above. `output` supports `sizeProfile`,
+`padding`, `paddingPercent`, `viewLabels`, `tightFrame`, `transparent`, and
+`renderScale`. `quality` supports `tessellation`. Scene units use the top-level
+`scale` (`cad` or `urdf`). Unknown and retired keys are refused with their current
+home, so a misspelling cannot render the wrong thing quietly.
 
 ### Flags and job keys
 
@@ -121,8 +124,8 @@ Add views only when the brief or a failure mode calls for them:
 
 - reference-image reproduction: one snapshot from the reference image's viewpoint for side-by-side comparison
 - `section`: shell, bore, internal cavity, passage, blind hole, enclosure, or wall/floor relationship
-- `display.mode: "solid"`: shaded CAD view with explicit edge linework
-- `display.mode: "rendered"`: shaded material view without edge overlay
+- `display.mode: "shaded_edges"`: shaded CAD view with explicit edge linework
+- `display.mode: "shaded"`: shaded material view without edge overlay
 - `display.mode: "transparent"`: overlap, collision, enclosure readability, or hidden contact checks when transparency adds information and wireframe is too noisy
 - `display.mode: "hidden_edges"`: opaque shaded context with hidden/occluded CAD edges visible through solids
 - `display.mode: "hidden_lines_removed"`: line-focused review where hidden/occluded edges should be suppressed

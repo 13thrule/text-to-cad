@@ -802,7 +802,8 @@ function safeColor(THREE, value, fallback = null) {
 
 export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
   baseTheme = DEFAULT_THEME,
-  displayMode = CAD_DISPLAY_MODE.SOLID
+  displayMode = CAD_DISPLAY_MODE.SHADED_EDGES,
+  materialOverrides = null
 } = {}) {
   if (record?.instanced) {
     // Instanced buckets carry per-instance color (occurrence override) on the
@@ -853,7 +854,13 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
       ? record.sourcePart.material
       : null;
   const materialChannel = (key) => {
+    const explicit = materialOverrides && Object.prototype.hasOwnProperty.call(materialOverrides, key)
+      ? Number(materialOverrides[key])
+      : NaN;
     const override = partMaterial ? Number(partMaterial[key]) : NaN;
+    if (Number.isFinite(explicit)) {
+      return clamp(explicit, 0, 1);
+    }
     return clamp(Number.isFinite(override) ? override : Number(materialSettings[key]) || 0, 0, 1);
   };
   record.material.roughness = materialChannel("roughness");
@@ -2059,7 +2066,8 @@ function createDisplayRecord(THREE, runtime, meshData, settings, {
 
   applyMaterialSettingsToRecord(THREE, record, materialSettings, {
     baseTheme,
-    displayMode
+    displayMode,
+    materialOverrides: runtime.materialOverrides
   });
   applyDisplayRecordTransform(THREE, record);
   return record;
@@ -2242,6 +2250,7 @@ function staticMutableStateKey(settings) {
   try {
     return JSON.stringify({
       materialSettings: settings.materialSettings,
+      materialOverrides: settings.materialOverrides,
       baseTheme: settings.baseTheme,
       scale: settings.scale,
       selection: settings.selection,
@@ -2257,7 +2266,7 @@ function staticMutableStateKey(settings) {
 // a change rebuilds every record. Which parts are rendered is tracked apart
 // (renderPartsKey) and reconciled incrementally.
 function settingsSignature(meshData, theme, settings) {
-  const edgeSettings = normalizeDisplayEdgeSettings(theme?.edges);
+  const edgeSettings = normalizeDisplayEdgeSettings(settings.edgeSettings);
   return JSON.stringify({
     meshData: meshData ? "mesh" : "",
     displayMode: normalizeDisplayMode(settings.displayMode),
@@ -2279,25 +2288,26 @@ function normalizeSettings(settings = {}) {
   const displayMode = normalizeDisplayMode(settings.displayMode);
   const sourceTheme = settings.theme || settings.themeSettings || settings.settings || undefined;
   const normalizedTheme = normalizeThemeSettings(sourceTheme);
-  const themeEdgeSettings = normalizeDisplayEdgeSettings(sourceTheme?.edges);
+  const displayEdgeSettings = normalizeDisplayEdgeSettings(
+    settings.edgeSettings || settings.display?.edges
+  );
   const applyDisplayModeEdgePolicy = settings.applyDisplayModeEdgePolicy !== false;
-  const theme = {
-    ...normalizedTheme,
-    edges: applyDisplayModeEdgePolicy
-      ? {
-          ...themeEdgeSettings,
-          enabled: displayModeAllowsEdges(displayMode) &&
-            (displayModeForcesEdges(displayMode) || themeEdgeSettings.enabled === true),
-          depthTest: displayModeShowsThroughEdges(displayMode) ? false : themeEdgeSettings.depthTest
-        }
-      : themeEdgeSettings
-  };
+  const edgeSettings = applyDisplayModeEdgePolicy
+    ? {
+        ...displayEdgeSettings,
+        enabled: displayModeAllowsEdges(displayMode) &&
+          (displayModeForcesEdges(displayMode) || displayEdgeSettings.enabled === true),
+        depthTest: displayModeShowsThroughEdges(displayMode) ? false : displayEdgeSettings.depthTest
+      }
+    : displayEdgeSettings;
+  const theme = normalizedTheme;
   const scale = normalizeCadSceneScale(settings.scale ?? settings.sceneScale ?? settings.sceneScaleMode);
   const callbacks = settings.callbacks && typeof settings.callbacks === "object" ? settings.callbacks : {};
   const baseTheme = settings.baseTheme && typeof settings.baseTheme === "object" ? settings.baseTheme : DEFAULT_THEME;
   return {
     ...settings,
     theme,
+    edgeSettings,
     displayMode,
     scale,
     callbacks,
@@ -2310,6 +2320,9 @@ function normalizeSettings(settings = {}) {
     stepParameters: settings.stepParameters || null,
     parameterSetup: settings.parameterSetup !== false,
     materialSettings: resolveMaterialSettings(theme, settings),
+    materialOverrides: settings.materialOverrides && typeof settings.materialOverrides === "object"
+      ? { ...settings.materialOverrides }
+      : null,
     edgeRendering: normalizeEdgeRendering(settings.edgeRendering)
   };
 }
@@ -2320,10 +2333,13 @@ function setRuntimeTheme(runtime, settings) {
   runtime.scale = settings.scale;
   runtime.baseTheme = settings.baseTheme;
   runtime.edgeSettings = {
-    ...normalizeDisplayEdgeSettings(settings.theme?.edges),
-    depthTest: displayModeShowsThroughEdges(settings.displayMode) ? false : undefined
+    ...settings.edgeSettings,
+    depthTest: displayModeShowsThroughEdges(settings.displayMode)
+      ? false
+      : settings.edgeSettings.depthTest
   };
   runtime.materialSettings = settings.materialSettings;
+  runtime.materialOverrides = settings.materialOverrides;
   applyEdgeRenderingToRuntime(runtime, settings.edgeRendering);
 }
 
@@ -2465,7 +2481,8 @@ export function buildModel(THREE, source, settings = {}) {
     for (const record of runtime.displayRecords) {
       applyMaterialSettingsToRecord(THREE, record, runtime.materialSettings, {
         baseTheme: runtime.baseTheme,
-        displayMode: runtime.displayMode
+        displayMode: runtime.displayMode,
+        materialOverrides: runtime.materialOverrides
       });
     }
     const nextParameterSetup = nextSettings.parameterSetup !== false;
@@ -2505,7 +2522,8 @@ export function buildModel(THREE, source, settings = {}) {
     for (const record of dirtyRecords) {
       applyMaterialSettingsToRecord(THREE, record, runtime.materialSettings, {
         baseTheme: runtime.baseTheme,
-        displayMode: runtime.displayMode
+        displayMode: runtime.displayMode,
+        materialOverrides: runtime.materialOverrides
       });
       applyDisplayRecordTransform(THREE, record);
     }

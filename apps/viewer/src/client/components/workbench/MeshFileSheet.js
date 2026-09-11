@@ -6,7 +6,7 @@ import { FILE_SHEET_SECTION_IDS } from "../../workbench/fileSheetSections";
 const EMPTY_MEASUREMENTS = [];
 
 // For kind="mesh", the Measure tab. DXF reuses this sheet with extra
-// themeTabs and does not pass measurements.
+// settingsTabs and does not pass measurements.
 export default function MeshFileSheet({
   open,
   kind = "mesh",
@@ -18,7 +18,7 @@ export default function MeshFileSheet({
   onStartResize,
   viewerServerInfo = null,
   suppressDynamicMetadataStatus = false,
-  themeTabs = [],
+  settingsTabs = [],
   openSectionIds = [],
   onOpenSectionIdsChange,
   measurements = EMPTY_MEASUREMENTS,
@@ -46,7 +46,7 @@ export default function MeshFileSheet({
     : null;
   const sections = [
     ...(measureTab ? [measureTab] : []),
-    ...themeTabs
+    ...settingsTabs
   ];
 
   return (

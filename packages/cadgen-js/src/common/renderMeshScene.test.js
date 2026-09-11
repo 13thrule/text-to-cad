@@ -7,6 +7,7 @@ import {
   buildModel
 } from "./cadScene.js";
 import {
+  disposeSnapshotSceneResources,
   modelOptionsForRenderJob,
   projectedVisibleGeometryFrame,
   renderJobContext,
@@ -198,20 +199,82 @@ test("projectedVisibleGeometryFrame fits actual vertices instead of sparse bound
 });
 
 test("output projection echo follows the per-output camera decision", () => {
-  const orthographicContext = { projection: "orthographic" };
-  // Named preset on an orthographic theme stays orthographic.
+  const orthographicContext = { camera: { preset: "iso", projection: "orthographic" } };
+  // Named preset inherits the canonical job camera projection.
   assert.equal(resolveOutputCameraProjection(orthographicContext, "iso"), "orthographic");
-  // An explicit-position camera forces the perspective camera even on an
-  // orthographic theme — the echo must say so.
+  // A position does not implicitly choose a lens; projection is authoritative.
   assert.equal(
     resolveOutputCameraProjection(orthographicContext, {
       position: [120, -90, 60],
       target: [0, 0, 0]
     }),
-    "perspective"
+    "orthographic"
   );
-  // Perspective theme/display projection is perspective for any spec.
-  assert.equal(resolveOutputCameraProjection({ projection: "perspective" }, "iso"), "perspective");
+  assert.equal(resolveOutputCameraProjection(orthographicContext, {
+    position: [120, -90, 60],
+    target: [0, 0, 0],
+    projection: "perspective"
+  }), "perspective");
+  assert.equal(resolveOutputCameraProjection({ camera: { projection: "perspective" } }, "iso"), "perspective");
+});
+
+test("snapshot scene policy separates normal CAD, Render quality, and technical quality", () => {
+  const normal = renderJobContext(twoPartMeshData(), {});
+  assert.equal(normal.sceneSettings.render.enabled, false);
+  assert.equal(normal.quality.id, "interactive");
+  assert.equal(normal.sharedRenderOptions.renderScale, 1);
+  assert.equal(normal.displaySettings.guides.grid.enabled, false, "snapshot adapter disables normal guides");
+
+  const rendered = renderJobContext(twoPartMeshData(), { render: {} });
+  assert.equal(rendered.sceneSettings.render.enabled, true);
+  assert.equal(rendered.quality.id, "high");
+  assert.equal(rendered.projection, "perspective");
+  assert.equal(rendered.displayMode, "shaded");
+  assert.equal(rendered.sharedRenderOptions.renderScale, 2);
+
+  const explicitScale = renderJobContext(twoPartMeshData(), {
+    render: { quality: "standard" },
+    output: { renderScale: 3 },
+    quality: { tessellation: { chordTolerance: 0.001 } }
+  });
+  assert.equal(explicitScale.quality.id, "standard");
+  assert.equal(explicitScale.sharedRenderOptions.renderScale, 3);
+});
+
+test("snapshot scene disposal releases owned stage resources without touching model resources", () => {
+  const scene = new THREE.Scene();
+  const modelRoot = new THREE.Group();
+  const modelGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const modelMaterial = new THREE.MeshStandardMaterial();
+  modelRoot.add(new THREE.Mesh(modelGeometry, modelMaterial));
+  scene.add(modelRoot);
+
+  const ownedTexture = new THREE.Texture();
+  const stageGeometry = new THREE.PlaneGeometry(2, 2);
+  const stageMaterial = new THREE.MeshBasicMaterial({ map: ownedTexture });
+  scene.add(new THREE.Mesh(stageGeometry, stageMaterial));
+  scene.environment = ownedTexture;
+  let modelGeometryDisposals = 0;
+  let modelMaterialDisposals = 0;
+  let stageGeometryDisposals = 0;
+  let stageMaterialDisposals = 0;
+  let textureDisposals = 0;
+  modelGeometry.dispose = () => { modelGeometryDisposals += 1; };
+  modelMaterial.dispose = () => { modelMaterialDisposals += 1; };
+  stageGeometry.dispose = () => { stageGeometryDisposals += 1; };
+  stageMaterial.dispose = () => { stageMaterialDisposals += 1; };
+  ownedTexture.dispose = () => { textureDisposals += 1; };
+
+  assert.deepEqual(disposeSnapshotSceneResources(scene, modelRoot), {
+    geometryCount: 1,
+    materialCount: 1,
+    textureCount: 1
+  });
+  assert.equal(stageGeometryDisposals, 1);
+  assert.equal(stageMaterialDisposals, 1);
+  assert.equal(textureDisposals, 1);
+  assert.equal(modelGeometryDisposals, 0);
+  assert.equal(modelMaterialDisposals, 0);
 });
 
 // A snapshot's still frame at clip time t must be the frame the viewer shows

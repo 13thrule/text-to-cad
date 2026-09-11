@@ -18,6 +18,31 @@ const standardSnapshot = {
   unmetTargets: []
 };
 
+test("Render high detail requires a settled snapshot for its own quality policy", () => {
+  const input = { hasGeometry: true, modelComplete: true, quality: "high", lodExpectedComponentCount: 2 };
+  const stale = viewportQualityStatus({ ...input, lodSnapshot: { ...standardSnapshot, quality: "interactive" } });
+  assert.equal(stale.state, VIEWPORT_QUALITY_STATE.REFINING);
+  assert.equal(stale.standardQualityReady, true);
+  assert.equal(stale.highQualityReady, false);
+  const refining = viewportQualityStatus({ ...input, lodSnapshot: { ...standardSnapshot, quality: "high", busy: true } });
+  assert.equal(refining.state, VIEWPORT_QUALITY_STATE.REFINING);
+  const settled = viewportQualityStatus({ ...input, lodSnapshot: { ...standardSnapshot, quality: "high" } });
+  assert.equal(settled.state, VIEWPORT_QUALITY_STATE.HIGH);
+  assert.equal(settled.label, "High detail");
+  assert.equal(settled.highQualityReady, true);
+});
+
+test("high quality never claims extra geometry detail for source meshes or memory-limited targets", () => {
+  const mesh = viewportQualityStatus({ hasGeometry: true, modelComplete: true, quality: "high" });
+  assert.equal(mesh.state, VIEWPORT_QUALITY_STATE.STANDARD);
+  assert.equal(mesh.highQualityReady, false);
+  const limited = viewportQualityStatus({ hasGeometry: true, modelComplete: true, quality: "high",
+    lodSnapshot: { ...standardSnapshot, quality: "high", qualitySettled: false,
+      unmetTargets: [{ reason: "memory-denied", targetLevel: 3 }] } });
+  assert.equal(limited.label, "Extra detail limited");
+  assert.equal(limited.highQualityReady, false);
+});
+
 test("first visible coarse geometry is a preview until standard detail settles", () => {
   const status = viewportQualityStatus({
     hasGeometry: true,

@@ -6,6 +6,7 @@ export const VIEWPORT_QUALITY_STATE = Object.freeze({
   PREVIEW: "preview",
   REFINING: "refining",
   STANDARD: "standard",
+  HIGH: "high",
   LIMITED: "limited",
   ERROR: "error"
 });
@@ -25,6 +26,10 @@ export const VIEWPORT_QUALITY_COPY = Object.freeze({
   [VIEWPORT_QUALITY_STATE.STANDARD]: {
     label: "Standard detail",
     title: "The visible model has reached standard detail."
+  },
+  [VIEWPORT_QUALITY_STATE.HIGH]: {
+    label: "High detail",
+    title: "The visible model has reached the high-detail target for this view."
   },
   [VIEWPORT_QUALITY_STATE.LIMITED]: {
     label: "Reduced detail",
@@ -81,7 +86,8 @@ export function viewportQualityStatus({
   modelComplete = false,
   lodExpectedComponentCount = 0,
   lodSnapshot = null,
-  memoryLimitation = null
+  memoryLimitation = null,
+  quality = "standard"
 } = {}) {
   if (!hasGeometry) {
     return { state: null, firstPreviewReady: false, standardQualityReady: false };
@@ -101,6 +107,12 @@ export function viewportQualityStatus({
       ? hasLodComponents && componentScopeMatches && lodSnapshot?.standardSettled === true
       : true)
   );
+  const requestedQuality = typeof quality === "string" ? quality : quality?.id || "standard";
+  const highRequested = requestedQuality === "high";
+  const qualityScopeMatches = !highRequested || lodSnapshot?.quality === requestedQuality;
+  const highQualityReady = Boolean(highRequested && requiresLod && standardQualityReady &&
+    qualityScopeMatches && lodSnapshot?.qualitySettled === true &&
+    !lodSnapshot?.busy && !lodSnapshot?.pendingEvaluation);
 
   // The scheduler's current targets are authoritative. A memory event may
   // arrive before its next status event, but must not leave a cleared limit
@@ -118,8 +130,12 @@ export function viewportQualityStatus({
     state = standardQualityReady ? VIEWPORT_QUALITY_STATE.STANDARD : VIEWPORT_QUALITY_STATE.PREVIEW;
   } else if (!modelComplete) {
     state = VIEWPORT_QUALITY_STATE.PREVIEW;
+  } else if (requiresLod && !qualityScopeMatches) {
+    state = VIEWPORT_QUALITY_STATE.REFINING;
   } else if (lodSnapshot.busy || lodSnapshot.pendingEvaluation || hasReason(lodSnapshot, new Set(["pending"]))) {
     state = VIEWPORT_QUALITY_STATE.REFINING;
+  } else if (highQualityReady) {
+    state = VIEWPORT_QUALITY_STATE.HIGH;
   } else if (standardQualityReady) {
     state = VIEWPORT_QUALITY_STATE.STANDARD;
   } else if (requiresLod && Number(lodSnapshot.belowMinimum) > 0) {
@@ -134,6 +150,8 @@ export function viewportQualityStatus({
       ? VIEWPORT_QUALITY_EXTRA_DETAIL_COPY[state]
       : VIEWPORT_QUALITY_COPY[state]),
     firstPreviewReady,
-    standardQualityReady
+    standardQualityReady,
+    highQualityReady,
+    quality: requestedQuality
   };
 }

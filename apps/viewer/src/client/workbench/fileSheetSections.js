@@ -15,6 +15,7 @@ export const FILE_SHEET_SECTION_IDS = Object.freeze({
   DXF_BENDS: "bends",
   DXF_LAYERS: "dxfLayers",
   THEME_DISPLAY: "display",
+  THEME_RENDER: "render",
   FILE_METADATA: "metadata"
 });
 
@@ -44,12 +45,12 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
       return [
         FILE_SHEET_SECTION_IDS.DXF_MATERIAL,
         ...(options.hasDxfBendsPanel ? [FILE_SHEET_SECTION_IDS.DXF_BENDS] : []),
-        ...(options.hasDxfLayersPanel ? [FILE_SHEET_SECTION_IDS.DXF_LAYERS] : [])
+        ...(options.hasDxfLayersPanel ? [FILE_SHEET_SECTION_IDS.DXF_LAYERS] : []),
+        FILE_SHEET_SECTION_IDS.THEME_RENDER
       ];
     case "step":
-      // Display is the one theme-adjacent tab rendered in the sheet — display
-      // mode plus the section-plane and exploded-view transforms, all per-file
-      // state. Theme settings are global and live in the navbar theme editor.
+      // Display and Render are per-file session state. Render sits last so it
+      // reads as the presentation pass after inspection and measurement.
       return [
         FILE_SHEET_SECTION_IDS.STEP_TREE,
         FILE_SHEET_SECTION_IDS.STEP_REFERENCE,
@@ -62,7 +63,8 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
         // Measurements then follows: it and Reference are both readouts about geometry the
         // user has picked, as against the Tree's inventory of what is in the file.
         FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS,
-        FILE_SHEET_SECTION_IDS.THEME_DISPLAY
+        FILE_SHEET_SECTION_IDS.THEME_DISPLAY,
+        FILE_SHEET_SECTION_IDS.THEME_RENDER
       ];
     case "urdf":
     case "srdf":
@@ -75,12 +77,18 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
       return [
         ...(isSdf ? [FILE_SHEET_SECTION_IDS.ROBOT_SDF] : []),
         ...(options.motionEnabled ? [FILE_SHEET_SECTION_IDS.ROBOT_MOTION] : []),
-        ...(showJoints ? [FILE_SHEET_SECTION_IDS.ROBOT_JOINTS] : [])
+        ...(showJoints ? [FILE_SHEET_SECTION_IDS.ROBOT_JOINTS] : []),
+        FILE_SHEET_SECTION_IDS.THEME_DISPLAY,
+        FILE_SHEET_SECTION_IDS.THEME_RENDER
       ];
     case "mesh":
       // Measure is the one mesh-specific control: vertex-to-vertex distance on
       // the displayed triangles.
-      return [FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS];
+      return [
+        FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS,
+        FILE_SHEET_SECTION_IDS.THEME_DISPLAY,
+        FILE_SHEET_SECTION_IDS.THEME_RENDER
+      ];
     default:
       return [];
   }
@@ -94,8 +102,6 @@ export function defaultOpenFileSheetSectionIds(kind, options = {}) {
     case "dxf":
       return [];
     case "step":
-      // In the tabbed layout the default-active bottom tab is Display, so the
-      // STEP default-open list is just the Tree (the default-active top tab).
       return [FILE_SHEET_SECTION_IDS.STEP_TREE];
     case "urdf":
     case "srdf":

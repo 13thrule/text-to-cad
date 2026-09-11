@@ -10,8 +10,12 @@ import {
   cloneTabSnapshot,
   tabSnapshotEqual
 } from "./persistence.js";
+import {
+  createRenderSessionState,
+  renderSessionStateEqual
+} from "./renderSessionState.js";
 
-export const FILE_SESSION_STORAGE_VERSION = 1;
+export const FILE_SESSION_STORAGE_VERSION = 2;
 export const FILE_SESSION_STORAGE_KEY_PREFIX = "cad-viewer:file-session";
 const FILE_SESSION_INDEX_KEY_PREFIX = "cad-viewer:file-session:index";
 const DEFAULT_FILE_SESSION_NAMESPACE = "__root__";
@@ -282,7 +286,12 @@ const FILE_SESSION_SLICE_SCHEMA = Object.freeze({
   display: {
     normalize: normalizeDisplaySlice,
     equals: displaySettingsEqual,
-    signatureKey: "tab"
+    signatureKey: null
+  },
+  render: {
+    normalize: createRenderSessionState,
+    equals: renderSessionStateEqual,
+    signatureKey: null
   },
   tab: {
     normalize: cloneTabSnapshot,

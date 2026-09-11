@@ -134,7 +134,7 @@ export function applyPartVisualState(THREE, records, {
   focusedPartId,
   selectedPartIds,
   showEdges,
-  displayMode = CAD_DISPLAY_MODE.SOLID
+  displayMode = CAD_DISPLAY_MODE.SHADED_EDGES
 }) {
   const hidden = new Set(Array.isArray(hiddenPartIds) ? hiddenPartIds : []);
   const selected = new Set(Array.isArray(selectedPartIds) ? selectedPartIds : []);

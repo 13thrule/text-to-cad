@@ -12,7 +12,7 @@ everything downstream of that:
 It lives in cadgen rather than in the CAD skill because a skill may not import another
 skill's code (AGENTS.md), and the robot resolver alone is needed by three skills at once.
 The split against :mod:`cadgen.snapshot_core` is by ROLE, not by format: the core owns the
-headless browser, the job/theme/display normalisation and output writing; this module owns
+headless browser, the job/render/display normalisation and output writing; this module owns
 the command line and the per-kind resolution that decides what a given input even is.
 
 Every input kind resolves here, and a skill enables a subset. An input the running skill
@@ -61,7 +61,6 @@ from cadgen.occurrence_groups import (
 from cadgen.cli_progress import cli_progress_line
 from cadgen.results import SnapshotResult
 from cadgen.snapshot_core import (
-    THEME_OPTION_KEYS,
     BatchSnapshotRenderer,
     COMPLEX_ASSEMBLY_LARGE_RENDER_HEIGHT,
     COMPLEX_ASSEMBLY_LARGE_RENDER_WIDTH,
@@ -69,7 +68,6 @@ from cadgen.snapshot_core import (
     COMPLEX_ASSEMBLY_RENDER_WIDTH,
     CONTACT_SHEET_RENDER_HEIGHT,
     CONTACT_SHEET_RENDER_WIDTH,
-    DEFAULT_RENDER_THEME_ID,
     DEFAULT_TIMEOUT_SECONDS,
     DIAGNOSTIC_RENDER_HEIGHT,
     DIAGNOSTIC_RENDER_WIDTH,
@@ -96,17 +94,16 @@ from cadgen.snapshot_core import (
     SUPPORTED_RENDER_MODES,
     SnapshotError,
     TOPOLOGY_DISPLAY_MODES,
-    WORKBENCH_RENDER_THEME_IDS,
-    theme_id_for_job,
     asset_url_for_path,
     clear_render_output_targets,
     content_type_for_path,
     declared_output_path,
     default_render_size,
     encode_path_param,
+    effective_display_request,
     explicit_size_profile,
     is_plain_object,
-    load_theme_option,
+    load_render_option,
     load_display_option,
     load_json_text,
     max_output_size,
@@ -120,6 +117,9 @@ from cadgen.snapshot_core import (
     resolve_mesh_render_job,
     has_kinematics_render_values,
     resolve_output_size,
+    validate_output_settings,
+    validate_quality_settings,
+    validate_render_option,
     selection_filter_values,
     selection_value_list,
     resolve_snapshot_route_file,
@@ -164,11 +164,11 @@ class SnapshotOptions:
     input: str = ""
     output: str = ""
     mode: str = "view"
-    theme: object = DEFAULT_RENDER_THEME_ID
-    theme_specified: bool = False
+    render: object = None
+    render_specified: bool = False
     display: object = ""
     display_specified: bool = False
-    camera: object = "iso"
+    camera: object = None
     camera_specified: bool = False
     width: int | None = None
     height: int | None = None
@@ -333,7 +333,7 @@ def apply_option_overrides_to_job(job: object, options: SnapshotOptions, *, cwd:
             options.video_specified,
             options.joint_values_specified,
             options.display_specified,
-            options.theme_specified,
+            options.render_specified,
             options.camera_specified,
             option_focus_hide_specified(options),
         ]
@@ -343,8 +343,8 @@ def apply_option_overrides_to_job(job: object, options: SnapshotOptions, *, cwd:
     merge_focus_hide_options(next_job, options)
     if options.debug:
         next_job["debug"] = True
-    if options.theme_specified:
-        next_job["theme"] = load_theme_option(options.theme, cwd=cwd)
+    if options.render_specified:
+        next_job["render"] = load_render_option(options.render, cwd=cwd)
     if options.kinematics_specified:
         next_job["kinematics"] = parse_kinematics_option(options.kinematics)
     if options.animation_specified:
@@ -357,12 +357,13 @@ def apply_option_overrides_to_job(job: object, options: SnapshotOptions, *, cwd:
         next_job["display"] = load_display_option(options.display, cwd=cwd)
     if options.camera_specified:
         next_job["camera"] = parse_camera_option(options.camera)
-    render = dict(next_job.get("render") if is_plain_object(next_job.get("render")) else {})
+    output_settings = dict(next_job.get("output") if is_plain_object(next_job.get("output")) else {})
     if options.view_labels:
-        render["viewLabels"] = True
+        output_settings["viewLabels"] = True
     if options.size_profile:
-        render["sizeProfile"] = options.size_profile
-    next_job["render"] = render
+        output_settings["sizeProfile"] = options.size_profile
+    if output_settings:
+        next_job["output"] = output_settings
     return next_job
 
 
@@ -405,8 +406,9 @@ def load_job_from_options(
 
     output: dict[str, object] = {
         "path": options.output,
-        "camera": parse_camera_option(options.camera),
     }
+    if options.camera_specified:
+        output["camera"] = parse_camera_option(options.camera)
     if options.width:
         output["width"] = options.width
     if options.height:
@@ -416,11 +418,16 @@ def load_job_from_options(
         "input": options.input,
         "mode": options.mode,
         "outputs": [] if options.mode == "list" else [output],
-        "theme": load_theme_option(options.theme, cwd=resolved_cwd),
-        "render": {"viewLabels": options.view_labels},
     }
+    if options.render_specified:
+        job["render"] = load_render_option(options.render, cwd=resolved_cwd)
+    output_settings: dict[str, object] = {}
+    if options.view_labels:
+        output_settings["viewLabels"] = True
     if options.size_profile:
-        job["render"]["sizeProfile"] = options.size_profile
+        output_settings["sizeProfile"] = options.size_profile
+    if output_settings:
+        job["output"] = output_settings
     if options.display_specified:
         job["display"] = load_display_option(options.display, cwd=resolved_cwd)
     if options.kinematics_specified:
@@ -723,13 +730,13 @@ def resolve_robot_render_job(
             f"{mode} mode requires STEP topology; {label} robots support: {supported}"
         )
 
-    display = job.get("display") if is_plain_object(job.get("display")) else {}
+    display = effective_display_request(job)
     raw_display_mode = re.sub(r"[\s-]+", "_", str(display.get("mode") or "").strip().lower())
     canonical_display_mode = DISPLAY_MODE_ALIASES.get(raw_display_mode, raw_display_mode)
-    if canonical_display_mode and canonical_display_mode != "solid":
+    if canonical_display_mode in {"shaded_edges", "hidden_edges", "hidden_lines_removed"}:
         raise SnapshotError(
             f"{canonical_display_mode} display mode is not supported for {label} robots; "
-            "robots render shaded solid from their link meshes"
+            "robot link meshes have no CAD edge topology"
         )
     exploded = display.get("exploded") if is_plain_object(display.get("exploded")) else None
     if exploded is not None and exploded.get("enabled"):
@@ -770,8 +777,8 @@ def resolve_robot_render_job(
     # Robots are authored in METRES; the CAD profile assumes millimetres, and its floor,
     # grid and lighting radii are sized accordingly. Default the robot profile so a robot
     # frames like a robot without the caller having to know the unit convention.
-    if not str(job.get("sceneScale") or job.get("scale") or "").strip():
-        job = {**job, "sceneScale": "urdf"}
+    if not str(job.get("scale") or "").strip():
+        job = {**job, "scale": "urdf"}
 
     normalized = normalize_common_job(
         job,
@@ -803,9 +810,18 @@ def resolve_render_job(
     # the key were absent.
     unknown_keys = sorted(set(job) - SUPPORTED_JOB_KEYS)
     if unknown_keys:
+        replacements = {
+            "theme": "render",
+            "sizeProfile": "output.sizeProfile",
+            "width": "outputs[].width",
+            "height": "outputs[].height",
+            "sceneScale": "scale",
+        }
+        hints = [f"{key} was retired; use {replacements[key]}" for key in unknown_keys if key in replacements]
+        detail = f"; {'; '.join(hints)}" if hints else ""
         raise SnapshotError(
             f"unknown render job key(s): {', '.join(unknown_keys)}; "
-            f"supported keys: {', '.join(sorted(SUPPORTED_JOB_KEYS))}"
+            f"supported keys: {', '.join(sorted(SUPPORTED_JOB_KEYS))}{detail}"
         )
 
     resolved_cwd = (cwd or Path.cwd()).resolve()
@@ -816,17 +832,48 @@ def resolve_render_job(
     # A job's own `display` string gets the same treatment as the --display
     # flag: a mode name, an inline JSON object, or a path to a display JSON.
     # Without this it fell through to normalize_common_job, which accepts only
-    # a plain object and silently substituted {"mode": "solid"} -- so
-    # "wireframe", a file path, and an outright typo all rendered the default.
+    # a plain object, so a mode name, a file path, or a typo could lose the
+    # requested display policy.
     raw_display = job.get("display")
     if isinstance(raw_display, str) and raw_display.strip():
         job["display"] = load_display_option(raw_display, cwd=resolved_cwd)
 
-    # Closed-set display values are validated for the --display flag path in
-    # load_display_option; a display object embedded in a full JSON job must get
-    # the same guard, or a typo'd projection/mode silently renders the default.
+    raw_camera = job.get("camera")
+    if raw_camera is not None:
+        job["camera"] = parse_camera_option(raw_camera)
+
+    # Validate the new common envelopes before a STEP input can trigger package
+    # compilation. normalize_common_job repeats these guards for callers that
+    # invoke a kind resolver directly.
+    if "render" in job:
+        job["render"] = validate_render_option(job["render"], source_label="job render")
+    if "output" in job:
+        job["output"] = validate_output_settings(job["output"])
+    if "quality" in job:
+        job["quality"] = validate_quality_settings(job["quality"])
+
+    # A display object embedded in a full JSON job gets the same closed-key and
+    # closed-value guard as --display.
     if is_plain_object(job.get("display")):
+        job["display"] = validate_direct_settings_payload(
+            job["display"],
+            option_name="--display",
+            source_label="job display",
+            allowed_keys=DISPLAY_OPTION_KEYS,
+            setting_label="display settings",
+        )
         validate_display_settings_values(job["display"], source_label="job display")
+
+    # Still evidence omits viewport guides. An explicit Render controls its own
+    # studio display; only normal CAD snapshots receive this sparse base
+    # override, so it cannot cancel a studio's camera or display defaults.
+    if "render" not in job:
+        display = dict(job.get("display") if is_plain_object(job.get("display")) else {})
+        guides = dict(display.get("guides") if is_plain_object(display.get("guides")) else {})
+        guides.setdefault("grid", {"enabled": False})
+        guides.setdefault("axis", {"enabled": False})
+        display["guides"] = guides
+        job["display"] = display
 
     input_path = resolve_input_path(raw_input, cwd=resolved_cwd)
     root_path = input_path.parent.resolve()
@@ -1144,13 +1191,13 @@ def resolve_drawing_render_job(
             f"{mode} mode requires STEP topology; drawings support: {supported}"
         )
 
-    display = job.get("display") if is_plain_object(job.get("display")) else {}
+    display = effective_display_request(job)
     raw_display_mode = re.sub(r"[\s-]+", "_", str(display.get("mode") or "").strip().lower())
     canonical_display_mode = DISPLAY_MODE_ALIASES.get(raw_display_mode, raw_display_mode)
-    if canonical_display_mode and canonical_display_mode != "solid":
+    if canonical_display_mode in {"shaded_edges", "hidden_edges", "hidden_lines_removed"}:
         raise SnapshotError(
             f"{canonical_display_mode} display mode is not supported for drawings; "
-            "a drawing renders its flat pattern shaded solid"
+            "a drawing mesh has no CAD edge topology"
         )
     exploded = display.get("exploded") if is_plain_object(display.get("exploded")) else None
     if exploded is not None and exploded.get("enabled"):
@@ -1409,15 +1456,6 @@ async def run_snapshot_async(
     options object. Nothing here prints, so the two cannot report differently.
     """
     enabled = enabled_kinds(kinds)
-    if options.display_specified and "step" not in enabled:
-        # Display settings ARE STEP topology settings: mode, clip, exploded and edges all
-        # need occurrences and CAD edges. Every other kind already rejected all four at
-        # resolve time, so accepting the flag only meant erroring later or doing nothing
-        # at all. renderJobContext gates job.display on the same condition.
-        raise SnapshotError(
-            "--display applies to STEP inputs only: its settings (mode, clip, exploded, "
-            "edges) are CAD topology settings, and this door renders none"
-        )
     raw_payload = load_job_from_options(options, stdin=stdin, cwd=cwd)
     # Clear the declared outputs FIRST -- before resolution, which is where a bad
     # input actually fails. The path a caller names is the path it gets, and that

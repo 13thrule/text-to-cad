@@ -9,7 +9,6 @@ export function useCadWorkspaceShortcuts({
   setScreenshotStatus,
   previewMode,
   viewerAlertOpen,
-  themeSheetOpen,
   tabToolsOpen,
   isDesktop,
   sidebarOpen,
@@ -23,7 +22,6 @@ export function useCadWorkspaceShortcuts({
   handleRedoDrawing,
   setPreviewMode,
   setViewerAlertOpen,
-  setThemeEditing,
   setTabToolsOpen,
   setSidebarOpen,
   setTabToolMode
@@ -40,7 +38,7 @@ export function useCadWorkspaceShortcuts({
   }, [copyStatus, screenshotStatus, setCopyStatus, setScreenshotStatus]);
 
   useEffect(() => {
-    if (!(previewMode || viewerAlertOpen || themeSheetOpen || tabToolsOpen || (!isDesktop && sidebarOpen) || tabToolMode === TAB_TOOL_MODE.MEASURE)) {
+    if (!(previewMode || viewerAlertOpen || tabToolsOpen || (!isDesktop && sidebarOpen) || tabToolMode === TAB_TOOL_MODE.MEASURE)) {
       return undefined;
     }
 
@@ -76,7 +74,6 @@ export function useCadWorkspaceShortcuts({
           setPreviewMode(false);
           if (previousUiState) {
             setViewerAlertOpen(previousUiState.viewerAlertOpen);
-            setThemeEditing(previousUiState.themeEditing);
             setSidebarOpen(previousUiState.sidebarOpen);
             setTabToolsOpen(previousUiState.tabToolsOpen);
             setTabToolMode(previousUiState.tabToolMode);
@@ -95,7 +92,6 @@ export function useCadWorkspaceShortcuts({
           return;
         }
         setViewerAlertOpen(false);
-        setThemeEditing(false);
         setTabToolsOpen(false);
         if (!isDesktop) {
           setSidebarOpen(false);
@@ -113,10 +109,8 @@ export function useCadWorkspaceShortcuts({
     handleRedoDrawing,
     handleUndoDrawing,
     isDesktop,
-    themeSheetOpen,
     previewMode,
     previewUiStateRef,
-    setThemeEditing,
     setPreviewMode,
     setSidebarOpen,
     setTabToolMode,

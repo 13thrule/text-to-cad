@@ -24,6 +24,54 @@ resolution, Playwright routing, and writing returned outputs to disk.
 
 ## Modules
 
+### `common/sceneSettings.js`
+
+```js
+import {
+  resolveSceneSettings,
+  resolveDisplayMaterialSettings
+} from "cadgen-js/common/sceneSettings.js";
+```
+
+`resolveSceneSettings({ appearance, render, quality, camera, display })` is the
+shared Viewer/snapshot policy resolver. A missing `render` selects responsive
+CAD inspection defaults. A Render envelope has this closed sparse shape:
+
+```js
+{
+  studio: "default",
+  appearance: "system",
+  quality: "high",
+  settings: { materials, background, floor, environment, lighting },
+  camera: { preset, projection, position, target, up, direction, zoom, orthographicHalfHeight },
+  display: { mode, clip, exploded, edges, guides, partColor }
+}
+```
+
+Precedence is CAD defaults, Render defaults and envelope overrides, then the
+top-level camera/display overrides. A higher-priority camera preset replaces a
+lower-priority custom pose. A higher-priority direction replaces a copied
+position while retaining its target and up vector; a projection-only override
+preserves the complete pose.
+Viewer base camera/display state must stay separate from top-level explicit
+overrides while Render is active.
+`orthographicHalfHeight` is the positive pre-zoom vertical half-extent of an
+orthographic camera. It may remain in a perspective camera payload so switching
+back restores the prior orthographic scale.
+
+Studio ids are `default`, `studio-light`, `studio-dark`, `blue`, `pink`,
+`clay-sunrise`, and `terminal`. Appearance is `system`, `light`, or `dark`.
+Quality is `interactive`, `standard`, or `high` and does not select a studio.
+Render defaults to perspective, `shaded`, edges and guides off, authored
+materials, studio lighting, and high quality. Normal CAD defaults to
+orthographic `shaded_edges`, Original part colors, and interactive quality;
+the snapshot adapter turns normal CAD guides off for deterministic stills.
+
+`resolveDisplayMaterialSettings(materials, partColor)` applies the display-owned
+Original, Single color, or Color by part palette to material settings. Render
+studio PBR values remain fallbacks for authored part materials unless the sparse
+Render settings explicitly contain that PBR channel.
+
 ### `common/source.js`
 
 ```js
@@ -68,6 +116,8 @@ Accepted input fields:
   key and the sidecar section.
 - `stepParameterUrl` or `resolved.stepParameterUrl`: model sidecar
   (`.step.json`) URL, whose `kinematics` section is compiled here.
+- `quality.tessellation`: explicit STEP snapshot tolerances. This technical
+  override wins over the bounded mesh rung chosen by `render.quality`.
 
 STEP-only options are rejected for non-STEP sources. The old shared `params`
 field is rejected, and so is the retired `stepParameters` spelling; use
@@ -109,9 +159,12 @@ Three.js object graph and its mutable state.
 
 Common settings:
 
-- `theme`: normalized or raw theme settings.
-- `displayMode`: `solid`, `rendered`, `transparent`, `hidden_edges`,
+- `theme`: normalized or raw internal studio settings.
+- `displayMode`: `shaded`, `shaded_edges`, `transparent`, `hidden_edges`,
   `hidden_lines_removed`, `unshaded`, or `wireframe`.
+- `edgeSettings`: display-owned CAD edge style. Themes do not own edges.
+- `materialOverrides`: sparse explicit PBR overrides; authored PBR otherwise
+  wins over studio material fallbacks.
 - `scale`/`sceneScale`: CAD or robot scene scale.
 - `selection`: internal selection/filtering state. `focus`, `refs`, and `hide`
   filter rendered parts before records are built. Viewer-only fields such as
@@ -152,7 +205,8 @@ Source colors: a GLB's material base colors and its `COLOR_0` vertex attribute
 both count as source colors (`lib/render/glbMeshData.js`). A vertex-colored
 part renders on a white base so the ramp shows unmixed — an FEA result or scan
 heatmap keeps its colors even when the file declares no materials at all — and
-`overrideSourceColors` in the theme still replaces both kinds with theme fills.
+`overrideSourceColors` in material settings replaces both kinds with display
+fills.
 Package components carry no vertex colors; their coloring is the descriptor's
 occurrence/component/face colors.
 
@@ -222,9 +276,10 @@ import {
 } from "cadgen-js/common/renderMeshScene.js";
 ```
 
-`renderJobContext(meshData, job)` normalizes snapshot-owned render policy:
-theme, display, scene scale, outputs, STEP topology edge visibility, and
-warnings.
+`renderJobContext(meshData, job)` resolves the shared scene contract plus
+snapshot-owned output policy: display, camera, quality, scene scale, outputs,
+STEP topology edge visibility, and warnings. Snapshot scene quality comes only
+from `render.quality`; `job.quality` contains technical tessellation only.
 
 `modelOptionsForRenderJob(context, job)` converts that policy into
 `buildModel()` settings.
@@ -248,8 +303,13 @@ viewport:
 ```
 
 This `renderModel` is intentionally separate from `common/renderModel.js`.
-It uses snapshot sizing, theme environment, floor, orthographic/perspective
-camera presets, and deterministic renderer settings.
+It uses snapshot sizing, studio environment, the shared stage floor/glow/shadow,
+model-scaled lights with a fitted shadow frustum, canonical camera projection,
+and deterministic renderer settings. Automatic perspective cameras fit the
+current visible vertices to `output.padding` when `output.tightFrame` is true;
+otherwise they fit the model bounds. An explicit camera position is never
+reframed. Video capture fits its precomputed sequence-union bounds once so the
+camera does not breathe between frames.
 
 `captureModel(viewport, { job })` returns data only:
 
@@ -306,7 +366,8 @@ const source = await loadSource({
 
 const model = buildModel(THREE, source, {
   theme,
-  displayMode: "solid",
+  displayMode: "shaded_edges",
+  edgeSettings,
   stepParameters: stepParameterRuntime(source.stepParameterSource)
 });
 

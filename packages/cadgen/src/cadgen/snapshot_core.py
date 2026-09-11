@@ -1,7 +1,7 @@
 """Snapshot render core shared by the CAD and DXF skills.
 
 Everything here is format-agnostic: the headless browser driver, the job normalisation
-(camera, theme, display, size profile), the mesh render path, and output writing. It
+(camera, Render scene, display, output, quality), the mesh render path, and output writing. It
 knows nothing about STEP topology, drawings, or robot descriptions -- a caller resolves its
 own input to an asset URL and hands the result to :func:`render_resolved_job_packet`.
 
@@ -46,16 +46,12 @@ from cadgen._internal.atomic_replace import replace_atomic, write_bytes_atomic
 SNAPSHOT_ORIGIN = "http://localhost"
 SNAPSHOT_RENDER_URL = f"{SNAPSHOT_ORIGIN}/render.html"
 SNAPSHOT_ROUTE_GLOB = f"{SNAPSHOT_ORIGIN}/**"
-# A snapshot is usually READ by an agent rather than looked at by a person, so it does not
-# default to a viewer theme at all: `snapshot` is Workbench Light with the ground grid and
-# origin axis removed (themeSettings.js RENDER_ONLY_THEME_PRESETS). Those two are helpful
-# orientation in a live viewport and are geometry-shaped contrast in a still image --
-# straight low-contrast lines crossing the model, indistinguishable from a silhouette edge.
-# Materials, lighting and background are Workbench Light unchanged, so parts read exactly as
-# they do in the viewer.
-DEFAULT_RENDER_THEME_ID = "snapshot"
-# The viewer theme `snapshot` is derived from, and the id its default dimensions follow.
-VIEWER_DEFAULT_THEME_ID = "workbench-light"
+# A normal snapshot leaves ``render`` absent. The shared resolver then uses its
+# deterministic light CAD setup; an explicit render envelope opts into a studio.
+RENDER_STUDIO_IDS = frozenset(
+    {"default", "studio-light", "studio-dark", "blue", "pink", "clay-sunrise", "terminal"}
+)
+SCENE_QUALITY_IDS = frozenset({"interactive", "standard", "high"})
 DEFAULT_TIMEOUT_SECONDS = 300
 # Tearing a video sequence down is one dispose call over objects already in
 # hand, so it gets a short deadline of its own rather than the job's: the
@@ -69,20 +65,15 @@ SUPPORTED_RENDER_MODES = {"view", "section", "list"}
 MESH_INPUT_KINDS = {"glb", "stl", "3mf"}
 MESH_SUPPORTED_RENDER_MODES = {"view", "list"}
 TOPOLOGY_DISPLAY_MODES = {"hidden_edges", "hidden_lines_removed"}
-# Every id that IS the workbench theme, because this set decides a render's default
-# dimensions (see default_render_size). A workbench preset missing from it silently
-# renders at 1200x900 instead of 1600x1200 despite resolving to the identical theme in
-# the browser. Pinned against the viewer's preset table by
-# tests/python/global/test_snapshot_viewer_theme_parity.py.
-WORKBENCH_RENDER_THEME_IDS = {"snapshot", "workbench-light", "workbench-dark"}
 SUPPORTED_JOB_KEYS = frozenset(
     {
         "input",
         "mode",
         "outputs",
-        "theme",
         "display",
         "render",
+        "output",
+        "quality",
         "camera",
         "selection",
         # A STEP model's pose: a declared preset name, or {dof: value}. Named for the
@@ -102,36 +93,22 @@ SUPPORTED_JOB_KEYS = frozenset(
         # {fps, seconds, start, quality, loop}, encoded to the .mp4/.gif the
         # output names. Meaningless without `animation` (cadgen.snapshot_video).
         "video",
-        "sizeProfile",
-        "width",
-        "height",
         "scale",
-        "sceneScale",
         "debug",
         "timeoutSeconds",
     }
 )
-# `render` gets the job's closed-schema treatment for the same reason the job
-# level has it: every key here is read by this module or by `job.render.*` in
-# cadgen-js, and a render key nobody reads is a typo that costs a full-price
-# render of the wrong thing. `render.tesselation` (one l) used to tessellate at
-# the default tolerance and say nothing — exit 0, a faceted image, no hint.
 SUPPORTED_RENDER_KEYS = frozenset(
-    {
-        "sizeProfile",
-        "padding",
-        "paddingPercent",
-        "viewLabels",
-        "tightFrame",
-        "transparent",
-        "renderScale",
-        "scale",
-        "sceneScale",
-        "sceneScaleMode",
-        "tessellation",
-    }
+    {"studio", "appearance", "quality", "settings", "camera", "display"}
 )
-# Floors for `render.tessellation`. Chord tolerance is RELATIVE to each
+SUPPORTED_RENDER_SETTINGS_KEYS = frozenset(
+    {"materials", "background", "floor", "environment", "lighting"}
+)
+SUPPORTED_OUTPUT_SETTINGS_KEYS = frozenset(
+    {"sizeProfile", "padding", "paddingPercent", "viewLabels", "tightFrame", "transparent", "renderScale"}
+)
+SUPPORTED_QUALITY_KEYS = frozenset({"tessellation"})
+# Floors for `quality.tessellation`. Chord tolerance is RELATIVE to each
 # component's bounding diagonal and angle tolerance is radians, so these are
 # ~100x finer than the tessellator's defaults (1.5e-3 / 0.35 rad) and past any
 # display need at any output size. Below them the page tessellates until the
@@ -146,7 +123,6 @@ SUPPORTED_OUTPUT_KEYS = frozenset(
         "path",
         "width",
         "height",
-        "sizeProfile",
         "camera",
         "label",
         "viewLabel",
@@ -170,70 +146,67 @@ PRESENTATION_LARGE_RENDER_WIDTH = 2800
 PRESENTATION_LARGE_RENDER_HEIGHT = 1800
 CONTACT_SHEET_RENDER_WIDTH = 2400
 CONTACT_SHEET_RENDER_HEIGHT = 1600
-DISPLAY_OPTION_KEYS = {"projection", "mode", "clip", "exploded", "edges"}
-DISPLAY_MODE_ALIASES = {
-    "solid": "solid",
-    "edges": "solid",
-    "edge": "solid",
-    "shaded_edges": "solid",
-    "shaded_with_edges": "solid",
-    "with_edges": "solid",
-    "shaded": "rendered",
-    "shaded_without_edges": "rendered",
-    "without_edges": "rendered",
-    "transparent": "transparent",
-    "translucent": "transparent",
-    "xray": "transparent",
-    "x_ray": "transparent",
-    "see_through": "transparent",
-    "hidden_edges": "hidden_edges",
-    "hidden_edge": "hidden_edges",
-    "hidden_edges_visible": "hidden_edges",
-    "hidden_edge_display": "hidden_edges",
-    "shaded_hidden_edges": "hidden_edges",
-    "hidden_lines_removed": "hidden_lines_removed",
-    "hidden_line_removed": "hidden_lines_removed",
-    "hidden_lines": "hidden_lines_removed",
-    "hidden_edges_removed": "hidden_lines_removed",
-    "visible_edges": "hidden_lines_removed",
-    "visible_edges_only": "hidden_lines_removed",
-    "unshaded": "unshaded",
-    "flat": "unshaded",
-    "rendered": "rendered",
-    "theme": "rendered",
-    "material": "rendered",
-    "materials": "rendered",
-    "wireframe": "wireframe",
-    "wire_frame": "wireframe",
-    "wire": "wireframe",
+DISPLAY_OPTION_KEYS = {"mode", "clip", "exploded", "edges", "guides", "partColor"}
+DISPLAY_MODES = frozenset(
+    {"shaded", "shaded_edges", "transparent", "hidden_edges", "hidden_lines_removed", "unshaded", "wireframe"}
+)
+PART_COLOR_MODES = frozenset({"original", "single", "by_part"})
+DISPLAY_CLIP_KEYS = frozenset({"enabled", "axis", "offset", "offsets", "invert"})
+DISPLAY_EXPLODED_KEYS = frozenset({"enabled", "amount"})
+DISPLAY_EDGE_KEYS = frozenset(
+    {"enabled", "color", "thickness", "classes", "highlightColor", "highlightOpacity",
+     "highlightThickness", "silhouette", "silhouetteScale", "depthTest"}
+)
+DISPLAY_EDGE_CLASS_IDS = frozenset({"feature", "tangent", "seam", "degenerate"})
+DISPLAY_EDGE_CLASS_KEYS = frozenset({"color", "opacity", "thickness"})
+DISPLAY_GUIDE_KEYS = frozenset({"grid", "axis"})
+DISPLAY_GRID_GUIDE_KEYS = frozenset({"enabled", "centerColor", "cellColor", "opacity", "density"})
+DISPLAY_AXIS_GUIDE_KEYS = frozenset({"enabled", "color", "opacity"})
+DISPLAY_PART_COLOR_KEYS = frozenset({"mode", "color", "colors"})
+DISPLAY_MODE_ALIASES = {mode: mode for mode in DISPLAY_MODES}
+CAMERA_OPTION_KEYS = frozenset(
+    {
+        "preset", "name", "projection", "position", "target", "up", "direction", "zoom",
+        "orthographicHalfHeight",
+    }
+)
+RENDER_SETTING_BLOCK_KEYS = {
+    "materials": {
+        "defaultColor", "fillColors", "cycleColors", "overrideSourceColors", "tintMode",
+        "tintStrength", "saturation", "contrast", "brightness", "roughness", "metalness",
+        "clearcoat", "clearcoatRoughness", "opacity", "envMapIntensity", "emissiveIntensity",
+    },
+    "background": {"type", "solidColor", "linearStart", "linearEnd", "linearAngle", "radialInner", "radialOuter"},
+    "floor": {"mode", "enabled", "followModel", "color", "roughness", "reflectivity", "shadowOpacity", "horizonBlend"},
+    "environment": {"enabled", "presetId", "intensity", "rotationY", "useAsBackground"},
+    "lighting": {"toneMappingExposure", "directional", "fill", "rim", "spot", "point", "ambient", "hemisphere"},
 }
-THEME_OPTION_KEYS = {
-    "materials",
-    "background",
-    "floor",
-    "environment",
-    "lighting",
-    "colorMode",
-    "projection",
-    # normalizeThemeSettings() emits modeColors unconditionally, so it is part
-    # of the settings shape by construction. Rejecting it meant the repo's own
-    # cloneThemePresetSettings() output could not be passed back to
-    # --theme without hand-stripping a key first.
-    "modeColors",
+RENDER_LIGHT_KEYS = {
+    "directional": {"enabled", "color", "intensity", "position"},
+    "fill": {"enabled", "color", "intensity", "position"},
+    "rim": {"enabled", "color", "intensity", "position"},
+    "spot": {"enabled", "color", "intensity", "angle", "distance", "position"},
+    "point": {"enabled", "color", "intensity", "distance", "position"},
+    "ambient": {"enabled", "color", "intensity"},
+    "hemisphere": {"enabled", "skyColor", "groundColor", "intensity"},
 }
+RENDER_ENVIRONMENT_IDS = frozenset(
+    {"studio-hdri-43", "studio-hdri-41", "studio-hdri-12", "studio-hdri-17", "studio-hdri-22", "colorful-1", "colorful-dark-1"}
+)
 SETTINGS_KEY_HOMES = {
     "edges": "display",
     "mode": "display",
     "exploded": "display",
     "clip": "display",
-    "materials": "theme",
-    "background": "theme",
-    "floor": "theme",
-    "environment": "theme",
-    "lighting": "theme",
-    "colorMode": "theme",
-    "projection": "theme",
-    "modeColors": "theme",
+    "guides": "display",
+    "partColor": "display",
+    "projection": "camera",
+    "orthographicHalfHeight": "camera",
+    "materials": "render.settings",
+    "background": "render.settings",
+    "floor": "render.settings",
+    "environment": "render.settings",
+    "lighting": "render.settings",
 }
 class SnapshotError(RuntimeError):
     pass
@@ -252,23 +225,78 @@ def load_json_text(text: str, source_label: str) -> object:
 #
 # Every option below arrives as TEXT from the CLI and has to be parsed. The public
 # `<format>.snapshot()` verbs hand the same options over as Python values -- a dict
-# for a theme, a dict for a camera -- and stringifying one of those would produce
-# "{'materials': ...}", which parses as a saved-theme NAME and silently renders the
-# default. So each loader takes the already-parsed shape as itself.
+# for a Render envelope, a dict for a camera -- and stringifying one of those would produce
+# "{'settings': ...}", which cannot be parsed as JSON. So each loader takes the
+# already-parsed shape as itself.
 
 
 def parse_camera_option(raw_camera: object) -> object:
     if is_plain_object(raw_camera):
-        return raw_camera
+        return validate_camera_option(raw_camera, source_label="camera settings")
     camera = str(raw_camera or "").strip()
     if not camera:
         raise SnapshotError("--camera requires a preset, azimuth:elevation pair, or JSON camera object")
     if not camera.startswith("{"):
+        presets = {"front", "back", "right", "left", "top", "bottom", "iso", "isometric", "side"}
+        parts = camera.split(":")
+        angle_pair = len(parts) >= 2
+        if angle_pair:
+            try:
+                angle_pair = all(isfinite(float(part)) for part in parts)
+            except ValueError:
+                angle_pair = False
+        if camera.lower() not in presets and not angle_pair:
+            raise SnapshotError(f"Unknown camera preset: {camera}")
         return camera
     parsed = load_json_text(camera, "--camera")
     if not is_plain_object(parsed):
         raise SnapshotError("--camera must be a preset, azimuth:elevation pair, or JSON object")
-    return parsed
+    return validate_camera_option(parsed, source_label="--camera")
+
+
+def validate_camera_option(value: object, *, source_label: str) -> dict[str, object]:
+    if not is_plain_object(value):
+        raise SnapshotError(f"camera must be a preset name or camera object ({source_label})")
+    payload = dict(value)
+    unknown = sorted(set(payload) - CAMERA_OPTION_KEYS)
+    if unknown:
+        raise SnapshotError(
+            f"camera has unknown key(s): {', '.join(unknown)}; "
+            f"supported keys: {', '.join(sorted(CAMERA_OPTION_KEYS))} ({source_label})"
+        )
+    projection = str(payload.get("projection") or "").strip().lower()
+    if projection and projection not in {"orthographic", "perspective"}:
+        raise SnapshotError(
+            f"camera projection must be orthographic or perspective; "
+            f"got {payload.get('projection')!r} ({source_label})"
+        )
+    for key in ("position", "target", "up", "direction"):
+        if key not in payload:
+            continue
+        vector = payload[key]
+        if not isinstance(vector, (list, tuple)) or len(vector) != 3 or any(
+            isinstance(item, bool) or not isinstance(item, (int, float)) or not isfinite(float(item))
+            for item in vector
+        ):
+            raise SnapshotError(f"camera {key} must be a three-number array ({source_label})")
+        if key in {"up", "direction"} and sum(float(item) ** 2 for item in vector) <= 1e-12:
+            raise SnapshotError(f"camera {key} must not be the zero vector ({source_label})")
+    if "zoom" in payload:
+        zoom = payload["zoom"]
+        if isinstance(zoom, bool) or not isinstance(zoom, (int, float)) or not isfinite(float(zoom)) or zoom <= 0:
+            raise SnapshotError(f"camera zoom must be a positive finite number ({source_label})")
+    if "orthographicHalfHeight" in payload:
+        half_height = payload["orthographicHalfHeight"]
+        if (
+            isinstance(half_height, bool)
+            or not isinstance(half_height, (int, float))
+            or not isfinite(float(half_height))
+            or half_height <= 0
+        ):
+            raise SnapshotError(
+                f"camera orthographicHalfHeight must be a positive finite number ({source_label})"
+            )
+    return payload
 def validate_direct_settings_payload(
     parsed: object,
     *,
@@ -280,7 +308,7 @@ def validate_direct_settings_payload(
     if not is_plain_object(parsed):
         raise SnapshotError(f"{option_name} JSON must be a {setting_label} object: {source_label}")
     # Underscore-prefixed keys are comments. JSON has none of its own, and an
-    # authored theme is exactly the kind of file that needs to explain why its
+    # authored settings file is exactly the kind of file that needs to explain why its
     # numbers are what they are; rejecting `_comment` as an unsupported setting
     # pushes that rationale out of the file.
     payload = {key: value for key, value in parsed.items() if not str(key).startswith("_")}
@@ -310,47 +338,152 @@ def validate_display_settings_values(payload: Mapping[str, object], *, source_la
     # An empty/whitespace value means "unset": the renderer treats it as absent and falls
     # back to the default (it does not error), so validating it here would be a false
     # rejection of input the browser accepts. Only validate genuinely-present values.
-    projection = str(payload.get("projection") or "").strip().lower()
-    if projection and projection not in {"orthographic", "perspective"}:
-        raise SnapshotError(
-            f"--display projection must be orthographic or perspective; "
-            f"got {payload.get('projection')!r} ({source_label})"
-        )
     mode = str(payload.get("mode") or "").strip()
     if mode:
         normalized_mode = re.sub(r"[\s-]+", "_", mode.lower())
-        if normalized_mode not in DISPLAY_MODE_ALIASES:
-            supported = ", ".join(sorted(set(DISPLAY_MODE_ALIASES.values())))
+        if normalized_mode in {"solid", "rendered"}:
+            replacement = "shaded_edges" if normalized_mode == "solid" else "shaded"
+            raise SnapshotError(
+                f"display mode {normalized_mode!r} was retired; use {replacement!r} ({source_label})"
+            )
+        if normalized_mode not in DISPLAY_MODES:
+            supported = ", ".join(sorted(DISPLAY_MODES))
             raise SnapshotError(
                 f"--display mode must be one of: {supported}; got {payload.get('mode')!r} ({source_label})"
             )
-    edges = payload.get("edges")
-    if is_plain_object(edges) and "enabled" in edges:
-        # The display MODE is the edge switch, so `edges.enabled` can never change a
-        # snapshot: solid/transparent/hidden_edges/hidden_lines_removed always draw
-        # CAD linework and rendered/unshaded never do. A snapshot is one shot at a
-        # still image, so a setting that silently does nothing is a wrong image with
-        # no error. (Scoped to the snapshot parser: the CAD Viewer's own edge toggle
-        # legitimately reads `enabled` for its live scene.)
-        raise SnapshotError(
-            "display edges has no enabled key: the display MODE is the edge switch. "
-            "solid, transparent, hidden_edges and hidden_lines_removed always draw CAD "
-            "linework and wireframe draws only linework; for shaded surfaces with no "
-            "linework set display mode to rendered (or unshaded). display edges styles "
-            f"the linework the mode draws -- color, thickness, opacity, classes ({source_label})"
-        )
+    clip = payload.get("clip")
+    if clip is not None:
+        if not is_plain_object(clip):
+            raise SnapshotError(f"display clip must be an object ({source_label})")
+        unknown = sorted(set(clip) - DISPLAY_CLIP_KEYS)
+        if unknown:
+            raise SnapshotError(f"display clip has unknown key(s): {', '.join(unknown)} ({source_label})")
+        for key in ("enabled", "invert"):
+            if key in clip:
+                _render_boolean(clip[key], f"display.clip.{key}")
+        if "axis" in clip and clip["axis"] not in {"x", "y", "z"}:
+            raise SnapshotError("display.clip.axis must be x, y, or z")
+        if "offset" in clip:
+            _render_number(clip["offset"], "display.clip.offset", 0, 1)
+        if "offsets" in clip:
+            offsets = clip["offsets"]
+            if not is_plain_object(offsets):
+                raise SnapshotError(f"display clip.offsets must be an object ({source_label})")
+            unknown = sorted(set(offsets) - {"x", "y", "z"})
+            if unknown:
+                raise SnapshotError(f"display clip.offsets has unknown key(s): {', '.join(unknown)} ({source_label})")
+            for axis, value in offsets.items():
+                _render_number(value, f"display.clip.offsets.{axis}", 0, 1)
+
     exploded = payload.get("exploded")
-    if is_plain_object(exploded):
-        # The exploded view is enabled + amount only; the layout is automatic.
-        # Any other key is a typo or a retired step-document/auto-hint field the
-        # renderer now ignores entirely — reject loudly instead of rendering a
-        # default the caller did not ask for.
-        unknown = sorted(set(exploded) - {"enabled", "amount"})
+    if exploded is not None:
+        if not is_plain_object(exploded):
+            raise SnapshotError(f"display exploded must be an object ({source_label})")
+        unknown = sorted(set(exploded) - DISPLAY_EXPLODED_KEYS)
         if unknown:
             raise SnapshotError(
                 f"--display exploded supports only enabled and amount (the exploded layout "
                 f"is automatic); unsupported keys: {', '.join(unknown)} ({source_label})"
             )
+        if "enabled" in exploded:
+            _render_boolean(exploded["enabled"], "display.exploded.enabled")
+        if "amount" in exploded:
+            _render_number(exploded["amount"], "display.exploded.amount", 0, 1)
+
+    edges = payload.get("edges")
+    if edges is not None:
+        if not is_plain_object(edges):
+            raise SnapshotError(f"display edges must be an object ({source_label})")
+        unknown = sorted(set(edges) - DISPLAY_EDGE_KEYS)
+        if unknown:
+            raise SnapshotError(f"display edges has unknown key(s): {', '.join(unknown)} ({source_label})")
+        for key in ("enabled", "silhouette", "depthTest"):
+            if key in edges:
+                _render_boolean(edges[key], f"display.edges.{key}")
+        for key in ("color", "highlightColor"):
+            if key in edges:
+                _render_color(edges[key], f"display.edges.{key}")
+        for key in ("thickness", "highlightThickness"):
+            if key in edges:
+                _render_number(edges[key], f"display.edges.{key}", 0.5, 6)
+        if "highlightOpacity" in edges:
+            _render_number(edges["highlightOpacity"], "display.edges.highlightOpacity", 0, 1)
+        if "silhouetteScale" in edges:
+            _render_number(edges["silhouetteScale"], "display.edges.silhouetteScale", 0, 0.04)
+        if "classes" in edges:
+            classes = edges["classes"]
+            if not is_plain_object(classes):
+                raise SnapshotError(f"display edges.classes must be an object ({source_label})")
+            unknown = sorted(set(classes) - DISPLAY_EDGE_CLASS_IDS)
+            if unknown:
+                raise SnapshotError(f"display edges.classes has unknown key(s): {', '.join(unknown)} ({source_label})")
+            for class_id, class_value in classes.items():
+                if not is_plain_object(class_value):
+                    raise SnapshotError(f"display edges.classes.{class_id} must be an object ({source_label})")
+                unknown = sorted(set(class_value) - DISPLAY_EDGE_CLASS_KEYS)
+                if unknown:
+                    raise SnapshotError(
+                        f"display edges.classes.{class_id} has unknown key(s): {', '.join(unknown)} ({source_label})"
+                    )
+                if "color" in class_value:
+                    _render_color(class_value["color"], f"display.edges.classes.{class_id}.color")
+                if "opacity" in class_value:
+                    _render_number(class_value["opacity"], f"display.edges.classes.{class_id}.opacity", 0, 1)
+                if "thickness" in class_value:
+                    _render_number(class_value["thickness"], f"display.edges.classes.{class_id}.thickness", 0, 6)
+    guides = payload.get("guides")
+    if guides is not None:
+        if not is_plain_object(guides):
+            raise SnapshotError(f"display guides must be an object ({source_label})")
+        unknown = sorted(set(guides) - DISPLAY_GUIDE_KEYS)
+        if unknown:
+            raise SnapshotError(f"display guides has unknown key(s): {', '.join(unknown)} ({source_label})")
+        for name, keys in {
+            "grid": DISPLAY_GRID_GUIDE_KEYS,
+            "axis": DISPLAY_AXIS_GUIDE_KEYS,
+        }.items():
+            value = guides.get(name)
+            if value is None:
+                continue
+            if not is_plain_object(value):
+                raise SnapshotError(f"display guides.{name} must be an object ({source_label})")
+            nested_unknown = sorted(set(value) - keys)
+            if nested_unknown:
+                raise SnapshotError(
+                    f"display guides.{name} has unknown key(s): {', '.join(nested_unknown)} ({source_label})"
+                )
+            if "enabled" in value:
+                _render_boolean(value["enabled"], f"display.guides.{name}.enabled")
+            for key in ({"centerColor", "cellColor"} if name == "grid" else {"color"}):
+                if key in value:
+                    _render_color(value[key], f"display.guides.{name}.{key}")
+            if "opacity" in value:
+                _render_number(value["opacity"], f"display.guides.{name}.opacity", 0, 1)
+            if name == "grid" and "density" in value:
+                _render_number(value["density"], "display.guides.grid.density", 0.25, 4)
+    part_color = payload.get("partColor")
+    if part_color is not None:
+        if not is_plain_object(part_color):
+            raise SnapshotError(f"display partColor must be an object ({source_label})")
+        unknown = sorted(set(part_color) - DISPLAY_PART_COLOR_KEYS)
+        if unknown:
+            raise SnapshotError(f"display partColor has unknown key(s): {', '.join(unknown)} ({source_label})")
+        color_mode = str(part_color.get("mode") or "").strip().lower()
+        if color_mode and color_mode not in PART_COLOR_MODES:
+            raise SnapshotError(
+                f"display partColor.mode must be original, single, or by_part ({source_label})"
+            )
+        color = part_color.get("color")
+        if color is not None:
+            _render_color(color, "display.partColor.color")
+        colors = part_color.get("colors")
+        if colors is not None:
+            if not isinstance(colors, list) or not 1 <= len(colors) <= 50:
+                raise SnapshotError(
+                    f"display partColor.colors must contain 1 to 50 hex colors ({source_label})"
+                )
+            for index, item in enumerate(colors):
+                _render_color(item, f"display.partColor.colors[{index}]")
 def load_display_option(raw_display: object, *, cwd: Path) -> dict[str, object]:
     if is_plain_object(raw_display):
         payload = validate_direct_settings_payload(
@@ -382,10 +515,13 @@ def load_display_option(raw_display: object, *, cwd: Path) -> dict[str, object]:
     looks_like_file = display.lower().endswith(".json") or "/" in display or "\\" in display
     if not looks_like_file and not display_path.exists():
         normalized_mode = re.sub(r"[\s-]+", "_", display.lower())
-        if normalized_mode not in DISPLAY_MODE_ALIASES:
-            supported = ", ".join(sorted(set(DISPLAY_MODE_ALIASES.values())))
+        if normalized_mode in {"solid", "rendered"}:
+            replacement = "shaded_edges" if normalized_mode == "solid" else "shaded"
+            raise SnapshotError(f"Display mode {normalized_mode!r} was retired; use {replacement!r}")
+        if normalized_mode not in DISPLAY_MODES:
+            supported = ", ".join(sorted(DISPLAY_MODES))
             raise SnapshotError(f"Unsupported display mode: {display}. Supported modes: {supported}")
-        return {"mode": DISPLAY_MODE_ALIASES[normalized_mode]}
+        return {"mode": normalized_mode}
     if not display_path.exists():
         raise SnapshotError(f"Display JSON file does not exist: {display}")
     payload = validate_direct_settings_payload(
@@ -397,40 +533,270 @@ def load_display_option(raw_display: object, *, cwd: Path) -> dict[str, object]:
     )
     validate_display_settings_values(payload, source_label=str(display_path))
     return payload
-def load_theme_option(raw_theme: object, *, cwd: Path) -> object:
-    if is_plain_object(raw_theme):
-        return validate_direct_settings_payload(
-            raw_theme,
-            option_name="--theme",
-            source_label="theme settings",
-            allowed_keys=THEME_OPTION_KEYS,
-            setting_label="theme settings",
-        )
-    theme = str(raw_theme or DEFAULT_RENDER_THEME_ID).strip() or DEFAULT_RENDER_THEME_ID
-    if theme.startswith("{"):
-        return validate_direct_settings_payload(
-            load_json_text(theme, "--theme"),
-            option_name="--theme",
-            source_label="--theme",
-            allowed_keys=THEME_OPTION_KEYS,
-            setting_label="theme settings",
-        )
+def _render_number(value: object, field: str, minimum: float, maximum: float) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not isfinite(float(value))
+        or float(value) < minimum
+        or float(value) > maximum
+    ):
+        raise SnapshotError(f"{field} must be a finite number between {minimum} and {maximum}")
 
-    theme_path = Path(theme).expanduser()
-    if not theme_path.is_absolute():
-        theme_path = cwd / theme_path
-    looks_like_file = theme.lower().endswith(".json") or "/" in theme or "\\" in theme
-    if not looks_like_file and not theme_path.exists():
-        return theme
-    if not theme_path.exists():
-        raise SnapshotError(f"Theme JSON file does not exist: {theme}")
-    return validate_direct_settings_payload(
-        load_json_text(theme_path.read_text(encoding="utf-8"), str(theme_path)),
-        option_name="--theme",
-        source_label=str(theme_path),
-        allowed_keys=THEME_OPTION_KEYS,
-        setting_label="theme settings",
+
+def _render_color(value: object, field: str) -> None:
+    if not isinstance(value, str) or not re.fullmatch(r"#(?:[0-9a-fA-F]{3}){1,2}", value.strip()):
+        raise SnapshotError(f"{field} must be a hex color")
+
+
+def _render_boolean(value: object, field: str) -> None:
+    if not isinstance(value, bool):
+        raise SnapshotError(f"{field} must be a boolean")
+
+
+def validate_render_settings_values(settings: Mapping[str, object]) -> None:
+    for block_name, value in settings.items():
+        if not is_plain_object(value):
+            raise SnapshotError(f"render.settings.{block_name} must be an object")
+        unknown = sorted(set(value) - RENDER_SETTING_BLOCK_KEYS[block_name])
+        if unknown:
+            raise SnapshotError(
+                f"render.settings.{block_name} has unknown key(s): {', '.join(unknown)}"
+            )
+
+    materials = settings.get("materials") if is_plain_object(settings.get("materials")) else {}
+    if "defaultColor" in materials:
+        _render_color(materials["defaultColor"], "render.settings.materials.defaultColor")
+    if "fillColors" in materials:
+        colors = materials["fillColors"]
+        if not isinstance(colors, list) or not 1 <= len(colors) <= 50:
+            raise SnapshotError("render.settings.materials.fillColors must contain 1 to 50 hex colors")
+        for index, color in enumerate(colors):
+            _render_color(color, f"render.settings.materials.fillColors[{index}]")
+    for key in ("cycleColors", "overrideSourceColors"):
+        if key in materials:
+            _render_boolean(materials[key], f"render.settings.materials.{key}")
+    if "tintMode" in materials and materials["tintMode"] not in {"multiply", "blend"}:
+        raise SnapshotError("render.settings.materials.tintMode must be multiply or blend")
+    for key, bounds in {
+        "tintStrength": (0, 1), "saturation": (0, 2.5), "contrast": (0, 2.5),
+        "brightness": (0, 2), "roughness": (0, 1), "metalness": (0, 1),
+        "clearcoat": (0, 1), "clearcoatRoughness": (0, 1), "opacity": (0, 1),
+        "envMapIntensity": (0, 4), "emissiveIntensity": (0, 2),
+    }.items():
+        if key in materials:
+            _render_number(materials[key], f"render.settings.materials.{key}", *bounds)
+
+    background = settings.get("background") if is_plain_object(settings.get("background")) else {}
+    if "type" in background and background["type"] not in {"solid", "linear", "radial", "transparent"}:
+        raise SnapshotError("render.settings.background.type must be solid, linear, radial, or transparent")
+    for key in ("solidColor", "linearStart", "linearEnd", "radialInner", "radialOuter"):
+        if key in background:
+            _render_color(background[key], f"render.settings.background.{key}")
+    if "linearAngle" in background:
+        _render_number(background["linearAngle"], "render.settings.background.linearAngle", -360, 360)
+
+    floor = settings.get("floor") if is_plain_object(settings.get("floor")) else {}
+    if "mode" in floor and floor["mode"] not in {"stage", "none"}:
+        raise SnapshotError("render.settings.floor.mode must be stage or none; use display.guides for grid and axis")
+    for key in ("enabled", "followModel"):
+        if key in floor:
+            _render_boolean(floor[key], f"render.settings.floor.{key}")
+    if "color" in floor:
+        _render_color(floor["color"], "render.settings.floor.color")
+    for key in ("roughness", "reflectivity", "shadowOpacity", "horizonBlend"):
+        if key in floor:
+            _render_number(floor[key], f"render.settings.floor.{key}", 0, 1)
+
+    environment = settings.get("environment") if is_plain_object(settings.get("environment")) else {}
+    for key in ("enabled", "useAsBackground"):
+        if key in environment:
+            _render_boolean(environment[key], f"render.settings.environment.{key}")
+    if "presetId" in environment and environment["presetId"] not in RENDER_ENVIRONMENT_IDS:
+        raise SnapshotError(f"unknown render.settings.environment.presetId: {environment['presetId']}")
+    if "intensity" in environment:
+        _render_number(environment["intensity"], "render.settings.environment.intensity", 0, 4)
+    if "rotationY" in environment:
+        _render_number(environment["rotationY"], "render.settings.environment.rotationY", -6.283185307179586, 6.283185307179586)
+
+    lighting = settings.get("lighting") if is_plain_object(settings.get("lighting")) else {}
+    if "toneMappingExposure" in lighting:
+        _render_number(lighting["toneMappingExposure"], "render.settings.lighting.toneMappingExposure", 0.05, 6)
+    for light_name, light in lighting.items():
+        if light_name == "toneMappingExposure":
+            continue
+        if not is_plain_object(light):
+            raise SnapshotError(f"render.settings.lighting.{light_name} must be an object")
+        unknown = sorted(set(light) - RENDER_LIGHT_KEYS[light_name])
+        if unknown:
+            raise SnapshotError(f"render.settings.lighting.{light_name} has unknown key(s): {', '.join(unknown)}")
+        if "enabled" in light:
+            _render_boolean(light["enabled"], f"render.settings.lighting.{light_name}.enabled")
+        for key in ("color", "skyColor", "groundColor"):
+            if key in light:
+                _render_color(light[key], f"render.settings.lighting.{light_name}.{key}")
+        if "intensity" in light:
+            _render_number(light["intensity"], f"render.settings.lighting.{light_name}.intensity", 0, 20)
+        if "distance" in light:
+            _render_number(light["distance"], f"render.settings.lighting.{light_name}.distance", 0, 5000)
+        if "angle" in light:
+            _render_number(light["angle"], f"render.settings.lighting.{light_name}.angle", 0.01, 1.5707963267948966)
+        if "position" in light:
+            position = light["position"]
+            if not is_plain_object(position):
+                raise SnapshotError(f"render.settings.lighting.{light_name}.position must be an object")
+            unknown_position = sorted(set(position) - {"x", "y", "z"})
+            if unknown_position:
+                raise SnapshotError(f"render.settings.lighting.{light_name}.position has unknown key(s): {', '.join(unknown_position)}")
+            for axis, coordinate in position.items():
+                _render_number(coordinate, f"render.settings.lighting.{light_name}.position.{axis}", -5000, 5000)
+
+
+def validate_render_option(value: object, *, source_label: str) -> dict[str, object]:
+    if not is_plain_object(value):
+        raise SnapshotError(f"--render JSON must be a render object: {source_label}")
+    payload = {key: item for key, item in value.items() if not str(key).startswith("_")}
+    unknown = sorted(set(payload) - SUPPORTED_RENDER_KEYS)
+    if unknown:
+        moved = {
+            "sizeProfile": "output.sizeProfile",
+            "padding": "output.padding",
+            "paddingPercent": "output.paddingPercent",
+            "viewLabels": "output.viewLabels",
+            "tightFrame": "output.tightFrame",
+            "transparent": "output.transparent",
+            "renderScale": "output.renderScale",
+            "tessellation": "quality.tessellation",
+            "scale": "scale",
+            "sceneScale": "scale",
+            "sceneScaleMode": "scale",
+        }
+        hints = [f"render.{key} moved to {moved[key]}" for key in unknown if key in moved]
+        detail = f"; {'; '.join(hints)}" if hints else ""
+        raise SnapshotError(
+            f"render has unknown key(s): {', '.join(unknown)}; "
+            f"supported keys: {', '.join(sorted(SUPPORTED_RENDER_KEYS))}{detail} ({source_label})"
+        )
+    studio = str(payload.get("studio") or "default").strip().lower()
+    if studio not in RENDER_STUDIO_IDS:
+        raise SnapshotError(
+            f"unknown render studio: {studio or '(missing)'}; "
+            f"supported studios: {', '.join(sorted(RENDER_STUDIO_IDS))}"
+        )
+    appearance = str(payload.get("appearance") or "").strip().lower()
+    if appearance and appearance not in {"system", "light", "dark"}:
+        raise SnapshotError("render appearance must be system, light, or dark")
+    quality = str(payload.get("quality") or "").strip().lower()
+    if quality and quality not in SCENE_QUALITY_IDS:
+        raise SnapshotError("render quality must be interactive, standard, or high")
+    settings = payload.get("settings")
+    if settings is not None:
+        if not is_plain_object(settings):
+            raise SnapshotError(f"render settings must be an object ({source_label})")
+        unknown_settings = sorted(set(settings) - SUPPORTED_RENDER_SETTINGS_KEYS)
+        if unknown_settings:
+            raise SnapshotError(
+                f"render settings has unknown key(s): {', '.join(unknown_settings)}; "
+                f"supported keys: {', '.join(sorted(SUPPORTED_RENDER_SETTINGS_KEYS))}"
+            )
+        validate_render_settings_values(settings)
+    if "camera" in payload:
+        camera = payload["camera"]
+        payload["camera"] = parse_camera_option(camera)
+    if "display" in payload:
+        display = payload["display"]
+        if not is_plain_object(display):
+            raise SnapshotError(f"render display must be an object ({source_label})")
+        display_payload = validate_direct_settings_payload(
+            display,
+            option_name="--render",
+            source_label="render display",
+            allowed_keys=DISPLAY_OPTION_KEYS,
+            setting_label="display settings",
+        )
+        validate_display_settings_values(display_payload, source_label="render display")
+        payload["display"] = display_payload
+    return payload
+
+
+def load_render_option(raw_render: object, *, cwd: Path) -> dict[str, object]:
+    if is_plain_object(raw_render):
+        return validate_render_option(raw_render, source_label="render settings")
+    render = str(raw_render or "").strip()
+    if not render:
+        raise SnapshotError("--render requires a studio id, JSON object, or JSON file path")
+    if render.startswith("{"):
+        return validate_render_option(load_json_text(render, "--render"), source_label="--render")
+    render_path = Path(render).expanduser()
+    if not render_path.is_absolute():
+        render_path = cwd / render_path
+    looks_like_file = render.lower().endswith(".json") or "/" in render or "\\" in render
+    if not looks_like_file and not render_path.exists():
+        return validate_render_option({"studio": render}, source_label="--render")
+    if not render_path.exists():
+        raise SnapshotError(f"Render JSON file does not exist: {render}")
+    return validate_render_option(
+        load_json_text(render_path.read_text(encoding="utf-8"), str(render_path)),
+        source_label=str(render_path),
     )
+
+
+def validate_output_settings(value: object) -> dict[str, object]:
+    if value is None:
+        return {}
+    if not is_plain_object(value):
+        raise SnapshotError("output must be an object")
+    output = dict(value)
+    unknown = sorted(set(output) - SUPPORTED_OUTPUT_SETTINGS_KEYS)
+    if unknown:
+        raise SnapshotError(
+            f"output has unknown key(s): {', '.join(unknown)}; "
+            f"supported keys: {', '.join(sorted(SUPPORTED_OUTPUT_SETTINGS_KEYS))}"
+        )
+    return output
+
+
+def validate_quality_settings(value: object) -> dict[str, object]:
+    if value is None:
+        return {}
+    if not is_plain_object(value):
+        raise SnapshotError("quality must be an object")
+    quality = dict(value)
+    unknown = sorted(set(quality) - SUPPORTED_QUALITY_KEYS)
+    if unknown:
+        raise SnapshotError(
+            f"quality has unknown key(s): {', '.join(unknown)}; "
+            f"supported keys: {', '.join(sorted(SUPPORTED_QUALITY_KEYS))}"
+        )
+    validate_render_tessellation(quality.get("tessellation"))
+    return quality
+
+
+def effective_display_request(job: Mapping[str, object]) -> dict[str, object]:
+    """Merge Render-embedded and explicit display requests for capability checks.
+
+    The shared scene resolver applies ``render.display`` first and top-level
+    ``display`` last. Input-kind checks must inspect that same effective request;
+    otherwise an unsupported CAD-edge mode nested in a copied Render envelope
+    reaches a mesh/robot renderer even though the equivalent top-level option is
+    rejected before launch.
+    """
+    render = job.get("render") if is_plain_object(job.get("render")) else {}
+    embedded = render.get("display") if is_plain_object(render.get("display")) else {}
+    explicit = job.get("display") if is_plain_object(job.get("display")) else {}
+
+    def merged(base: Mapping[str, object], override: Mapping[str, object]) -> dict[str, object]:
+        result = copy.deepcopy(dict(base))
+        for key, value in override.items():
+            if is_plain_object(value) and is_plain_object(result.get(key)):
+                result[key] = merged(result[key], value)
+            else:
+                result[key] = copy.deepcopy(value)
+        return result
+
+    return merged(embedded, explicit)
+
+
 def path_is_inside_or_equal(child: Path, parent: Path) -> bool:
     resolved_child = child.resolve()
     resolved_parent = parent.resolve()
@@ -487,16 +853,12 @@ def asset_url_for_path(file_path: Path, root_path: Path) -> str:
     )
     cache_key = sha256(cache_identity.encode("utf-8")).hexdigest()[:16]
     return f"{base_url}?v={cache_key}"
-def theme_id_for_job(job: Mapping[str, object]) -> str:
-    theme = job.get("theme")
-    if isinstance(theme, str):
-        return theme.strip().lower() or DEFAULT_RENDER_THEME_ID
-    return DEFAULT_RENDER_THEME_ID
 def normalize_size_profile(value: object) -> str:
     return str(value or "").strip().lower().replace("_", "-")
 def explicit_size_profile(job: Mapping[str, object], output: Mapping[str, object]) -> str:
-    render = job.get("render") if is_plain_object(job.get("render")) else {}
-    return normalize_size_profile(output.get("sizeProfile") or render.get("sizeProfile") or job.get("sizeProfile") or "")
+    del output
+    output_settings = job.get("output") if is_plain_object(job.get("output")) else {}
+    return normalize_size_profile(output_settings.get("sizeProfile") or "")
 def default_render_size(job: Mapping[str, object], output: Mapping[str, object]) -> tuple[int, int]:
     mode = str(job.get("mode") or "view").strip().lower()
     profile = explicit_size_profile(job, output)
@@ -514,23 +876,23 @@ def default_render_size(job: Mapping[str, object], output: Mapping[str, object])
         return COMPLEX_ASSEMBLY_RENDER_WIDTH, COMPLEX_ASSEMBLY_RENDER_HEIGHT
     if profile in {"contact-sheet", "contactsheet"}:
         return CONTACT_SHEET_RENDER_WIDTH, CONTACT_SHEET_RENDER_HEIGHT
-    render = job.get("render") if is_plain_object(job.get("render")) else {}
+    output_settings = job.get("output") if is_plain_object(job.get("output")) else {}
     if (
         profile in {"dimensioned", "section", "labeled"}
         or mode == "section"
-        or render.get("viewLabels") is True
+        or output_settings.get("viewLabels") is True
         or output.get("viewLabel")
         or output.get("label")
     ):
         return DIAGNOSTIC_RENDER_WIDTH, DIAGNOSTIC_RENDER_HEIGHT
-    if profile == "diagnostic" or theme_id_for_job(job) in WORKBENCH_RENDER_THEME_IDS:
+    if profile == "diagnostic" or not profile:
         return DIAGNOSTIC_RENDER_WIDTH, DIAGNOSTIC_RENDER_HEIGHT
     return SIMPLE_RENDER_WIDTH, SIMPLE_RENDER_HEIGHT
 def resolve_output_size(job: Mapping[str, object], output: Mapping[str, object]) -> tuple[int, int]:
     default_width, default_height = default_render_size(job, output)
     return (
-        positive_integer(output.get("width") or job.get("width") or default_width, "output width"),
-        positive_integer(output.get("height") or job.get("height") or default_height, "output height"),
+        positive_integer(output.get("width") or default_width, "output width"),
+        positive_integer(output.get("height") or default_height, "output height"),
     )
 def snapshot_timestamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -692,18 +1054,18 @@ def normalize_snapshot_job_packet(raw_payload: object) -> tuple[bool, list[objec
         return False, list(raw_payload["jobs"])
     return True, [raw_payload]
 def validate_render_tessellation(value: object) -> None:
-    """Refuse an unusable ``render.tessellation`` here, where the caller still
+    """Refuse an unusable ``quality.tessellation`` here, where the caller still
     gets a message. The page validates the same field (source.js) because it
     also serves the viewer, but by then the cost of an absurd request is a dead
     renderer and no explanation."""
     if value is None:
         return
     if not is_plain_object(value):
-        raise SnapshotError("render.tessellation must be an object of chordTolerance/angleTolerance")
+        raise SnapshotError("quality.tessellation must be an object of chordTolerance/angleTolerance")
     unknown = sorted(set(value) - set(MIN_RENDER_TESSELLATION))
     if unknown:
         raise SnapshotError(
-            f"render.tessellation has unknown key(s): {', '.join(unknown)}; "
+            f"quality.tessellation has unknown key(s): {', '.join(unknown)}; "
             f"supported keys: {', '.join(sorted(MIN_RENDER_TESSELLATION))}"
         )
     for key, floor in MIN_RENDER_TESSELLATION.items():
@@ -711,10 +1073,10 @@ def validate_render_tessellation(value: object) -> None:
             continue
         raw = value[key]
         if isinstance(raw, bool) or not isinstance(raw, (int, float)) or not isfinite(float(raw)) or float(raw) <= 0:
-            raise SnapshotError(f"render.tessellation.{key} must be a positive finite number")
+            raise SnapshotError(f"quality.tessellation.{key} must be a positive finite number")
         if float(raw) < floor:
             raise SnapshotError(
-                f"render.tessellation.{key} must be at least {floor}; finer sampling "
+                f"quality.tessellation.{key} must be at least {floor}; finer sampling "
                 "exhausts the renderer instead of improving the image"
             )
 
@@ -729,8 +1091,8 @@ def normalize_common_job(
     job_count: int = 1,
 ) -> dict[str, object]:
     """Kind-independent job normalization shared by every input kind: the outputs
-    guard, render scene-scale coercion, output-path resolution with per-output
-    camera defaults, and the common return shape.
+    guard, scene/output/quality validation, output-path resolution, and the
+    common return shape.
     Kind resolvers run their capability checks first, then call this, so a
     STEP/mesh/robot job all normalize identically; the caller attaches its
     kind-specific ``resolved`` payload to the returned job.
@@ -772,37 +1134,14 @@ def normalize_common_job(
                     "render the clip into it"
                 )
 
-    # A job's own `theme` string gets the SAME treatment as the
-    # `--theme` flag: a saved-theme name stays a name, but a path or an
-    # inline JSON object is loaded into real settings here.
-    #
-    # Without this a job saying `"theme": "path/to/theme.json"` fell all
-    # the way through to `theme_id_for_job()`, which lowercases the
-    # string and treats it as a saved-theme id. The lookup missed, the renderer
-    # silently used the default workbench theme, and — because the resolved id
-    # was then `workbench` — the size-profile logic further down also quietly
-    # switched to diagnostic dimensions. Exit 0, no warning, a plausible but
-    # wrong image. The CLI help has always promised that a file path works.
-    raw_theme = job.get("theme")
-    if isinstance(raw_theme, str) and raw_theme.strip():
-        job["theme"] = load_theme_option(raw_theme, cwd=resolved_cwd)
+    normalized_render = None
+    if "render" in job:
+        normalized_render = validate_render_option(job.get("render"), source_label="job render")
 
-    normalized_render = dict(job.get("render") if is_plain_object(job.get("render")) else {})
-    unknown_render_keys = sorted(set(normalized_render) - SUPPORTED_RENDER_KEYS)
-    if unknown_render_keys:
-        raise SnapshotError(
-            f"render has unknown key(s): {', '.join(unknown_render_keys)}; "
-            f"supported render keys: {', '.join(sorted(SUPPORTED_RENDER_KEYS))}"
-        )
-    validate_render_tessellation(normalized_render.get("tessellation"))
-    raw_scale = str(
-        normalized_render.get("scale")
-        or normalized_render.get("sceneScale")
-        or normalized_render.get("sceneScaleMode")
-        or job.get("scale")
-        or job.get("sceneScale")
-        or ""
-    ).strip().lower()
+    output_settings = validate_output_settings(job.get("output"))
+    quality = validate_quality_settings(job.get("quality"))
+
+    raw_scale = str(job.get("scale") or "").strip().lower()
     if raw_scale:
         # Honour the requested scale. This used to force "cad" unconditionally, so a job
         # asking for the URDF profile (robots are authored in metres, CAD in millimetres)
@@ -810,7 +1149,7 @@ def normalize_common_job(
         # correctly but framed for a workpiece a thousand times its size.
         if raw_scale not in {"cad", "urdf"}:
             raise SnapshotError(f"Unsupported scene scale: {raw_scale} (expected cad or urdf)")
-        normalized_render["scale"] = raw_scale
+        job["scale"] = raw_scale
 
     normalized_outputs: list[dict[str, object]] = []
     resolved_timestamp = timestamp or snapshot_timestamp()
@@ -833,6 +1172,10 @@ def normalize_common_job(
                     "level only — to hide or focus parts for one view, split it into its "
                     'own job in a "jobs" array'
                 )
+            if "sizeProfile" in unknown_output_keys:
+                raise SnapshotError(
+                    f"render output {index} carries sizeProfile; it moved to job output.sizeProfile"
+                )
             raise SnapshotError(
                 f"render output {index} has unknown key(s): {', '.join(unknown_output_keys)}; "
                 f"supported output keys: {', '.join(sorted(SUPPORTED_OUTPUT_KEYS))}"
@@ -846,8 +1189,7 @@ def normalize_common_job(
                 f"render output {index} has no path; each output must be a path "
                 'string or an object with a "path"'
             )
-        normalized_outputs.append(
-            {
+        normalized_output = {
                 **output_object,
                 "path": resolve_output_target(
                     output_path,
@@ -863,15 +1205,18 @@ def normalize_common_job(
                 ),
                 "width": width,
                 "height": height,
-                "camera": output_object.get("camera") or job.get("camera") or "iso",
             }
-        )
+        explicit_camera = output_object.get("camera") or job.get("camera")
+        if explicit_camera is not None:
+            normalized_output["camera"] = parse_camera_option(explicit_camera)
+        normalized_outputs.append(normalized_output)
 
     return {
         **job,
         "mode": mode,
-        "display": job.get("display") if is_plain_object(job.get("display")) else {"mode": "solid"},
-        "render": normalized_render,
+        **({"render": normalized_render} if normalized_render is not None else {}),
+        "output": output_settings,
+        "quality": quality,
         "outputs": normalized_outputs,
     }
 def has_kinematics_render_values(value: object) -> bool:
@@ -940,6 +1285,11 @@ def resolve_mesh_render_job(
         raise SnapshotError(
             f"a video renders an animation clip; {label} mesh inputs have no clips to render"
         )
+    quality = job.get("quality") if is_plain_object(job.get("quality")) else {}
+    if quality.get("tessellation") is not None:
+        raise SnapshotError(
+            f"quality.tessellation requires an exact-surface STEP package; {label} is an existing mesh"
+        )
 
     mode = str(job.get("mode") or "view").strip().lower()
     if mode not in SUPPORTED_RENDER_MODES:
@@ -953,18 +1303,13 @@ def resolve_mesh_render_job(
     # Meshes render shaded solid (no CAD topology for edges/materials). Projection is
     # honored by the renderer, but any non-solid display mode would be silently dropped,
     # so reject it up front with a clear error instead of returning a misleading image.
-    display = job.get("display") if is_plain_object(job.get("display")) else {}
+    display = effective_display_request(job)
     raw_display_mode = re.sub(r"[\s-]+", "_", str(display.get("mode") or "").strip().lower())
     canonical_display_mode = DISPLAY_MODE_ALIASES.get(raw_display_mode, raw_display_mode)
-    if canonical_display_mode in TOPOLOGY_DISPLAY_MODES:
+    if canonical_display_mode in {"shaded_edges", *TOPOLOGY_DISPLAY_MODES}:
         raise SnapshotError(
             f"{canonical_display_mode} display requires STEP CAD edges; {label} mesh inputs "
-            "render shaded without CAD linework"
-        )
-    if canonical_display_mode and canonical_display_mode != "solid":
-        raise SnapshotError(
-            f"{canonical_display_mode} display mode is not supported for {label} mesh inputs; "
-            "meshes render shaded solid (STEP models support the full display-mode set)"
+            "have no CAD edge topology"
         )
     exploded = display.get("exploded") if is_plain_object(display.get("exploded")) else None
     if exploded is not None and exploded.get("enabled"):

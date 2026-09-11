@@ -412,7 +412,7 @@ export default function StepFileSheet({
   stepAnimation = null,
   viewerServerInfo = null,
   suppressDynamicMetadataStatus = false,
-  themeTabs = [],
+  settingsTabs = [],
   openSectionIds = [],
   onOpenSectionIdsChange
 }) {
@@ -1216,7 +1216,7 @@ export default function StepFileSheet({
       runtime: stepAnimation
     }),
     measurementsSection,
-    ...themeTabs
+    ...settingsTabs
   ];
 
   return (

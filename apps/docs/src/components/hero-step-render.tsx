@@ -106,15 +106,6 @@ function buildWorkbenchTheme(scheme: PreviewScheme) {
       clearcoat: 0,
       envMapIntensity: 0,
     },
-    edges: {
-      ...(theme.edges || {}),
-      enabled: true,
-      color: scheme === "dark" ? "#202b38" : "#2f3a4b",
-      contrastMode: "manual",
-      opacity: 1,
-      silhouette: true,
-      thickness: 1,
-    },
     background: {
       type: "solid",
       solidColor: palette.background,
@@ -143,6 +134,15 @@ function buildWorkbenchTheme(scheme: PreviewScheme) {
         enabled: false,
       },
     },
+  };
+}
+
+function buildWorkbenchEdges(scheme: PreviewScheme) {
+  return {
+    enabled: true,
+    color: scheme === "dark" ? "#202b38" : "#2f3a4b",
+    silhouette: true,
+    thickness: 1,
   };
 }
 
@@ -284,7 +284,8 @@ export function HeroStepRender() {
 
         cadModel = buildModel(THREE, source, {
           theme: buildWorkbenchTheme(scheme),
-          displayMode: "solid",
+          displayMode: "shaded_edges",
+          edgeSettings: buildWorkbenchEdges(scheme),
           stepParameters: stepParameterRuntime(source.stepParameterSource),
           scale: CAD_SCENE_SCALE.CAD,
           selection: {

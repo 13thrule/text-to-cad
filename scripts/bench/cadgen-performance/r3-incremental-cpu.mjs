@@ -57,7 +57,7 @@ function run(count, iterations) {
   let mesh = buildComposedPackageMeshData(description, components);
   const scene = buildModel(THREE, mesh, {
     renderPartsIndividually: true,
-    theme: { edges: { enabled: false } },
+    displayMode: "shaded",
   });
   let compositionMs = 0;
   let sceneUpdateMs = 0;

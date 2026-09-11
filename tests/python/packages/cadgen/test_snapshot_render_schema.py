@@ -1,9 +1,8 @@
-"""The snapshot job's ``render`` block is a closed schema with real limits.
+"""Snapshot scene, output and quality are separate closed schemas.
 
 Two failure modes this pins, both of which used to be silent or opaque:
 
-* an unread render key (`render.tesselation`, one l) rendered at default
-  tessellation, exit 0, no hint — a full-price image of the wrong thing;
+* old technical ``render`` keys fail with their new output/quality home;
 * an absurd tolerance was accepted here and killed the browser later, so the
   caller saw `Connection closed while reading from the driver` and no cause.
 
@@ -24,6 +23,10 @@ add_repo_path("packages/cadgen/src")
 
 from cadgen.snapshot_core import (  # noqa: E402
     MIN_RENDER_TESSELLATION,
+    RENDER_STUDIO_IDS,
+    SCENE_QUALITY_IDS,
+    SUPPORTED_OUTPUT_SETTINGS_KEYS,
+    SUPPORTED_QUALITY_KEYS,
     SUPPORTED_RENDER_KEYS,
     SnapshotError,
     normalize_common_job,
@@ -31,9 +34,9 @@ from cadgen.snapshot_core import (  # noqa: E402
 )
 
 
-def normalize(render: dict[str, object]) -> dict[str, object]:
+def normalize(**settings: object) -> dict[str, object]:
     return normalize_common_job(
-        {"input": "part.step", "render": render, "outputs": []},
+        {"input": "part.step", "outputs": [], **settings},
         mode="list",
         resolved_cwd=Path("."),
         timestamp="20260907-000000",
@@ -43,30 +46,102 @@ def normalize(render: dict[str, object]) -> dict[str, object]:
 class RenderKeySchemaTest(unittest.TestCase):
     def test_every_supported_render_key_is_accepted(self):
         values = {
-            "tessellation": {"chordTolerance": 0.001},
-            "scale": "cad",
-            "sceneScale": "cad",
-            "sceneScaleMode": "urdf",
-            "sizeProfile": "diagnostic",
-            "padding": 0.12,
-            "paddingPercent": 0.12,
-            "viewLabels": True,
-            "tightFrame": True,
-            "transparent": True,
-            "renderScale": 1,
+            "studio": "studio-light",
+            "appearance": "light",
+            "quality": "high",
+            "settings": {"materials": {"roughness": 0.5}},
+            "camera": {"projection": "perspective", "orthographicHalfHeight": 42.5},
+            "display": {"mode": "shaded"},
         }
-        # Every key the renderer reads has a legal spelling here; a key missing
-        # from this table is a key nobody documented a value for.
         self.assertEqual(set(values), set(SUPPORTED_RENDER_KEYS))
         for key, value in values.items():
-            normalize({key: value})
+            normalize(render={key: value})
 
-    def test_a_misspelled_render_key_is_refused_by_name(self):
+    def test_scene_presets_are_closed_and_old_names_are_not_aliases(self):
+        self.assertEqual(
+            {"default", "studio-light", "studio-dark", "blue", "pink", "clay-sunrise", "terminal"},
+            set(RENDER_STUDIO_IDS),
+        )
+        for retired in ("cinematic", "vibrant", "snapshot", "workbench-light"):
+            with self.assertRaisesRegex(SnapshotError, "unknown render studio"):
+                normalize(render={"studio": retired})
+
+    def test_render_scene_values_are_strict_and_sparse_payload_is_preserved(self):
+        render = {
+            "studio": "studio-dark",
+            "appearance": "dark",
+            "quality": "high",
+            "settings": {
+                "materials": {"roughness": 0.35, "overrideSourceColors": False},
+                "lighting": {"directional": {"position": {"x": 3, "y": 4, "z": 5}}},
+            },
+        }
+        self.assertEqual(render, normalize(render=render)["render"])
+        self.assertEqual({"interactive", "standard", "high"}, set(SCENE_QUALITY_IDS))
+
+        invalid_settings = (
+            {"materials": {"roughness": "0.35"}},
+            {"materials": {"overrideSourceColors": 1}},
+            {"materials": {"metalness": 1.1}},
+            {"background": {"solidColor": "blue"}},
+            {"environment": {"presetId": "unknown"}},
+            {"lighting": {"directional": {"position": [1, 2, 3]}}},
+            {"floor": {"grid": True}},
+        )
+        for settings in invalid_settings:
+            with self.subTest(settings=settings), self.assertRaises(SnapshotError):
+                normalize(render={"settings": settings})
+
+    def test_render_camera_and_display_are_closed(self):
+        with self.assertRaisesRegex(SnapshotError, "camera has unknown key"):
+            normalize(render={"camera": {"projection": "perspective", "fov": 30}})
+        with self.assertRaisesRegex(SnapshotError, "camera projection"):
+            normalize(render={"camera": {"projection": "ortho"}})
+        for half_height in (0, -1, True, "12", float("inf"), float("nan")):
+            with self.subTest(orthographicHalfHeight=half_height), self.assertRaisesRegex(
+                SnapshotError, "orthographicHalfHeight must be a positive finite number"
+            ):
+                normalize(render={"camera": {"orthographicHalfHeight": half_height}})
+        self.assertEqual(
+            18.25,
+            normalize(render={"camera": {
+                "projection": "perspective", "orthographicHalfHeight": 18.25,
+            }})["render"]["camera"]["orthographicHalfHeight"],
+        )
+        with self.assertRaisesRegex(SnapshotError, "display mode .* retired"):
+            normalize(render={"display": {"mode": "rendered"}})
+        with self.assertRaisesRegex(SnapshotError, "display guides.grid has unknown key"):
+            normalize(render={"display": {"guides": {"grid": {"visible": False}}}})
+        for display in (
+            {"clip": {"offset": "0.5"}},
+            {"exploded": {"enabled": 1}},
+            {"edges": {"thickness": 0}},
+            {"guides": {"grid": {"density": 0.1}}},
+            {"partColor": {"mode": "by_part", "colors": []}},
+        ):
+            with self.subTest(display=display), self.assertRaises(SnapshotError):
+                normalize(render={"display": display})
+
+    def test_old_technical_render_keys_name_their_new_home(self):
         with self.assertRaises(SnapshotError) as caught:
-            normalize({"tesselation": {"chordTolerance": 0.001}})
+            normalize(render={"tessellation": {"chordTolerance": 0.001}})
         message = str(caught.exception)
-        self.assertIn("unknown key(s): tesselation", message)
-        self.assertIn("tessellation", message)
+        self.assertIn("quality.tessellation", message)
+        with self.assertRaisesRegex(SnapshotError, "output.sizeProfile"):
+            normalize(render={"sizeProfile": "diagnostic"})
+        with self.assertRaisesRegex(SnapshotError, "render.scale moved to scale"):
+            normalize(render={"scale": "cad"})
+
+    def test_output_and_quality_are_closed(self):
+        output = {
+            "sizeProfile": "diagnostic", "padding": 0.1, "paddingPercent": 0.1,
+            "viewLabels": True, "tightFrame": True, "transparent": True, "renderScale": 2,
+        }
+        self.assertEqual(set(output), set(SUPPORTED_OUTPUT_SETTINGS_KEYS))
+        self.assertEqual({"tessellation"}, set(SUPPORTED_QUALITY_KEYS))
+        normalize(output=output, quality={"tessellation": {"chordTolerance": 0.001}})
+        with self.assertRaisesRegex(SnapshotError, "output has unknown key"):
+            normalize(output={"pixels": 2})
 
 
 class RenderTessellationLimitsTest(unittest.TestCase):
@@ -79,10 +154,10 @@ class RenderTessellationLimitsTest(unittest.TestCase):
 
     def test_tolerances_below_the_floor_are_refused_here_not_in_the_browser(self):
         with self.assertRaises(SnapshotError) as caught:
-            normalize({"tessellation": {"chordTolerance": 1e-12}})
+            normalize(quality={"tessellation": {"chordTolerance": 1e-12}})
         self.assertIn("at least 1e-05", str(caught.exception))
         with self.assertRaises(SnapshotError):
-            normalize({"tessellation": {"angleTolerance": 1e-6}})
+            normalize(quality={"tessellation": {"angleTolerance": 1e-6}})
         # The floors themselves, and everything coarser, are legal requests.
         validate_render_tessellation(dict(MIN_RENDER_TESSELLATION))
         validate_render_tessellation({"chordTolerance": 0.0005, "angleTolerance": 0.10})

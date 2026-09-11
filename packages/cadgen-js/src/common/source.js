@@ -5,6 +5,11 @@ import { buildMeshDataFromGlbBuffer } from "../lib/render/glbMeshData.js";
 import { buildMeshDataFromSurf } from "../lib/surf/surfMeshData.js";
 import { parseSurf } from "../lib/surf/container.js";
 import { tessellateComponent } from "../lib/surf/tessellate.js";
+import { lodTessellationForLevel } from "../lib/surf/lodPolicy.js";
+import {
+  SCENE_QUALITY,
+  resolveSceneQuality
+} from "./sceneSettings.js";
 import {
   TESS_BATCH_MAX_BYTES,
   decodeComponentTessellation,
@@ -209,25 +214,42 @@ export const RENDER_TESSELLATION_FLOORS = Object.freeze({
 export function normalizeRenderTessellation(value) {
   if (value === undefined || value === null) return {};
   if (!isObject(value) || Array.isArray(value)) {
-    throw new Error("render.tessellation must be an object");
+    throw new Error("quality.tessellation must be an object");
   }
   const result = {};
   for (const [key, raw] of Object.entries(value)) {
     if (!Object.hasOwn(RENDER_TESSELLATION_FLOORS, key)) {
-      throw new Error(`Unknown render.tessellation field: ${key}`);
+      throw new Error(`Unknown quality.tessellation field: ${key}`);
     }
     if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) {
-      throw new Error(`render.tessellation.${key} must be a positive finite number`);
+      throw new Error(`quality.tessellation.${key} must be a positive finite number`);
     }
     if (raw < RENDER_TESSELLATION_FLOORS[key]) {
       throw new Error(
-        `render.tessellation.${key} must be at least ${RENDER_TESSELLATION_FLOORS[key]}; ` +
+        `quality.tessellation.${key} must be at least ${RENDER_TESSELLATION_FLOORS[key]}; ` +
         "finer sampling exhausts the renderer instead of improving the image"
       );
     }
     result[key] = raw;
   }
   return result;
+}
+
+export function tessellationForSnapshotQuality(input = {}) {
+  const explicit = input.quality?.tessellation;
+  if (explicit != null) {
+    return normalizeRenderTessellation(explicit);
+  }
+  const preset = input.render?.quality || (
+    input.render != null ? SCENE_QUALITY.HIGH : SCENE_QUALITY.INTERACTIVE
+  );
+  const quality = resolveSceneQuality(preset, { fallback: SCENE_QUALITY.INTERACTIVE });
+  // High uses the existing bounded L2 rung. Interactive and Standard retain
+  // the canonical L1 cache request; this changes neither cache identity nor
+  // tessellator behavior for ordinary inspection snapshots.
+  return quality.snapshotLodLevel > 1
+    ? lodTessellationForLevel(quality.snapshotLodLevel)
+    : {};
 }
 
 async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = null) {
@@ -483,9 +505,9 @@ export async function loadSource(input, options = {}) {
     typeof input === "string" ? sourceKindFromUrl(input) : ""
   );
   const kind = normalizeKind(rawKind);
-  const rawTessellation = inputObject.render?.tessellation;
-  const tessellation = normalizeRenderTessellation(rawTessellation);
-  assertStepOnlyOption(kind, rawTessellation, "render.tessellation");
+  const rawTessellation = inputObject.quality?.tessellation;
+  const tessellation = tessellationForSnapshotQuality(inputObject);
+  assertStepOnlyOption(kind, rawTessellation, "quality.tessellation");
   const kinematics = inputObject.kinematics ?? options.kinematics;
   const stepParameterUrl = String(
     inputObject.stepParameterUrl || resolved.stepParameterUrl || options.stepParameterUrl || ""
@@ -540,7 +562,7 @@ export async function loadSource(input, options = {}) {
     };
   }
   if (rawTessellation !== undefined && rawTessellation !== null) {
-    throw new Error("render.tessellation requires an exact-surface STEP package; existing mesh data cannot be retessellated");
+    throw new Error("quality.tessellation requires an exact-surface STEP package; existing mesh data cannot be retessellated");
   }
   const glbUrl = String(inputObject.glbUrl || resolved.glbUrl || options.glbUrl || "").trim();
   const url = String(typeof input === "string" ? input : inputObject.url || resolved.url || glbUrl || "").trim();

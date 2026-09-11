@@ -10,9 +10,7 @@ import {
   displayModeShowsEdges,
   displayModeShowsThroughEdges,
   CAMERA_PROJECTION,
-  normalizeDisplayEdgeSettings,
-  normalizeDisplaySettings,
-  normalizeCameraProjection,
+  DISABLED_DISPLAY_GUIDE_SETTINGS,
   resolveDisplayEdgeSettings
 } from "./displaySettings.js";
 import {
@@ -62,15 +60,16 @@ import {
   RENDER_VIEW_PRESETS,
   rendererDataUrlWithOptionalLabel as sharedRendererDataUrlWithOptionalLabel,
   resolveRenderView,
-  resolveThemeSettings,
   shouldBurnInViewLabels as sharedShouldBurnInViewLabels
 } from "./renderOptions.js";
 import {
-  cameraSpecUsesPerspectiveProjection
+  normalizeCameraSpec
 } from "./camera.js";
+import {
+  resolveSceneSettings
+} from "./sceneSettings.js";
 
 const DEFAULT_RENDER_SCALE = 1;
-const DEFAULT_RENDER_THEME_ID = "workbench";
 const RENDER_SCENE_SCALE_SETTINGS = Object.freeze({
   [RENDER_SCENE_SCALE.CAD]: Object.freeze({
     minBoundsSpan: 1,
@@ -110,16 +109,12 @@ function normalizeRenderSceneScale(value) {
 }
 
 function resolveRenderSceneScale(job = {}, meshData = {}) {
-  const explicit = String(job.render?.scale || job.render?.sceneScale || job.render?.sceneScaleMode || job.scale || job.sceneScale || "").trim().toLowerCase();
+  const explicit = String(job.scale || "").trim().toLowerCase();
   return inferRenderSceneScale({
     explicit,
     kind: job.resolved?.kind || job.kind,
     parts: meshData?.parts
   });
-}
-
-function resolveTheme(job = {}) {
-  return resolveThemeSettings(job, { defaultThemeId: DEFAULT_RENDER_THEME_ID });
 }
 
 function resolveView(camera = "iso") {
@@ -142,8 +137,8 @@ async function applyEnvironment(scene, themeSettings, warnings) {
   return applySharedEnvironment(scene, themeSettings, warnings);
 }
 
-function applyLighting(scene, themeSettings) {
-  return applySharedLighting(scene, themeSettings);
+function applyLighting(scene, themeSettings, bounds, sceneScale) {
+  return applySharedLighting(scene, themeSettings, { bounds, sceneScale });
 }
 
 function mergeBoundsList(boundsList) {
@@ -163,8 +158,8 @@ function mergeBoundsList(boundsList) {
   return count > 0 && min.every(Number.isFinite) && max.every(Number.isFinite) ? { min, max } : null;
 }
 
-function addFloor(scene, bounds, themeSettings, sceneScale = RENDER_SCENE_SCALE.CAD) {
-  return addSharedFloor(scene, bounds, themeSettings, sceneScale, RENDER_SCENE_SCALE_SETTINGS);
+function addFloor(scene, bounds, themeSettings, sceneScale = RENDER_SCENE_SCALE.CAD, guideSettings = null) {
+  return addSharedFloor(scene, bounds, themeSettings, sceneScale, RENDER_SCENE_SCALE_SETTINGS, guideSettings);
 }
 
 function boundsCorners(bounds) {
@@ -188,8 +183,14 @@ function fitCamera(camera, view, bounds, width, height, lockedHalfHeight = null,
   });
 }
 
-function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, sceneScale = RENDER_SCENE_SCALE.CAD) {
+function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, {
+  framePoints = null,
+  padding = 0.12,
+  sceneScale = RENDER_SCENE_SCALE.CAD
+} = {}) {
   return fitSharedPerspectiveCamera(camera, cameraSpec, bounds, width, height, {
+    framePoints,
+    padding,
     sceneScale,
     settingsByScale: RENDER_SCENE_SCALE_SETTINGS,
     strict: true
@@ -200,8 +201,10 @@ function outputSize(output, job) {
   return sharedOutputSize(output, job);
 }
 
-function configureRenderer(width, height, job, themeSettings) {
-  return configurePngRenderer(width, height, job, themeSettings, { defaultRenderScale: DEFAULT_RENDER_SCALE });
+function configureRenderer(width, height, job, themeSettings, quality = null) {
+  return configurePngRenderer(width, height, job, themeSettings, {
+    defaultRenderScale: quality?.renderScale ?? DEFAULT_RENDER_SCALE
+  });
 }
 
 function shouldBurnInViewLabels(job = {}) {
@@ -226,8 +229,49 @@ function rendererDataUrlWithOptionalLabel(renderer, label, job) {
   return sharedRendererDataUrlWithOptionalLabel(renderer, label, job);
 }
 
+export function disposeSnapshotSceneResources(scene, modelRoot = null, extraTextures = []) {
+  const disposedGeometries = new Set();
+  const disposedMaterials = new Set();
+  const disposedTextures = new Set();
+  const disposeTexture = (texture) => {
+    if (!texture?.isTexture || disposedTextures.has(texture)) return;
+    disposedTextures.add(texture);
+    texture.dispose?.();
+  };
+  const disposeMaterial = (material) => {
+    if (!material || disposedMaterials.has(material)) return;
+    disposedMaterials.add(material);
+    for (const value of Object.values(material)) {
+      disposeTexture(value);
+    }
+    material.dispose?.();
+  };
+  for (const child of [...(scene?.children || [])]) {
+    if (child === modelRoot) continue;
+    child.traverse?.((object) => {
+      if (object.geometry && !disposedGeometries.has(object.geometry)) {
+        disposedGeometries.add(object.geometry);
+        object.geometry.dispose?.();
+      }
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach(disposeMaterial);
+    });
+    scene.remove?.(child);
+  }
+  for (const texture of extraTextures) disposeTexture(texture);
+  disposeTexture(scene?.background);
+  disposeTexture(scene?.environment);
+  if (scene?.background?.isTexture) scene.background = null;
+  if (scene?.environment?.isTexture) scene.environment = null;
+  return {
+    geometryCount: disposedGeometries.size,
+    materialCount: disposedMaterials.size,
+    textureCount: disposedTextures.size
+  };
+}
+
 function tightFrameEnabled(job = {}) {
-  return normalizeBoolean(job.render?.tightFrame, normalizeBoolean(job.tightFrame, true));
+  return normalizeBoolean(job.output?.tightFrame, true);
 }
 
 export function projectedVisibleGeometryFrame(records, camera) {
@@ -271,6 +315,21 @@ export function projectedVisibleGeometryFrame(records, camera) {
     spanY: Math.max(max.y - min.y, 1e-6),
     count
   };
+}
+
+function *visibleGeometryWorldPoints(records) {
+  const point = new THREE.Vector3();
+  for (const record of Array.isArray(records) ? records : []) {
+    const mesh = record?.mesh;
+    const position = mesh?.geometry?.getAttribute?.("position");
+    if (!mesh?.visible || !position || position.count <= 0) {
+      continue;
+    }
+    mesh.updateWorldMatrix?.(true, false);
+    for (let index = 0; index < position.count; index += 1) {
+      yield point.fromBufferAttribute(position, index).applyMatrix4(mesh.matrixWorld);
+    }
+  }
 }
 
 function applyTightOrthographicFrame(camera, records, width, height, padding, zoom = 1) {
@@ -692,69 +751,97 @@ export function listRenderableParts(meshData) {
   });
 }
 
-// The camera used for an output is decided PER OUTPUT: the job/theme projection,
-// plus a forced perspective whenever that output's camera spec carries an explicit
-// position/target/up. Any projection echo must come from this same decision, or an
-// explicit-position camera on an orthographic theme gets reported as orthographic.
+function outputCameraSpec(context, cameraSpec) {
+  const contextCamera = context?.camera || {
+    preset: "iso",
+    projection: context?.projection || CAMERA_PROJECTION.ORTHOGRAPHIC
+  };
+  if (cameraSpec == null) {
+    return contextCamera;
+  }
+  if (typeof cameraSpec === "string") {
+    return {
+      preset: cameraSpec,
+      projection: contextCamera.projection
+    };
+  }
+  return {
+    ...cameraSpec,
+    projection: cameraSpec.projection ?? contextCamera.projection
+  };
+}
+
+// Projection is one field of the canonical per-output camera spec. A named
+// output view inherits the job camera's projection unless it explicitly says
+// otherwise.
 export function resolveOutputCameraProjection(context, cameraSpec) {
-  const displayProjection = normalizeCameraProjection(
-    context?.projection,
-    CAMERA_PROJECTION.ORTHOGRAPHIC
-  );
-  const usePerspectiveCamera = displayProjection === CAMERA_PROJECTION.PERSPECTIVE ||
-    cameraSpecUsesPerspectiveProjection(cameraSpec, {
-      presets: RENDER_VIEW_PRESETS,
-      strict: true
-    });
-  return usePerspectiveCamera ? CAMERA_PROJECTION.PERSPECTIVE : CAMERA_PROJECTION.ORTHOGRAPHIC;
+  return normalizeCameraSpec(outputCameraSpec(context, cameraSpec), {
+    presets: RENDER_VIEW_PRESETS,
+    strict: true,
+    defaultProjection: context?.camera?.projection || CAMERA_PROJECTION.ORTHOGRAPHIC
+  }).projection;
+}
+
+function snapshotDisplayOverride(job = {}) {
+  const display = job.display && typeof job.display === "object" && !Array.isArray(job.display)
+    ? job.display
+    : {};
+  if (job.render != null) {
+    return display;
+  }
+  return {
+    ...display,
+    guides: {
+      grid: {
+        ...DISABLED_DISPLAY_GUIDE_SETTINGS.grid,
+        ...(display.guides?.grid || {})
+      },
+      axis: {
+        ...DISABLED_DISPLAY_GUIDE_SETTINGS.axis,
+        ...(display.guides?.axis || {})
+      }
+    }
+  };
 }
 
 export function renderJobContext(meshData, job = {}) {
+  if (Object.prototype.hasOwnProperty.call(job, "theme")) {
+    throw new Error("Snapshot field 'theme' was removed; use 'render'.");
+  }
   const mode = String(job.mode || "view").trim().toLowerCase();
-  const theme = resolveTheme(job);
   const sceneScale = resolveRenderSceneScale(job, meshData);
   const sourceKind = String(job.resolved?.kind || job.kind || meshData?.sourceFormat || "").trim().toLowerCase();
   const stepDisplayEnabled = sourceKind === "step" || sourceKind === "stp";
-  const displaySettings = normalizeDisplaySettings(stepDisplayEnabled ? job.display : undefined);
-  // Projection is a THEME trait, honoured by every format -- the same rule the viewer
-  // adopted in U1. An explicit job display projection still overrides it.
-  //
-  // Non-STEP sources used to be forced to PERSPECTIVE here regardless of the theme
-  // ("historical perspective framing"), which had a consequence nobody was reading it for:
-  // the tight frame that makes a render fill its canvas is orthographic-only, so every
-  // mesh, drawing and robot snapshot silently skipped it and sat in a sea of
-  // empty space while STEP filled its frame. Measured on tom.urdf: the gate reported
-  // usePerspectiveCamera=true and the tight frame never ran.
-  const projection = normalizeCameraProjection(
-    job.display?.projection,
-    normalizeCameraProjection(theme?.projection, CAMERA_PROJECTION.ORTHOGRAPHIC)
-  );
+  const sceneSettings = resolveSceneSettings({
+    appearance: job.appearance || "light",
+    render: job.render ?? null,
+    camera: job.camera || null,
+    display: snapshotDisplayOverride(job)
+  });
+  const theme = sceneSettings.render.settings;
+  const displaySettings = sceneSettings.display;
+  const projection = sceneSettings.camera.projection;
   const displayMode = displaySettings.mode;
   const bounds = meshData.bounds || boundsFromVertices(meshData.vertices || []);
-  const outputs = toArray(job.outputs).length ? toArray(job.outputs) : [{ path: job.output || "", camera: job.camera || "iso" }];
+  const outputs = toArray(job.outputs).length ? toArray(job.outputs) : [{ path: typeof job.output === "string" ? job.output : job.output?.base || job.output?.path || "" }];
   const warnings = [];
   const sharedRenderOptions = createSharedRenderOptions({
     themeSettings: theme,
     display: displaySettings,
+    camera: sceneSettings.camera,
     sceneScale,
     clip: displaySettings.clip,
     selection: job.selection || null,
     floor: theme.floor || null,
     background: theme.background || null,
     lighting: theme.lighting || null,
-    renderScale: job.render?.renderScale ?? job.renderScale ?? DEFAULT_RENDER_SCALE
+    renderScale: job.output?.renderScale ?? sceneSettings.quality.renderScale
   });
   const displayEdgeSettings = resolveDisplayEdgeSettings(displaySettings);
-  // A theme that opts into its own outline (e.g. Terminal's neon-green
-  // linework) drives the edge theme; other themes leave it to display.
-  const themeEdges = theme?.edges;
-  const baseEdgeSettings = themeEdges && themeEdges.enabled === true
-    ? normalizeDisplayEdgeSettings({ ...displayEdgeSettings, ...themeEdges })
-    : displayEdgeSettings;
   const edgeSettings = {
-    ...baseEdgeSettings,
-    enabled: displayModeForcesEdges(displayMode) ? true : baseEdgeSettings.enabled,
-    depthTest: displayModeShowsThroughEdges(displayMode) ? false : baseEdgeSettings.depthTest
+    ...displayEdgeSettings,
+    enabled: displayModeForcesEdges(displayMode) ? true : displayEdgeSettings.enabled,
+    depthTest: displayModeShowsThroughEdges(displayMode) ? false : displayEdgeSettings.depthTest
   };
   const wireframeMode = displayModeIsWireframe(displayMode);
   const edgesVisible = stepDisplayEnabled && displayModeShowsEdges(displayMode);
@@ -768,27 +855,13 @@ export function renderJobContext(meshData, job = {}) {
     selectorRuntime,
     edgeSettings
   });
-  const sceneTheme = topologyDisplayEdgesVisible
-    ? {
-        ...theme,
-        edges: {
-          ...edgeSettings,
-          enabled: false
-        }
-      }
-    : {
-        ...theme,
-        edges: edgesVisible
-          ? edgeSettings
-          : {
-              ...edgeSettings,
-              enabled: false
-            }
-      };
   return {
     mode,
     theme,
-    sceneTheme,
+    sceneTheme: theme,
+    sceneSettings,
+    camera: sceneSettings.camera,
+    quality: sceneSettings.quality,
     sceneScale,
     sourceKind,
     stepDisplayEnabled,
@@ -828,6 +901,12 @@ export function modelOptionsForRenderJob(context, job = {}) {
     : [];
   return {
     theme: context.sceneTheme,
+    edgeSettings: context.topologyDisplayEdgesVisible
+      ? { ...context.edgeSettings, enabled: false }
+      : context.edgesVisible
+        ? context.edgeSettings
+        : { ...context.edgeSettings, enabled: false },
+    materialOverrides: context.sceneSettings.render.materialOverrides,
     displayMode: context.displayMode,
     applyDisplayModeEdgePolicy: !context.topologyDisplayEdgesVisible,
     scale: context.sceneScale,
@@ -872,16 +951,18 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
   const context = viewportOptions.context || renderJobContext(model.meshData, job);
   const sceneBuildStarted = performance.now();
   const firstSize = outputSize(context.outputs[0] || {}, job);
-  const renderer = configureRenderer(firstSize.width, firstSize.height, job, context.theme);
+  const renderer = configureRenderer(firstSize.width, firstSize.height, job, context.theme, context.quality);
   const scene = new THREE.Scene();
-  if (normalizeBoolean(job.render?.transparent, false) || context.theme.background?.type === "transparent") {
+  let backgroundTexture = null;
+  if (normalizeBoolean(job.output?.transparent, false) || context.theme.background?.type === "transparent") {
     scene.background = null;
     renderer.setClearColor(new THREE.Color("#000000"), 0);
   } else {
-    scene.background = colorTextureFromBackground(context.theme.background || {}, firstSize.width, firstSize.height);
+    backgroundTexture = colorTextureFromBackground(context.theme.background || {}, firstSize.width, firstSize.height);
+    scene.background = backgroundTexture;
   }
   const ready = applyEnvironment(scene, context.theme, context.warnings);
-  applyLighting(scene, context.theme);
+  applyLighting(scene, context.theme, model.bounds || context.bounds, context.sceneScale);
   Object.assign(model.runtime, {
     Line2,
     LineGeometry,
@@ -896,10 +977,17 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
   // to be in right now — right for a still, which is posed before it gets here,
   // and wrong for a video, whose camera frames the union across its frames and
   // would otherwise show the grid's edge with the moving part walking off it.
-  addFloor(scene, viewportOptions.floorBounds || model.bounds || context.bounds, context.theme, context.sceneScale);
+  addFloor(
+    scene,
+    viewportOptions.floorBounds || model.bounds || context.bounds,
+    context.theme,
+    context.sceneScale,
+    context.displaySettings.guides
+  );
   const orthographicCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.001, 10000);
   const perspectiveCamera = new THREE.PerspectiveCamera(48, firstSize.width / Math.max(firstSize.height, 1), 0.1, 50000);
-  return {
+  let disposed = false;
+  const viewport = {
     THREE: _THREE || THREE,
     model,
     scene,
@@ -910,10 +998,21 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
     sceneBuildStarted,
     ready,
     dispose() {
+      if (disposed) return;
+      disposed = true;
       model.dispose?.();
+      scene.remove?.(model.root);
+      disposeSnapshotSceneResources(scene, model.root, [backgroundTexture]);
+      backgroundTexture = null;
       renderer.dispose?.();
     }
   };
+  Promise.resolve(ready).finally(() => {
+    if (disposed) {
+      disposeSnapshotSceneResources(scene, model.root, [backgroundTexture]);
+    }
+  });
+  return viewport;
 }
 
 function displayRecordPartIds(displayRecords = []) {
@@ -1043,7 +1142,7 @@ export async function captureModel(viewport, captureOptions = {}) {
             mimeType: "image/png",
             dataUrl: renderSectionPng(segments, width, height, theme, {
               edgeSettings,
-              transparent: normalizeBoolean(job.render?.transparent, false),
+              transparent: normalizeBoolean(job.output?.transparent, false),
               section,
               bounds: modelBounds,
               viewLabels: shouldBurnInViewLabels(job)
@@ -1096,19 +1195,27 @@ export async function captureModel(viewport, captureOptions = {}) {
       lineResolution.width,
       lineResolution.height
     );
-    const cameraSpec = output.camera || job.camera || "iso";
+    const cameraSpec = outputCameraSpec(context, output.camera || null);
     const outputProjection = resolveOutputCameraProjection(context, cameraSpec);
     const usePerspectiveCamera = outputProjection === CAMERA_PROJECTION.PERSPECTIVE;
     const cameraView = usePerspectiveCamera ? null : resolveView(cameraSpec);
+    const useTightFrame = !captureOptions.frameBounds && tightFrameEnabled(job);
+    if (usePerspectiveCamera && useTightFrame) {
+      viewport.scene.updateMatrixWorld(true);
+    }
     const resolvedCamera = usePerspectiveCamera
-      ? fitPerspectiveCamera(viewport.perspectiveCamera, cameraSpec, outputBounds, width, height, sceneScale)
+      ? fitPerspectiveCamera(viewport.perspectiveCamera, cameraSpec, outputBounds, width, height, {
+          framePoints: useTightFrame ? visibleGeometryWorldPoints(viewport.model.displayRecords) : null,
+          padding,
+          sceneScale
+        })
       : fitCamera(viewport.orthographicCamera, cameraView, outputBounds, width, height, null, padding, sceneScale);
     const renderCamera = usePerspectiveCamera ? viewport.perspectiveCamera : viewport.orthographicCamera;
     // The tight frame is a per-POSE refinement: it re-fits to the vertices the
     // records project right now. Running it on every frame of a sequence is the
     // breathing `frameBounds` exists to stop, and there is no one pose to run it
     // against, so a locked frame keeps the bounds fit and skips it.
-    if (!usePerspectiveCamera && !captureOptions.frameBounds && tightFrameEnabled(job)) {
+    if (!usePerspectiveCamera && useTightFrame) {
       viewport.scene.updateMatrixWorld(true);
       applyTightOrthographicFrame(renderCamera, viewport.model.displayRecords, width, height, padding, cameraView?.zoom);
     }
@@ -1117,8 +1224,7 @@ export async function captureModel(viewport, captureOptions = {}) {
     renderedOutputs.push({
       path: String(output.path || ""),
       camera: resolvedCamera.name,
-      // Authoritative per-output echo: an explicit-position camera forces the
-      // perspective camera even on an orthographic theme.
+      // Authoritative per-output echo from the canonical camera specification.
       projection: outputProjection,
       width,
       height,
@@ -1130,12 +1236,10 @@ export async function captureModel(viewport, captureOptions = {}) {
   return {
     ok: true,
     mode,
-    // Echo the display state actually applied. The job-level projection is the
-    // resolved theme/display projection; each rendered output additionally carries
-    // its own authoritative projection (explicit-position cameras force perspective
-    // per output, so outputs within one job can differ).
+    // Echo the display and canonical camera state actually applied.
     displayMode: context.displayMode,
     projection: context.projection,
+    quality: context.quality.id,
     outputs: renderedOutputs,
     timings: {
       sceneBuildMs,

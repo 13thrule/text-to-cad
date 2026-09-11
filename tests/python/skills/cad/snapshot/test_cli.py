@@ -207,7 +207,7 @@ class SnapshotCliTests(unittest.TestCase):
         self.assertNotIn("rootDir", job)
         self.assertEqual(job["outputs"][0]["path"], str(Path("tmp/cap.png")))
         self.assertEqual(job["display"], {"mode": "wireframe"})
-        self.assertEqual(job["render"]["sizeProfile"], "simple")
+        self.assertEqual(job["output"]["sizeProfile"], "simple")
 
     def test_the_target_and_output_are_positional(self) -> None:
         """One grammar across the schema: `snapshot TARGET [OUT]` reads the same
@@ -243,6 +243,8 @@ class SnapshotCliTests(unittest.TestCase):
 
     def test_the_door_advertises_only_what_it_takes(self) -> None:
         text = cad_snapshot_entry.build_parser().format_help()
+        self.assertIn("orthographicHalfHeight preserves an orthographic", text)
+        self.assertIn("view's scale", text)
         for flag in self.NON_FLAGS:
             if flag.startswith("--"):
                 with self.subTest(flag=flag):
@@ -260,15 +262,10 @@ class SnapshotCliTests(unittest.TestCase):
             )
 
     def test_display_shortcut_accepts_cad_display_modes(self) -> None:
-        for raw_mode, expected_display in [
-            ("edges", {"mode": "solid"}),
-            ("x-ray", {"mode": "transparent"}),
-            ("hidden edges visible", {"mode": "hidden_edges"}),
-            ("hidden-lines-removed", {"mode": "hidden_lines_removed"}),
-            ("flat", {"mode": "unshaded"}),
-            ("theme", {"mode": "rendered"}),
-            ("wire", {"mode": "wireframe"}),
-        ]:
+        for raw_mode in (
+            "shaded", "shaded_edges", "transparent", "hidden_edges",
+            "hidden_lines_removed", "unshaded", "wireframe",
+        ):
             job = job_from_argv(
                 [
                     "parts/STEP/cylindrical_cap.step",
@@ -277,7 +274,7 @@ class SnapshotCliTests(unittest.TestCase):
                     raw_mode,
                 ]
             )
-            self.assertEqual(job["display"], expected_display)
+            self.assertEqual(job["display"], {"mode": raw_mode})
 
     def test_display_json_accepts_exploded_settings(self) -> None:
         job = job_from_argv(
@@ -285,14 +282,13 @@ class SnapshotCliTests(unittest.TestCase):
                 "parts/STEP/cylindrical_cap.step",
                 "tmp/cap.png",
                 "--display",
-                '{"projection":"perspective","mode":"rendered","exploded":{"enabled":true,"amount":0.7}}',
+                '{"mode":"shaded","exploded":{"enabled":true,"amount":0.7}}',
             ]
         )
         self.assertEqual(
             job["display"],
             {
-                "projection": "perspective",
-                "mode": "rendered",
+                "mode": "shaded",
                 "exploded": {"enabled": True, "amount": 0.7},
             },
         )
@@ -307,9 +303,31 @@ class SnapshotCliTests(unittest.TestCase):
             ]
         )
 
-    def test_display_json_rejects_bad_projection_value(self) -> None:
-        with self.assertRaisesRegex(SnapshotError, "projection must be orthographic or perspective"):
+    def test_projection_belongs_to_camera(self) -> None:
+        with self.assertRaisesRegex(SnapshotError, "projection belongs in camera"):
             self._display_job('{"projection":"ortho"}')
+        with self.assertRaisesRegex(SnapshotError, "orthographicHalfHeight belongs in camera"):
+            self._display_job('{"orthographicHalfHeight":24.5}')
+        job = job_from_argv([
+            "parts/STEP/cylindrical_cap.step", "tmp/cap.png",
+            "--camera", '{"preset":"iso","projection":"orthographic"}',
+        ])
+        self.assertEqual(job["outputs"][0]["camera"]["projection"], "orthographic")
+
+    def test_camera_accepts_orthographic_half_height(self) -> None:
+        job = job_from_argv([
+            "parts/STEP/cylindrical_cap.step", "tmp/cap.png",
+            "--camera", '{"projection":"orthographic","orthographicHalfHeight":24.5}',
+        ])
+        self.assertEqual(
+            job["outputs"][0]["camera"],
+            {"projection": "orthographic", "orthographicHalfHeight": 24.5},
+        )
+        with self.assertRaisesRegex(SnapshotError, "orthographicHalfHeight must be a positive finite number"):
+            job_from_argv([
+                "parts/STEP/cylindrical_cap.step", "tmp/cap.png",
+                "--camera", '{"orthographicHalfHeight":0}',
+            ])
 
     def test_display_json_rejects_bad_mode_value(self) -> None:
         with self.assertRaisesRegex(SnapshotError, "--display mode must be one of"):
@@ -325,26 +343,21 @@ class SnapshotCliTests(unittest.TestCase):
         with self.assertRaisesRegex(SnapshotError, "exploded supports only enabled and amount"):
             self._display_job('{"exploded":{"enabled":true,"steps":[]}}')
 
-    def test_display_json_rejects_the_edges_enabled_no_op(self) -> None:
-        # The display MODE is the edge switch, so `edges.enabled` could never change a
-        # snapshot: solid always draws linework and rendered never does. A still image
-        # gets one shot, so an ineffective setting is refused instead of ignored.
-        for payload in (
-            '{"mode":"solid","edges":{"enabled":false}}',
-            '{"edges":{"enabled":true}}',
-        ):
-            with self.assertRaisesRegex(SnapshotError, "display edges has no enabled key"):
-                self._display_job(payload)
+    def test_display_json_accepts_the_viewer_edge_settings_shape(self) -> None:
+        # Viewer-exported display settings can be pasted directly into a snapshot.
+        self.assertEqual(
+            self._display_job('{"mode":"shaded_edges","edges":{"enabled":false}}')["display"],
+            {"mode": "shaded_edges", "edges": {"enabled": False}},
+        )
 
     def test_display_json_still_accepts_edge_styling(self) -> None:
-        # `edges` styles the linework the mode has decided to draw; only `enabled` goes.
+        # `edges` styles the linework selected by the display mode.
         self.assertEqual(
-            self._display_job('{"mode":"solid","edges":{"opacity":0,"thickness":0}}')["display"],
-            {"mode": "solid", "edges": {"opacity": 0, "thickness": 0}},
+            self._display_job('{"mode":"shaded_edges","edges":{"highlightOpacity":0,"thickness":0.5}}')["display"],
+            {"mode": "shaded_edges", "edges": {"highlightOpacity": 0, "thickness": 0.5}},
         )
 
     def test_display_json_accepts_valid_closed_set_values(self) -> None:
-        self.assertEqual(self._display_job('{"projection":"orthographic"}')["display"], {"projection": "orthographic"})
         self.assertEqual(self._display_job('{"mode":"shaded"}')["display"], {"mode": "shaded"})
         self.assertEqual(
             self._display_job('{"exploded":{"enabled":true,"amount":1}}')["display"],
@@ -354,7 +367,6 @@ class SnapshotCliTests(unittest.TestCase):
     def test_display_json_treats_empty_string_values_as_unset(self) -> None:
         # The renderer treats an empty string as absent and falls back to the default, so
         # validation must not false-reject empty strings an agent emits for unset fields.
-        self.assertEqual(self._display_job('{"projection":""}')["display"], {"projection": ""})
         self.assertEqual(self._display_job('{"mode":""}')["display"], {"mode": ""})
 
     def test_edge_settings_belong_to_display_json(self) -> None:
@@ -363,46 +375,45 @@ class SnapshotCliTests(unittest.TestCase):
                 "parts/STEP/cylindrical_cap.step",
                 "tmp/cap.png",
                 "--display",
-                '{"edges":{"color":"#123456","opacity":0.5}}',
+                '{"edges":{"color":"#123456","highlightOpacity":0.5}}',
             ]
         )
-        self.assertEqual(job["display"], {"edges": {"color": "#123456", "opacity": 0.5}})
+        self.assertEqual(job["display"], {"edges": {"color": "#123456", "highlightOpacity": 0.5}})
 
-        with self.assertRaisesRegex(SnapshotError, "unsupported keys: edges"):
-            job_from_argv(
-                [
-                    "parts/STEP/cylindrical_cap.step",
-                    "tmp/cap.png",
-                    "--theme",
-                    '{"edges":{"color":"#123456"}}',
-                ]
-            )
+        with self.assertRaisesRegex(SnapshotError, "unknown key.*edges"):
+            job_from_argv(["parts/STEP/cylindrical_cap.step", "tmp/cap.png",
+                           "--render", '{"edges":{"color":"#123456"}}'])
 
-    def test_theme_accepts_a_full_theme_preset_clone(self) -> None:
-        # cloneThemePresetSettings() emits colorMode, projection and modeColors
-        # alongside the five settings blocks. Rejecting any of them meant the
-        # repo's own theme-clone output could not be passed back to
-        # --theme without hand-stripping keys first.
+    def test_render_accepts_the_exported_debug_envelope(self) -> None:
         job = job_from_argv(
             [
                 "parts/STEP/cylindrical_cap.step",
                 "tmp/cap.png",
-                "--theme",
+                "--render",
                 json.dumps(
                     {
-                        "colorMode": "light",
-                        "projection": "perspective",
-                        "materials": {"roughness": 0.5},
-                        "background": {"solidColor": "#ffffff"},
-                        "floor": {"color": "#b7b6b2"},
-                        "environment": {"enabled": True},
-                        "lighting": {"toneMappingExposure": 1.1},
-                        "modeColors": {"light": {"background": {"solidColor": "#ffffff"}}},
+                        "studio": "studio-light",
+                        "appearance": "light",
+                        "settings": {
+                            "materials": {"roughness": 0.5},
+                            "background": {"solidColor": "#ffffff"},
+                            "floor": {"color": "#b7b6b2"},
+                            "environment": {"enabled": True},
+                            "lighting": {"toneMappingExposure": 1.1},
+                        },
+                        "camera": {"direction": [1, -1, 0.8]},
+                        "display": {"mode": "shaded"},
                     }
                 ),
             ]
         )
-        self.assertIn("modeColors", job["theme"])
+        self.assertEqual(job["render"]["settings"]["materials"]["roughness"], 0.5)
+
+    def test_retired_theme_flag_names_render(self) -> None:
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors), self.assertRaises(SystemExit):
+            cad_snapshot_entry.main(["models/part.step", "tmp/o.png", "--theme", "workbench-light"])
+        self.assertIn("--theme was retired; use --render", errors.getvalue())
 
     def test_display_shortcut_rejects_unknown_modes(self) -> None:
         with self.assertRaisesRegex(SnapshotError, "Unsupported display mode"):
@@ -829,14 +840,14 @@ class SnapshotCliTests(unittest.TestCase):
             mesh_path.write_bytes(b"solid part\nendsolid part\n")
             job = {
                 "input": "models/part.stl",
-                "display": {"projection": "ortho"},
+                "camera": {"projection": "ortho"},
                 "outputs": [{"path": "tmp/iso.png", "camera": "iso"}],
             }
             with self.assertRaisesRegex(SnapshotError, "projection must be orthographic or perspective"):
                 resolve_render_job_packet(job, cwd=root)
-            job["display"] = {"projection": "orthographic"}
+            job["camera"] = {"projection": "orthographic"}
             packet = resolve_render_job_packet(job, cwd=root)
-            self.assertEqual(packet["jobs"][0]["display"], {"projection": "orthographic"})
+            self.assertEqual(packet["jobs"][0]["camera"], {"projection": "orthographic"})
 
     def test_the_typed_result_cannot_carry_output_payload_blobs(self) -> None:
         """--json must not echo the rendered bytes back. dataUrl/text are how the browser
@@ -1185,7 +1196,7 @@ class SnapshotCliTests(unittest.TestCase):
     def test_render_job_rejects_hidden_edges_display_for_mesh_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
-            for hidden_mode in ("hidden_edges", "hidden_lines_removed"):
+            for hidden_mode in ("shaded_edges", "hidden_edges", "hidden_lines_removed"):
                 with self.assertRaisesRegex(SnapshotError, "requires STEP CAD edges"):
                     resolve_render_job_packet(
                         {
@@ -1195,6 +1206,21 @@ class SnapshotCliTests(unittest.TestCase):
                         },
                         cwd=root,
                     )
+
+    def test_render_envelope_display_obeys_mesh_capabilities_and_explicit_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
+            job = {
+                "input": "models/widget.glb",
+                "render": {"studio": "default", "display": {"mode": "hidden_edges"}},
+                "outputs": [{"path": "tmp/iso.png"}],
+            }
+            with self.assertRaisesRegex(SnapshotError, "requires STEP CAD edges"):
+                resolve_render_job_packet(job, cwd=root)
+
+            job["display"] = {"mode": "shaded"}
+            packet = resolve_render_job_packet(job, cwd=root)
+            self.assertEqual(packet["jobs"][0]["display"]["mode"], "shaded")
 
     def test_render_job_rejects_exploded_display_for_mesh_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1219,35 +1245,35 @@ class SnapshotCliTests(unittest.TestCase):
         job = packet["jobs"][0]
         self.assertEqual(job["mode"], "list")
         self.assertEqual(job["resolved"]["kind"], "glb")
+        self.assertNotIn("render", job)
+        self.assertEqual(
+            job["display"]["guides"],
+            {"grid": {"enabled": False}, "axis": {"enabled": False}},
+        )
 
-    def test_render_job_rejects_non_solid_display_mode_for_mesh_input(self) -> None:
+    def test_render_job_allows_format_neutral_display_modes_for_mesh_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
-            for non_solid in ("wireframe", "transparent", "unshaded"):
-                with self.assertRaisesRegex(SnapshotError, "display mode is not supported"):
-                    resolve_render_job_packet(
-                        {
-                            "input": "models/widget.glb",
-                            "display": {"mode": non_solid},
-                            "outputs": [{"path": "tmp/iso.png", "camera": "iso"}],
-                        },
-                        cwd=root,
-                    )
+            for mode in ("shaded", "wireframe", "transparent", "unshaded"):
+                packet = resolve_render_job_packet(
+                    {"input": "models/widget.glb", "display": {"mode": mode},
+                     "outputs": [{"path": "tmp/iso.png", "camera": "iso"}]}, cwd=root)
+                self.assertEqual(packet["jobs"][0]["display"]["mode"], mode)
 
-    def test_render_job_allows_solid_and_projection_for_mesh_input(self) -> None:
+    def test_render_job_allows_shaded_and_camera_projection_for_mesh_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
-            # Solid mode + orthographic projection both pass (projection is honored by the
-            # renderer; it is camera-only, not topology-dependent).
             packet = resolve_render_job_packet(
                 {
                     "input": "models/widget.glb",
-                    "display": {"mode": "solid", "projection": "orthographic"},
-                    "outputs": [{"path": "tmp/iso.png", "camera": "iso"}],
+                    "display": {"mode": "shaded"},
+                    "camera": {"preset": "iso", "projection": "orthographic"},
+                    "outputs": [{"path": "tmp/iso.png"}],
                 },
                 cwd=root,
             )
-        self.assertEqual(packet["jobs"][0]["display"], {"mode": "solid", "projection": "orthographic"})
+        self.assertEqual(packet["jobs"][0]["display"]["mode"], "shaded")
+        self.assertEqual(packet["jobs"][0]["camera"]["projection"], "orthographic")
 
     def test_input_kind_leaves_plain_javascript_unsupported(self) -> None:
         self.assertEqual(snapshot_main.input_kind(Path("models/helper.js")), "")
@@ -1365,7 +1391,7 @@ class SnapshotCliTests(unittest.TestCase):
         self.assertEqual(resolved["inputUrl"], resolved["url"])
         # Robots are authored in metres; the CAD profile would frame one for a workpiece a
         # thousand times its size.
-        self.assertEqual(job["render"]["scale"], "urdf")
+        self.assertEqual(job["scale"], "urdf")
 
     def test_render_job_poses_a_robot_with_joint_values(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1823,76 +1849,55 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class JobThemeResolutionTests(unittest.TestCase):
-    """A job's own `theme` string must get the same treatment as the
-    `--theme` flag. It used to fall through to a saved-theme-id lookup,
-    miss, and silently render on the default workbench theme with diagnostic
-    dimensions — exit 0, no warning, a plausible but wrong image."""
+class RenderOptionResolutionTests(unittest.TestCase):
+    """--render accepts a studio id or the viewer's exported render envelope."""
 
-    def _packet_for(self, theme_value, *, theme_body=None):
+    def _job_for(self, root: Path, value: object):
+        options = snapshot_main.SnapshotOptions(
+            input="models/part.step", output="tmp/iso.png",
+            render=value, render_specified=True,
+        )
+        return load_job_from_options(options, stdin=_TtyStringIO(), cwd=root)
+
+    def test_render_file_path_is_loaded_as_the_sparse_envelope(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             models = root / "models"
-            models.mkdir(parents=True)
-            (models / "part.step").write_text("ISO-10303-21;\nEND-ISO-10303-21;\n", encoding="utf-8")
-            write_package(models / "part.step")
-            if theme_body is not None:
-                (models / "stage.theme.json").write_text(
-                    json.dumps(theme_body), encoding="utf-8"
-                )
-            original_ensure = snapshot_main.ensure_step_topology_artifact
-            try:
-                snapshot_main.ensure_step_topology_artifact = lambda *a, **k: None
-                return resolve_render_job_packet(
-                    {
-                        "input": "models/part.step",
-                        "theme": theme_value,
-                        "outputs": [{"path": "tmp/iso.png", "camera": "iso"}],
-                    },
+            models.mkdir()
+            body = {
+                "_comment": "copied from Render debug",
+                "studio": "studio-dark", "appearance": "dark", "quality": "high",
+                "settings": {"materials": {"roughness": 0.56}},
+                "camera": {"direction": [1, -1, 0.8]},
+                "display": {"mode": "shaded"},
+            }
+            (models / "stage.render.json").write_text(json.dumps(body), encoding="utf-8")
+            render = self._job_for(root, "models/stage.render.json")["render"]
+        self.assertEqual(render["studio"], "studio-dark")
+        self.assertEqual(render["settings"]["materials"]["roughness"], 0.56)
+        self.assertNotIn("_comment", render)
+
+    def test_render_preset_name_becomes_an_envelope(self):
+        job = self._job_for(Path.cwd(), "studio-light")
+        self.assertEqual(job["render"], {"studio": "studio-light"})
+        self.assertNotIn("camera", job)
+        self.assertNotIn("display", job)
+
+    def test_missing_render_file_raises(self):
+        with self.assertRaisesRegex(snapshot_main.SnapshotError, "does not exist"):
+            self._job_for(Path.cwd(), "models/no_such_render.json")
+
+    def test_a_job_render_is_already_an_object(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            models = root / "models"
+            models.mkdir()
+            (models / "part.stl").write_text("solid p\nendsolid p\n", encoding="utf-8")
+            with self.assertRaisesRegex(SnapshotError, "render JSON must be a render object"):
+                resolve_render_job_packet(
+                    {"input": "models/part.stl", "render": "studio-light", "mode": "list"},
                     cwd=root,
                 )
-            finally:
-                snapshot_main.ensure_step_topology_artifact = original_ensure
-
-    def test_job_theme_file_path_is_loaded_into_settings(self):
-        theme = {
-            "_comment": "why these numbers are what they are",
-            "colorMode": "dark",
-            "projection": "perspective",
-            "materials": {"roughness": 0.56},
-        }
-        packet = self._packet_for("models/stage.theme.json", theme_body=theme)
-        theme = packet["jobs"][0]["theme"]
-        self.assertIsInstance(
-            theme, dict, "a theme FILE PATH must resolve to settings, not stay a string"
-        )
-        self.assertEqual(theme["materials"]["roughness"], 0.56)
-        # keys the renderer genuinely consumes must survive validation
-        self.assertEqual(theme["projection"], "perspective")
-        self.assertEqual(theme["colorMode"], "dark")
-        # underscore-prefixed keys are comments, dropped rather than rejected
-        self.assertNotIn("_comment", theme)
-
-    def test_job_theme_rejects_edges_and_names_its_real_home(self):
-        """Edge settings belong in display JSON. Rejecting them is correct; the
-        message must say where they go rather than just 'unsupported keys'."""
-        with self.assertRaises(snapshot_main.SnapshotError) as ctx:
-            self._packet_for(
-                "models/stage.theme.json",
-                theme_body={"materials": {"roughness": 0.5}, "edges": {"enabled": False}},
-            )
-        message = str(ctx.exception)
-        self.assertIn("unsupported keys: edges", message)
-        self.assertIn("edges belongs in display JSON", message)
-
-    def test_job_theme_saved_theme_name_stays_a_name(self):
-        packet = self._packet_for("workbench")
-        self.assertEqual(packet["jobs"][0]["theme"], "workbench")
-
-    def test_job_theme_missing_file_raises(self):
-        with self.assertRaises(snapshot_main.SnapshotError) as ctx:
-            self._packet_for("models/no_such_theme.json")
-        self.assertIn("does not exist", str(ctx.exception))
 
 
 class JobOutputResolutionTests(unittest.TestCase):
@@ -1934,8 +1939,8 @@ class JobOutputResolutionTests(unittest.TestCase):
 
 class JobDisplayResolutionTests(unittest.TestCase):
     """A job's own `display` string must get the same treatment as the
-    `--display` flag. It used to be discarded in favour of {"mode": "solid"},
-    so a mode name, a file path, and an outright typo all rendered the default."""
+    `--display` flag, so a mode name, a file path, and an outright typo all
+    receive the same parsing and validation."""
 
     def _packet_for(self, display_value, *, display_body=None):
         with tempfile.TemporaryDirectory() as tmp:

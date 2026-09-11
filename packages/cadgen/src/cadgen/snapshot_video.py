@@ -2,7 +2,7 @@
 
 ``--animation CLIP --time SECONDS`` freezes one moment of a clip. ``--video``
 renders the SPAN instead: the same prepared model, posed once per frame, and the
-frames handed to ffmpeg. Everything above the frames is unchanged -- same theme,
+frames handed to ffmpeg. Everything above the frames is unchanged -- same Render scene,
 same display settings, same camera, same size profile -- so a video is a still
 that kept going.
 
