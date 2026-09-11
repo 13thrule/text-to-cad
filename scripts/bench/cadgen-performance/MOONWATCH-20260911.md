@@ -3,7 +3,7 @@
 The 117 MB saved Moonwatch exposed work that the smaller assembly tests did not:
 repeated whole-tree validation, native workers discarded between requests, and
 a concurrent channel-close race. The new browser run completed all 256 meshes
-in **34.16 seconds**, with no viewer error. The user's original load was still
+in **34.16 seconds at the coarse display tier**, with no viewer error. The user's original load was still
 incomplete after 3–4 minutes; that failed run is not a completed timing baseline.
 
 This is a September 11 follow-up to the [branch summary](SUMMARY-20260911.md).
@@ -37,6 +37,11 @@ records the raw timings and fixture identities behind this report.
 
 ## Interactive rendering
 
+**Quality qualification, added after visual review:** the browser timings below
+measure the coarse display tier, not completion at standard render quality.
+The snapshot timings later in this report use standard detail. Treating both
+as equivalent-quality rendering would be incorrect.
+
 | Checkpoint | All meshes cached | Native worker imports | Result |
 |---|---:|---:|---|
 | Original attempted load | Still incomplete at 3–4 min | 89 by job 88 in the captured run | Channel failure; no complete baseline |
@@ -64,7 +69,38 @@ With the crystal expanded, a canvas click resolved spherical face `o1.1.5.f1`
 and its 969.89 mm² area. Tree selection also resolved circular edge `o1.1.5.e3`
 and its 110.27 mm length. These are functional checks, not a measured picking
 latency study. The viewer remains available at
-`http://127.0.0.1:3257/?file=STEP%2Fmoonwatch.step`.
+  `http://127.0.0.1:3257/?file=STEP%2Fmoonwatch.step`.
+
+### Browser quality regression
+
+The performance branch introduced a coarse initial tier for assemblies with
+at least 64 distinct components. Its chord tolerance is 0.002 relative to the
+component diagonal and its angular tolerance is 1.4 radians; standard detail
+uses 0.0015 and 0.35 radians. For the saved Moonwatch, all coarse mesh entries
+sum to **1,055,217 triangles / 56.31 MiB**, versus **2,014,063 triangles /
+94.30 MiB** for all standard-detail entries.
+
+The refinement policy evaluates projected chord error only. A component's
+coarse angular quality does not trigger an upgrade, so a fitted assembly can
+remain below standard detail while the scheduler considers it settled. Zoom
+alone requests the first upgrade only when that component's projected diagonal
+exceeds roughly 625 pixels. Exploded or animated scenes remain eligible for
+refinement, but that does not impose a quality floor.
+
+A later audit found only four standard-detail and five finer entries in the
+browser store, with one component shared between those sets. Cache contents
+are not an exact inventory of currently adopted GPU meshes, but confirm that
+most components had no refined mesh available. The user's report that the
+viewer looks worse is consistent with this real quality reduction.
+
+The required correction is to treat coarse detail as an initial preview and
+restore at least standard detail for visible components when resources permit,
+or use a refinement criterion that also accounts for angular quality. Preserve
+memory admission and report any quality limitation. **Full standard-quality
+browser completion has not yet been measured**, and the 34.16-second figure
+must not be compared against a higher-quality FreeCAD render as if settings
+matched. The independently verified standard-detail snapshot speedup remains
+valid and produced identical pixels.
 
 ## What changed in the store and daemon
 

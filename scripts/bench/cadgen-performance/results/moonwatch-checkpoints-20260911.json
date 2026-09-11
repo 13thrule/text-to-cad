@@ -482,5 +482,32 @@
     "versionPins": "0.5.1 unchanged; pass",
     "gitDiffCheck": "pass",
     "notes": "Initial incomplete direct test launch configurations failed; canonical absolute-path loader with private daemon passed."
+  },
+  "qualityQualification": {
+    "browserTimings": "coarse L0 display; not completion at standard quality",
+    "snapshotTimings": "standard L1 detail; matched pixel-equivalence verified",
+    "coarse": {
+      "chordTolerance": 0.002,
+      "angleTolerance": 1.4,
+      "trianglesAcross256Components": 1055217,
+      "vertices": 869053,
+      "meshMiB": 56.31
+    },
+    "standard": {
+      "chordTolerance": 0.0015,
+      "angleTolerance": 0.35,
+      "trianglesAcross256Components": 2014063,
+      "vertices": 1466016,
+      "meshMiB": 94.3
+    },
+    "laterBrowserCache": {
+      "coarseEntries": 256,
+      "standardEntries": 4,
+      "finerEntries": 5,
+      "standardFinerSharedCids": 1,
+      "qualification": "Disk cache inventory is not an exact inventory of displayed GPU meshes."
+    },
+    "defect": "Refinement considers projected chord error but not coarse angular quality; L0 can remain settled below standard detail.",
+    "fullStandardBrowserCompletionMeasured": false
   }
 }

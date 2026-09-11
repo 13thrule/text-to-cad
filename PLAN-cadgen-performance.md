@@ -691,7 +691,13 @@ concurrent channel-close failure. Keep the tendon-hand project off this branch.
   measurements and remaining limits without inferring FreeCAD parity.
 
 The [Moonwatch report](scripts/bench/cadgen-performance/MOONWATCH-20260911.md)
-records 34.16-second cold display preparation, 22.64 → 2.16-second warm headless
+records 34.16-second cold coarse-display preparation, 22.64 → 2.16-second warm headless
 snapshots and a 36.54 → 32.15-second matched parent build. Full STEP export and
 readback remain substantial; this follow-up does not establish instant edits or
 measured FreeCAD parity.
+
+- [ ] Correct the browser quality regression found in visual review: coarse
+  initial meshes can remain settled because refinement tests chord error but
+  ignores their looser angular tolerance. Restore standard detail in the
+  background for visible geometry when memory permits, preserve admission and
+  limitation reporting, and separately benchmark first preview and full quality.
