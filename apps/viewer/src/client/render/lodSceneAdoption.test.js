@@ -213,3 +213,44 @@ test("cancelled obsolete progressive adoption waits for the exact latest queued 
   assert.equal(f.tracker.snapshot().pending, 1); assert.equal(f.counts.commits, 0);
   f.tracker.adopted(latest); assert.equal((await promise).status, "cancelled"); assert.equal(f.counts.commits, 1);
 });
+
+test("batch adoption requires every changed CID, exact key and every occurrence before one commit", async () => {
+  const oldA = {}, oldB = {}, nextA = { lodKey: "a@2" }, nextB = { lodKey: "b@3" }, unrelated = {};
+  const rows = [["a1", "a"], ["b1", "b"], ["a2", "a"], ["c1", "c"]];
+  const descriptor = { occurrences: rows.map(([id, component]) => ({ id, component })) };
+  const make = (a, b) => ({ parts: rows.map(([id, componentId]) => ({ id, occurrenceId: id, componentId,
+    sourceMesh: componentId === "a" ? a : componentId === "b" ? b : unrelated })) });
+  const base = make(oldA, oldB), source = make(nextA, nextB), context = { descriptor, meshData: base };
+  let current = source, commits = 0;
+  const tracker = createLodSceneAdoption({ currentContext: () => context });
+  const promise = tracker.expectBatch({ context, descriptor, source, baseSource: base, currentSource: () => current,
+    items: [{ componentId: "a", componentMesh: nextA, baseMesh: oldA, tessellationKey: "a@2" },
+      { componentId: "b", componentMesh: nextB, baseMesh: oldB, tessellationKey: "b@3" }],
+    commit: () => { commits++; context.meshData = current; },
+  }); tracker.published(source);
+  for (const candidate of [make(nextA, oldB), make(oldA, nextB), { parts: source.parts.filter(part => part.id !== "a2") },
+    { parts: [...source.parts, source.parts[0]] }]) {
+    current = candidate; assert.equal(tracker.adopted(candidate), false); assert.equal(commits, 0);
+  }
+  current = source; assert.equal(tracker.adopted(source), true); assert.equal((await promise).status, "adopted");
+  assert.equal(commits, 1); assert.equal(context.meshData, source);
+  const wrong = tracker.expectBatch({ context, descriptor, source, baseSource: base,
+    items: [{ componentId: "a", componentMesh: nextA, baseMesh: oldA, tessellationKey: "wrong" }] });
+  tracker.published(source); assert.equal(tracker.adopted(source), false);
+  tracker.disposed(source); assert.equal((await wrong).status, "disposed-failed");
+});
+
+test("batch progressive supersession and retiring-source cleanup retain exact multi-CID ownership", async () => {
+  const meshes = [{}, {}], old = [{}, {}], descriptor = { occurrences: [{ id: "a", component: "a" }, { id: "b", component: "b" }] };
+  const make = values => ({ parts: values.map((sourceMesh, i) => ({ id: i ? "b" : "a", componentId: i ? "b" : "a", sourceMesh })) });
+  const base = make(old), source = make(meshes), earlier = { parts: [...source.parts, { id: "c", componentId: "c", sourceMesh: {} }] };
+  let current = { parts: [...earlier.parts, { id: "d", componentId: "d", sourceMesh: {} }] };
+  const context = { descriptor, meshData: base }, controller = new AbortController();
+  const tracker = createLodSceneAdoption({ currentContext: () => context });
+  const promise = tracker.expectBatch({ context, source, descriptor, baseSource: base, signal: controller.signal,
+    candidateSources: new WeakSet([source, earlier, current]), currentSource: () => current,
+    items: meshes.map((componentMesh, i) => ({ componentId: i ? "b" : "a", componentMesh, baseMesh: old[i] })),
+  }); tracker.published(source); controller.abort();
+  tracker.disposed(earlier); assert.equal((await promise).status, "cancelled");
+  assert.equal(tracker.snapshot().pending, 0);
+});

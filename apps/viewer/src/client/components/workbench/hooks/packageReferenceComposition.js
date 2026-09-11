@@ -79,9 +79,15 @@ export async function reconcileLodReferencePublication({ pendingForContext, load
 }
 
 export function baseLodReferenceComposition(composition, pending, baseBundle) {
-  if (!pending || pending.phase === "restoring" || !compositionUsesComponent(composition, pending.cid)) return composition;
-  if (!baseBundle) throw new Error("Previous detail's selector bundle is unavailable");
-  return swapCompositionBundle(composition, pending.cid, baseBundle);
+  if (!pending || pending.phase === "restoring") return composition;
+  let base = composition;
+  for (const item of pending.items || [pending]) {
+    if (!compositionUsesComponent(composition, item.cid)) continue;
+    const bundle = pending.items ? baseBundle?.[item.cid] : baseBundle;
+    if (!bundle) throw new Error("Previous detail's selector bundle is unavailable");
+    base = swapCompositionBundle(base, item.cid, bundle);
+  }
+  return base;
 }
 
 // Resolve selector bundles against the LOD state that is live immediately

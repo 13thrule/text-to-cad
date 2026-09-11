@@ -46,13 +46,10 @@ function deferred() {
   return { promise, resolve, reject };
 }
 
-// queueMicrotask twice: the scheduler's apply/drain settles across two
-// microtask hops (then + finally). No setImmediate — that's node-only and the
-// unbound-identifier policy test rejects it in client code.
+// Flush the bounded loader, preparation and adoption promise chain. No timer
+// advances here: collection and camera deadlines remain controlled by the test.
 const tick = async () => {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let i = 0; i < 8; i++) await Promise.resolve();
 };
 const drain = async () => { for (let i = 0; i < 12; i += 1) await tick(); };
 

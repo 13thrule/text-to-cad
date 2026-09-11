@@ -7,6 +7,7 @@ import { renderAssetCacheStats } from "cadgen-js/lib/renderAssetClient.js";
 import { cadEdgeInstanceSets } from "cadgen-js/common/cadEdgeInstances.js";
 import { builtGeometryBvhBytes } from "cadgen-js/lib/viewer/raycastBvh.js";
 import { MESH_DATA_ARRAY_FIELDS } from "cadgen-js/lib/render/meshTransfer.js";
+import { lodStagingBuffers, syncSelectorCacheAccounting } from "./lodStagingMemory.js";
 import { viewerMemoryPolicy } from "./viewerMemoryPolicy.js";
 
 function retainBackingBytes(value, seen) {
@@ -275,15 +276,12 @@ export function renderMemoryAccounting(runtime) {
   // The full backing of each excluded view has already been charged above.
   // GPU mirrors contain the uploaded views; CPU references retain the entire
   // allocation, even when some packed sections never reach a GPU attribute.
-  const additionalAssetCaches = renderAssetCacheStats({ excludeBuffers: seenArrayBuffers });
+  const additionalAssetCaches = renderAssetCacheStats({ excludeBuffers: lodStagingBuffers(seenArrayBuffers) });
   viewerMemoryPolicy.setRetained("displayCpu", displayCpuBytes);
   viewerMemoryPolicy.setRetained("gpuEstimated", gpuEstimatedBytes);
   viewerMemoryPolicy.setRetained("bvh", totals.bvhBytes);
   viewerMemoryPolicy.setRetained("deformation", totals.deformationBytes);
-  viewerMemoryPolicy.setRetained(
-    "selectors",
-    (Number(additionalAssetCaches.selector?.typedBytes) || 0) + selectorCpuBytes
-  );
+  syncSelectorCacheAccounting(viewerMemoryPolicy, Number(additionalAssetCaches.selector?.typedBytes) || 0, selectorCpuBytes);
   viewerMemoryPolicy.setRetained("assetCaches", Object.entries(additionalAssetCaches).reduce(
     (sum, [name, stats]) => name === "surfLeash" || name === "selector"
       ? sum

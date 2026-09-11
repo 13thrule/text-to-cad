@@ -23,17 +23,21 @@ export function lodOccurrenceProof({ source, descriptor, componentId, componentM
 // It acknowledges CPU/Three/accounting adoption, never GPU upload completion.
 export function createLodSceneAdoption(options) {
   const tracker = createLodPublication(options);
-  return {
-    ...tracker,
-    expect(spec) {
-      const candidate = lodOccurrenceProof(spec);
-      const base = spec.baseMesh ? lodOccurrenceProof({ ...spec, componentMesh: spec.baseMesh }) : null;
-      return tracker.expect({ ...spec,
-        matchesCandidate: source => source === (spec.currentSource?.() || spec.context.meshData) && candidate(source),
-        matchesBase: source => !!base && source === (spec.currentBaseSource?.() || spec.baseSource) && base(source),
-        recognizesCandidate: source => spec.candidateSources?.has(source) && candidate(source),
-        recognizesBase: source => source === spec.baseSource || spec.baseSources?.has(source),
-      });
-    },
-  };
+  function expectBatch(spec) {
+    const items = spec.items || [];
+    if (!items.length || items.length > 4 || new Set(items.map(item => item.componentId)).size !== items.length)
+      throw new Error("LOD publication requires one to four distinct components");
+    const candidates = items.map(item => lodOccurrenceProof({ ...spec, ...item }));
+    const bases = items.map(item => item.baseMesh ? lodOccurrenceProof({ ...spec, ...item, componentMesh: item.baseMesh }) : null);
+    const keysMatch = items.every(item => !item.tessellationKey || item.componentMesh?.lodKey === item.tessellationKey);
+    const candidate = source => keysMatch && candidates.every(proof => proof(source));
+    const base = source => bases.every(proof => proof?.(source));
+    return tracker.expect({ ...spec,
+      matchesCandidate: source => source === (spec.currentSource?.() || spec.context.meshData) && candidate(source),
+      matchesBase: source => source === (spec.currentBaseSource?.() || spec.baseSource) && base(source),
+      recognizesCandidate: source => spec.candidateSources?.has(source) && candidate(source),
+      recognizesBase: source => source === spec.baseSource || spec.baseSources?.has(source),
+    });
+  }
+  return { ...tracker, expectBatch, expect: spec => expectBatch({ ...spec, items: [spec] }) };
 }

@@ -82,6 +82,7 @@ import { viewerMemoryPolicy } from "../../../render/viewerMemoryPolicy.js";
 import { syncSurfWorkerMemory } from "../../../render/surfWorkerMemoryPolicy.js";
 import { componentMemoryAccounting } from "../../../render/renderMemoryAccounting.js";
 import { createLodSceneAdoption } from "../../../render/lodSceneAdoption.js";
+import { lodStagingBuffers, syncSelectorCacheAccounting } from "../../../render/lodStagingMemory.js";
 import { matchesLodPayloadRequest } from "../../../render/lodPayloadRequest.js";
 import { publishedLodContext, updateLodMeshState, updateLodReferenceState } from "../../../render/lodPublication.js";
 
@@ -95,8 +96,8 @@ const GPU_BUFFER_ESTIMATE_MULTIPLIER = 1.15;
 const SURF_WORKER_TEMP_ESTIMATE_MULTIPLIER = 2;
 
 function syncAssetCacheMemory(excludeBuffers = []) {
-  const caches = renderAssetCacheStats({ excludeBuffers });
-  viewerMemoryPolicy.setRetained("selectors", Number(caches.selector?.typedBytes) || 0);
+  const caches = renderAssetCacheStats({ excludeBuffers: lodStagingBuffers(excludeBuffers) });
+  syncSelectorCacheAccounting(viewerMemoryPolicy, Number(caches.selector?.typedBytes) || 0);
   const assetCaches = Object.entries(caches).reduce((sum, [name, stats]) => (
     name === "surfLeash" || name === "selector" ? sum : sum + (Number(stats?.typedBytes) || 0)
   ), 0);
@@ -413,6 +414,7 @@ export function useCadAssets({
           surfUrl: resolvePackageAssetUrl(meshUrl, component.surf),
           identity: component,
           meshBytes: estimateMeshRenderCost(componentMeshDataByCid[cid]).typedArrayBytes,
+          meshData: componentMeshDataByCid[cid],
           level: normalizeLodLevel(componentMeshDataByCid[cid]?.lodLevel)
         };
       })
@@ -420,65 +422,64 @@ export function useCadAssets({
     return { file: entry.file, components };
   }, []);
 
-  // Swap one component to a re-tessellated level: tag the payload's meshData
-  // with the level (part of the geometry identity — see sourceMeshKey in
-  // buildComposedPackageMeshData), re-compose (reference composition, cheap),
-  // and publish. The old state keeps rendering until this one commits, and a
-  // stale apply (entry changed underneath) is a no-op.
-  const applyComponentLodPayload = useCallback(async (cid, level, payload, { signal } = {}) => {
+  // This preparation is called by the scheduler's sole loader lane. Batch
+  // publication itself performs no asynchronous geometry/selector work.
+  const prepareComponentLodPayload = useCallback((cid, level, payload, { signal } = {}) => {
     const ctx = lodPackageRef.current;
-    const meshData = payload?.meshData;
-    if (!ctx || !meshData || signal?.aborted || meshStateRef.current?.file !== ctx.file) {
-      return false;
+    if (!ctx || signal?.aborted || !payload?.meshData) throw abortError();
+    const component = ctx.descriptor.components?.[cid];
+    const surfUrl = component?.surf && resolvePackageAssetUrl(entryAssetUrl(ctx.entry, "glb"), component.surf);
+    if (!matchesLodPayloadRequest(payload.lodRequest, ctx, cid, level, surfUrl)) throw abortError();
+    if (payload.bundle || !componentLodNeedsSelectors(cid)) return payload;
+    return loadRenderSurfSelectorBundle(surfUrl, {
+      signal, tessellation: lodTessellationForLevel(level), identity: component,
+    }).then(bundle => {
+      if (lodPackageRef.current !== ctx || signal?.aborted) throw abortError();
+      return { ...payload, bundle };
+    }).finally(() => { releaseSurfWorkers().then(syncSurfWorkerMemory, syncSurfWorkerMemory); });
+  }, [componentLodNeedsSelectors]);
+
+  const applyComponentLodBatch = useCallback(async (entries, { signal } = {}) => {
+    const ctx = lodPackageRef.current;
+    if (!ctx || signal?.aborted || meshStateRef.current?.file !== ctx.file || !entries?.length || entries.length > 4 ||
+        new Set(entries.map(item => item.cid)).size !== entries.length || ctx.lodPending || lodSceneAdoptionRef.current.snapshot().pending) return false;
+    const items = [];
+    for (const { cid, level, payload } of entries) {
+      const normalizedLevel = normalizeLodLevel(level);
+      const component = ctx.descriptor.components?.[cid];
+      const surfUrl = component?.surf && resolvePackageAssetUrl(entryAssetUrl(ctx.entry, "glb"), component.surf);
+      if (!payload?.meshData || !matchesLodPayloadRequest(payload.lodRequest, ctx, cid, normalizedLevel, surfUrl)) return false;
+      if (!payload.bundle && componentLodNeedsSelectors(cid)) return { status: "not-ready" };
+      items.push({ cid, normalizedLevel, previousLevel: normalizeLodLevel(ctx.componentLodLevelByCid?.[cid]),
+        component, surfUrl, payload, baseMesh: ctx.componentMeshDataByCid[cid],
+        nextMesh: Object.freeze({ ...payload.meshData, lodLevel: normalizedLevel, lodKey: payload.lodRequest.key }) });
     }
-    const previousLevel = normalizeLodLevel(ctx.componentLodLevelByCid?.[cid]);
-    const normalizedLevel = normalizeLodLevel(level);
-    const component = ctx.descriptor?.components?.[cid];
-    const packageUrl = entryAssetUrl(ctx.entry, "glb");
-    const surfUrl = component?.surf && packageUrl
-      ? resolvePackageAssetUrl(packageUrl, component.surf)
-      : "";
-    if (!matchesLodPayloadRequest(payload.lodRequest, ctx, cid, normalizedLevel, surfUrl)) return false;
-    // Topology can become demanded while this render-only worker is running.
-    // Finish that concrete level's selectors before swapping its displayed
-    // triangles, so an already-visible selection never uses stale face runs.
-    if (!payload.bundle && componentLodNeedsSelectors(cid)) {
-      payload = { ...payload, bundle: await loadRenderSurfSelectorBundle(surfUrl, {
-        signal,
-        tessellation: lodTessellationForLevel(normalizedLevel),
-        identity: component,
-      }).finally(() => { releaseSurfWorkers().then(syncSurfWorkerMemory, syncSurfWorkerMemory); }) };
-      if (lodPackageRef.current !== ctx || signal?.aborted) return false;
-    }
-    // Only the wrapper's concrete level changes; cached input buffers stay shared.
-    const nextMesh = { ...meshData, lodLevel: normalizedLevel };
-    const baseMesh = ctx.componentMeshDataByCid[cid];
     const revision = ctx.meshHash;
     const baseReferenceState = referenceStateRef.current;
     const baseReferenceComposition = referenceCompositionRef.current;
     const bundleByCid = { ...(ctx.componentLodBundleByCid || {}) };
     const bundleKeyByCid = { ...(ctx.componentLodBundleKeyByCid || {}) };
-    if (payload.bundle && surfUrl) {
-      bundleByCid[cid] = payload.bundle;
-      bundleKeyByCid[cid] = surfTessellationCacheKey(surfUrl, lodTessellationForLevel(normalizedLevel), component);
-    } else {
-      delete bundleByCid[cid];
-      delete bundleKeyByCid[cid];
-    }
     const maps = {
-      componentMeshDataByCid: { ...ctx.componentMeshDataByCid, [cid]: nextMesh },
+      componentMeshDataByCid: { ...ctx.componentMeshDataByCid },
       componentLodBundleByCid: bundleByCid,
       componentLodBundleKeyByCid: bundleKeyByCid,
-      componentLodLevelByCid: { ...(ctx.componentLodLevelByCid || {}), [cid]: normalizedLevel },
+      componentLodLevelByCid: { ...(ctx.componentLodLevelByCid || {}) },
     };
+    for (const item of items) {
+      const { cid, payload, nextMesh, normalizedLevel } = item;
+      maps.componentMeshDataByCid[cid] = nextMesh;
+      maps.componentLodLevelByCid[cid] = normalizedLevel;
+      if (payload.bundle) {
+        bundleByCid[cid] = payload.bundle;
+        bundleKeyByCid[cid] = payload.lodRequest.key;
+      } else { delete bundleByCid[cid]; delete bundleKeyByCid[cid]; }
+    }
     const composed = buildComposedPackageMeshData(ctx.descriptor, maps.componentMeshDataByCid, { previous: ctx.meshData });
     // Finish selector composition and other fallible preparation before any
     // state update can publish candidate geometry. A thrown preparation owns
     // no scene and can release the scheduler's lease normally.
-    const references = payload.bundle
-      ? prepareReferenceStateForLodRef.current(ctx, cid, payload.bundle)
-      : null;
-    const pending = { cid, source: composed, maps, baseMesh, baseSource: ctx.meshData,
+    const references = prepareReferenceStateForLodRef.current(ctx, items);
+    const pending = { items, source: composed, maps, baseSource: ctx.meshData,
       candidateSources: new WeakSet([composed]), baseSources: new WeakSet([ctx.meshData]),
       baseReferenceState, baseReferenceComposition,
       referenceComposition: references?.composition || baseReferenceComposition };
@@ -490,9 +491,11 @@ export function useCadAssets({
     ctx.lodPending = pending;
     const tracker = lodSceneAdoptionRef.current;
     const command = { retired: false, source: composed, reference: references?.state };
-    const completed = tracker.expect({ command, context: ctx, source: composed, descriptor: ctx.descriptor,
+    const completed = tracker.expectBatch({ command, context: ctx, source: composed, descriptor: ctx.descriptor,
+      items: items.map(item => ({ componentId: item.cid, componentMesh: item.nextMesh, baseMesh: item.baseMesh,
+        tessellationKey: item.payload.lodRequest.key })),
       candidateSources: pending.candidateSources, baseSources: pending.baseSources,
-      componentId: cid, componentMesh: nextMesh, baseMesh, baseSource: pending.baseSource, signal,
+      baseSource: pending.baseSource, signal,
       currentSource: () => pending.source, currentBaseSource: () => pending.baseSource,
       commit: (adoptedSource) => {
         pending.adopted = true;
@@ -504,8 +507,8 @@ export function useCadAssets({
           }
         }
         if (ctx.lodPending === pending) delete ctx.lodPending;
-        if (previousLevel !== normalizedLevel && surfUrl) releaseRenderSurfLevel(surfUrl, {
-          tessellation: lodTessellationForLevel(previousLevel), identity: component,
+        for (const item of items) if (item.previousLevel !== item.normalizedLevel) releaseRenderSurfLevel(item.surfUrl, {
+          tessellation: lodTessellationForLevel(item.previousLevel), identity: item.component,
         });
       },
       restore: recoveryCommand => {
@@ -535,8 +538,8 @@ export function useCadAssets({
           if (displayedLodPackageRef.current === ctx) displayedReferenceCompositionRef.current = pending.baseReferenceComposition;
         }
         if (ctx.lodPending === pending) delete ctx.lodPending;
-        if (!pending.adopted && surfUrl && previousLevel !== normalizedLevel) {
-          releaseRenderSurfLevel(surfUrl, { tessellation: lodTessellationForLevel(normalizedLevel), identity: component });
+        if (!pending.adopted) for (const item of items) if (item.previousLevel !== item.normalizedLevel) {
+          releaseRenderSurfLevel(item.surfUrl, { tessellation: lodTessellationForLevel(item.normalizedLevel), identity: item.component });
         }
         if (outcome === "restored" && lodPackageRef.current === ctx) setError("Detail update failed; the previous view was restored.");
         const displayed = displayedLodPackageRef.current;
@@ -549,21 +552,24 @@ export function useCadAssets({
     ), command));
     const outcome = await completed;
     if (outcome.status === "disposed-failed") return { status: "scene-failed" };
-    return outcome.status === "adopted" && !signal?.aborted;
+    if (pending.adopted) return { status: outcome.status === "adopted" && !signal?.aborted ? "adopted" : "retained",
+      components: items.map(item => ({ cid: item.cid, level: item.normalizedLevel, meshData: item.nextMesh })) };
+    return false;
   }, [componentLodNeedsSelectors]);
 
   // Rebuild the composed selector runtime with one component's bundle swapped
   // to the level the display mesh just moved to. Scoped to the composition's
   // already-loaded occurrence subset (lazy topology stays lazy).
-  const prepareReferenceStateForLod = useCallback((ctx, cid, bundle) => {
+  const prepareReferenceStateForLod = useCallback((ctx, items) => {
     const composition = ctx.lodPending?.referenceComposition || referenceCompositionRef.current;
     if (!composition || composition.file !== ctx.file) {
       return;
     }
-    if (!compositionUsesComponent(composition, cid)) {
-      return;
-    }
-    const nextComposition = swapCompositionBundle(composition, cid, bundle);
+    const changed = items.filter(item => item.payload.bundle && compositionUsesComponent(composition, item.cid));
+    if (!changed.length) return;
+    const bundleByCid = { ...composition.bundleByCid };
+    for (const item of changed) bundleByCid[item.cid] = item.payload.bundle;
+    const nextComposition = { ...composition, bundleByCid };
     const nextReferenceState = buildNormalizedReferenceState(nextComposition.entry, null, {
       selectorRuntime: composePackageSelectorRuntime(
         nextComposition.entry,
@@ -980,9 +986,12 @@ export function useCadAssets({
                   pending.maps.componentLodLevelByCid = componentLodLevelByCid;
                   pending.source = meshData;
                   pending.candidateSources.add(meshData);
-                  ctx.componentMeshDataByCid = { ...componentMeshDataByCid, [pending.cid]: pending.baseMesh };
-                  ctx.componentLodLevelByCid = { ...componentLodLevelByCid,
-                    [pending.cid]: normalizeLodLevel(pending.baseMesh?.lodLevel) };
+                  ctx.componentMeshDataByCid = { ...componentMeshDataByCid };
+                  ctx.componentLodLevelByCid = { ...componentLodLevelByCid };
+                  for (const item of pending.items) {
+                    ctx.componentMeshDataByCid[item.cid] = item.baseMesh;
+                    ctx.componentLodLevelByCid[item.cid] = item.previousLevel;
+                  }
                   pending.baseSource = buildComposedPackageMeshData(packageDescriptor,
                     ctx.componentMeshDataByCid, { previous: ctx.meshData });
                   ctx.meshData = pending.baseSource;
@@ -1247,18 +1256,23 @@ export function useCadAssets({
         const referencePublication = await reconcileLodReferencePublication({
           pendingForContext: () => lodPackageRef.current?.file === entry.file ? lodPackageRef.current.lodPending : null,
           loadBaseBundle: async pending => {
-            if (!neededCids.includes(pending.cid)) return null;
-            if (pending.baseReferenceComposition?.bundleByCid?.[pending.cid]) return pending.baseReferenceComposition.bundleByCid[pending.cid];
-            if (pending.baseBundle) return pending.baseBundle;
-            const identity = packageDescriptor.components[pending.cid];
-            const level = normalizeLodLevel(pending.baseMesh?.lodLevel);
-            const url = componentSurfUrlByCid[pending.cid];
-            const bundle = await loadRenderSurfSelectorBundle(url, {
-              signal: controller.signal, tessellation: tessellationForLevel(level), identity,
-            });
-            if (lodPackageRef.current?.lodPending === pending) pending.baseBundle = bundle;
-            else releaseRenderSurfLevel(url, { tessellation: tessellationForLevel(level), identity });
-            return bundle;
+            const bundles = {};
+            for (const item of pending.items) {
+              const { cid } = item;
+              if (!neededCids.includes(cid)) continue;
+              const existing = pending.baseReferenceComposition?.bundleByCid?.[cid] || item.baseBundle;
+              if (existing) { bundles[cid] = existing; continue; }
+              const identity = packageDescriptor.components[cid];
+              const level = item.previousLevel;
+              const url = componentSurfUrlByCid[cid];
+              const bundle = await loadRenderSurfSelectorBundle(url, {
+                signal: controller.signal, tessellation: tessellationForLevel(level), identity,
+              });
+              if (lodPackageRef.current?.lodPending === pending) item.baseBundle = bundle;
+              else releaseRenderSurfLevel(url, { tessellation: tessellationForLevel(level), identity });
+              bundles[cid] = bundle;
+            }
+            return bundles;
           },
           isCurrent: () => requestId === referenceRequestIdRef.current && !controller.signal.aborted,
           reconcile: () => reconcileLivePackageSelectorBundles({
@@ -1564,7 +1578,8 @@ export function useCadAssets({
     meshState,
     setMeshState,
     lodPackage,
-    applyComponentLodPayload,
+    applyComponentLodBatch,
+    prepareComponentLodPayload,
     onMeshSourceAdoption,
     componentLodNeedsSelectors,
     meshLoadInProgress,

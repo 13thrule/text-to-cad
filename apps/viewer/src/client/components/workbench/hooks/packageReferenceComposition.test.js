@@ -255,3 +255,17 @@ test("reference publication rechecks pending ownership after base-selector and l
     reconcile: async () => { throw new Error("must not publish after abort"); }, isCurrent: () => current });
   assert.equal(stopped, null);
 });
+
+test("a mixed-level batch restores every changed selector bundle while keeping late unrelated demand", () => {
+  const lowA = loadLevel(0.2), highA = loadLevel(0.01), lowB = loadLevel(0.1), highB = loadLevel(0.005), other = {};
+  const occurrencesToLoad = [...OCCURRENCES, { id: "b", component: "b" }, { id: "late", component: "late" }];
+  const candidate = { entry: ENTRY, occurrencesToLoad, loadedTopologyKey: "late-demand",
+    bundleByCid: { c0: highA.bundle, b: highB.bundle, late: other } };
+  const base = baseLodReferenceComposition(candidate, { items: [{ cid: "c0" }, { cid: "b" }] },
+    { c0: lowA.bundle, b: lowB.bundle });
+  assert.equal(base.occurrencesToLoad, occurrencesToLoad); assert.equal(base.loadedTopologyKey, "late-demand");
+  assert.equal(base.bundleByCid.c0, lowA.bundle); assert.equal(base.bundleByCid.b, lowB.bundle); assert.equal(base.bundleByCid.late, other);
+  assert.equal(candidate.bundleByCid.c0, highA.bundle); assert.equal(candidate.bundleByCid.b, highB.bundle);
+  assert.equal(faceIdInvariant(lowA.meshData, composePackageSelectorRuntime(ENTRY, occurrencesToLoad, base.bundleByCid)).ok, true);
+  assert.throws(() => baseLodReferenceComposition(candidate, { items: [{ cid: "c0" }, { cid: "b" }] }, { c0: lowA.bundle }), /Previous detail/);
+});

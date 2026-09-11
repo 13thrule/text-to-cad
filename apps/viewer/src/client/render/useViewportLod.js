@@ -8,7 +8,7 @@
 // debugging: `window.__CAD_VIEWER_LOD__ = false` before loading a model.
 import { useCallback, useEffect, useRef } from "react";
 
-import { loadRenderSurfPayloadAtLevel, reclaimIdleSurfWorkers, releaseSurfWorkers } from "cadgen-js/lib/renderAssetClient.js";
+import { loadRenderSurfPayloadAtLevel, reclaimIdleSurfWorkers, releaseSurfWorkers, releaseRenderSurfLevel, renderAssetCacheStats } from "cadgen-js/lib/renderAssetClient.js";
 import { estimateMeshRenderCost } from "cadgen-js/lib/render/meshCost.js";
 import { lodTessellationForLevel } from "cadgen-js/lib/surf/lodPolicy.js";
 
@@ -16,6 +16,7 @@ import { createLodScheduler } from "./lodScheduler.js";
 import { syncSurfWorkerMemory } from "./surfWorkerMemoryPolicy.js";
 import { viewerMemoryPolicy } from "./viewerMemoryPolicy.js";
 import { estimateViewportLodMemory } from "./viewportLodMemory.js";
+import { lodPayloadMemory, setLodStaging, lodStagingBuffers, lodStagingSnapshot, syncSelectorCacheAccounting } from "./lodStagingMemory.js";
 import { lodPayloadRequest } from "./lodPayloadRequest.js";
 
 function publishLodMemoryLimitation(detail) {
@@ -43,17 +44,59 @@ function lodEnabled() {
   return typeof window === "undefined" || window.__CAD_VIEWER_LOD__ !== false;
 }
 
-export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload, componentLodNeedsSelectors, dynamicScene = false }) {
+export function useViewportLod({ viewerRef, lodPackage, applyComponentLodBatch, prepareComponentLodPayload, componentLodNeedsSelectors, dynamicScene = false }) {
   const componentsRef = useRef(new Map());
-  const applyRef = useRef(applyComponentLodPayload);
-  applyRef.current = applyComponentLodPayload;
+  const displayBuffersRef = useRef(new Set());
+  const refreshDisplayBuffers = () => {
+    const buffers = new Set();
+    for (const component of componentsRef.current.values())
+      for (const buffer of lodPayloadMemory({ meshData: component.meshData }).buffers) buffers.add(buffer);
+    displayBuffersRef.current = buffers;
+  };
+  const applyRef = useRef(applyComponentLodBatch);
+  applyRef.current = applyComponentLodBatch;
+  const prepareRef = useRef(prepareComponentLodPayload);
+  prepareRef.current = prepareComponentLodPayload;
   const selectorsRef = useRef(componentLodNeedsSelectors);
   selectorsRef.current = componentLodNeedsSelectors;
   const schedulerRef = useRef(null);
   const visibilityRef = useRef(null);
 
   useEffect(() => {
+    const stagingOwner = Symbol("viewport-lod");
+    let stagedPayloads = [];
+    const syncStaging = entries => {
+      const payloads = entries.map(entry => entry.payload).filter(Boolean);
+      if (payloads.length === stagedPayloads.length && payloads.every((payload, i) => payload === stagedPayloads[i])) return;
+      stagedPayloads = payloads;
+      setLodStaging(stagingOwner, entries);
+      const caches = renderAssetCacheStats({ excludeBuffers: lodStagingBuffers(displayBuffersRef.current) });
+      syncSelectorCacheAccounting(viewerMemoryPolicy, Number(caches.selector?.typedBytes) || 0);
+      viewerMemoryPolicy.setRetained("assetCaches", Object.entries(caches).reduce((sum, [name, stats]) =>
+        name === "surfLeash" || name === "selector" ? sum : sum + (Number(stats?.typedBytes) || 0), 0));
+    };
     const scheduler = createLodScheduler({
+      batchSize: typeof window !== "undefined" ? Number(window.__CAD_VIEWER_LOD_BATCH_SIZE__ || 4) : 4,
+      onOccupiedChanged: syncStaging,
+      needsPreparation: (cid, _level, payload) => !payload?.bundle && selectorsRef.current?.(cid) === true,
+      prepareLevel: (cid, level, payload, options) => prepareRef.current?.(cid, level, payload, options) || payload,
+      reconcileLevel: ({ payload, reservedBytes, currentLevel, level }) => {
+        const { cpuBytes, gpuInputBytes } = lodPayloadMemory(payload);
+        const previousBytes = estimateMeshRenderCost(payload.lodRequest.baseMesh).typedArrayBytes;
+        const required = Math.ceil(cpuBytes + gpuInputBytes * 1.5 + previousBytes * 2.5);
+        if (required <= reservedBytes) return { ok: true };
+        return viewerMemoryPolicy.reserve({ category: "replacement", bytes: required - reservedBytes,
+          label: `${payload.lodRequest.cid}:staged`, kind: level < currentLevel ? "coarsen" : "refine",
+          replacingBytes: previousBytes, finalBytes: gpuInputBytes, recordLimitation: false });
+      },
+      discardLevel: (_cid, level, payload) => {
+        const request = payload.lodRequest;
+        if (request) releaseRenderSurfLevel(request.url, { tessellation: lodTessellationForLevel(level), identity: request.identity });
+      },
+      onAdopted: entries => {
+        if (typeof window !== "undefined") for (const { cid, level } of entries)
+          window.dispatchEvent(new CustomEvent("cad:lod-level", { detail: { cid, level } }));
+      },
       // Harness-only quality floor: exact tessellation options still name
       // every mesh and export defaults are untouched.
       minimumLevel: typeof window !== "undefined" ? Number(window.__CAD_VIEWER_MIN_LOD__ || 0) : 0,
@@ -113,25 +156,27 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
           syncSurfWorkerMemory();
         });
       },
-      applyLevel: async (cid, level, payload, { signal }) => {
-        const outcome = await applyRef.current?.(cid, level, payload, { signal });
-        if (outcome?.status === "scene-failed") return outcome;
+      applyBatch: async (entries, { signal }) => {
+        const outcome = await applyRef.current?.(entries, { signal });
+        if (outcome?.status === "scene-failed" || outcome?.status === "not-ready" || outcome?.status === "retained") return outcome;
         if (outcome === false || signal.aborted) return false;
-        const component = componentsRef.current.get(cid);
-        if (component && payload?.meshData) {
-          component.meshBytes = estimateMeshRenderCost(payload.meshData).typedArrayBytes;
-          component.level = level;
+        // All measured current bytes change together, after exact scene
+        // acknowledgment, before the scheduler commits levels and notifies.
+        for (const adopted of outcome?.components || []) {
+          const component = componentsRef.current.get(adopted.cid);
+          const request = entries.find(entry => entry.cid === adopted.cid)?.payload.lodRequest;
+          if (component && component.descriptor === request?.descriptor) {
+            component.meshBytes = estimateMeshRenderCost(adopted.meshData).typedArrayBytes;
+            component.meshData = adopted.meshData;
+            component.level = adopted.level;
+          }
         }
-        // Observable swap signal: headless verification and debugging listen
-        // for it; carries no payload references.
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("cad:lod-level", { detail: { cid, level } }));
-        }
-        return true;
+        refreshDisplayBuffers();
+        return outcome;
       }
     });
     schedulerRef.current = scheduler;
-    const snapshot = () => ({ ...scheduler.snapshot(), visibility: visibilityRef.current });
+    const snapshot = () => ({ ...scheduler.snapshot(), staging: lodStagingSnapshot(), visibility: visibilityRef.current });
     if (typeof window !== "undefined") window.__cadViewportLod = snapshot;
     return () => {
       scheduler.dispose();
@@ -151,6 +196,7 @@ export function useViewportLod({ viewerRef, lodPackage, applyComponentLodPayload
     lodPackageFileRef.current = file;
     visibilityRef.current = null;
     componentsRef.current = new Map(components.map((component) => [component.cid, component]));
+    refreshDisplayBuffers();
     schedulerRef.current?.setComponents(
       components.map(({ cid, diagonal, level }) => ({ cid, diagonal, level })),
       { preserveLevels }

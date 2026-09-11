@@ -1277,7 +1277,8 @@ export default function CadWorkspace({
     meshState,
     setMeshState,
     lodPackage,
-    applyComponentLodPayload,
+    applyComponentLodBatch,
+    prepareComponentLodPayload,
     onMeshSourceAdoption,
     componentLodNeedsSelectors,
     meshLoadInProgress,
@@ -2702,7 +2703,8 @@ export default function CadWorkspace({
   const { onCameraMoved: onLodCameraMoved } = useViewportLod({
     viewerRef,
     lodPackage,
-    applyComponentLodPayload,
+    applyComponentLodBatch,
+    prepareComponentLodPayload,
     componentLodNeedsSelectors,
     // Capability, not just the current pose: a paused/disabled module can move
     // an offscreen part without a camera event when re-enabled.

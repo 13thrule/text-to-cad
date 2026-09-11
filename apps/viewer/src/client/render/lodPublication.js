@@ -38,7 +38,8 @@ function retireCommand(command) {
 export function createLodPublication({ currentContext, now = () => performance.now() }) {
   let pending = null;
   const stats = { requested: 0, adopted: 0, restored: 0, rejected: 0, lastWaitMs: 0, maxWaitMs: 0 };
-  const isCurrent = request => currentContext() === request.context && request.context?.meshHash === request.revision;
+  const isCurrent = request => currentContext() === request.context && request.context?.meshHash === request.revision &&
+    (!request.context?.descriptor || request.context.descriptor === request.descriptor);
   function settle(request, status) {
     if (pending !== request) return false;
     pending = null;

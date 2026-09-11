@@ -231,3 +231,62 @@ test("real partially reconciled scene retains its scheduler lease through exact 
     await drain(); assert.equal(released, 1, "ownership releases once across teardown/unmount");
   }
 });
+
+test("a real failed two-CID reconciliation holds both leases through restoration or confirmed fatal teardown", async () => {
+  for (const failRestore of [false, true]) {
+    const oldMeshes = [mesh(1), mesh(1.2)], nextMeshes = [mesh(2), mesh(2.2)];
+    const base = source(oldMeshes.flatMap(value => Array(3).fill(value)));
+    const candidate = source(nextMeshes.flatMap(value => Array(3).fill(value)));
+    for (const value of [base, candidate]) value.parts.forEach((part, i) => { part.componentId = i < 3 ? "a" : "b"; });
+    const descriptor = { occurrences: base.parts.map(part => ({ id: part.id, component: part.componentId })) };
+    let reject = false, creations = 0;
+    const instrumented = { ...THREE, MeshPhysicalMaterial: class extends THREE.MeshPhysicalMaterial {
+      constructor(...args) { if (reject && ++creations === 4) throw new Error("first second-CID record fails"); super(...args); }
+    } };
+    const original = buildModel(instrumented, base, settings);
+    const runtime = { cadScene: original, displayRecords: original.displayRecords, modelGroup: new THREE.Group(), edgesGroup: new THREE.Group() };
+    runtime.modelGroup.add(original.modelGroup); runtime.edgesGroup.add(original.edgesGroup);
+    const context = { descriptor, meshHash: "revision", meshData: base }, tracker = createLodSceneAdoption({ currentContext: () => context });
+    const timers = new Map(); let nextTimer = 0, released = 0, commits = 0, restoreQueued = false;
+    const scheduler = createLodScheduler({ minimumLevel: 1, batchSize: 4,
+      setTimeoutFn: fn => { timers.set(++nextTimer, fn); return nextTimer; }, clearTimeoutFn: id => timers.delete(id),
+      reserveLevel: ({ cid }) => ({ ok: true, token: cid }), releaseLevel: () => { released++; },
+      loadLevel: async cid => ({ meshData: nextMeshes[cid === "a" ? 0 : 1] }),
+      applyBatch: async (entries, { signal }) => {
+        assert.equal(entries.length, 2);
+        const completion = tracker.expectBatch({ context, descriptor, source: candidate, baseSource: base, signal,
+          currentSource: () => candidate, items: entries.map(({ cid, payload }) => ({ componentId: cid,
+            componentMesh: payload.meshData, baseMesh: oldMeshes[cid === "a" ? 0 : 1] })),
+          commit: () => { commits++; context.meshData = candidate; }, restore: () => { restoreQueued = true; return base; },
+        }); tracker.published(candidate);
+        const outcome = await completion;
+        return outcome.status === "disposed-failed" ? { status: "scene-failed" } : outcome.status === "adopted";
+      },
+    });
+    scheduler.setComponents(["a", "b"].map(cid => ({ cid, level: 0, diagonal: 3 })));
+    scheduler.onCameraSample({ camera: { kind: "perspective", fovYDeg: 45 }, viewportHeightPx: 1000, distanceFor: () => 10000 });
+    for (const [id, fn] of [...timers]) { timers.delete(id); fn(); }
+    for (let i = 0; i < 3; i++) await drain();
+    assert.equal(scheduler.snapshot().adopting, 2); assert.equal(released, 0);
+    reject = true; creations = 0; assert.throws(() => original.update({ source: candidate }), /second-CID record/);
+    const changed = original.modelGroup.children.filter(object => object.userData?.partId && Number(object.userData.partId.slice(4)) < 3);
+    assert.equal(changed.length, 3, "first CID attached before the second CID failed");
+    tracker.failed(candidate); await drain(); assert.equal(released, 0); assert.equal(commits, 0);
+    tracker.disposed(disposeViewerCadScene(runtime), { recover: true }); await drain();
+    assert.equal(restoreQueued, true); assert.equal(released, 0); assert.equal(context.meshData, base);
+    assert.ok(changed.every(object => object.parent === null)); assert.equal(original.runtime.ownedGeometries.size, 0);
+    reject = failRestore; creations = 0;
+    if (failRestore) {
+      assert.throws(() => buildModel(instrumented, base, settings), /second-CID record/);
+      tracker.disposed(base, { recover: true });
+    } else {
+      const restored = buildModel(instrumented, base, settings);
+      assert.equal(restored.displayRecords.length, 6);
+      assert.deepEqual(restored.displayRecords.map(record => record.sourcePart.sourceMesh), base.parts.map(part => part.sourceMesh));
+      tracker.adopted(base); restored.dispose();
+    }
+    await drain(); assert.equal(released, 2); assert.equal(commits, 0);
+    assert.deepEqual(scheduler.snapshot().levelCounts, { 0: 2 }); assert.equal(scheduler.snapshot().sceneFailed, failRestore);
+    scheduler.dispose(); disposeViewerCadScene(runtime);
+  }
+});

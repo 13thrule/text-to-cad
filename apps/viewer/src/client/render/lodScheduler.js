@@ -2,7 +2,7 @@
 //
 // Non-React glue between camera samples and level-keyed re-tessellation. The
 // policy math lives in cadgen-js (lodPolicy.js — pure); this module owns TIME:
-// debounce after camera movement, one replacement through scene adoption,
+// debounce after camera movement, one bounded batch through scene adoption,
 // worst projected error first, and cancellation on model replacement. Camera
 // changes replan after the accepted replacement finishes. It knows nothing
 // about three.js or React: the host feeds camera
@@ -45,6 +45,16 @@ export const LOD_DEBOUNCE_MS = 200;
 export function createLodScheduler({
   loadLevel,
   applyLevel,
+  applyBatch = null,
+  prepareLevel = null,
+  needsPreparation = () => false,
+  reconcileLevel = null,
+  discardLevel = null,
+  onOccupiedChanged = null,
+  onAdopted = null,
+  batchSize = applyBatch ? 4 : 1,
+  collectionMs = 32,
+  now = () => performance.now(),
   reserveLevel = null,
   releaseLevel = null,
   memoryPressure = () => false,
@@ -70,13 +80,22 @@ export function createLodScheduler({
   let lastPressure = false;
   let lastSample = null;
   let timer = null;
-  let inFlight = null; // { cid, level, controller, reservation }
+  const occupied = new Map(); // distinct CID -> loading / ready / published owner
+  const capacity = Math.max(1, Math.min(4, Math.floor(Number(batchSize) || 1)));
+  let loading = null;
+  let publication = null;
+  let collectionTimer = null;
+  let sealReason = null;
+  let ownershipSerial = 0;
+  const transientDenied = new Map(); // reconsider only after another owner settles
+  const telemetry = { publicationAttempts: 0, batchSizes: [], sealReasons: {}, maxOccupied: 0,
+    collectionMs: 0, adoptionMs: 0 };
   let disposed = false;
   let sceneFailed = false;
   const floorLevel = normalizeLodLevel(minimumLevel);
 
   function setComponents(list, { preserveLevels = false } = {}) {
-    const hadModel = components.size > 0 || lastSample !== null || inFlight !== null;
+    const hadModel = components.size > 0 || lastSample !== null || occupied.size > 0;
     if (!preserveLevels) {
       modelEpoch += 1;
       sceneFailed = false;
@@ -103,30 +122,47 @@ export function createLodScheduler({
     // A model switch cancels stale work; a growing model keeps a load whose
     // component is still present (its level would otherwise be re-requested,
     // or a finer displayed level re-stepped through a coarser one).
-    if (!preserveLevels || !inFlight || !components.has(inFlight.cid)) {
-      cancelInFlight();
-    }
-    if (!preserveLevels && hadModel && !inFlight) onIdle?.(qualityStatus());
-    if (preserveLevels && lastSample && timer === null && !inFlight) {
+    if (!preserveLevels) cancelOccupied();
+    else for (const task of occupied.values()) if (!components.has(task.cid)) cancelTask(task);
+    if (!preserveLevels && hadModel && occupied.size === 0) onIdle?.(qualityStatus());
+    if (preserveLevels && lastSample && timer === null && occupied.size === 0) {
       timer = setTimeoutFn(() => { timer = null; evaluate(); }, debounceMs);
     }
   }
 
-  function cancelInFlight() {
-    if (inFlight) {
-      const task = inFlight;
-      task.controller.abort();
-      // Published geometry can still belong to the renderer. Its apply promise
-      // settles only after adoption/restoration/disposal; keep the lease and
-      // block new work until that retiring owner finishes.
+  function changed() {
+    telemetry.maxOccupied = Math.max(telemetry.maxOccupied, occupied.size);
+    onOccupiedChanged?.([...occupied.values()].map(({ cid, level, payload, status }) => ({ cid, level, payload, status })));
+  }
+
+  function releaseTask(task, discard = false, notify = true) {
+    if (occupied.get(task.cid) !== task) return;
+    try { if (discard && task.payload) discardLevel?.(task.cid, task.level, task.payload); }
+    finally {
+      for (const token of task.reservations) releaseLevel?.(token);
+      task.reservations = [];
+      task.payload = null;
+      task.measuredPayload = null;
+      occupied.delete(task.cid);
+      ownershipSerial++; // only an actual owner release reopens temporary denials
+      if (![...occupied.values()].some(owner => owner.status !== "published" && owner.readyAt !== undefined && !owner.controller.signal.aborted)) {
+        if (collectionTimer !== null) clearTimeoutFn(collectionTimer);
+        collectionTimer = null;
+      }
+      if (notify) changed();
     }
   }
 
-  function releaseReservation(task) {
-    if (!task?.reservation) return;
-    const token = task.reservation;
-    task.reservation = null;
-    releaseLevel?.(token);
+  function cancelTask(task) {
+    task.controller.abort();
+    if (task.status === "published") publication?.controller.abort();
+    else if (loading !== task) releaseTask(task, true);
+  }
+
+  function cancelOccupied() {
+    if (collectionTimer !== null) clearTimeoutFn(collectionTimer);
+    collectionTimer = null; sealReason = null;
+    for (const task of [...occupied.values()]) cancelTask(task);
   }
 
   function onCameraSample(sample, { retry = false } = {}) {
@@ -144,6 +180,7 @@ export function createLodScheduler({
       failed.clear();
       denied.clear();
       pressureCeilings.clear();
+      if (occupied.size) sealReason = "camera";
     }
     if (timer !== null) {
       clearTimeoutFn(timer);
@@ -152,6 +189,7 @@ export function createLodScheduler({
       timer = null;
       evaluate();
     }, debounceMs);
+    if (fresh && occupied.size) pump();
   }
 
   function entriesForPlan() {
@@ -220,7 +258,7 @@ export function createLodScheduler({
         ...(blockedLevel !== targetLevel ? { blockedLevel } : {}), ...(detail ? { detail } : {}) });
     }
     return {
-      qualitySettled: !disposed && !sceneFailed && !!lastSample && !inFlight && timer === null && unmetTargets.length === 0,
+      qualitySettled: !disposed && !sceneFailed && !!lastSample && occupied.size === 0 && timer === null && collectionTimer === null && unmetTargets.length === 0,
       sceneFailed,
       memoryPressure: pressure,
       unmetTargets,
@@ -238,6 +276,7 @@ export function createLodScheduler({
   function planWork(entries, pressure) {
     const plan = [];
     for (const entry of entries) {
+      if (occupied.has(entry.cid)) continue;
       if (!entry.visible) continue;
       const policyLevel = pressure
         ? nextLevel(entry.sample, entry.currentLevel, levels)
@@ -259,6 +298,7 @@ export function createLodScheduler({
       const planned = new Set(plan.map((item) => item.cid));
       for (const [cid, state] of components) {
         const level = state.level + 1;
+        if (occupied.has(cid)) continue;
         if (state.level >= floorLevel || planned.has(cid) || blocked(cid, state.level, level)) continue;
         plan.push({ cid, level, targetLevel: floorLevel, errorPx: 0 });
       }
@@ -266,6 +306,7 @@ export function createLodScheduler({
     if (pressure) {
       const planned = new Set(plan.map((item) => `${item.cid}:${item.level}`));
       for (const entry of entries) {
+        if (occupied.has(entry.cid)) continue;
         if (entry.currentLevel <= floorLevel) continue;
         const level = entry.currentLevel - 1;
         const key = `${entry.cid}:${level}`;
@@ -297,95 +338,193 @@ export function createLodScheduler({
     return plan;
   }
 
-  function evaluate() {
-    if (disposed || !lastSample || inFlight) return;
-    if (sceneFailed) { onIdle?.(qualityStatus()); return; }
-    // Each denied iteration removes a distinct candidate. Keep a large model's
-    // denial drain off the call stack; only successful adoption changes state.
-    let request;
-    let reservation;
-    while (!disposed && !inFlight) {
+  function evaluate() { pump(); }
+
+  function readyTasks() {
+    return [...occupied.values()].filter(task => task.status === "ready" && !task.forcePreparation && !needsPreparation(task.cid, task.level, task.payload));
+  }
+
+  function armDeadline() {
+    if (collectionTimer !== null || sealReason) return;
+    const ready = [...occupied.values()].filter(task => task.status === "ready");
+    if (!ready.length) return;
+    const first = Math.min(...ready.map(task => task.readyAt));
+    collectionTimer = setTimeoutFn(() => {
+      collectionTimer = null; sealReason = "deadline"; pump();
+    }, Math.max(0, first + collectionMs - now()));
+  }
+
+  function valid(task) {
+    return !disposed && !task.controller.signal.aborted && task.modelEpoch === modelEpoch && occupied.get(task.cid) === task;
+  }
+
+  function loadFailed(task, reason = "load-failed") {
+    if (occupied.get(task.cid) !== task) return;
+    parkFailure(task, reason);
+    releaseTask(task, true);
+    sealReason ||= "failure";
+  }
+
+  function measurePayload(task, payload) {
+    if (!valid(task)) { task.payload = payload; releaseTask(task, true); return false; }
+    if (task.measuredPayload === payload) return true;
+    task.payload = payload;
+    changed(); // staged buffers are excluded from cache accounting before top-up
+    const adjustment = reconcileLevel?.({ cid: task.cid, level: task.level, currentLevel: task.currentLevel,
+      payload, reservedBytes: task.reservedBytes, pressure: task.pressure }) || { ok: true };
+    if (adjustment.ok === false) {
+      const hasOtherOwners = occupied.size > 1;
+      releaseTask(task, true);
+      if (hasOtherOwners) transientDenied.set(task.cid, ownershipSerial);
+      else {
+        denied.set(`${task.cid}:${task.currentLevel}:${task.level}`, adjustment.detail || {});
+        onLimitation?.(adjustment.detail || { cid: task.cid, level: task.level, preservingCurrentView: true });
+      }
+      sealReason ||= "admission";
+      return false;
+    }
+    if (adjustment.token) task.reservations.push(adjustment.token);
+    task.reservedBytes += Number(adjustment.bytes) || 0;
+    task.measuredPayload = payload;
+    return true;
+  }
+
+  function finishPrepared(task, payload) {
+    if (occupied.get(task.cid) !== task) return;
+    if (!measurePayload(task, payload)) return;
+    task.status = "ready";
+    task.forcePreparation = false;
+    task.readyAt ??= now();
+    if (task.sampleEpoch !== sampleEpoch) sealReason ||= "camera";
+    if (task.pressure) sealReason ||= "pressure";
+    changed(); armDeadline();
+  }
+
+  function runLoader(task, preparing = false) {
+    loading = task;
+    task.status = "loading";
+    changed();
+    let operation;
+    try {
+      operation = preparing ? task.payload : loadLevel(task.cid, task.level, { signal: task.controller.signal });
+    } catch (error) { operation = Promise.reject(error); }
+    Promise.resolve(operation).then(payload => {
+      if (!measurePayload(task, payload)) return payload;
+      return prepareLevel ? prepareLevel(task.cid, task.level, payload, { signal: task.controller.signal }) : payload;
+    }).then(payload => {
+      finishPrepared(task, payload);
+    }).catch(() => loadFailed(task)).finally(() => {
+      if (loading === task) loading = null;
+      pump();
+    });
+  }
+
+  function publishReady(reason) {
+    const tasks = readyTasks();
+    if (!tasks.length || publication) return false;
+    if (collectionTimer !== null) clearTimeoutFn(collectionTimer);
+    collectionTimer = null; sealReason = null;
+    const controller = new AbortController();
+    const owner = { tasks, controller, modelEpoch, startedAt: now() };
+    publication = owner;
+    tasks.forEach(task => { task.status = "published"; });
+    changed();
+    telemetry.publicationAttempts++;
+    telemetry.batchSizes.push(tasks.length);
+    if (telemetry.batchSizes.length > 64) telemetry.batchSizes.shift();
+    telemetry.sealReasons[reason] = (telemetry.sealReasons[reason] || 0) + 1;
+    telemetry.collectionMs += Math.max(0, now() - Math.min(...tasks.map(task => task.readyAt)));
+    let result;
+    try {
+      const entries = tasks.map(({ cid, level, payload }) => ({ cid, level, payload }));
+      result = applyBatch ? applyBatch(entries, { signal: controller.signal })
+        : applyLevel(tasks[0].cid, tasks[0].level, tasks[0].payload, { signal: controller.signal });
+    } catch (error) { result = Promise.reject(error); }
+    Promise.resolve(result).then(outcome => {
+      if (outcome?.status === "not-ready" && !controller.signal.aborted && owner.modelEpoch === modelEpoch) {
+        for (const task of tasks) {
+          task.preflightRetries = (task.preflightRetries || 0) + 1;
+          if (task.preflightRetries > 1) { parkFailure(task, "adoption-refused"); releaseTask(task, true); }
+          else { task.status = "ready"; task.forcePreparation = true; }
+        }
+        return;
+      }
+      const currentOwner = !disposed && !controller.signal.aborted && owner.modelEpoch === modelEpoch;
+      if (currentOwner && outcome?.status === "scene-failed") sceneFailed = true;
+      const retained = outcome?.status === "retained";
+      const accepted = currentOwner && !retained && outcome !== false && outcome?.status !== "scene-failed";
+      for (const task of tasks) {
+        if (accepted && valid(task)) {
+          const current = components.get(task.cid);
+          if (current) current.level = task.level;
+          if (task.pressure && task.level < task.currentLevel && task.sampleEpoch === sampleEpoch)
+            pressureCeilings.set(task.cid, Math.max(floorLevel, Math.min(pressureCeilings.get(task.cid) ?? task.level, task.level)));
+        } else if (currentOwner) parkFailure(task, outcome?.status === "scene-failed" ? "scene-failed" : "adoption-refused");
+      }
+      try { if (accepted) onAdopted?.(tasks.map(({ cid, level }) => ({ cid, level })), outcome); }
+      finally { for (const task of tasks) releaseTask(task, !accepted && !retained, false); changed(); }
+    }).catch(() => {
+      for (const task of tasks) { parkFailure(task, "load-failed"); releaseTask(task, true, false); }
+      changed();
+    }).finally(() => {
+      telemetry.adoptionMs += Math.max(0, now() - owner.startedAt);
+      if (publication === owner) publication = null;
+      if (sceneFailed) for (const task of [...occupied.values()]) cancelTask(task);
+      pump();
+    });
+    return true;
+  }
+
+  function pump() {
+    if (publication) return;
+    if (disposed || sceneFailed || !lastSample) {
+      if (!occupied.size) onIdle?.(qualityStatus());
+      return;
+    }
+    const ready = readyTasks();
+    if (ready.length && (sealReason || ready.length >= capacity || ready.some(task => task.pressure))) {
+      publishReady(sealReason || "capacity"); return;
+    }
+    if (loading) return;
+    // Changed selector demand takes the SAME lane as render loading. It does
+    // not create another loader or spend another occupied slot.
+    const stale = [...occupied.values()].find(task => task.status === "ready" && (task.forcePreparation || needsPreparation(task.cid, task.level, task.payload)));
+    if (stale) { runLoader(stale, true); return; }
+    if (timer !== null) return; // fresh camera intent must settle before collecting more
+    if (!occupied.size) { transientDenied.clear(); sealReason = null; }
+    if (occupied.size >= capacity) { publishReady("capacity"); return; }
+    if (occupied.size && memoryPressure?.() === true) { publishReady("pressure-fill-stop"); return; }
+    while (!disposed && !loading && !publication) {
       const entries = entriesForPlan();
-      const pressure = memoryPressure?.() === true;
-      lastPressure = pressure;
-      request = planWork(entries, pressure)[0];
+      const pressure = occupied.size ? false : memoryPressure?.() === true;
+      if (!occupied.size) lastPressure = pressure;
+      const request = planWork(entries, pressure).find(item => transientDenied.get(item.cid) !== ownershipSerial);
       if (!request) {
-        onIdle?.(qualityStatus(entries, pressure));
+        if (readyTasks().length) publishReady("no-work");
+        else if (!occupied.size) onIdle?.(qualityStatus(entries, pressure));
         return;
       }
       const { cid, level, targetLevel } = request;
       const currentLevel = components.get(cid)?.level ?? 0;
       const direction = level < currentLevel ? "coarsen" : "refine";
-      reservation = reserveLevel?.({ cid, currentLevel, level, direction }) ?? { ok: true, token: null };
-      if (reservation.ok !== false) { request = { ...request, pressure }; break; }
-      const detail = { ...reservation.detail, cid, currentLevel, level, targetLevel, direction };
-      denied.set(`${cid}:${currentLevel}:${level}`, detail);
-      onLimitation?.(detail);
-    }
-    if (disposed || inFlight) {
-      if (reservation?.ok !== false && reservation?.token) releaseLevel?.(reservation.token);
-      return;
-    }
-    const { cid, level, pressure } = request;
-    const currentLevel = components.get(cid)?.level ?? 0;
-    const controller = new AbortController();
-    const task = { cid, level, currentLevel, pressure, controller, reservation: reservation.token || null, sampleEpoch, modelEpoch };
-    inFlight = task;
-    let loaded;
-    try {
-      loaded = Promise.resolve(loadLevel(cid, level, { signal: controller.signal }));
-    } catch (error) {
-      loaded = Promise.reject(error);
-    }
-    loaded
-      .then((payload) => {
-        if (disposed || controller.signal.aborted) {
+      const reservation = reserveLevel?.({ cid, currentLevel, level, direction }) ?? { ok: true };
+      if (reservation.ok === false) {
+        if (occupied.size) {
+          transientDenied.set(cid, ownershipSerial);
+          publishReady("admission");
           return;
         }
-        const state = components.get(cid);
-        if (state) {
-          const commitLevel = (applied) => {
-            if (disposed || controller.signal.aborted) return;
-            if (applied?.status === "scene-failed") {
-              sceneFailed = true;
-              parkFailure(task, "scene-failed");
-              return;
-            }
-            if (applied === false) {
-              // A refused scene adoption is a failed attempt, not permission
-              // to immediately requeue the same level in a microtask loop.
-              parkFailure(task, "adoption-refused");
-              return;
-            }
-            const current = components.get(cid);
-            if (current) {
-              current.level = level;
-              if (task.pressure && level < task.currentLevel && task.sampleEpoch === sampleEpoch) {
-                pressureCeilings.set(cid, Math.max(floorLevel, Math.min(pressureCeilings.get(cid) ?? level, level)));
-              }
-            }
-          };
-          const applied = applyLevel(cid, level, payload, { signal: controller.signal });
-          if (typeof applied?.then === "function") return applied.then(commitLevel);
-          commitLevel(applied);
-        }
-      })
-      .catch(() => {
-        // Aborted or failed: the component stays at its current level and the
-        // (cid, level) parks until the next camera sample. A failed level must
-        // never break the model that already renders — or spin the drain.
-        parkFailure(task, "load-failed");
-      })
-      .finally(() => {
-        releaseReservation(task);
-        if (inFlight !== task) return;
-        inFlight = null;
-        // More work may be queued behind the swap (other components, or the
-        // next rung of this one) — keep draining until the plan is empty.
-        if (!disposed && lastSample) {
-          evaluate();
-        } else onIdle?.(qualityStatus());
-      });
+        denied.set(`${cid}:${currentLevel}:${level}`, reservation.detail || {});
+        onLimitation?.({ ...(reservation.detail || {}), cid, currentLevel, level, targetLevel, preservingCurrentView: true });
+        continue;
+      }
+      const task = { cid, level, currentLevel, pressure, controller: new AbortController(), sampleEpoch, modelEpoch,
+        reservations: reservation.token ? [reservation.token] : [], reservedBytes: Number(reservation.bytes) || 0,
+        status: "loading", payload: null };
+      occupied.set(cid, task);
+      runLoader(task);
+      return;
+    }
   }
 
   function dispose() {
@@ -394,8 +533,8 @@ export function createLodScheduler({
       clearTimeoutFn(timer);
       timer = null;
     }
-    cancelInFlight();
-    if (!inFlight) onIdle?.(qualityStatus());
+    cancelOccupied();
+    if (occupied.size === 0) onIdle?.(qualityStatus());
   }
 
   return {
@@ -404,16 +543,19 @@ export function createLodScheduler({
     dispose,
     // Introspection for tests and debugging overlays.
     levelOf: (cid) => components.get(cid)?.level ?? null,
-    busy: () => inFlight !== null,
+    busy: () => occupied.size > 0,
     snapshot: () => ({
       componentCount: components.size,
+      occupied: occupied.size, loading: Number(!!loading), ready: [...occupied.values()].filter(task => task.status === "ready").length,
+      adopting: publication?.tasks.length || 0, capacity, collectionPending: collectionTimer !== null,
+      batching: { ownershipScope: "scheduler-replacements", loaderLanes: 1, independentSelectorsIncluded: false, ...telemetry, batchSizes: [...telemetry.batchSizes], sealReasons: { ...telemetry.sealReasons } },
       levelCounts: [...components.values()].reduce((counts, state) => {
         counts[state.level] = (counts[state.level] || 0) + 1;
         return counts;
       }, {}),
       minimumLevel: floorLevel,
       belowMinimum: [...components.values()].filter((state) => state.level < floorLevel).length,
-      busy: inFlight !== null,
+      busy: occupied.size > 0,
       pendingEvaluation: timer !== null,
       failedLevels: failed.size,
       deniedAttempts: denied.size,

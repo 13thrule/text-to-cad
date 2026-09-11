@@ -131,7 +131,20 @@ the build — detection only; it keeps serving.
   before admission; a large component does not inflate every worker's charge.
   Refinement reserves both replacement arrays and worker scratch space, and
   includes the coarse tier's relaxed angular tolerance in its estimate.
-  Replacement admission stays held until the viewer adopts the current
+  The scheduler holds at most four distinct replacement CIDs across loading,
+  ready payloads and actual scene adoption. Its render and late-selector
+  preparation share one loader lane, and only one atomic mesh/reference
+  publication awaits adoption. A 32 ms first-ready collection deadline may
+  publish a ready subset beside one unfinished carryover; it does not guarantee
+  selector, worker or scene readiness. No fifth replacement starts. Pressure
+  coarsening remains singleton. Separate user-driven topology requests keep
+  their existing worker admission and cache/picking accounting; they are not
+  included in the scheduler's occupied-CID count.
+  Actual payload backing allocations are reconciled before another sibling is
+  admitted. Temporary sibling-capacity denials flush and retry after ownership
+  changes; they do not permanently park a target. Displayed levels and measured
+  current sizes remain unchanged until the complete exact batch adopts.
+  Replacement admission stays held until the viewer adopts each current
   component payload at every occurrence and accounts for its scene ownership.
   This acknowledgment schedules rendering; it is not a GPU upload-completion
   fence. Modeled upload ownership remains separate. A superseding progressive
@@ -146,7 +159,12 @@ the build — detection only; it keeps serving.
   reconciles against already-disposed records. Restoration preserves unrelated
   progressive components and completed selector loads. A second construction
   failure stops detail work and reports an error. Cleanup failure keeps ownership
-  charged until a real cleanup retry succeeds.
+  charged until a real cleanup retry succeeds. A cancelled batch that actually
+  adopted remains a displayed payload owner even though its scheduler levels
+  are not promoted, so cancellation does not evict its exact cache entries.
+  Diagnostic snapshots identify scheduler-only ownership, batch sizes and seal
+  reasons. The internal size-one control uses the same admission/publication
+  path as groups of four.
   A static component publication can reuse the main adoption's completed reset
   only in that same React render. Later visual or clipping changes still run
   normally, as do transitions out of modules, animation, drawings or poses.
