@@ -96,12 +96,35 @@ class CadGenerationTests(unittest.TestCase):
     def _cad_ref(self, name: str) -> str:
         return f"{self.relative_dir}/{name}"
 
+    def _fixture_tree(self, label: str):
+        """A mocked producer publishes a real, complete native result."""
+        from build123d import Solid
+        from cadgen._internal.component_package import prepare_geometry_component
+        from cadgen.store.objects import put_object
+        from cadgen.store.trees import put_tree
+
+        prepared = prepare_geometry_component(Solid.make_box(1, 1, 1))
+        put_object(prepared["payload"])
+        if prepared["surface"] is not None:
+            put_object(prepared["surface"])
+        entry = prepared["entry"]
+        cid = entry["contentHash"][:16]
+        tree = {
+            "label": label, "entryKind": "part", "units": "mm",
+            "components": {cid: entry},
+            "occurrences": [{"id": "o1", "name": label, "component": cid,
+                             "transform": list(IDENTITY_TRANSFORM)}],
+            "links": [],
+            "assembly": {"root": {"id": "o1", "name": label, "nodeType": "part", "children": []}},
+            "stats": {"occurrenceCount": 1, "linkCount": 0},
+        }
+        return put_tree(tree), tree
+
     def _generated_result(self, spec, scene=None):
         """A mocked producer still delivers its complete, exact job result."""
         from cadgen.daemon.executors import emit_source_result
-        from cadgen.store.trees import put_tree
 
-        tree = put_tree({"components": {}, "occurrences": [], "links": []})
+        tree, _ = self._fixture_tree(spec.step_path.stem)
         emit_source_result(cad_generation._model_for_spec(spec), tree)
         return cad_generation.GeneratedStepResult(spec=spec, scene=scene, tree=tree)
 
@@ -160,32 +183,20 @@ class CadGenerationTests(unittest.TestCase):
             force=False,
             progress=None,
         ):
-            from cadgen.store.objects import put_object
-            from cadgen.store.trees import put_tree
-
             calls.append(
                 {
                     "scene": scene,
                     "force": force,
                 }
             )
-            surf = put_object(b"SURF\x00fake")
-            tree = {
-                "label": scene.step_path.stem,
-                "entryKind": "part",
-                "units": "mm",
-                "components": {"c0": {"surf": surf, "brep": surf, "contentHash": "c0"}},
-                "occurrences": [{"id": "o1", "name": scene.step_path.stem, "component": "c0", "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}],
-                "links": [],
-                "stats": {"occurrenceCount": 1, "linkCount": 0},
-            }
+            tree_hash, tree = self._fixture_tree(scene.step_path.stem)
             stats = {
                 "occurrences": 1,
                 "unique_components": 1,
                 "components_built": 1,
                 "components_reused": 0,
             }
-            return put_tree(tree), tree, stats
+            return tree_hash, tree, stats
 
         return (
             mock.patch("cadgen.store.build.build_document_tree", side_effect=_fake),
@@ -988,9 +999,7 @@ class CadGenerationTests(unittest.TestCase):
     def test_normal_python_generation_reuses_current_package(self) -> None:
         script_path = self._generator_script("flat")
         spec = next(spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("flat"))
-        from cadgen.store.trees import put_tree
-
-        tree = put_tree({"components": {}, "occurrences": [], "links": []})
+        tree, _ = self._fixture_tree("flat")
 
         # A current model reuses its tree: the topology options match, the tree is
         # complete, and its source closure is unchanged -> no remesh.

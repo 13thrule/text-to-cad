@@ -232,7 +232,7 @@ class SourceJobResults(unittest.TestCase):
             + ("@stl\n" if mesh_parent else "@step\n")
             + "def parent():\n    piece = child()\n"
             + ("    return bd.Box(7, 3, 2)\n" if discard else
-               "    return bd.Compound(children=[bd.Pos(8, 0, 0) * piece])\n"),
+               "    return bd.Compound(children=[bd.Pos(8, 0, 0) * piece, bd.Pos(-8, 0, 0) * piece])\n"),
             encoding="utf-8",
         )
         output = self.root / "parent.step"

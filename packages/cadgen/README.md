@@ -18,6 +18,10 @@ instance).
 never at namespace-import time) and the *built outputs* of `cadgen-js`.
 Never app code, never `cadgen-js` source at runtime.
 
+Expensive pure parameterized geometry helpers may opt into [`@feature`](FEATURES.md).
+The decorator uses the existing object/index store and requires no author-owned
+cache utilities. It is separate from the parameterless models that declare files.
+
 **DEPENDED ON BY** — every skill (as a pinned installed distribution). The
 CAD Viewer is not a dependent but a part: `cadgen.viewer` serves the client and
 submits a document's compile as a job to the same build pool every door uses.
@@ -64,6 +68,12 @@ before publication. It can then assemble the private STEP document after the
 source event. Ordinary model code, child-output waiting and saved-byte readback
 keep their existing semantics; unsupported or forced builds use the ordinary
 order. The bounds and ownership limits are specified in [`STORE.md`](STORE.md) §6.
+An exact `Compound(children=[...])` of eligible lazy children preserves their
+pins through composition instead of reconstructing them at attachment. Native
+access or hierarchy mutation restores ordinary private geometry. Until then
+the root is an internal Compound subclass, so exact-type introspection differs;
+`isinstance(root, Compound)` stays true. See [`STORE.md`](STORE.md) §9a for the
+eligibility and escape boundaries.
 
 - Nothing a renderer reads references the source tree: the sidecar's
   kinematics are resolved numbers and labels, and choreography is the

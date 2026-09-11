@@ -778,6 +778,7 @@ def _generate_step_outputs(
             # The direct build flow: the model's own prints are the user's
             # stdout channel here (and pinned by test).
             model_prints_to_stdout=True,
+            _defer_reference_scene=True,
         )
         if spec.step_path is not None:
             output_kwargs["entries_by_step_path"] = {

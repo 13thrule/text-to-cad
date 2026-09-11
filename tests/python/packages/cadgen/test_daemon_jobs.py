@@ -90,8 +90,9 @@ class Lifecycle(unittest.TestCase):
 
     def test_simultaneous_requests_for_same_model_remain_distinct(self):
         first = self.ledger.start(tool="run", subject=self.model, store_root="/one")
-        second = self.ledger.start(tool="run", subject=self.model, store_root="/two")
-        second = self.ledger.adopt(second, subject=self.model, tool="run", argv=[])
+        second = self.ledger.start(
+            tool="run", subject=self.model, store_root="/two", adopt_announced=True,
+        )
         self.assertNotEqual(first["id"], second["id"])
         self.assertEqual(len(self.ledger.snapshot()), 2)
         self.ledger.observe(self._event(self.model, "building", job=first["id"], phase="first only"))
@@ -150,8 +151,20 @@ class Lifecycle(unittest.TestCase):
         subjects = [job["subject"] for job in self.ledger.snapshot()]
         self.assertEqual([parent, self.model], subjects)
         # The child's own request arrives: it is the SAME row, not a second one.
-        child = self.ledger.adopt(self.ledger.start(tool="run", subject=self.model, argv=[self.model]), subject=self.model, tool="run", argv=[self.model])
+        before = self.ledger.watch(timeout=0)
+        announced = self.ledger.snapshot()[1]
+        child = self.ledger.start(
+            tool="run", subject=self.model, argv=[self.model], store_root=self.tmp.name,
+            adopt_announced=True,
+        )
         self.assertEqual(2, len(self.ledger.snapshot()))
+        self.assertEqual(announced["id"], child["id"])
+        self.assertNotIn("announced", child)
+        self.assertEqual(str(Path(self.tmp.name).resolve()), child["storeRoot"])
+        after = self.ledger.watch(before["jobsCursor"], timeout=0)
+        self.assertEqual(int(before["jobsCursor"].rsplit(":", 1)[1]) + 1,
+                         int(after["jobsCursor"].rsplit(":", 1)[1]),
+                         "adoption is one atomic published mutation, without a phantom row")
         self.ledger.observe(self._event(self.model, "building", phase="generate"))
         self.ledger.finish(child, 0)
         self.assertEqual("done", [j for j in self.ledger.snapshot() if j["subject"] == self.model][0]["state"])

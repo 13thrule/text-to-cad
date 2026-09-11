@@ -78,8 +78,9 @@ def _load_generator_module(script_path: Path) -> object:
     # executes STALE code. Model scripts are small; recompiling each load
     # costs ~ms and makes what runs always be what is on disk.
     try:
+        source_bytes = resolved_script_path.read_bytes()
         source_code = compile(
-            resolved_script_path.read_bytes(),
+            source_bytes,
             str(resolved_script_path),
             "exec",
             dont_inherit=True,
@@ -88,6 +89,14 @@ def _load_generator_module(script_path: Path) -> object:
         raise RuntimeError(
             f"Failed to load generator module from {_display_path(resolved_script_path)}: {error}"
         ) from error
+
+    # Capture the exact compiled buffer before executing any module code. The
+    # file can change during module initialization, or even between compile and
+    # exec; hashing its path later would associate new source with old geometry.
+    from cadgen._internal.source_hash import _semantic_source_bytes
+    from cadgen.store.closure import note_consumed_file_hash
+
+    note_consumed_file_hash(resolved_script_path, _semantic_source_bytes(source_bytes))
 
     module = importlib.util.module_from_spec(module_spec)
     # sys.path is exactly what `python script.py` gives: the script's own folder first,
@@ -245,6 +254,7 @@ def _write_shape_step_payload(
     output_path: Path,
     script_path: Path,
     logger: CliLogger,
+    defer_reference_scene: bool = False,
 ) -> LoadedStepScene:
     shape = payload.get("shape")
     from build123d import Shape as Build123dShape
@@ -259,12 +269,18 @@ def _write_shape_step_payload(
     # Viewer's Save-dialog export). The scene is built straight from the XCAF doc, never
     # via a STEP round-trip.
     source_identity = python_source_hash(script_path)
-    scene = build_build123d_step_scene(
-        shape,
-        output_path,
-        source_kind="python",
-        source_hash=source_identity.source_hash,
-    )
+    scene = None
+    if defer_reference_scene:
+        from cadgen.store._references import source_scene
+
+        scene = source_scene(shape, output_path)
+    if scene is None:
+        scene = build_build123d_step_scene(
+            shape,
+            output_path,
+            source_kind="python",
+            source_hash=source_identity.source_hash,
+        )
     _mark_scene_python_backed(scene, source_identity=source_identity, source_path=script_path)
     _mark_scene_step_payload(scene, payload_kind="shape")
     # Stash the compound: the tree build introspects its located
@@ -365,6 +381,7 @@ def run_script_generator(
     progress: object | None = None,
     intent: str = "write",
     model_prints_to_stdout: bool = False,
+    _defer_reference_scene: bool = False,
 ) -> LoadedStepScene | None:
     """Run a model script's decorated entry (``@step``/``@dxf``) and return its scene.
 
@@ -426,6 +443,7 @@ def run_script_generator(
                     logger=logger,
                     force=force,
                     progress=active,
+                    _defer_reference_scene=_defer_reference_scene,
                 )
 
 
@@ -453,11 +471,13 @@ def _run_script_generator_inner(
     logger: CliLogger,
     force: bool = False,
     progress: object | None = None,
+    _defer_reference_scene: bool = False,
 ) -> LoadedStepScene | None:
-    # No memory guard: unlimited memory is the operating assumption (STORE.md §9). A
-    # build that the OS kills is reported by the pool as a dead worker, with its exit.
+    # Worker-pool admission owns memory policy; this inner call adds no second
+    # guard. The pool reports an OS-killed worker with its exit status.
     return _run_script_generator_body(
-        spec, model_format, logger=logger, force=force, progress=progress
+        spec, model_format, logger=logger, force=force, progress=progress,
+        _defer_reference_scene=_defer_reference_scene,
     )
 
 
@@ -468,6 +488,7 @@ def _run_script_generator_body(
     logger: CliLogger,
     force: bool = False,
     progress: object | None = None,
+    _defer_reference_scene: bool = False,
 ) -> LoadedStepScene | None:
     # Kernel-op memoization (design/incremental-generation.md): installed here so
     # every generator run — cold CLI or warm daemon worker — re-executes the model
@@ -486,6 +507,12 @@ def _run_script_generator_body(
     from cadgen._internal import determinism
 
     determinism.install()
+    # Establish the canonical feature interface. Only the earlier worker
+    # bootstrap can enable reuse; a generic embedding may already have run
+    # authored initialization and cannot upgrade that untrusted snapshot.
+    from cadgen import features
+
+    features.install()
     generated_scene: LoadedStepScene | None = None
     # Deterministic closure capture (see run_script_generator's docstring): start from a
     # clean first-party module space, then record every first-party file executed while
@@ -497,10 +524,13 @@ def _run_script_generator_body(
     evict_first_party_modules()
     _purge_stale_bytecode(spec.script_path)
     modules_before_load = set(sys.modules)
+    from cadgen.store.closure import ExecutionHashes
+
     with (
         _without_bytecode_writes(),
         record_first_party_execution() as executed_files,
         record_discovered_inputs() as read_files,
+        ExecutionHashes() as executed_hashes,
     ):
         with logger.timed(f"load generator {spec.source_ref}"):
             module = _load_generator_module(spec.script_path)
@@ -524,20 +554,14 @@ def _run_script_generator_body(
         # and without this the longest phase of most builds reports nothing at all. Silent
         # generators are unaffected -- nothing reads the binding unless they ask for it.
         from cadgen.authoring import building
-        from cadgen.store.closure import ExecutionHashes
-
-        # Hash at execution: every first-party file is hashed the moment it runs
-        # (the exec audit hook) — never after the body — so an edit landing
-        # mid-build cannot be hashed into the record over the old source's
-        # geometry. The script's own bytes were compiled above from disk; hash
-        # them now, before the body runs.
+        # The execution window includes imports during module initialization.
+        # The loader already recorded the script's exact compiled source bytes;
+        # the audit hook records other first-party modules as they execute.
         with (
             logger.timed(f"run {model_format} model {spec.source_ref}"),
             reporting_as(progress),
-            ExecutionHashes() as executed_hashes,
             building(spec.script_path, entry_name) as frame,
         ):
-            executed_hashes.note(spec.script_path)
             raw_payload = generator()
 
     source_closure: PythonSourceClosure | None = None
@@ -581,6 +605,7 @@ def _run_script_generator_body(
             output_path=spec.step_path,
             script_path=spec.script_path,
             logger=logger,
+            defer_reference_scene=_defer_reference_scene,
         )
         if declared.block:
             generated_scene.kinematics = declared.block

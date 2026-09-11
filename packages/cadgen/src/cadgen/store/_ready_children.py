@@ -198,6 +198,10 @@ def install() -> bool:
         def construct(self, *args, **kwargs):
             if type(self) is not Compound or getattr(_STATE, "construction", None) is not None:
                 return original(self, *args, **kwargs)
+            from cadgen.store._references import try_construct
+
+            if try_construct(self, original, args, kwargs):
+                return None
             obj = args[0] if args else kwargs.get("obj")
             unparented = False
             if type(obj) in (list, tuple):

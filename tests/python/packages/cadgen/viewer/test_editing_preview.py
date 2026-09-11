@@ -9,7 +9,7 @@ from unittest import mock
 from cadgen.store.trees import get_tree, put_tree
 from cadgen.store.objects import put_object
 from cadgen.viewer.backend import ForbiddenAssetError
-from cadgen.viewer.preview import preview_status
+from cadgen.viewer.preview import preview_status, preview_update
 from tests.python.support.tmp_root import generated_cad_directory
 
 
@@ -53,6 +53,56 @@ class EditingPreviewTests(unittest.TestCase):
         self.assertNotIn("subject", result)
         self.assertNotIn("storeRoot", result)
         self.assertNotIn("saved", result)
+
+    def test_changed_feed_uses_its_atomic_job_snapshot_and_only_exposes_cursor(self):
+        payload = {"jobsCursor": "epoch:8", "jobs": [self.job(previews=self.preview())]}
+        with mock.patch("cadgen.daemon.client.watch_jobs", return_value=payload) as watch, \
+                mock.patch("cadgen.viewer.preview._daemon_jobs", side_effect=AssertionError("extra poll")):
+            result = preview_update(str(self.root), self.output, after="epoch:7")
+        watch.assert_called_once_with("epoch:7", output=self.output, store_root=self.store)
+        self.assertEqual(result["feedCursor"], "epoch:8")
+        self.assertEqual(result["preview"]["tree"], self.tree)
+        self.assertNotIn("jobs", result)
+        self.assertNotIn("subject", result)
+
+    def test_saturated_feed_keeps_cursor_and_requests_slow_client_retry(self):
+        payload = {"jobsCursor": "epoch:8", "jobs": [], "jobsWatchLimited": True}
+        with mock.patch("cadgen.daemon.client.watch_jobs", return_value=payload):
+            result = preview_update(str(self.root), self.output, after="epoch:8")
+        self.assertEqual(result["feedCursor"], "epoch:8")
+        self.assertTrue(result["feedLimited"])
+
+    def test_one_response_verifies_shared_tree_once_without_retaining_brep_payloads(self):
+        from cadgen.catalog import artifact_file_hash
+        from cadgen.store.records import note_document_tree
+        from cadgen.store.trees import capture_tree
+
+        Path(self.output).write_bytes(b"saved document")
+        digest = artifact_file_hash(Path(self.output))
+        note_document_tree(digest, self.tree)
+        jobs = [self.job(previews=self.preview(), savedResults={
+            self.output: {"tree": self.tree, "documentHash": digest}})]
+        with mock.patch("cadgen.viewer.preview.capture_tree", wraps=capture_tree) as capture:
+            result = preview_status(str(self.root), self.output, jobs=jobs)
+        capture.assert_called_once_with(self.tree, retain_payloads=False)
+        self.assertEqual(result["preview"]["tree"], result["saved"]["tree"])
+
+    def test_notification_heartbeat_rechecks_missing_geometry(self):
+        payload = {"jobsCursor": "epoch:8", "jobs": [self.job(previews=self.preview())]}
+        with mock.patch("cadgen.daemon.client.watch_jobs", return_value=payload):
+            first = preview_update(str(self.root), self.output)
+            self.assertIn("preview", first)
+            from cadgen.store.objects import object_path
+            entry = next(iter(get_tree(self.tree)["components"].values()))
+            object_path(entry["brep"]).unlink()
+            second = preview_update(str(self.root), self.output, after=first["feedCursor"])
+        self.assertNotIn("preview", second)
+        self.assertTrue(second["previewUnavailable"])
+
+    def test_invalid_output_is_rejected_before_waiting_on_the_daemon(self):
+        with mock.patch("cadgen.daemon.client.watch_jobs", side_effect=AssertionError("invalid wait")):
+            with self.assertRaises(ValueError):
+                preview_update(str(self.root), ".hidden/new.step", after="epoch:7")
 
     def test_newest_request_wins_even_when_old_one_finishes_later(self):
         jobs = [self.job(1, state="done", updatedAt=1000, previews=self.preview()),

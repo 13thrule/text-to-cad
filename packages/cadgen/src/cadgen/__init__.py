@@ -31,6 +31,7 @@ __all__ = [
     "stl",
     "glb",
     "threemf",
+    "feature",
     "revolute",
     "slider",
     "cylindrical",
@@ -56,6 +57,10 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    if name == "feature":
+        from cadgen.features import feature
+
+        return feature
     if name in {"step", "dxf", "stl", "glb", "threemf"}:
         # A FORMAT NAMESPACE: the declaration decorator and the format's verbs in
         # one callable module (design/format-doors.md). Returning the module
@@ -128,6 +133,7 @@ if TYPE_CHECKING:
     from cadgen.assembly import AssemblyHelper, MateTarget, label_shape, label_text, target
     from cadgen.color import linear_to_srgb, srgb, srgb_to_linear
     from cadgen.inputs import declare_input
+    from cadgen.features import feature
     from cadgen.kinematics import couple, cylindrical, fastened, revolute, slider
     from cadgen.instances import compound_from_instances
     from cadgen.progress import report, track

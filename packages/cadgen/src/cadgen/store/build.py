@@ -301,6 +301,21 @@ def _walk_compound(compound: Any, *, root_name: str, progress: Any) -> _Walk:
     )
 
     walk = _Walk()
+    from cadgen.store._references import links as reference_links
+
+    references = reference_links(compound)
+    if references is not None:
+        progress.phase(PHASE_PACKAGE)
+        walk.links = references
+        walk.root = {
+            "id": "o1", "name": str(getattr(compound, "label", "") or "o1"),
+            "nodeType": "assembly", "leafPartIds": [row["id"] for row in references],
+            "children": [{"id": row["id"], "name": row["name"], "nodeType": "link",
+                          "tree": row["tree"], "children": []} for row in references],
+        }
+        for row in references:
+            progress.advance(detail=row["name"])
+        return walk
     occurrences = walk.occurrences
     links = walk.links
     components = walk.components

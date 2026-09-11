@@ -4,10 +4,11 @@ A parent's body calls a child model and gets one of these back at once. If the
 child was stale its build has been submitted to the pool (§9 in STORE.md); if it
 was current there is no job at all. Either way the body keeps going — calling
 its other children, placing them, labelling them — and only blocks when
-something actually needs geometry: the first read of the wrapped OCCT shape,
-which build123d cannot avoid. In the common body that read happens once, at the
-closing ``Compound(children=[...])``, after every sibling has been submitted, so
-stale children build in parallel.
+something actually needs geometry: the first read of the wrapped OCCT shape.
+Ordinary assembly construction reads those shapes after every sibling has been
+submitted, so stale children build in parallel. Eligible plain
+``Compound(children=[...])`` construction can instead keep exact references
+through source publication; see :mod:`cadgen.store._references`.
 
 Deferred without forcing: ``Pos/Rot/Location * child`` and ``.moved()`` compose
 a placement; ``.label`` and ``.color`` are recorded and applied on force.
@@ -33,9 +34,10 @@ waiting on one input can first prepare bounded, already-pinned later inputs.
 These fresh private compounds remain unexposed until ordinary ordered force,
 which rechecks their exact objects before applying authored metadata/placement.
 The permanent constructor hook is inactive outside a build frame; active state
-is thread-local and clears at constructor exit. A plain ``Compound(children=...)``
-also qualifies with an exact list/tuple of unparented children and no ``obj`` or
-``parent``. Its original attachment-triggered force starts preparation; anytree
+is thread-local and clears at constructor exit. Plain ``Compound(children=...)``
+first attempts bounded reference composition with an exact list/tuple of
+unparented children and no ``obj`` or ``parent``. If that does not qualify,
+its original attachment-triggered force can start preparation; anytree
 validation and rollback remain unchanged. Nested constructors, generators,
 subclasses, and child reparenting retain ordinary forcing without preparation.
 
@@ -93,6 +95,7 @@ class LazyCompound(Compound):
 
     @property
     def _wrapped(self):
+        self._capture_attached_reference()
         shape = self.__dict__.get("_lazy_shape")
         if shape is None and not self.__dict__.get("_lazy_forcing", False):
             self._force()
@@ -101,6 +104,7 @@ class LazyCompound(Compound):
 
     @_wrapped.setter
     def _wrapped(self, shape) -> None:
+        self._capture_attached_reference()
         self.__dict__["_lazy_shape"] = shape
 
     @property
@@ -158,11 +162,75 @@ class LazyCompound(Compound):
 
     # --- what the parent may do without waiting ------------------------------------
 
+    def _capture_attached_reference(self):
+        if (self.__dict__.get("_lazy_reference_attached")
+                and not self.__dict__.get("_lazy_forcing")):
+            from cadgen.store._references import force_parent
+
+            # Capture the original native child before its wrapper escapes or
+            # is replaced. In-place TShape edits still share the captured
+            # geometry; wrapper replacement/location changes do not.
+            force_parent(self.__dict__.get("_NodeMixin__parent"))
+
+    def _force_attached_reference(self):
+        self._capture_attached_reference()
+        if (self.__dict__.get("_lazy_reference_attached") and not self._forced
+                and not self.__dict__.get("_lazy_forcing")):
+            self._force()
+
+    @property
+    def children(self):
+        # Once attached, ordinary construction had populated this hierarchy.
+        # A reader such as the native XCAF exporter must never see an empty
+        # leaf merely because its private geometry is still deferred.
+        self._force_attached_reference()
+        return Compound.children.fget(self)
+
+    @property
+    def _NodeMixin__children_or_empty(self):
+        # anytree's ``plain_shape.parent = child`` mutates this private list
+        # without consulting the public children property or Compound hooks.
+        # Populate/capture the existing hierarchy before that ordinary edit.
+        self._force_attached_reference()
+        return Compound._NodeMixin__children_or_empty.fget(self)
+
+    @children.setter
+    def children(self, children):
+        self._force_attached_reference()
+        Compound.children.fset(self, children)
+
+    @children.deleter
+    def children(self):
+        self._force_attached_reference()
+        Compound.children.fdel(self)
+
+    def _post_attach(self, parent):
+        from cadgen.store._references import attach_child
+
+        if not attach_child(self, parent):
+            return Compound._post_attach(self, parent)
+
+    def _pre_attach(self, parent):
+        from cadgen.store._references import force_parent
+
+        Compound._pre_attach(self, parent)
+        force_parent(parent)
+
+    def _pre_detach(self, parent):
+        from cadgen.store._references import force_parent
+
+        force_parent(parent)
+
     def moved(self, loc):  # type: ignore[override]
         from build123d import Plane
 
         if isinstance(loc, Plane):
             loc = loc.location
+        if self.__dict__.get("_lazy_reference_attached") and not self._forced:
+            # Ordinary Compound construction had already forced this child.
+            # Its later moved() must retain build123d's shared-native semantics,
+            # including native edits made through either resulting wrapper.
+            self._force()
         if self._forced:
             # Already forced: build123d's own moved() keeps the TShape (a link)
             # and deep-copies the wrapper's attributes, tags included.

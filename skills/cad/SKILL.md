@@ -150,6 +150,12 @@ The rules, each enforced by the decorator or the build:
 - **Composition is a call.** Import a sibling model and call it inside your
   body (`from arm import arm` … `arm()`); it returns the child's geometry.
   `references/step-generation.md` has the whole composition contract.
+- **Expensive pure factories may use `@feature`.** This optional decorator
+  reuses parameterized geometry inside a model without declaring files. Use
+  immutable value arguments and deterministic helpers, with no I/O, reporting,
+  child builds, process state or dependency mutation. Keep ordinary factories
+  for cheap work. Read the feature section in `references/step-generation.md`
+  before using it; no cache/session utilities are needed.
 - **`from cadgen import build123d as bd`** is the canonical import — a lazy,
   transparent re-export of build123d (same names, same behaviour) — so the
   freshness gate and the warm-worker handoff run before any kernel import is

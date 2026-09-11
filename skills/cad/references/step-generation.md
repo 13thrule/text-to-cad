@@ -160,6 +160,34 @@ deliberately:
   decouple (export it once, then treat the export like any other document).
   Read it with `cadgen.read_step`, below.
 
+### Reusing expensive factories
+
+`from cadgen import feature` adds an optional `@feature` to a parameterized
+geometry helper. The model still takes no arguments and declares all files;
+the feature returns a shape and creates no files. Use it for expensive repeated
+booleans or builders, returning an ordinary `Solid` or a builder's `.part`.
+Place reusable factories in a helper module so changing the parent's placement
+or configuration leaves their source unchanged. Keys include each helper's
+whole captured source file, so editing another function in that file also
+invalidates it.
+
+The decorator declares a **pure function under an unmodified CAD/math runtime**:
+geometry depends only on immutable arguments, defaults, globals and deterministic
+helpers. No I/O, random/time/environment inputs, progress reporting, child model
+calls, callbacks, identity-dependent logic or dependency monkeypatches. This is
+an author precondition, not an automatically proven Python sandbox. Supported
+finite scalars/tuples and a bounded CAD/math vocabulary can reuse results;
+unsupported code, mutable inputs and calls within an already-open builder keep
+ordinary execution. Cheap primitives often cost less to execute than to verify
+and reconstruct, so do not decorate every function.
+
+Normal warm workers and transient child workers support reuse. Generic embedded
+calls execute the body. Eligible misses, hits and `CADGEN_FEATURE_CACHE=0` use
+the same private canonical return codec; native handle identity is not an input
+or an output contract. Missing objects recover by running the factory. No
+additional caching, ownership or invalidation helpers belong in authored code.
+`FEATURES.md` in the installed cadgen package specifies the complete contract.
+
 ### Children
 
 A child is just an import: model scripts are real modules, and

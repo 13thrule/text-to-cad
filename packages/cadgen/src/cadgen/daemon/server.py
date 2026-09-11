@@ -49,6 +49,9 @@ from cadgen.daemon.client import (
 DEFAULT_IDLE_TIMEOUT_SECONDS = 3600.0
 REQUEST_READ_TIMEOUT_SECONDS = 30.0
 CLIENT_LIVENESS_INTERVAL_SECONDS = 0.5
+# Read-only waiters are independent of build admission and cannot block accept().
+# Saturation returns an immediate ledger snapshot, never starts more threads.
+_JOB_WATCH_SLOTS = threading.BoundedSemaphore(32)
 # A worker that produces NO frame for this long mid-job is treated as wedged. Generous:
 # a large model can legitimately be silent for many minutes inside one OCCT boolean.
 WORKER_SILENCE_TIMEOUT_SECONDS = 3600.0
@@ -225,6 +228,40 @@ def _status_payload() -> dict:
     return snapshot
 
 
+def _serve_job_watch(conn: transport.Channel, after: str | None, scope: dict) -> None:
+    try:
+        with contextlib.suppress(OSError):
+            _send(conn, {"status": _JOBS.watch(after, **scope)})
+    finally:
+        with contextlib.suppress(OSError):
+            conn.close()
+        _JOB_WATCH_SLOTS.release()
+
+
+def _start_job_watch(conn: transport.Channel, request: dict) -> bool:
+    """Transfer channel ownership to a bounded waiter, or answer immediately."""
+    after = request.get("after")
+    after = after if isinstance(after, str) and len(after) <= 128 else None
+    output, root = request.get("output"), request.get("storeRoot")
+    scope = {"output": output, "store_root": root} if (
+        isinstance(output, str) and isinstance(root, str) and len(output) <= 8192 and len(root) <= 8192
+    ) else {}
+    limited = bool(after) and not _JOB_WATCH_SLOTS.acquire(blocking=False)
+    if not after or limited:
+        snapshot = _JOBS.watch(timeout=0, **scope)
+        if limited:
+            snapshot["jobsWatchLimited"] = True
+        with contextlib.suppress(OSError):
+            _send(conn, {"status": snapshot})
+        return False
+    try:
+        threading.Thread(target=_serve_job_watch, args=(conn, after, scope), daemon=True).start()
+    except BaseException:
+        _JOB_WATCH_SLOTS.release()
+        raise
+    return True
+
+
 def _script_path(candidates, base: object) -> str:
     """The model a request is about: the absolute path of the script it names.
 
@@ -315,10 +352,10 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
     if is_artifact:
         job = _JOBS.start_artifact(artifact, store_root=root, root_id=request.get("root_id"), dependency=request.get("dependency"))
     else:
-        job = _JOBS.adopt(
-            _JOBS.start(tool=tool, subject=subject, argv=argv, store_root=str(request.get("store_root") or ""),
-                        editing_producer=not bool(subject and closure and request.get("coalesce"))),
-            subject=subject, tool=tool, argv=argv,
+        job = _JOBS.start(
+            tool=tool, subject=subject, argv=argv, store_root=str(request.get("store_root") or ""),
+            editing_producer=not bool(subject and closure and request.get("coalesce")),
+            adopt_announced=True,
         )
     inflight = None
     if is_artifact or (subject and closure and request.get("coalesce")):
@@ -585,8 +622,12 @@ def serve() -> int:
                 if request.get("kind") == "status":
                     # Answered BEFORE the token check: asking what is warm must never
                     # make the daemon exit, whichever cadgen the asker is running.
-                    with contextlib.suppress(OSError):
-                        _send(conn, {"status": _status_payload()})
+                    if request.get("jobsOnly") is True:
+                        if _start_job_watch(conn, request):
+                            conn = None  # the bounded watcher owns it
+                    else:
+                        with contextlib.suppress(OSError):
+                            _send(conn, {"status": _status_payload()})
                     continue
                 if request.get("token") != token:
                     # Close and release the address BEFORE replying so the client's

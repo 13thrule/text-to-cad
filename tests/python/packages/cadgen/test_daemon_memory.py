@@ -256,7 +256,7 @@ class DependencyRequest(unittest.TestCase):
         worker_pool.acquire.side_effect = pool.MemoryAdmissionError(reason)
         ledger, broker = mock.Mock(), mock.Mock()
         job = {"id": "memory-refused"}
-        ledger.adopt.return_value = job
+        ledger.start.return_value = job
         entry = {"token": "memory-refused"}
         broker.claim_entry.return_value = (True, entry)
         request = {"tool": "run", "argv": ["child.py"], "cwd": "/work",

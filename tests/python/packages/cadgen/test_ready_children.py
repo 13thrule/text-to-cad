@@ -50,6 +50,12 @@ class ReadyChildren(unittest.TestCase):
                                                 'CADGEN_COMPONENT_WORKERS': '1', 'CADGEN_DAEMON': '0'})
         self.env.start()
         self.addCleanup(self.env.stop)
+        # This suite exercises the ordinary-construction preparation fallback;
+        # exact unexposed references have their own stronger, separate coverage.
+        from cadgen.store import _references
+        reference_patch = mock.patch.object(_references, "_ENABLED", False)
+        reference_patch.start()
+        self.addCleanup(reference_patch.stop)
         from cadgen.store.materialize import reset_memo
         reset_memo()
         self.addCleanup(reset_memo)

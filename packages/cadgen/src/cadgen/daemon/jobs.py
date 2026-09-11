@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import itertools
 import copy
+import hashlib
 import os
 import re
 import threading
@@ -116,6 +117,8 @@ class JobLedger:
 
     def __init__(self, *, retain_seconds: float = RETAIN_SECONDS, clock=time.time) -> None:
         self._guard = threading.Lock()
+        self._changed = threading.Condition(self._guard)
+        self._revision = 0
         self._jobs: dict[str, dict[str, Any]] = {}
         self._ids = itertools.count(1)
         self._retain = float(retain_seconds)
@@ -124,7 +127,8 @@ class JobLedger:
 
     # --- lifecycle -------------------------------------------------------------
 
-    def start(self, *, tool: str, subject: str, argv: list[str] | None = None, store_root: str = "", editing_producer: bool = True) -> dict[str, Any]:
+    def start(self, *, tool: str, subject: str, argv: list[str] | None = None, store_root: str = "",
+              editing_producer: bool = True, adopt_announced: bool = False) -> dict[str, Any]:
         if tool == "artifact":
             subject, editing_producer = "", False
         subject = _real(subject) if subject else ""
@@ -151,7 +155,19 @@ class JobLedger:
             "error": None,
         }
         with self._guard:
+            if adopt_announced and subject:
+                existing = self._running_for(subject)
+                if existing is not None and existing.get("announced"):
+                    existing["tool"] = str(tool)
+                    existing["argv"] = [str(a) for a in (argv or [])]
+                    existing["storeRoot"] = job["storeRoot"]
+                    existing["editingProducer"] = bool(editing_producer)
+                    existing["updatedAt"] = now
+                    existing.pop("announced", None)
+                    self._notify(existing)
+                    return existing
             self._jobs[job["id"]] = job
+            self._notify(job)
         return job
 
     def start_artifact(self, request: dict, *, store_root: str, root_id=None, dependency=False) -> dict[str, Any]:
@@ -160,6 +176,7 @@ class JobLedger:
             job["artifact"] = copy.deepcopy(request)
             job["rootId"] = root_id
             job["dependency"] = bool(dependency)
+            self._notify(job)
         return job
 
     def record_artifact_result(self, job: dict[str, Any], result: dict) -> None:
@@ -167,11 +184,13 @@ class JobLedger:
             if job["tool"] == "artifact" and job.get("artifactResult") is None:
                 job["artifactResult"] = copy.deepcopy(result)
                 job["updatedAt"] = self._clock()
+                self._notify(job)
 
     def accept_editing_producer(self, job: dict[str, Any]) -> None:
         """Only a coalescing request that owns the work advances edit ordering."""
         with self._guard:
             job["editingProducer"] = True
+            self._notify(job)
 
     def observe(self, frame: dict[str, Any]) -> None:
         """Fold one relayed frame into the ledger (only ``event`` frames matter)."""
@@ -247,20 +266,7 @@ class JobLedger:
                 if output not in job["outputs"]:
                     job["outputs"].append(output)
             job["updatedAt"] = now
-
-    def adopt(self, job: dict[str, Any], *, subject: str, tool: str, argv: list[str]) -> dict[str, Any]:
-        """A request arrives for a subject the ledger already lists from a parent's
-        announcement: that entry IS this job (no duplicate row)."""
-        with self._guard:
-            existing = self._running_for(_real(subject), exclude=job) if subject else None
-            if existing is not None and existing.get("announced"):
-                self._jobs.pop(job["id"], None)
-                existing["tool"], existing["argv"] = str(tool), [str(a) for a in argv]
-                existing["storeRoot"] = job.get("storeRoot", "")
-                existing["editingProducer"] = job.get("editingProducer", True)
-                existing.pop("announced", None)
-                return existing
-        return job
+            self._notify(job)
 
     def finish(self, job: dict[str, Any], exit_code: int, *, error: str | None = None) -> None:
         """Close the job. ``error`` is the failure's one-line reason (see
@@ -275,6 +281,7 @@ class JobLedger:
             job["finishedAt"] = job["finishedAt"] or now
             job["updatedAt"] = now
             self._sweep(now)
+            self._notify(job)
 
     # --- reading -----------------------------------------------------------------
 
@@ -283,6 +290,65 @@ class JobLedger:
         with self._guard:
             self._sweep(self._clock())
             return copy.deepcopy(list(self._jobs.values()))
+
+    def watch(self, after: str | None = None, *, timeout: float = 1.0,
+              output: str | None = None, store_root: str | None = None) -> dict:
+        """Wait for a ledger change without occupying a kernel worker.
+
+        Cursor and snapshot are captured under the same lock. The epoch makes
+        an old daemon's cursor immediately expire after restart. A bounded
+        heartbeat also exposes retained-job expiry and lets document readers
+        revalidate saved bytes and missing objects without a new build event.
+        """
+        deadline = time.monotonic() + max(0.0, min(float(timeout), 1.0))
+        normalized_output = _real(output) if output and store_root else ""
+        normalized_store = _real(store_root) if output and store_root else ""
+
+        def selected() -> list[dict[str, Any]]:
+            if not normalized_output or not normalized_store:
+                return list(self._jobs.values())
+            return [
+                job for job in self._jobs.values()
+                if job.get("tool") == "run"
+                and job.get("editingProducer", True)
+                and job.get("storeRoot") and _real(job["storeRoot"]) == normalized_store
+                and normalized_output in {_real(path) for path in job.get("outputs", [])}
+            ]
+
+        def cursor(jobs: list[dict[str, Any]]) -> str:
+            if not normalized_output or not normalized_store:
+                return f"{self.epoch}:{self._revision}"
+            digest = hashlib.sha256()
+            for value in (self.epoch, normalized_output, normalized_store):
+                digest.update(value.encode("utf-8", errors="surrogatepass"))
+                digest.update(b"\0")
+            for job in jobs:
+                digest.update(str(job.get("id") or "").encode("utf-8", errors="surrogatepass"))
+                digest.update(b"\0")
+                digest.update(str(int(job.get("ledgerRevision") or 0)).encode("ascii"))
+                digest.update(b"\0")
+            return f"{self.epoch}:scope:{digest.hexdigest()}"
+
+        with self._changed:
+            self._sweep(self._clock())
+            jobs = selected()
+            jobs_cursor = cursor(jobs)
+            while after == jobs_cursor:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                self._changed.wait(remaining)
+                self._sweep(self._clock())
+                jobs = selected()
+                jobs_cursor = cursor(jobs)
+            return {"jobsCursor": jobs_cursor, "jobs": copy.deepcopy(jobs)}
+
+    def _notify(self, job: dict[str, Any] | None = None) -> None:
+        """Called with the ledger lock held; no event history is retained."""
+        self._revision += 1
+        if job is not None:
+            job["ledgerRevision"] = self._revision
+        self._changed.notify_all()
 
     def _running_for(self, subject: str, *, exclude: dict[str, Any] | None = None) -> dict[str, Any] | None:
         for job in reversed(list(self._jobs.values())):
@@ -295,3 +361,4 @@ class JobLedger:
             finished = job.get("finishedAt")
             if finished is not None and now - finished > self._retain:
                 self._jobs.pop(key, None)
+                self._notify()

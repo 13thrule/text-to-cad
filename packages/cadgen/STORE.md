@@ -50,8 +50,8 @@ previews use the same immutable objects, with ephemeral request handles in
 that ledger (§9b); there is no preview directory or persistent session index.
 
 Operation-index keys include the operation scheme, build123d version, loaded
-OCP binding version and cadquery-ocp distribution version. Unknown runtime
-versions disable persistent op reuse; normal computation remains available.
+OCP binding version and cadquery-ocp-novtk provider distribution version.
+Unknown runtime versions disable persistent op reuse; normal computation remains available.
 These are input-index compatibility fields, never tree/component content or
 salts on document-byte keys. Computed results and disk hits share the same
 process LRU limit; dropping a RAM entry does not delete its persistent entry or
@@ -365,7 +365,10 @@ it (§10, Resets).
 Each with the failure it prevents.
 
 - **Hash at execution.** A closure file is hashed when the interpreter
-  executes it (an audit hook on `exec`), not after the build. Prevents: a file
+  executes it (an audit hook on `exec`), not after the build. The execution
+  window includes module initialization. The model loader records the semantic
+  hash of the exact buffer it compiled before executing it, so a replacement
+  during module loading cannot substitute a later file's identity. Prevents: a file
   edited during a long build being recorded with the bytes that did NOT run,
   which would make a stale result read as current forever.
 - **Publish order.** Objects first (components, then the complete tree), the
@@ -758,12 +761,13 @@ Inside a body, a child call returns at once with a `LazyCompound`
 (`cadgen.store.lazy`) — a `build123d.Compound` whose `.wrapped` is a property.
 The gate runs at the call: a stale child is submitted to the pool and the
 promise carries the job; a current child is a promise with no job. Geometry
-arrives on the first read of `.wrapped` — normally at the closing
+arrives on the first read of `.wrapped` — usually at the closing
 `Compound(children=[...])`, after every sibling has been submitted — so
 siblings build in parallel and the parent waits only for children it
 submitted itself. Deferred without forcing: `Pos/Rot/Location * child`,
 `.moved()`, `.label =`, `.color =`. Everything else (`.faces()`,
-`.bounding_box()`, booleans, `copy.copy`, `Compound(children=...)`) forces:
+`.bounding_box()`, booleans, `copy.copy`) forces. Most compound constructors
+also force; the exact-reference case below postpones native reconstruction:
 a body that reads a child before placing the next forces it there, and
 parallelism follows the dependencies the author wrote. Forcing waits for the
 job's complete final source result, materializes the pinned tree (§6), applies the deferred placement, label
@@ -798,6 +802,37 @@ Admission permits at most eight small unlinked trees,
 with 768 KiB of verified BREP bytes and 4 MiB of required eager-only SURF bytes in total;
 tree size and component/occurrence counts are also bounded. These limit extra
 work and retention, not native allocator RSS. No native cache or thread is added.
+
+An exact plain `Compound(children=list_or_tuple)` with absent/None `obj` and
+`parent` can instead preserve references through source publication. It accepts
+2–64 distinct, unparented, unforced exact `LazyCompound` inputs from one active
+build frame, with ordinary `Location`, `Pos` or `Rot` placements, string labels
+and ordinary colors. Custom material, face or tree overrides, mixed inputs and
+nested constructors use ordinary forcing. The original constructor validates
+arguments and performs attachment and rollback; queued pins resolve in that
+same attachment order. Each unique tree is verified once within that private
+constructor snapshot. Labels, inherited colors and placement values are captured
+when attachment ordinarily consumed them.
+
+The root temporarily has an internal `_ReferenceCompound` subtype. It remains
+an `isinstance(..., Compound)`, but exact `type(...) is Compound` introspection
+changes until native access. Reading, writing or deleting its native wrapper,
+copying, native operations and hierarchy edits install the ordinary native
+container and restore its plain Compound class. A child's native escape or
+hierarchy edit forces the parent first, preserving the difference between
+wrapper replacement and in-place shared-topology mutation. Unexposed inputs
+may be packaged as exact links after their frame exits; a different active
+frame cannot adopt them. A later packaging/native consumer verifies its pin
+again, and final publication still validates the entire required disk closure.
+
+The internal source publisher can read these links through a private scene
+adapter without constructing the initial XCAF document. It decodes each distinct
+geometry once for that scene and retains separate occurrence/prototype keys so
+adaptive topology counts stay unchanged. Ordinary STEP preparation owns its
+own private native document. No native object is retained across builds or
+shared with an independent authored consumer, and saved STEP read-back remains
+separate from the source tree. This is a constructor optimization within the
+existing object/index model, not a second assembly store.
 
 Every called child still owes all declared outputs, including a call whose
 geometry was discarded. A parent publishes its complete source result and
@@ -856,6 +891,18 @@ tree and bound to the saved bytes. Adjacent authored render modules remain
 independent. A saved-tree identity change clears incompatible selection and
 measurement state.
 
+An open editing tab holds one request against an opaque ledger cursor scoped
+to its output and store. A matching change wakes it immediately; unrelated jobs
+do not cause browser updates. The cursor and job snapshot are captured under
+the same lock, and a daemon restart changes the cursor's epoch. The daemon
+admits at most 32 read-only waiters, separate from build workers and CPU slots;
+saturation returns a snapshot without another thread and the client backs off
+to 500 ms. A one-second heartbeat
+still rechecks actual saved bytes and object completeness even with no build
+event. Each heartbeat verifies each unique tree once without retaining its
+BREP payloads. Closing or switching the tab aborts its request; a disconnected feed
+retries without starting a daemon or a model. This adds no persistent state.
+
 The preview is the model's final immutable source result. Parents may pin and
 materialize that result before the child's STEP save finishes. It becomes
 `record.tree` only after the model's publication checks and dependent saves
@@ -879,6 +926,28 @@ or source of geometry identity. Superseded or failed staging does not release
 the last complete view's ownership. No automatic-save producer exists in this
 runtime: all decorated runs have explicit completion obligations, so display
 supersession does not cancel their exports.
+
+## 9c. Pure parameterized features
+
+The optional `@feature` decorator declares a pure intermediate geometry
+factory, with the author preconditions and execution limits in
+[`FEATURES.md`](FEATURES.md). It declares no output, model record or job. The
+existing `index/op` maps its scheme/runtime/code/source/helper/global/default/
+closure/argument key to a canonical BREP object and attribute recipe. Objects
+contain no source paths. Hits verify disk content and reconstruct a private
+shape; misses, disabled reuse and hits apply the same eligible return codec.
+No native shape is retained between calls. Missing or corrupt objects re-miss
+and repair through the ordinary atomic object/index writes.
+
+Only a worker bootstrap preceding authored module loading can establish reuse
+trust. Generic embedded execution runs the body, and cannot upgrade an earlier
+untrusted snapshot. Guards are defensive checks within the declared pure-factory,
+unmodified-dependency contract, not a complete proof about arbitrary Python
+monkeypatches. Unsupported code or inputs execute normally. Code recipes are
+bounded to 256 entries and 1 MiB; no persistent trace or hidden dependency graph
+is added. Captured helper files stay in the model's closure on a hit, and full
+source-file digests conservatively invalidate other features in that file.
+Explicit model saves still obey every child/output/publication requirement.
 
 ## 10. Debugging
 

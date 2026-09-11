@@ -66,6 +66,7 @@ FORWARDED_ENV_VARS = (
     "LOCALAPPDATA",
     "PYTHONPATH",
     "CADGEN_FFMPEG",
+    "CADGEN_FEATURE_CACHE",
 )
 
 # The client's own ffmpeg, looked up once per process. Resolved HERE rather than
@@ -600,6 +601,37 @@ def _run_request(
         target.flush()
 
 
+
+
+def watch_jobs(after: str | None = None, *, output: str | None = None, store_root: str | None = None) -> dict | None:
+    """Read changes from the running ledger, with at most a one-second wait.
+
+    Like status(), this never starts or restarts a daemon. No model, source
+    path, build request or kernel worker is involved in this read-only request.
+    """
+    if not daemon_supported():
+        return None
+    try:
+        channel = _connect(daemon_address())
+    except OSError:
+        return None
+    try:
+        request = {"kind": "status", "jobsOnly": True, "after": after}
+        if output is not None and store_root is not None:
+            request.update(output=output, storeRoot=store_root)
+        if not _send_json(channel, request):
+            return None
+        message = _recv_json(channel, 2.0)
+        if not isinstance(message, dict):
+            return None
+        payload = message.get("status")
+        if (not isinstance(payload, dict) or not isinstance(payload.get("jobsCursor"), str)
+                or not isinstance(payload.get("jobs"), list)):
+            return None
+        return payload
+    finally:
+        with contextlib.suppress(OSError):
+            channel.close()
 
 
 def status() -> dict | None:

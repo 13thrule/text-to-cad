@@ -17,13 +17,13 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from cadgen.store.paths import store_root
-from cadgen.store.trees import get_tree, tree_complete
+from cadgen.store.trees import capture_tree
 
 from .backend import normalized_file_ref, require_contained
 from .build_progress import _daemon_jobs
 
 
-def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = None) -> dict:
+def _preview_target(root_path: str, file_ref: str) -> str:
     ref = normalized_file_ref(file_ref)
     if not ref or Path(ref).suffix.lower() not in {".step", ".stp"}:
         raise ValueError("An editing preview requires a STEP output path")
@@ -31,12 +31,31 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
     require_contained(root_path, target)
     if any(part.startswith(".") for part in Path(os.path.relpath(target, root_path)).parts):
         raise ValueError("Hidden output paths are not served")
-    file_path = target
+    return target
+
+
+def preview_update(root_path: str, file_ref: str, *, after: str | None = None) -> dict:
+    """Wake for ledger changes; each response still verifies artifact identity."""
+    target = _preview_target(root_path, file_ref)  # refuse invalid paths before waiting
+    from cadgen.daemon.client import watch_jobs
+
+    update = watch_jobs(after, output=os.path.realpath(target), store_root=os.path.realpath(store_root()))
+    if update is None:
+        return preview_status(root_path, file_ref)
+    result = preview_status(root_path, file_ref, jobs=update["jobs"])
+    result["feedCursor"] = update["jobsCursor"]
+    if update.get("jobsWatchLimited"):
+        result["feedLimited"] = True
+    return result
+
+
+def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = None) -> dict:
+    file_path = _preview_target(root_path, file_ref)
     # Match the catalog's root-relative file identity. An absolute path in a
     # provisional entry would be written into ?file= by the selection effect,
     # whose URL normalizer removes its leading slash.
     display_file = os.path.relpath(file_path, root_path).replace(os.sep, "/")
-    target = os.path.realpath(target)
+    target = os.path.realpath(file_path)
     active_store = os.path.realpath(store_root())
     listed = jobs if jobs is not None else _daemon_jobs(time.time(), max_age=0.08)
     matching = [
@@ -61,6 +80,7 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
     }
     # Only the newest accepted request can publish. The client may retain a
     # previously displayed tree while this request has no preview yet.
+    verified = {}
     for key, output_key in (("previews", "preview"), ("savedResults", "saved")):
         payload = (latest.get(key) or {}).get(target)
         if output_key == "saved" and not payload and latest.get("state") == "done":
@@ -75,14 +95,20 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
         if not isinstance(payload, dict):
             continue
         tree_hash = str(payload.get("tree") or "")
-        if not tree_complete(tree_hash):
+        if tree_hash not in verified:
+            try:
+                verified[tree_hash] = capture_tree(tree_hash, retain_payloads=False)[0]
+            except (OSError, ValueError, TypeError, KeyError, RuntimeError, OverflowError):
+                verified[tree_hash] = None
+        descriptor = verified[tree_hash]
+        if descriptor is None:
             result["error"] = "Preview geometry is no longer available in the cache"
             if output_key == "preview":
                 result["previewUnavailable"] = True
             continue
         result[output_key] = {
             "tree": tree_hash,
-            "kind": (get_tree(tree_hash) or {}).get("entryKind", "part"),
+            "kind": descriptor.get("entryKind", "part"),
             "sequence": int(payload.get("sequence") or 0),
             "url": f"/__cad/store?file={tree_hash}",
         }

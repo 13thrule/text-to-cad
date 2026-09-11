@@ -64,6 +64,15 @@ _SEMANTIC_HASH_CACHE: dict[str, tuple[int, int, str]] = {}
 _SEMANTIC_HASH_SETTLE_NS = 2_000_000_000
 
 
+def _semantic_source_bytes(source: bytes) -> str:
+    """Hash the source buffer a loader actually compiled, without rereading it."""
+    try:
+        dumped = ast.dump(ast.parse(source))
+    except (SyntaxError, ValueError, MemoryError, RecursionError):
+        return hashlib.sha256(source).hexdigest()
+    return "ast1:" + hashlib.sha256(dumped.encode("utf-8")).hexdigest()
+
+
 def _semantic_source_hash(path: Path) -> str:
     """Content hash that ignores comments, blank lines, and formatting for
     Python sources — so a comment/whitespace-only edit to a generator or a
@@ -93,12 +102,7 @@ def _semantic_source_hash(path: Path) -> str:
         cached = _SEMANTIC_HASH_CACHE.get(key)
         if cached is not None and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
             return cached[2]
-    try:
-        dumped = ast.dump(ast.parse(path.read_bytes()))
-    except (OSError, SyntaxError, ValueError, MemoryError, RecursionError):
-        result = _sha256_file(path)
-    else:
-        result = "ast1:" + hashlib.sha256(dumped.encode("utf-8")).hexdigest()
+    result = _semantic_source_bytes(path.read_bytes())
     if stat is not None and time.time_ns() - stat.st_mtime_ns > _SEMANTIC_HASH_SETTLE_NS:
         _SEMANTIC_HASH_CACHE[key] = (stat.st_mtime_ns, stat.st_size, result)
     return result
