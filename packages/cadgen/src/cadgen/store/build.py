@@ -511,6 +511,8 @@ def _publish_tree(
     progress: Any,
     extra: dict[str, Any] | None,
     repair_objects: bool = False,
+    descriptor_bounds: bool = False,
+    bbox_override: dict[str, list[float]] | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """Build the walk's missing components, ingest them, write the tree object."""
     from cadgen._internal.component_package import (
@@ -621,7 +623,12 @@ def _publish_tree(
     from cadgen.store.trees import tree_kind
 
     tree["entryKind"] = tree_kind(tree)
-    bbox = _bbox_from_shape(bbox_shape)
+    bbox = bbox_override
+    if bbox is None and descriptor_bounds and not force:
+        from cadgen.store._descriptor_bounds import try_bounds
+        bbox = try_bounds(walk.draft_tree(root_name=root_name))
+    if bbox is None:
+        bbox = _bbox_from_shape(bbox_shape)
     if bbox is not None:
         tree["bbox"] = bbox
     tree["stats"] = {"occurrenceCount": len(occurrences), "linkCount": len(links)}
@@ -832,6 +839,7 @@ def build_tree_through_step(
     extra: dict[str, Any] | None = None,
     logger: Any | None = None,
     on_preview: Callable[[str, dict[str, Any]], None] | None = None,
+    _internal_source_publication: bool = False,
 ) -> tuple[str, dict[str, Any], dict[str, Any], str]:
     """Write STEP and return ``(result_hash, result_tree, stats, step_hash)``.
 
@@ -846,11 +854,14 @@ def build_tree_through_step(
 
     1. Walk the compound (:func:`_walk_compound`): own occurrences, links,
        grouping — and, for each own component, the returned shape.
-    2. Assemble the document exactly as :func:`cadgen.store.materialize.materialize`
+    2. Prepare the document exactly as :func:`cadgen.store.materialize.materialize`
        would from the published tree (the in-memory draft flattened, links
        resolved from the store, own components read back from their BREP
-       bytes). Publish this final source result unconditionally and notify the
-       callback, which may await dependent saves, before writing the STEP.
+       bytes). A bounded all-link result under the internal source publisher
+       may capture and validate its private inputs here, then assemble ordinary
+       occurrences and groups after the callback. Publish the final source
+       result and notify the callback, which may await dependent saves, before
+       writing the STEP. Direct callbacks retain complete preparation first.
     3. Re-read the STEP with the scene loader, reusing only a complete verified
        canonical document of the exact emitted bytes unless forced. Map every
        own occurrence to its
@@ -883,6 +894,24 @@ def build_tree_through_step(
     progress = resolve_progress(progress)
     walk = _walk_compound(compound, root_name=root_name, progress=progress)
 
+    # Only cadgen's own source-publication callback opts in. Arbitrary direct
+    # on_preview callers retain their original construction/error ordering.
+    snapshot = None
+    prepared_document = None
+    captured_bbox = None
+    if _internal_source_publication and not force and not walk.shapes:
+        from cadgen.store._descriptor_bounds import capture_links
+        try:
+            snapshot = capture_links(walk.draft_tree(root_name=root_name)).capture_appearance()
+            # A scalar cache hit is not a native validity certificate. Preserve
+            # pre-callback rejection of malformed BREP/placements on every path.
+            prepared_document = snapshot.prepare_document()
+            captured_bbox = snapshot.bounds(shapes=prepared_document._shapes)
+        except (OSError, ValueError, TypeError, KeyError, RuntimeError, OverflowError):
+            snapshot = None
+            prepared_document = None
+            captured_bbox = None
+
     # The document, assembled the way materialize() assembles a published tree
     # so the bytes do not depend on whether the tree existed yet.
     own_shapes: dict[str, Any] = {}
@@ -892,9 +921,11 @@ def build_tree_through_step(
         if face_colors:
             shape.cad_face_ordinal_colors = face_colors
         own_shapes[cid] = shape
-    descriptor = flatten_tree(walk.draft_tree(root_name=root_name))
-    with timed("tree: prepare document"):
-        document = materialize_descriptor(descriptor, shapes=own_shapes, label=root_name)
+    descriptor = snapshot.descriptor() if snapshot is not None else flatten_tree(walk.draft_tree(root_name=root_name))
+    document = None
+    if snapshot is None:
+        with timed("tree: prepare document"):
+            document = materialize_descriptor(descriptor, shapes=own_shapes, label=root_name)
     from cadgen.store.trees import tree_complete
 
     # This is the FINAL authored result, whether or not a UI is attached.
@@ -903,11 +934,20 @@ def build_tree_through_step(
         tree_hash, tree, stats = _publish_tree(
             walk, bbox_shape=document, root_name=root_name,
             force=force, progress=progress, extra=extra,
+            descriptor_bounds=snapshot is None,
+            bbox_override=captured_bbox if snapshot is not None else None,
         )
         if not tree_complete(tree_hash):
             raise RuntimeError("source result components disappeared before publication")
         if on_preview is not None:
             on_preview(tree_hash, tree)
+    if snapshot is not None:
+        # Like today's already-constructed private document, these owned bytes
+        # survive direct-callback store deletion. Existing wait_children and
+        # pre-callback tree_complete checks still decide their normal failures.
+        # Never resolve a newer pin or consult the authored shapes here.
+        with timed("tree: prepare document"):
+            document = prepared_document.materialize(root_name)
     with timed(f"tree: assemble STEP {step_path.name}"):
         step_path.parent.mkdir(parents=True, exist_ok=True)
         step_hash = export_build123d_step_file(document, step_path, logger=logger)

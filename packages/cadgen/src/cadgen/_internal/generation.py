@@ -510,6 +510,7 @@ def _generate_part_outputs(
                     extra=tree_extra,
                     logger=logger,
                     on_preview=publish_preview,
+                    _internal_source_publication=True,
                 )
         else:
             with logger.timed("tree: components"):

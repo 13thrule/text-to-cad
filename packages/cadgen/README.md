@@ -51,6 +51,12 @@ parent can consume a child's complete source result before that child's STEP
 save, but waits for every called child's declared outputs before saving itself.
 The child's job carries the exact immutable pin; asynchronous consumers never
 look up a newer model record to resolve it.
+For a small result made entirely of pinned child links, the build runtime
+captures verified geometry and appearance and validates private native shapes
+before publication. It can then assemble the private STEP document after the
+source event. Ordinary model code, child-output waiting and saved-byte readback
+keep their existing semantics; unsupported or forced builds use the ordinary
+order. The bounds and ownership limits are specified in [`STORE.md`](STORE.md) §6.
 
 - Nothing a renderer reads references the source tree: the sidecar's
   kinematics are resolved numbers and labels, and choreography is the

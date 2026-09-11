@@ -466,6 +466,37 @@ Decided mechanically from the returned geometry and occurrence metadata.
   Rotation still requires its own tight box; control-polygon bounds are not
   substituted. Disabled, memory-hit and disk-hit paths evaluate the same
   origin-normalized function, and cached numeric arrays are never mutated.
+- A bounded descriptor composed entirely of pinned links may instead measure
+  exact component bounds from verified canonical BREP objects. The existing
+  `op` index stores only six finite numbers, keyed by BREP digest, all 16
+  placement doubles without rounding, the bounds algorithm and the actual
+  native/binding identity. It uses the same private reconstruction, placement,
+  native leaf traversal and final numeric extrema merge as the whole document;
+  rotated local AABBs and raw native-box merges are not substitutes. Missing,
+  corrupt, unsupported or invalid inputs use the ordinary whole-document path;
+  forced builds bypass this reuse.
+- The internal source publisher may capture that complete descriptor and its
+  verified tree/BREP/SURF bytes plus normalized face-color recipes before its
+  callback. Every unique BREP and exact native placement is validated privately
+  before publication even when numeric bounds hit; scalar cache entries never
+  certify native validity. These same owned prototypes supply bounds misses and
+  the later ordinary occurrence/group assembly. Geometry, names, placement,
+  grouping, face colors and occurrence PBR remain the captured values; no live
+  authored shape, latest child record or store object is read after the callback
+  to construct that private document. The normal prepublication disk-closure
+  check and declared-child output waits remain in place. Already captured
+  ownership survives subsequent cache deletion just as an already materialized
+  document does. Arbitrary direct preview callbacks retain the ordinary order.
+- Admission allows at most 64 occurrences, 16 components, 32 trees and depth 32;
+  aggregate tree bytes and the flattened descriptor each have a 64 KiB limit.
+  BREP bytes are limited to 768 KiB, SURF bytes to 4 MiB, and retained appearance
+  recipes to 256 KiB. This bounds additional encoded payload/recipe retention to
+  5.125 MiB, plus bounded Python structures and invocation-owned native shapes;
+  it is not a native allocator RSS guarantee. No native shape enters an op
+  cache. A failed optional preparation releases its private owners before
+  falling back. Larger, new-own-component and unsupported results keep the
+  ordinary preparation/publication order. STEP correspondence checks and the
+  separate canonical readback of newly emitted saved bytes are unchanged.
 
 Operation keys serialize current geometry from private topology, normalizing
 only non-geometric `Free`/`Checked` flags. Native mutations must change the key.
