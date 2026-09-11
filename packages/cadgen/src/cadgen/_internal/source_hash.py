@@ -391,7 +391,7 @@ def evict_foreign_first_party_modules(own_roots) -> tuple[str, ...]:
         if name.partition(".")[0] in protected or name in _NEVER_EVICTED:
             continue
         module = sys.modules.get(name)
-        entries = list(getattr(module, "__path__", None) or ())
+        entries = _namespace_package_entries(module)
         if entries and all(_owned(Path(str(entry)).resolve()) for entry in entries):
             continue
         foreign.append(name)
@@ -399,6 +399,33 @@ def evict_foreign_first_party_modules(own_roots) -> tuple[str, ...]:
     for name in evicted:
         sys.modules.pop(name, None)
     return evicted
+
+
+def _namespace_package_entries(module: object) -> tuple[str, ...]:
+    """Snapshot a namespace package's paths, including an orphaned child.
+
+    ``importlib``'s ``_NamespacePath`` recalculates from its parent package when
+    iterated. First-party eviction can intentionally remove a foreign namespace
+    parent while retaining a nested package that belongs to the next model. If
+    that retained path is invalidated before the next hygiene pass, iteration
+    raises ``KeyError(parent)``. Its last calculated ``_path`` is still the
+    child's exact import path and is sufficient to classify and evict that stale
+    module. Ordinary namespace packages continue through the public iterator;
+    the private snapshot is only the recovery path for an unusable iterator.
+    """
+    search_paths = getattr(module, "__path__", None)
+    if search_paths is None:
+        return ()
+    try:
+        return tuple(str(entry) for entry in search_paths)
+    except (KeyError, TypeError):
+        stale_paths = getattr(search_paths, "_path", None)
+        if stale_paths is None:
+            return ()
+        try:
+            return tuple(str(entry) for entry in stale_paths)
+        except (KeyError, TypeError):
+            return ()
 
 
 def _first_party_namespace_packages() -> set[str]:
@@ -411,13 +438,7 @@ def _first_party_namespace_packages() -> set[str]:
     for name, module in list(sys.modules.items()):
         if module is None or getattr(module, "__file__", None):
             continue
-        search_paths = getattr(module, "__path__", None)
-        if search_paths is None:
-            continue
-        try:
-            entries = [str(entry) for entry in search_paths]
-        except TypeError:  # _NamespacePath can raise while its finder is mid-update
-            continue
+        entries = _namespace_package_entries(module)
         if entries and all(_is_first_party_directory(entry) for entry in entries):
             names.add(name)
     return names
