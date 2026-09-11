@@ -193,6 +193,14 @@ on every call, even when compile submission is forbidden. This is not a
 claim that cold import improved or that an already-resident daemon has the
 same startup cost as this transient-process study.
 
+The later [raw compilation cleanup](COLD-COMPILE-CLEANUP-20260911.md) removes
+unused workspace discovery, adaptive classification and compound construction.
+Its resident-interpreter nine-part compile median moves from 1,094.86 to
+1,079.46 ms; no daemon IPC or fresh interpreter startup is included. All 36
+calls preserve exact canonical outputs. This does not revise the public-read
+table above. Measured surface extraction still takes about 758 ms and STEP
+parsing about 255 ms, motivating a separate geometry/display publication review.
+
 ## FreeCAD on the same STEP
 
 [The FreeCAD report](results/freecad-final-20260910.json) uses FreeCAD 1.1.1,

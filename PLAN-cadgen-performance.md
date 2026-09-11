@@ -184,10 +184,14 @@ last runtime changes.
   STEP inspection/re-export, STL, GLB, posed PNG and animated MP4 work with
   code-index reads forbidden. All 22 served viewer assets and actual serving
   process provenance match the isolated installation.
-  A subsequent private cleanup is evaluating dead repository source discovery
-  and raw-import intermediates in document compilation. It must preserve native
-  flags and exact canonical bytes as well as source-free reader boundaries;
-  this is ongoing implementation work, not a measured improvement yet.
+  The subsequent [raw compile cleanup](scripts/bench/cadgen-performance/COLD-COMPILE-CLEANUP-20260911.md)
+  is integrated after independent review: source discovery, unused adaptive
+  metadata and discarded compound construction are skipped for raw documents.
+  All 36 resident-worker compiles preserve exact trees and object closures;
+  the nine-part median moves from 1,094.86 to 1,079.46 ms. Nine focused tests
+  and four package-boundary tests pass. Committed as `d706cf1f0`, it passes all
+  1,628 package tests and a fresh isolated-wheel export/viewer check. This modest
+  gain does not remove process startup or surface extraction.
   The medium repeated-assembly lifecycle already exercises selection, orbit,
   animation, file switches and six saved-file replacements with stable owned
   geometry/GPU allocation totals.
@@ -201,6 +205,19 @@ last runtime changes.
 - Keep the procedural preview target visible. Finer invalidation uses existing
   decorated model boundaries; multiple functions in one file still share that
   file's source hash. No cache/session helpers are added to model authors.
+- Evaluate separating exact geometry publication from display-surface derivation.
+  The resident cold-compile study attributes about 758 ms to first-time SURF
+  extraction and 255 ms to STEP parsing. The architectural review must define
+  complete BREP-backed identity, immutable intrinsic face appearance, lazy
+  artifact-derived surface jobs, deletion recovery and compatibility cutover
+  before implementation. Store expansion is authorized; incomplete native
+  geometry, source-dependent saved readers and author-managed cache utilities
+  remain unacceptable. Measure actual public read/edit savings separately from
+  work merely deferred until the first display request. The
+  [concrete contract and proof gates](scripts/bench/cadgen-performance/DEFERRED-SURF-CONTRACT-20260911.md)
+  now authorize a bounded private prototype; no production schema change has
+  landed. A separate tiny native-codec study investigates the real unreadable
+  BREP fallback, and a client review maps surface and tessellation identities.
 - Shared mutable backend prototypes were rejected after native mutation tests.
   The runtime retains canonical bytes and reconstructs private shapes for each
   consumer. That preserves cache-state equivalence and is not a headless-kernel

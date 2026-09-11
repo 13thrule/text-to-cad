@@ -3,6 +3,7 @@
 *-logs/
 
 # Original copies of losslessly archived reports remain available locally.
+/cold-compile-cleanup-20260911.json
 /descriptor-bounds-interleaved-20260911.json
 /hand-canonical-l1-clipping-locked-20260910.json
 /hand-canonical-l1-instance-reuse-locked-20260910.json
@@ -27,6 +28,7 @@
 /imported-before-unseen-final-20260910.json
 /installed-wheel-2709968dc-20260911.json
 /installed-wheel-8971f760d-20260911.json
+/installed-wheel-cold-compile-20260911.json
 /installed-wheel-current-20260910.json
 /installed-wheel-descriptor-bounds-20260911.json
 /installed-wheel-viewer-9be4f5424-20260911.json

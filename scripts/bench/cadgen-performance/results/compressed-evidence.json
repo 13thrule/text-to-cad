@@ -4,6 +4,14 @@
   "note": "Raw bytes preserved exactly; gunzip -k restores the original local report paths. Embedded references and hashes identify the original uncompressed bytes.",
   "files": [
     {
+      "path": "cold-compile-cleanup-20260911.json",
+      "archive": "cold-compile-cleanup-20260911.json.gz",
+      "bytes": 940109,
+      "sha256": "e0e5391a2a2db9e3385c745a82ac948f7de4a0620bdccadfb7cbab62fe2359c4",
+      "archiveBytes": 65766,
+      "archiveSha256": "db0a1eac9c036ca5441bb6ec2e78a777e8f98d5eadc4a87d43cc3d0b00006343"
+    },
+    {
       "path": "descriptor-bounds-interleaved-20260911.json",
       "archive": "descriptor-bounds-interleaved-20260911.json.gz",
       "bytes": 4097147,
@@ -194,6 +202,14 @@
       "sha256": "975236abd59b2a73ab2a0399f2051a70dc14d767a5a97a2169c537d7dd16664c",
       "archiveBytes": 29035,
       "archiveSha256": "d67292ceb761b88eef729cb0bed1e73fafcaad32e3b42963790ff442d971e295"
+    },
+    {
+      "path": "installed-wheel-cold-compile-20260911.json",
+      "archive": "installed-wheel-cold-compile-20260911.json.gz",
+      "bytes": 148112,
+      "sha256": "5e656f60d9d742f60be8b36f94a74576dfbdbce24cd51e05625ac50c8892cd2a",
+      "archiveBytes": 31189,
+      "archiveSha256": "244bbc59eaf0e83cc4a84adb31523a3484632f5d3dc6ef11f61d20d595d4676f"
     },
     {
       "path": "installed-wheel-current-20260910.json",

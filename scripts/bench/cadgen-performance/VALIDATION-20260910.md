@@ -13,6 +13,24 @@ nine-part planetary assembly and modest repeated-parts fixtures. The user
 stopped further tendon-hand stress tests on September 11; prior hand results
 remain historical evidence, without a further full-hand acceptance gate.
 
+The latest backend checkpoint is `d706cf1f0`, the independently reviewed
+[raw compilation cleanup](COLD-COMPILE-CLEANUP-20260911.md). All **1,628 package
+tests** pass in 260.027 seconds, including viewer backend coverage, plus 13
+focused/boundary checks. [Logs, commands and exact source hashes](results/package-cold-compile-20260911.json)
+are retained. The canonical bundle freshness hook passes. One test-owned daemon
+reported by the suite was terminated after completion and verified exited.
+
+The [fresh installed-wheel proof](results/installed-wheel-cold-compile-20260911.json.gz)
+matches all 217 installed files to source and wheel, including 183 Python and
+29 runtime files. Wheel SHA-256 is
+`acfad8256ed78b449da246466d1bd9bc58636a024ba0fcd430823a5cf1042e98`.
+Cold/warm linked-child builds, exact pins, source-free inspect/STEP/STL/GLB,
+posed PNG and a three-frame MP4 pass with code-index reads forbidden. The
+rendered image and first/last animation frames were visually checked. All 22
+HTTP assets and actual serving-process provenance match the isolated install;
+the owned validation server exited. Earlier checkpoints below remain separate
+evidence. Geometry/display publication separation is only under review.
+
 On `9be4f5424`, **1,015 shared JavaScript tests and 506 viewer tests pass**.
 The changes cover unchanged selection identity, exact mesh/selector publication,
 reservation ownership through scene adoption, partial-failure teardown,
