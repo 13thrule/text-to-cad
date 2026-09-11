@@ -1,14 +1,21 @@
 # Deferred assembly feasibility and private bounds spike
 
-**Decision:** do not defer ordinary authored `Compound` construction. A smaller
-post-body bounds optimization is feasible for a validated canonical descriptor,
-using the existing `index/op` value mechanism. The private spike below establishes
-exact bounds parity on seven fixtures; it does not establish an end-to-end speedup
-or authorize publication reordering.
+**Decision:** preserve ordinary authored `Compound` construction. The bounded
+post-body candidate passed exact-output checks and an interleaved nine-part
+comparison, and the provider and internal publication increment passed independent
+review and are integrated. The implementation does not defer authored native access or change
+saved-file semantics. Its preview gain is modest; completed saves remain far
+above 250 ms.
 
-Reviewed Python: `8971f760dcf7f5ccd0dd29a19d67201ebd3523e6`. All 182 copied
-`cadgen` Python files match both current source and the measured `2709968dc`
-archive. No production, dependency, or archived runtime was changed.
+The initial review used Python `8971f760dcf7f5ccd0dd29a19d67201ebd3523e6`,
+whose 182 files matched the measured `2709968dc` archive. The final comparison
+adds the identical later operation-cache v7 LRU/native-identity correction
+(`a862c3d1e`, file SHA `20db00495955e00911e08d00abc66811edc09009070412974b8a1ec71ccd0464`)
+to each fresh private copy. The measured archive was preserved; this investigation
+made no production, dependency, bundle or Git changes. The reviewed production
+delta was subsequently applied with every base and candidate file hash verified
+and committed as `47b2f94e6`. Its 22 focused tests, all 1,619 integrated package
+tests and the source-free installed-wheel export proof pass.
 
 ## Why transparent Compound deferral is unsound
 
@@ -135,22 +142,77 @@ observation is therefore not an end-to-end baseline or a justified savings claim
 All artifacts and store writes are under `models/tmp/descriptor-bounds-spike-20260911`;
 the fresh private runtime is under `/private/tmp`, not the measured archive.
 
-## One bounded next implementation plan
+## Final private implementation and comparison
 
-First integrate only a validated descriptor-bounds provider into a private copy
-of [`build_tree_through_step`](../../../packages/cadgen/src/cadgen/store/build.py#L886),
-keeping the existing document preparation and publication order. Reuse
-`index/op` with an explicit kernel/bounds algorithm identity; retain normal
-forced derivation and whole-document fallback. Compare complete tree bytes and
-STEP bytes across cold, warm, disabled memo, force, deletion and repair paths,
-including changed placements, face colors, nested links and internal compounds.
+The provider uses `component_bbox.canonical_full_placement.algorithm1` through
+the existing numeric op index, with the actual native/binding identity in its
+key. A separate internal-only increment captures verified tree/BREP/SURF bytes,
+full occurrence/group metadata and immutable face-color recipes. Before the
+source callback, it decodes every unique native BREP, privately copies topology
+for appearance variants, and validates every native placement. Those same
+prototypes supply bounds misses; only the ordinary occurrence/group assembly
+moves after the callback. A warm scalar hit never certifies native validity.
+Direct callbacks, force, new own components and unsupported inputs retain the
+ordinary order. The existing child-output wait and disk-closure check stay in
+place, with no post-callback lookup of a newer child or reconstruction input.
 
-Only after that proof should a separate change consider moving private document
-preparation after source publication. It must capture geometry **and** appearance
-before the callback, reverify consumed pins, preserve output waiting and errors,
-and test caller mutation, cache deletion/repair, cancellation and reentrancy
-during that wait. New own components without complete verified addresses and
-any unsupported descriptor should retain today's order. STEP export,
-authored-to-written correspondence and truthful canonical readback remain
-unchanged. This spike proves the bounds measurement boundary; it does not yet
-prove that broader publication lifecycle or a useful complete-build speedup.
+Limits are 64 occurrences, 16 components, 32 trees and depth 32; 64 KiB each for
+aggregate tree bytes and flattened descriptor, 768 KiB BREP, 4 MiB SURF and
+256 KiB retained appearance recipes. Accounted retained payload/recipes total
+at most 5.125 MiB, plus bounded Python/native overhead. This is not an RSS cap.
+A failed optional preparation releases its owners before ordinary fallback.
+
+The [summary and all sample ranges](results/descriptor-bounds-interleaved-summary-20260911.json)
+and [compressed complete proof](results/descriptor-bounds-interleaved-20260911.json.gz)
+record the single comparison at **01:50:54.314–01:52:21.211 UTC**. Each condition
+used one warm root interpreter and its own two-worker daemon/store. Kernel
+startup, controller waiting and source writes were outside each build timer;
+normal child IPC, source preview and declared-output completion were included.
+All 96 calls succeeded. Each checked the actual root and nine child STEP files;
+all 32 cross-condition source/document/STEP/pin comparisons matched. Every owned
+daemon exited zero, source bytes/mtimes were restored, and runtime hashes stayed
+fixed. A preliminary IPC-permission failure performed zero CAD calls and is
+preserved separately in the proof.
+
+Median milliseconds; each cell is **preview / complete call**:
+
+| Edit | Common-v7 baseline | Bounds provider | Provider + internal deferral |
+|---|---:|---:|---:|
+| Repeated geometry | 221.1 / 421.5 | 204.8 / 406.9 | 205.8 / 421.7 |
+| Repeated placement | 190.6 / 398.8 | 168.6 / 372.0 | 163.9 / 375.4 |
+| New geometry | 235.4 / 655.3 | 227.6 / 659.7 | 214.8 / 649.4 |
+| New placement | 185.6 / 612.9 | 171.5 / 600.7 | 160.7 / 597.9 |
+
+There are three trials per repeated edit, and three distinct never-seen values
+executed once each per condition. Order repeats baseline/provider/lifecycle,
+lifecycle/provider/baseline, then provider/baseline/lifecycle: interleaved but
+not perfectly balanced by position. User/host activity was uncontrolled. No
+samples were removed: provider repeated geometry included a 270.5 ms preview /
+622.1 ms complete outlier; baseline and lifecycle also had save-time outliers.
+This is a small comparison, not a tail-latency guarantee.
+
+Provider preview improved in 11/12 paired edits; the full candidate improved in
+12/12. Median paired preview changes for the full candidate were −16.2, −26.7,
+−22.2 and −24.2 ms for the four rows above. Complete-call median differences
+were approximately neutral for repeated geometry and 6–23 ms lower elsewhere;
+individual saves varied substantially. Native readback of new output bytes
+still took about 250–257 ms and remains the larger save-stage target. The result
+supports the narrow preview optimization, not an assertion that document
+construction was eliminated or that every save became faster.
+
+The private provider passed 10 tests/20 full equality rows; the final lifecycle
+passed 21 tests/40 full equality rows across box, holes, NURBS and the moderate
+planetary fixture. These compare complete source trees, STEP bytes, canonical
+document hashes, face/PBR appearance and occurrence/node maps. Real cached scalar
+entries for malformed BREP and singular placements still produced the same
+pre-preview failure as the ordinary path, with no preview callback or STEP file.
+Mutation, reentrancy, cache deletion, discarded-child output failure, force,
+disabled memo, byte budgets and fallback ownership are covered.
+
+The production-ready delta uses only small generated fixtures and ordinary repo
+test support: 22 focused tests pass, including distinct face-color components
+sharing one BREP and requiring separate private topology. Its executable runtime
+AST matches the measured lifecycle candidate after removing documentation and
+type annotations. Package-contained docs, tests, exact base/file hashes and the
+ready patch are preserved with the final proof. No extra timing was run for this
+packaging-only cleanup.

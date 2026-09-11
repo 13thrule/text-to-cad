@@ -13,7 +13,7 @@ nine-part planetary assembly and modest repeated-parts fixtures. The user
 stopped further tendon-hand stress tests on September 11; prior hand results
 remain historical evidence, without a further full-hand acceptance gate.
 
-On `8971f760d`, **1,015 shared JavaScript tests and 486 viewer tests pass**.
+On `9be4f5424`, **1,015 shared JavaScript tests and 506 viewer tests pass**.
 The changes cover unchanged selection identity, exact mesh/selector publication,
 reservation ownership through scene adoption, partial-failure teardown,
 restoration and stale-context rejection. Independent review passed. Production
@@ -22,10 +22,26 @@ skip; two local-IPC modules were rerun with the required sandbox allowance.
 Docs checks pass, with the Next build rerun with local helper ports enabled.
 The canonical version and skill pins remain `0.5.1`.
 
-The latest broad Python run passed **1,593 package tests**, including the viewer
-backend and bounded sibling preparation. Its 334.801-second duration is
-functional validation, not a benchmark. Python behavior is unchanged by
-`8971f760d`. The 24 browser-harness helper tests pass at their previous
+The earlier broad Python run passed **1,597 package tests** on `a862c3d1e`,
+including the viewer backend, bounded sibling preparation and four new op-cache
+regressions. Its 274.355-second duration is functional validation, not a benchmark.
+All RAM insertions now honor the operation cache's existing LRU limit, including
+disk hits; evicted shapes remain valid for their private consumers. Operation
+scheme 7 binds persistent reuse to actual build123d/OCP/distribution versions;
+unknown identities still compute without persistent reuse. The 56 focused
+op/signature tests and 25 package/import boundary tests also pass. These changes
+were independently reviewed. The subsequent bounded all-link publication change
+also passed independent review and 22 focused tests in this worktree. Its
+96-build comparison validates source trees, canonical documents, actual root
+and child STEP bytes and exact pins. The integrated change, now committed as
+`47b2f94e6`, passes **1,619 package tests** in 289.190 seconds, including the
+viewer backend; [the raw check record](results/package-descriptor-bounds-20260911.json)
+preserves logs, commands and exact candidate hashes. Four package-boundary
+checks pass, and the commit's canonical
+bundle freshness hook passes. The test runner reported a still-running daemon;
+that exact test-owned process was terminated after suite completion. Existing
+user viewers were preserved. These are functional results, not timed benchmarks.
+The 24 browser-harness helper tests pass at their previous
 checkpoint and were rerun successfully after the alert fix; adaptive satisfaction
 requires settled quality and no unmet targets.
 
@@ -42,6 +58,21 @@ viewer exited normally. This is a functional packaging check, not a timing
 measurement. The [preceding wheel checkpoint](results/installed-wheel-2709968dc-20260911.json.gz)
 and [earlier wheel proof](results/installed-wheel-current-20260910.json.gz) remain
 separate historical evidence. Later runtime changes require relevant validation.
+
+The [final installed-wheel proof](results/installed-wheel-descriptor-bounds-20260911.json.gz)
+passes with operation-cache v7, bounded all-link publication and the `9be4f5424`
+viewer. All 217 package files match source, wheel and isolated installation;
+183 are Python files and 29 are runtime files. Wheel SHA-256 is
+`b5ca4ef01f25ad6a70fed76acae57656b7e01ebec8a73675657446ce90320385`.
+Two ordinary decorated children produce an all-link root with exact child pins
+and byte-identical cold/warm outputs. After source and the build store are
+deleted, cold/warm inspect, STEP re-export, STL, GLB, posed PNG and a three-frame
+MP4 pass with model/output index reads forbidden. Source and cold-imported
+document trees agree. The image and first/last video frames were visually
+reviewed. Actual serving-process provenance confirms installed module paths,
+hashes and kernel-free imports; all 22 HTTP assets match source build, wheel and
+installation. The owned validation server was stopped. No repository runtime,
+dependency or bundle changed during this functional check.
 
 The [integrated medium adaptive check](results/viewer-nine-adaptive-ownership-integrated-20260910.json.gz)
 passes all 13 assertions with no page/HTTP errors and all requested detail

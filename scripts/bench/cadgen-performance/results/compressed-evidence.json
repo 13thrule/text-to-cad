@@ -4,6 +4,14 @@
   "note": "Raw bytes preserved exactly; gunzip -k restores the original local report paths. Embedded references and hashes identify the original uncompressed bytes.",
   "files": [
     {
+      "path": "descriptor-bounds-interleaved-20260911.json",
+      "archive": "descriptor-bounds-interleaved-20260911.json.gz",
+      "bytes": 4097147,
+      "sha256": "16863381a149793fad95c3fd28df839c7e5bfe965c9737472af1b461960fecd0",
+      "archiveBytes": 371124,
+      "archiveSha256": "e191cab880fc7643f63c5d3a8fde3d998d0a040eed07f96adde239a14b2e59f1"
+    },
+    {
       "path": "hand-canonical-l1-clipping-locked-20260910.json",
       "archive": "hand-canonical-l1-clipping-locked-20260910.json.gz",
       "bytes": 373107,
@@ -194,6 +202,14 @@
       "sha256": "0bf390003e48584298dcb6dcbdd550f4d9b5a562a5d94a52cc72a77278a3ecda",
       "archiveBytes": 28951,
       "archiveSha256": "af81d9778c77b359d3401527e903c1db433da39921ae899f4fd78fe2e2b4d4c3"
+    },
+    {
+      "path": "installed-wheel-descriptor-bounds-20260911.json",
+      "archive": "installed-wheel-descriptor-bounds-20260911.json.gz",
+      "bytes": 148116,
+      "sha256": "064c1b3f02246c6a67b5c4470b0b3d0886b91d3be4a28ae31569410a49a73cdc",
+      "archiveBytes": 31189,
+      "archiveSha256": "151792ee570e1b68415a0399ed8a803730496a3939f0f81b8d7bb46d09063d80"
     },
     {
       "path": "installed-wheel-viewer-9be4f5424-20260911.json",

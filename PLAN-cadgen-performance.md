@@ -2,6 +2,9 @@
 
 ## Execution status — in progress, September 11, 2026
 
+See the [plain-language results summary](scripts/bench/cadgen-performance/SUMMARY-20260911.md)
+for the measured impact, FreeCAD comparison and current play viewer.
+
 The initial implementation below is committed on `codex/tendon-hand-performance`, based on the
 reviewed `codex/tendon-hand-preview` tip `7aa3e85be`. The requested branch is
 checked out in the primary workspace; this isolated worktree preserves that
@@ -31,6 +34,12 @@ checkout. No release version change is part of this work.
   materialization costs about 4 ms on the nine-part fixture. Op-memo misses
   reuse their verified ephemeral reconstruction, removing one BREP read while
   storing only canonical bytes and attribute recipes.
+- Bounded pinned-link publication: implemented and independently reviewed.
+  Exact component bounds use the existing numeric op index. Verified bytes,
+  appearance and invocation-owned native prototypes are captured before source
+  publication; ordinary occurrence/group assembly can then follow it. There is
+  no model-author API change. All 96 moderate comparison builds agree on actual
+  STEP outputs and exact pins, and 22 focused ownership/fallback tests pass.
 - Daemon memory admission: implemented; includes suspended parents, descendants,
   retiring workers and dependency headroom. Focused tests and a real three-level
   one-slot build pass.
@@ -146,18 +155,39 @@ last runtime changes.
   `2709968dc` comparison passes all 64 calls and exact-output/pin checks, but
   new-geometry saves still regress in that window; its preview median is 267 ms.
   See the [qualified split checkpoint](scripts/bench/cadgen-performance/WARM-COMPARISON-20260910.md#later-split-only-checkpoint-september-11).
-  A private, bounded exact-bounds provider is under review; any publication-order
-  change must preserve owned geometry/appearance snapshots and child-output
-  waiting. It does not remove new-output STEP readback. See the
+  The bounded exact-bounds provider and internal publication increment are now
+  integrated after independent review. They preserve owned geometry/appearance
+  snapshots, native prevalidation and child-output waiting. A separate interleaved
+  study with identical operation-cache v7 code reduces new geometry preview from
+  235.4 to 214.8 ms and new placement from 185.6 to 160.7 ms. Save medians improve
+  by only 6–15 ms for these new values, with mixed individual results. This does
+  not remove new-output STEP readback or causally resolve the older cross-version
+  save regression. See the
   [feasibility analysis](scripts/bench/cadgen-performance/DEFERRED-ASSEMBLY-FEASIBILITY-20260911.md).
   Current package validation passes
-  1,593 Python tests, 1,015 shared JS tests and 506 viewer tests. The
+  1,597 Python tests, 1,015 shared JS tests and 506 viewer tests. The
   `8971f760d` installed wheel/source-free export checks pass, with 182 Python
   files and 29 runtime files matching source, wheel and installation. Later
   runtime changes require their relevant checks again.
   The `9be4f5424` viewer also passes an isolated installed-wheel check: all
   22 assets match source build, staging, wheel, installation and HTTP, with
   module provenance captured inside the actual serving process.
+  Subsequent backend commit `a862c3d1e` makes operation-cache disk hits honor
+  the existing RAM limit and binds scheme-7 keys to actual installed kernel
+  identities. The integrated bounds implementation is committed in `47b2f94e6`;
+  all 1,619 package tests pass, including the 22 new focused tests, and package
+  boundary checks pass. The commit's bundle freshness hook also passes.
+  The [final full wheel proof](scripts/bench/cadgen-performance/results/installed-wheel-descriptor-bounds-20260911.json.gz)
+  passes with 217 installed package files exactly matching the wheel and source.
+  Its two decorated children exercise all-link composition, exact pins and
+  unchanged cold/warm outputs. After deleting source and the build store, saved
+  STEP inspection/re-export, STL, GLB, posed PNG and animated MP4 work with
+  code-index reads forbidden. All 22 served viewer assets and actual serving
+  process provenance match the isolated installation.
+  A subsequent private cleanup is evaluating dead repository source discovery
+  and raw-import intermediates in document compilation. It must preserve native
+  flags and exact canonical bytes as well as source-free reader boundaries;
+  this is ongoing implementation work, not a measured improvement yet.
   The medium repeated-assembly lifecycle already exercises selection, orbit,
   animation, file switches and six saved-file replacements with stable owned
   geometry/GPU allocation totals.

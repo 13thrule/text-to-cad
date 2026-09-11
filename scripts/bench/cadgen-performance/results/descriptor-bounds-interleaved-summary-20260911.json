@@ -1,0 +1,3207 @@
+{
+  "startedUtc": "2026-09-11T01:50:54.314484+00:00",
+  "finishedUtc": "2026-09-11T01:52:21.211021+00:00",
+  "calls": 96,
+  "fullCrossConditionComparisons": 32,
+  "stepFilesCheckedPerCall": 10,
+  "allChecksPassed": true,
+  "commonOpMemo": {
+    "sha256": "20db00495955e00911e08d00abc66811edc09009070412974b8a1ec71ccd0464",
+    "source": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen/src/cadgen/_internal/op_memo.py",
+    "variants": [
+      "baseline",
+      "provider",
+      "lifecycle"
+    ],
+    "scope": "Identical root-owned RAM admission and actual native dependency identity correction; op salt v7. All benchmark stores remain unprimed/fresh. Historical measured archive and earlier parity spike unchanged."
+  },
+  "groups": {
+    "primed-geometry": {
+      "indices": [
+        6,
+        11,
+        16
+      ],
+      "conditions": {
+        "baseline": {
+          "milliseconds": {
+            "median": 421.48470785468817,
+            "min": 414.92883395403624,
+            "max": 428.9451246149838,
+            "samples": [
+              421.48470785468817,
+              414.92883395403624,
+              428.9451246149838
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 221.11475002020597,
+            "min": 217.50758402049541,
+            "max": 222.07154193893075,
+            "samples": [
+              221.11475002020597,
+              217.50758402049541,
+              222.07154193893075
+            ]
+          },
+          "sourceResultMs": {
+            "median": 220.99475003778934,
+            "min": 217.39662485197186,
+            "max": 221.96587454527617,
+            "samples": [
+              220.99475003778934,
+              217.39662485197186,
+              221.96587454527617
+            ]
+          },
+          "savedMs": {
+            "median": 411.33879078552127,
+            "min": 403.2135419547558,
+            "max": 417.580374982208,
+            "samples": [
+              411.33879078552127,
+              403.2135419547558,
+              417.580374982208
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 8.0,
+              "min": 7.0,
+              "max": 9.0,
+              "samples": [
+                9.0,
+                7.0,
+                8.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 82.0,
+              "min": 79.0,
+              "max": 82.0,
+              "samples": [
+                82.0,
+                79.0,
+                82.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 17.0,
+              "min": 17.0,
+              "max": 18.0,
+              "samples": [
+                18.0,
+                17.0,
+                17.0
+              ]
+            },
+            "tree: source result": {
+              "median": 24.0,
+              "min": 24.0,
+              "max": 24.0,
+              "samples": [
+                24.0,
+                24.0,
+                24.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                1.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 63.0,
+              "min": 59.0,
+              "max": 64.0,
+              "samples": [
+                64.0,
+                59.0,
+                63.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                2.0,
+                3.0,
+                3.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 44.0,
+              "min": 43.0,
+              "max": 44.0,
+              "samples": [
+                43.0,
+                44.0,
+                44.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 125.0,
+              "min": 122.0,
+              "max": 126.0,
+              "samples": [
+                125.0,
+                122.0,
+                126.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 27.0,
+              "min": 26.0,
+              "max": 30.0,
+              "samples": [
+                26.0,
+                27.0,
+                30.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 31.0,
+              "min": 30.0,
+              "max": 31.0,
+              "samples": [
+                31.0,
+                30.0,
+                31.0
+              ]
+            },
+            "tree: components": {
+              "median": 246.0,
+              "min": 240.0,
+              "max": 250.0,
+              "samples": [
+                246.0,
+                240.0,
+                250.0
+              ]
+            },
+            "write tree": {
+              "median": 252.0,
+              "min": 247.0,
+              "max": 257.0,
+              "samples": [
+                252.0,
+                247.0,
+                257.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 404.0,
+              "min": 397.0,
+              "max": 412.0,
+              "samples": [
+                404.0,
+                397.0,
+                412.0
+              ]
+            },
+            "total": {
+              "median": 414.0,
+              "min": 408.0,
+              "max": 423.0,
+              "samples": [
+                414.0,
+                408.0,
+                423.0
+              ]
+            }
+          }
+        },
+        "provider": {
+          "milliseconds": {
+            "median": 406.94516571238637,
+            "min": 403.1497910618782,
+            "max": 622.0720000565052,
+            "samples": [
+              403.1497910618782,
+              406.94516571238637,
+              622.0720000565052
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 204.79133259505033,
+            "min": 203.37850041687489,
+            "max": 270.5142912454903,
+            "samples": [
+              203.37850041687489,
+              204.79133259505033,
+              270.5142912454903
+            ]
+          },
+          "sourceResultMs": {
+            "median": 204.67570796608925,
+            "min": 203.27662536874413,
+            "max": 270.4025832936168,
+            "samples": [
+              203.27662536874413,
+              204.67570796608925,
+              270.4025832936168
+            ]
+          },
+          "savedMs": {
+            "median": 395.9721657447517,
+            "min": 391.93070819601417,
+            "max": 611.098166089505,
+            "samples": [
+              391.93070819601417,
+              395.9721657447517,
+              611.098166089505
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 8.0,
+              "min": 7.0,
+              "max": 11.0,
+              "samples": [
+                8.0,
+                7.0,
+                11.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 82.0,
+              "min": 80.0,
+              "max": 93.0,
+              "samples": [
+                82.0,
+                80.0,
+                93.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 19.0,
+              "min": 18.0,
+              "max": 19.0,
+              "samples": [
+                19.0,
+                18.0,
+                19.0
+              ]
+            },
+            "tree: source result": {
+              "median": 9.0,
+              "min": 8.0,
+              "max": 11.0,
+              "samples": [
+                8.0,
+                11.0,
+                9.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 2.0,
+              "min": 1.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 62.0,
+              "min": 62.0,
+              "max": 67.0,
+              "samples": [
+                62.0,
+                62.0,
+                67.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                2.0,
+                3.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 45.0,
+              "min": 42.0,
+              "max": 47.0,
+              "samples": [
+                42.0,
+                45.0,
+                47.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 126.0,
+              "min": 123.0,
+              "max": 133.0,
+              "samples": [
+                123.0,
+                126.0,
+                133.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 27.0,
+              "min": 26.0,
+              "max": 167.0,
+              "samples": [
+                26.0,
+                27.0,
+                167.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 32.0,
+              "min": 31.0,
+              "max": 32.0,
+              "samples": [
+                32.0,
+                31.0,
+                32.0
+              ]
+            },
+            "tree: components": {
+              "median": 234.0,
+              "min": 228.0,
+              "max": 382.0,
+              "samples": [
+                228.0,
+                234.0,
+                382.0
+              ]
+            },
+            "write tree": {
+              "median": 241.0,
+              "min": 235.0,
+              "max": 388.0,
+              "samples": [
+                235.0,
+                241.0,
+                388.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 391.0,
+              "min": 386.0,
+              "max": 568.0,
+              "samples": [
+                386.0,
+                391.0,
+                568.0
+              ]
+            },
+            "total": {
+              "median": 401.0,
+              "min": 396.0,
+              "max": 590.0,
+              "samples": [
+                396.0,
+                401.0,
+                590.0
+              ]
+            }
+          }
+        },
+        "lifecycle": {
+          "milliseconds": {
+            "median": 421.74545815214515,
+            "min": 416.52758279815316,
+            "max": 482.8055831603706,
+            "samples": [
+              416.52758279815316,
+              482.8055831603706,
+              421.74545815214515
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 205.83104202523828,
+            "min": 199.75720811635256,
+            "max": 206.08995808288455,
+            "samples": [
+              199.75720811635256,
+              206.08995808288455,
+              205.83104202523828
+            ]
+          },
+          "sourceResultMs": {
+            "median": 205.7297918945551,
+            "min": 199.65091673657298,
+            "max": 205.97462495788932,
+            "samples": [
+              199.65091673657298,
+              205.97462495788932,
+              205.7297918945551
+            ]
+          },
+          "savedMs": {
+            "median": 409.4757502898574,
+            "min": 404.39079189673066,
+            "max": 471.07508312910795,
+            "samples": [
+              404.39079189673066,
+              471.07508312910795,
+              409.4757502898574
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 8.0,
+              "min": 7.0,
+              "max": 8.0,
+              "samples": [
+                8.0,
+                8.0,
+                7.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 86.0,
+              "min": 80.0,
+              "max": 88.0,
+              "samples": [
+                86.0,
+                80.0,
+                88.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: source result": {
+              "median": 4.0,
+              "min": 4.0,
+              "max": 22.0,
+              "samples": [
+                4.0,
+                22.0,
+                4.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 10.0,
+              "min": 9.0,
+              "max": 22.0,
+              "samples": [
+                10.0,
+                22.0,
+                9.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 20.0,
+              "samples": [
+                1.0,
+                20.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 62.0,
+              "min": 61.0,
+              "max": 86.0,
+              "samples": [
+                61.0,
+                86.0,
+                62.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 2.0,
+              "max": 4.0,
+              "samples": [
+                4.0,
+                3.0,
+                2.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 44.0,
+              "min": 44.0,
+              "max": 45.0,
+              "samples": [
+                45.0,
+                44.0,
+                44.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 4.0,
+              "samples": [
+                4.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 128.0,
+              "min": 125.0,
+              "max": 170.0,
+              "samples": [
+                128.0,
+                170.0,
+                125.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 29.0,
+              "min": 28.0,
+              "max": 29.0,
+              "samples": [
+                29.0,
+                28.0,
+                29.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 31.0,
+              "min": 30.0,
+              "max": 32.0,
+              "samples": [
+                30.0,
+                31.0,
+                32.0
+              ]
+            },
+            "tree: components": {
+              "median": 234.0,
+              "min": 233.0,
+              "max": 305.0,
+              "samples": [
+                234.0,
+                305.0,
+                233.0
+              ]
+            },
+            "write tree": {
+              "median": 241.0,
+              "min": 241.0,
+              "max": 312.0,
+              "samples": [
+                241.0,
+                312.0,
+                241.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 402.0,
+              "min": 400.0,
+              "max": 465.0,
+              "samples": [
+                400.0,
+                465.0,
+                402.0
+              ]
+            },
+            "total": {
+              "median": 412.0,
+              "min": 410.0,
+              "max": 476.0,
+              "samples": [
+                410.0,
+                476.0,
+                412.0
+              ]
+            }
+          }
+        }
+      },
+      "pairedDeltas": {
+        "baseline->provider": {
+          "firstPreviewMs": {
+            "median": -12.71625142544508,
+            "min": -17.73624960333109,
+            "max": 48.44274930655956,
+            "samples": [
+              -17.73624960333109,
+              -12.71625142544508,
+              48.44274930655956
+            ]
+          },
+          "milliseconds": {
+            "median": -7.983668241649866,
+            "min": -18.334916792809963,
+            "max": 193.1268754415214,
+            "samples": [
+              -18.334916792809963,
+              -7.983668241649866,
+              193.1268754415214
+            ]
+          }
+        },
+        "provider->lifecycle": {
+          "firstPreviewMs": {
+            "median": -3.6212923005223274,
+            "min": -64.68324922025204,
+            "max": 1.2986254878342152,
+            "samples": [
+              -3.6212923005223274,
+              1.2986254878342152,
+              -64.68324922025204
+            ]
+          },
+          "milliseconds": {
+            "median": 13.377791736274958,
+            "min": -200.32654190436006,
+            "max": 75.86041744798422,
+            "samples": [
+              13.377791736274958,
+              75.86041744798422,
+              -200.32654190436006
+            ]
+          }
+        },
+        "baseline->lifecycle": {
+          "firstPreviewMs": {
+            "median": -16.240499913692474,
+            "min": -21.357541903853416,
+            "max": -11.417625937610865,
+            "samples": [
+              -21.357541903853416,
+              -11.417625937610865,
+              -16.240499913692474
+            ]
+          },
+          "milliseconds": {
+            "median": -4.957125056535006,
+            "min": -7.19966646283865,
+            "max": 67.87674920633435,
+            "samples": [
+              -4.957125056535006,
+              67.87674920633435,
+              -7.19966646283865
+            ]
+          }
+        }
+      }
+    },
+    "primed-placement": {
+      "indices": [
+        8,
+        13,
+        18
+      ],
+      "conditions": {
+        "baseline": {
+          "milliseconds": {
+            "median": 398.848167154938,
+            "min": 393.59066681936383,
+            "max": 505.77679090201855,
+            "samples": [
+              393.59066681936383,
+              505.77679090201855,
+              398.848167154938
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 190.64304186031222,
+            "min": 187.11058283224702,
+            "max": 193.74883314594626,
+            "samples": [
+              190.64304186031222,
+              187.11058283224702,
+              193.74883314594626
+            ]
+          },
+          "sourceResultMs": {
+            "median": 190.54191699251533,
+            "min": 186.84879085049033,
+            "max": 193.63958342000842,
+            "samples": [
+              190.54191699251533,
+              186.84879085049033,
+              193.63958342000842
+            ]
+          },
+          "savedMs": {
+            "median": 386.31295831874013,
+            "min": 381.678625009954,
+            "max": 493.25420754030347,
+            "samples": [
+              381.678625009954,
+              493.25420754030347,
+              386.31295831874013
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 7.0,
+              "min": 7.0,
+              "max": 8.0,
+              "samples": [
+                8.0,
+                7.0,
+                7.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 53.0,
+              "min": 50.0,
+              "max": 55.0,
+              "samples": [
+                53.0,
+                50.0,
+                55.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 18.0,
+              "min": 17.0,
+              "max": 18.0,
+              "samples": [
+                18.0,
+                17.0,
+                18.0
+              ]
+            },
+            "tree: source result": {
+              "median": 24.0,
+              "min": 24.0,
+              "max": 24.0,
+              "samples": [
+                24.0,
+                24.0,
+                24.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "samples": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 62.0,
+              "min": 59.0,
+              "max": 63.0,
+              "samples": [
+                59.0,
+                63.0,
+                62.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 45.0,
+              "min": 44.0,
+              "max": 48.0,
+              "samples": [
+                48.0,
+                45.0,
+                44.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 4.0,
+              "samples": [
+                3.0,
+                4.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 127.0,
+              "min": 125.0,
+              "max": 128.0,
+              "samples": [
+                127.0,
+                128.0,
+                125.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 28.0,
+              "min": 26.0,
+              "max": 129.0,
+              "samples": [
+                26.0,
+                129.0,
+                28.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 32.0,
+              "min": 30.0,
+              "max": 33.0,
+              "samples": [
+                30.0,
+                33.0,
+                32.0
+              ]
+            },
+            "tree: components": {
+              "median": 247.0,
+              "min": 244.0,
+              "max": 352.0,
+              "samples": [
+                244.0,
+                352.0,
+                247.0
+              ]
+            },
+            "write tree": {
+              "median": 255.0,
+              "min": 251.0,
+              "max": 367.0,
+              "samples": [
+                251.0,
+                367.0,
+                255.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 380.0,
+              "min": 375.0,
+              "max": 486.0,
+              "samples": [
+                375.0,
+                486.0,
+                380.0
+              ]
+            },
+            "total": {
+              "median": 390.0,
+              "min": 387.0,
+              "max": 499.0,
+              "samples": [
+                387.0,
+                499.0,
+                390.0
+              ]
+            }
+          }
+        },
+        "provider": {
+          "milliseconds": {
+            "median": 372.0498331822455,
+            "min": 367.4127091653645,
+            "max": 372.788917273283,
+            "samples": [
+              367.4127091653645,
+              372.0498331822455,
+              372.788917273283
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 168.56016730889678,
+            "min": 168.2795831002295,
+            "max": 173.55750035494566,
+            "samples": [
+              168.56016730889678,
+              168.2795831002295,
+              173.55750035494566
+            ]
+          },
+          "sourceResultMs": {
+            "median": 168.4593753889203,
+            "min": 168.1768330745399,
+            "max": 173.45475032925606,
+            "samples": [
+              168.4593753889203,
+              168.1768330745399,
+              173.45475032925606
+            ]
+          },
+          "savedMs": {
+            "median": 360.15270836651325,
+            "min": 356.23358422890306,
+            "max": 361.52395932003856,
+            "samples": [
+              356.23358422890306,
+              360.15270836651325,
+              361.52395932003856
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 7.0,
+              "min": 7.0,
+              "max": 8.0,
+              "samples": [
+                7.0,
+                8.0,
+                7.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 50.0,
+              "min": 49.0,
+              "max": 51.0,
+              "samples": [
+                50.0,
+                49.0,
+                51.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 18.0,
+              "min": 17.0,
+              "max": 18.0,
+              "samples": [
+                18.0,
+                17.0,
+                18.0
+              ]
+            },
+            "tree: source result": {
+              "median": 8.0,
+              "min": 7.0,
+              "max": 9.0,
+              "samples": [
+                7.0,
+                8.0,
+                9.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                1.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 61.0,
+              "min": 60.0,
+              "max": 61.0,
+              "samples": [
+                60.0,
+                61.0,
+                61.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                2.0,
+                3.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                2.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 43.0,
+              "min": 42.0,
+              "max": 45.0,
+              "samples": [
+                43.0,
+                45.0,
+                42.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 123.0,
+              "min": 122.0,
+              "max": 126.0,
+              "samples": [
+                123.0,
+                126.0,
+                122.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 28.0,
+              "min": 26.0,
+              "max": 28.0,
+              "samples": [
+                26.0,
+                28.0,
+                28.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 31.0,
+              "min": 30.0,
+              "max": 31.0,
+              "samples": [
+                31.0,
+                30.0,
+                31.0
+              ]
+            },
+            "tree: components": {
+              "median": 228.0,
+              "min": 225.0,
+              "max": 230.0,
+              "samples": [
+                225.0,
+                230.0,
+                228.0
+              ]
+            },
+            "write tree": {
+              "median": 234.0,
+              "min": 232.0,
+              "max": 237.0,
+              "samples": [
+                232.0,
+                237.0,
+                234.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 355.0,
+              "min": 349.0,
+              "max": 355.0,
+              "samples": [
+                349.0,
+                355.0,
+                355.0
+              ]
+            },
+            "total": {
+              "median": 365.0,
+              "min": 359.0,
+              "max": 366.0,
+              "samples": [
+                359.0,
+                365.0,
+                366.0
+              ]
+            }
+          }
+        },
+        "lifecycle": {
+          "milliseconds": {
+            "median": 375.4229578189552,
+            "min": 375.10024989023805,
+            "max": 487.0792920701206,
+            "samples": [
+              375.10024989023805,
+              487.0792920701206,
+              375.4229578189552
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 163.9312501065433,
+            "min": 162.04558266326785,
+            "max": 173.77508291974664,
+            "samples": [
+              163.9312501065433,
+              173.77508291974664,
+              162.04558266326785
+            ]
+          },
+          "sourceResultMs": {
+            "median": 163.8246662914753,
+            "min": 161.93633293733,
+            "max": 173.67016710340977,
+            "samples": [
+              163.8246662914753,
+              173.67016710340977,
+              161.93633293733
+            ]
+          },
+          "savedMs": {
+            "median": 364.8566659539938,
+            "min": 363.9410827308893,
+            "max": 475.6535831838846,
+            "samples": [
+              364.8566659539938,
+              475.6535831838846,
+              363.9410827308893
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 7.0,
+              "min": 7.0,
+              "max": 10.0,
+              "samples": [
+                7.0,
+                10.0,
+                7.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 52.0,
+              "min": 51.0,
+              "max": 53.0,
+              "samples": [
+                53.0,
+                51.0,
+                52.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: source result": {
+              "median": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "samples": [
+                4.0,
+                4.0,
+                4.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 9.0,
+              "min": 9.0,
+              "max": 10.0,
+              "samples": [
+                10.0,
+                9.0,
+                9.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "samples": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 62.0,
+              "min": 62.0,
+              "max": 64.0,
+              "samples": [
+                62.0,
+                64.0,
+                62.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                2.0,
+                3.0,
+                3.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 44.0,
+              "min": 44.0,
+              "max": 44.0,
+              "samples": [
+                44.0,
+                44.0,
+                44.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 125.0,
+              "min": 125.0,
+              "max": 128.0,
+              "samples": [
+                125.0,
+                128.0,
+                125.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 29.0,
+              "min": 27.0,
+              "max": 124.0,
+              "samples": [
+                27.0,
+                124.0,
+                29.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 32.0,
+              "min": 32.0,
+              "max": 34.0,
+              "samples": [
+                32.0,
+                34.0,
+                32.0
+              ]
+            },
+            "tree: components": {
+              "median": 231.0,
+              "min": 230.0,
+              "max": 330.0,
+              "samples": [
+                230.0,
+                330.0,
+                231.0
+              ]
+            },
+            "write tree": {
+              "median": 238.0,
+              "min": 236.0,
+              "max": 337.0,
+              "samples": [
+                236.0,
+                337.0,
+                238.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 357.0,
+              "min": 357.0,
+              "max": 464.0,
+              "samples": [
+                357.0,
+                464.0,
+                357.0
+              ]
+            },
+            "total": {
+              "median": 368.0,
+              "min": 367.0,
+              "max": 479.0,
+              "samples": [
+                368.0,
+                479.0,
+                367.0
+              ]
+            }
+          }
+        }
+      },
+      "pairedDeltas": {
+        "baseline->provider": {
+          "firstPreviewMs": {
+            "median": -20.191332791000605,
+            "min": -22.082874551415443,
+            "max": -18.830999732017517,
+            "samples": [
+              -22.082874551415443,
+              -18.830999732017517,
+              -20.191332791000605
+            ]
+          },
+          "milliseconds": {
+            "median": -26.17795765399933,
+            "min": -133.72695771977305,
+            "max": -26.059249881654978,
+            "samples": [
+              -26.17795765399933,
+              -133.72695771977305,
+              -26.059249881654978
+            ]
+          }
+        },
+        "provider->lifecycle": {
+          "firstPreviewMs": {
+            "median": -4.6289172023534775,
+            "min": -11.511917691677809,
+            "max": 5.495499819517136,
+            "samples": [
+              -4.6289172023534775,
+              5.495499819517136,
+              -11.511917691677809
+            ]
+          },
+          "milliseconds": {
+            "median": 7.687540724873543,
+            "min": 2.6340405456721783,
+            "max": 115.02945888787508,
+            "samples": [
+              7.687540724873543,
+              115.02945888787508,
+              2.6340405456721783
+            ]
+          }
+        },
+        "baseline->lifecycle": {
+          "firstPreviewMs": {
+            "median": -26.71179175376892,
+            "min": -31.703250482678413,
+            "max": -13.335499912500381,
+            "samples": [
+              -26.71179175376892,
+              -13.335499912500381,
+              -31.703250482678413
+            ]
+          },
+          "milliseconds": {
+            "median": -18.697498831897974,
+            "min": -23.4252093359828,
+            "max": -18.490416929125786,
+            "samples": [
+              -18.490416929125786,
+              -18.697498831897974,
+              -23.4252093359828
+            ]
+          }
+        }
+      }
+    },
+    "novel-geometry": {
+      "indices": [
+        20,
+        22,
+        24
+      ],
+      "conditions": {
+        "baseline": {
+          "milliseconds": {
+            "median": 655.3423749282956,
+            "min": 650.3230002708733,
+            "max": 687.825582921505,
+            "samples": [
+              687.825582921505,
+              655.3423749282956,
+              650.3230002708733
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 235.39758380502462,
+            "min": 227.97012515366077,
+            "max": 248.41829063370824,
+            "samples": [
+              248.41829063370824,
+              235.39758380502462,
+              227.97012515366077
+            ]
+          },
+          "sourceResultMs": {
+            "median": 235.2872919291258,
+            "min": 227.86666732281446,
+            "max": 248.30679083243012,
+            "samples": [
+              248.30679083243012,
+              235.2872919291258,
+              227.86666732281446
+            ]
+          },
+          "savedMs": {
+            "median": 644.3436248227954,
+            "min": 639.8369590751827,
+            "max": 676.4286658726633,
+            "samples": [
+              676.4286658726633,
+              644.3436248227954,
+              639.8369590751827
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 7.0,
+              "min": 7.0,
+              "max": 7.0,
+              "samples": [
+                7.0,
+                7.0,
+                7.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 97.0,
+              "min": 95.0,
+              "max": 104.0,
+              "samples": [
+                104.0,
+                97.0,
+                95.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 17.0,
+              "min": 17.0,
+              "max": 19.0,
+              "samples": [
+                19.0,
+                17.0,
+                17.0
+              ]
+            },
+            "tree: source result": {
+              "median": 25.0,
+              "min": 24.0,
+              "max": 25.0,
+              "samples": [
+                25.0,
+                25.0,
+                24.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "samples": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 60.0,
+              "min": 58.0,
+              "max": 63.0,
+              "samples": [
+                63.0,
+                58.0,
+                60.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                2.0,
+                2.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 42.0,
+              "min": 41.0,
+              "max": 42.0,
+              "samples": [
+                42.0,
+                41.0,
+                42.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 120.0,
+              "min": 118.0,
+              "max": 125.0,
+              "samples": [
+                125.0,
+                118.0,
+                120.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 250.0,
+              "min": 248.0,
+              "max": 259.0,
+              "samples": [
+                259.0,
+                250.0,
+                248.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 32.0,
+              "min": 31.0,
+              "max": 33.0,
+              "samples": [
+                33.0,
+                32.0,
+                31.0
+              ]
+            },
+            "tree: components": {
+              "median": 461.0,
+              "min": 461.0,
+              "max": 484.0,
+              "samples": [
+                484.0,
+                461.0,
+                461.0
+              ]
+            },
+            "write tree": {
+              "median": 472.0,
+              "min": 470.0,
+              "max": 493.0,
+              "samples": [
+                493.0,
+                470.0,
+                472.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 636.0,
+              "min": 633.0,
+              "max": 670.0,
+              "samples": [
+                670.0,
+                636.0,
+                633.0
+              ]
+            },
+            "total": {
+              "median": 647.0,
+              "min": 644.0,
+              "max": 681.0,
+              "samples": [
+                681.0,
+                647.0,
+                644.0
+              ]
+            }
+          }
+        },
+        "provider": {
+          "milliseconds": {
+            "median": 659.6707911230624,
+            "min": 650.840749964118,
+            "max": 679.038334172219,
+            "samples": [
+              679.038334172219,
+              650.840749964118,
+              659.6707911230624
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 227.57737524807453,
+            "min": 221.8109592795372,
+            "max": 246.63291731849313,
+            "samples": [
+              246.63291731849313,
+              221.8109592795372,
+              227.57737524807453
+            ]
+          },
+          "sourceResultMs": {
+            "median": 227.4747909978032,
+            "min": 221.691541839391,
+            "max": 246.5278343297541,
+            "samples": [
+              246.5278343297541,
+              221.691541839391,
+              227.4747909978032
+            ]
+          },
+          "savedMs": {
+            "median": 649.0557081997395,
+            "min": 639.3511248752475,
+            "max": 667.300125118345,
+            "samples": [
+              667.300125118345,
+              639.3511248752475,
+              649.0557081997395
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 7.0,
+              "min": 7.0,
+              "max": 7.0,
+              "samples": [
+                7.0,
+                7.0,
+                7.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 99.0,
+              "min": 98.0,
+              "max": 124.0,
+              "samples": [
+                124.0,
+                98.0,
+                99.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 18.0,
+              "min": 17.0,
+              "max": 19.0,
+              "samples": [
+                18.0,
+                17.0,
+                19.0
+              ]
+            },
+            "tree: source result": {
+              "median": 10.0,
+              "min": 10.0,
+              "max": 10.0,
+              "samples": [
+                10.0,
+                10.0,
+                10.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 2.0,
+              "min": 1.0,
+              "max": 2.0,
+              "samples": [
+                1.0,
+                2.0,
+                2.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 61.0,
+              "min": 60.0,
+              "max": 64.0,
+              "samples": [
+                61.0,
+                64.0,
+                60.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 2.0,
+              "max": 4.0,
+              "samples": [
+                4.0,
+                3.0,
+                2.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 43.0,
+              "min": 42.0,
+              "max": 44.0,
+              "samples": [
+                42.0,
+                44.0,
+                43.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 123.0,
+              "min": 121.0,
+              "max": 128.0,
+              "samples": [
+                121.0,
+                128.0,
+                123.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 257.0,
+              "min": 251.0,
+              "max": 258.0,
+              "samples": [
+                257.0,
+                251.0,
+                258.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 33.0,
+              "min": 31.0,
+              "max": 35.0,
+              "samples": [
+                35.0,
+                31.0,
+                33.0
+              ]
+            },
+            "tree: components": {
+              "median": 462.0,
+              "min": 459.0,
+              "max": 463.0,
+              "samples": [
+                462.0,
+                459.0,
+                463.0
+              ]
+            },
+            "write tree": {
+              "median": 469.0,
+              "min": 466.0,
+              "max": 470.0,
+              "samples": [
+                469.0,
+                466.0,
+                470.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 642.0,
+              "min": 634.0,
+              "max": 662.0,
+              "samples": [
+                662.0,
+                634.0,
+                642.0
+              ]
+            },
+            "total": {
+              "median": 653.0,
+              "min": 644.0,
+              "max": 673.0,
+              "samples": [
+                673.0,
+                644.0,
+                653.0
+              ]
+            }
+          }
+        },
+        "lifecycle": {
+          "milliseconds": {
+            "median": 649.3772501125932,
+            "min": 647.1756673417985,
+            "max": 651.6803749836981,
+            "samples": [
+              649.3772501125932,
+              647.1756673417985,
+              651.6803749836981
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 214.78299982845783,
+            "min": 213.21058319881558,
+            "max": 217.806083150208,
+            "samples": [
+              214.78299982845783,
+              213.21058319881558,
+              217.806083150208
+            ]
+          },
+          "sourceResultMs": {
+            "median": 214.6753747947514,
+            "min": 213.0980002693832,
+            "max": 217.70300017669797,
+            "samples": [
+              214.6753747947514,
+              213.0980002693832,
+              217.70300017669797
+            ]
+          },
+          "savedMs": {
+            "median": 638.8239162042737,
+            "min": 636.2092080526054,
+            "max": 640.8754582516849,
+            "samples": [
+              638.8239162042737,
+              636.2092080526054,
+              640.8754582516849
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 8.0,
+              "min": 7.0,
+              "max": 8.0,
+              "samples": [
+                7.0,
+                8.0,
+                8.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 96.0,
+              "min": 96.0,
+              "max": 100.0,
+              "samples": [
+                100.0,
+                96.0,
+                96.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: source result": {
+              "median": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "samples": [
+                4.0,
+                4.0,
+                4.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 9.0,
+              "min": 8.0,
+              "max": 10.0,
+              "samples": [
+                8.0,
+                10.0,
+                9.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "samples": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 61.0,
+              "min": 59.0,
+              "max": 62.0,
+              "samples": [
+                61.0,
+                62.0,
+                59.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 42.0,
+              "min": 42.0,
+              "max": 44.0,
+              "samples": [
+                42.0,
+                42.0,
+                44.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 122.0,
+              "min": 120.0,
+              "max": 123.0,
+              "samples": [
+                120.0,
+                123.0,
+                122.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 252.0,
+              "min": 251.0,
+              "max": 253.0,
+              "samples": [
+                252.0,
+                251.0,
+                253.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 32.0,
+              "min": 31.0,
+              "max": 36.0,
+              "samples": [
+                36.0,
+                31.0,
+                32.0
+              ]
+            },
+            "tree: components": {
+              "median": 455.0,
+              "min": 453.0,
+              "max": 455.0,
+              "samples": [
+                455.0,
+                453.0,
+                455.0
+              ]
+            },
+            "write tree": {
+              "median": 461.0,
+              "min": 460.0,
+              "max": 462.0,
+              "samples": [
+                461.0,
+                460.0,
+                462.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 630.0,
+              "min": 628.0,
+              "max": 632.0,
+              "samples": [
+                632.0,
+                628.0,
+                630.0
+              ]
+            },
+            "total": {
+              "median": 640.0,
+              "min": 639.0,
+              "max": 643.0,
+              "samples": [
+                643.0,
+                639.0,
+                640.0
+              ]
+            }
+          }
+        }
+      },
+      "pairedDeltas": {
+        "baseline->provider": {
+          "firstPreviewMs": {
+            "median": -1.7853733152151108,
+            "min": -13.586624525487423,
+            "max": -0.3927499055862427,
+            "samples": [
+              -1.7853733152151108,
+              -13.586624525487423,
+              -0.3927499055862427
+            ]
+          },
+          "milliseconds": {
+            "median": -4.5016249641776085,
+            "min": -8.787248749285936,
+            "max": 9.347790852189064,
+            "samples": [
+              -8.787248749285936,
+              -4.5016249641776085,
+              9.347790852189064
+            ]
+          }
+        },
+        "provider->lifecycle": {
+          "firstPreviewMs": {
+            "median": -9.771292097866535,
+            "min": -31.849917490035295,
+            "max": -8.600376080721617,
+            "samples": [
+              -31.849917490035295,
+              -8.600376080721617,
+              -9.771292097866535
+            ]
+          },
+          "milliseconds": {
+            "median": -7.9904161393642426,
+            "min": -29.661084059625864,
+            "max": -3.66508262231946,
+            "samples": [
+              -29.661084059625864,
+              -3.66508262231946,
+              -7.9904161393642426
+            ]
+          }
+        },
+        "baseline->lifecycle": {
+          "firstPreviewMs": {
+            "median": -22.18700060620904,
+            "min": -33.635290805250406,
+            "max": -10.164042003452778,
+            "samples": [
+              -33.635290805250406,
+              -22.18700060620904,
+              -10.164042003452778
+            ]
+          },
+          "milliseconds": {
+            "median": -8.166707586497068,
+            "min": -38.4483328089118,
+            "max": 1.3573747128248215,
+            "samples": [
+              -38.4483328089118,
+              -8.166707586497068,
+              1.3573747128248215
+            ]
+          }
+        }
+      }
+    },
+    "novel-placement": {
+      "indices": [
+        26,
+        28,
+        30
+      ],
+      "conditions": {
+        "baseline": {
+          "milliseconds": {
+            "median": 612.9445000551641,
+            "min": 606.9404589943588,
+            "max": 619.4292921572924,
+            "samples": [
+              606.9404589943588,
+              612.9445000551641,
+              619.4292921572924
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 185.6461251154542,
+            "min": 184.56087494269013,
+            "max": 190.55283395573497,
+            "samples": [
+              185.6461251154542,
+              184.56087494269013,
+              190.55283395573497
+            ]
+          },
+          "sourceResultMs": {
+            "median": 185.5380842462182,
+            "min": 184.44466590881348,
+            "max": 190.44883409515023,
+            "samples": [
+              185.5380842462182,
+              184.44466590881348,
+              190.44883409515023
+            ]
+          },
+          "savedMs": {
+            "median": 601.5379996970296,
+            "min": 595.7026253454387,
+            "max": 608.8973749428988,
+            "samples": [
+              595.7026253454387,
+              601.5379996970296,
+              608.8973749428988
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 7.0,
+              "min": 7.0,
+              "max": 8.0,
+              "samples": [
+                8.0,
+                7.0,
+                7.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 50.0,
+              "min": 49.0,
+              "max": 53.0,
+              "samples": [
+                49.0,
+                50.0,
+                53.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 17.0,
+              "min": 17.0,
+              "max": 18.0,
+              "samples": [
+                17.0,
+                18.0,
+                17.0
+              ]
+            },
+            "tree: source result": {
+              "median": 24.0,
+              "min": 23.0,
+              "max": 25.0,
+              "samples": [
+                24.0,
+                23.0,
+                25.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "samples": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 61.0,
+              "min": 58.0,
+              "max": 63.0,
+              "samples": [
+                58.0,
+                63.0,
+                61.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                2.0,
+                2.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 43.0,
+              "min": 40.0,
+              "max": 44.0,
+              "samples": [
+                40.0,
+                43.0,
+                44.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 125.0,
+              "min": 119.0,
+              "max": 126.0,
+              "samples": [
+                119.0,
+                126.0,
+                125.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 250.0,
+              "min": 249.0,
+              "max": 252.0,
+              "samples": [
+                250.0,
+                249.0,
+                252.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 32.0,
+              "min": 31.0,
+              "max": 32.0,
+              "samples": [
+                31.0,
+                32.0,
+                32.0
+              ]
+            },
+            "tree: components": {
+              "median": 469.0,
+              "min": 462.0,
+              "max": 471.0,
+              "samples": [
+                462.0,
+                469.0,
+                471.0
+              ]
+            },
+            "write tree": {
+              "median": 478.0,
+              "min": 470.0,
+              "max": 480.0,
+              "samples": [
+                470.0,
+                478.0,
+                480.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/baseline/src/planetary_gear_assembly.py": {
+              "median": 597.0,
+              "min": 589.0,
+              "max": 601.0,
+              "samples": [
+                589.0,
+                597.0,
+                601.0
+              ]
+            },
+            "total": {
+              "median": 607.0,
+              "min": 599.0,
+              "max": 611.0,
+              "samples": [
+                599.0,
+                607.0,
+                611.0
+              ]
+            }
+          }
+        },
+        "provider": {
+          "milliseconds": {
+            "median": 600.7030843757093,
+            "min": 592.5751249305904,
+            "max": 602.143042255193,
+            "samples": [
+              592.5751249305904,
+              600.7030843757093,
+              602.143042255193
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 171.4831250719726,
+            "min": 170.89679092168808,
+            "max": 175.10929238051176,
+            "samples": [
+              170.89679092168808,
+              175.10929238051176,
+              171.4831250719726
+            ]
+          },
+          "sourceResultMs": {
+            "median": 171.37445835396647,
+            "min": 170.78987509012222,
+            "max": 174.9952919781208,
+            "samples": [
+              170.78987509012222,
+              174.9952919781208,
+              171.37445835396647
+            ]
+          },
+          "savedMs": {
+            "median": 589.6766250953078,
+            "min": 582.1525412611663,
+            "max": 591.8282503262162,
+            "samples": [
+              582.1525412611663,
+              589.6766250953078,
+              591.8282503262162
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 7.0,
+              "min": 6.0,
+              "max": 8.0,
+              "samples": [
+                6.0,
+                8.0,
+                7.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 51.0,
+              "min": 51.0,
+              "max": 52.0,
+              "samples": [
+                51.0,
+                52.0,
+                51.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 17.0,
+              "min": 17.0,
+              "max": 17.0,
+              "samples": [
+                17.0,
+                17.0,
+                17.0
+              ]
+            },
+            "tree: source result": {
+              "median": 10.0,
+              "min": 10.0,
+              "max": 11.0,
+              "samples": [
+                10.0,
+                11.0,
+                10.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "samples": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 60.0,
+              "min": 60.0,
+              "max": 61.0,
+              "samples": [
+                60.0,
+                60.0,
+                61.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                2.0,
+                3.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                2.0,
+                3.0,
+                3.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 43.0,
+              "min": 42.0,
+              "max": 43.0,
+              "samples": [
+                42.0,
+                43.0,
+                43.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 123.0,
+              "min": 120.0,
+              "max": 124.0,
+              "samples": [
+                120.0,
+                123.0,
+                124.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 251.0,
+              "min": 251.0,
+              "max": 256.0,
+              "samples": [
+                251.0,
+                251.0,
+                256.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 32.0,
+              "min": 31.0,
+              "max": 33.0,
+              "samples": [
+                32.0,
+                31.0,
+                33.0
+              ]
+            },
+            "tree: components": {
+              "median": 454.0,
+              "min": 450.0,
+              "max": 460.0,
+              "samples": [
+                450.0,
+                454.0,
+                460.0
+              ]
+            },
+            "write tree": {
+              "median": 462.0,
+              "min": 457.0,
+              "max": 466.0,
+              "samples": [
+                457.0,
+                462.0,
+                466.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/provider/src/planetary_gear_assembly.py": {
+              "median": 582.0,
+              "min": 575.0,
+              "max": 585.0,
+              "samples": [
+                575.0,
+                582.0,
+                585.0
+              ]
+            },
+            "total": {
+              "median": 592.0,
+              "min": 586.0,
+              "max": 595.0,
+              "samples": [
+                586.0,
+                592.0,
+                595.0
+              ]
+            }
+          }
+        },
+        "lifecycle": {
+          "milliseconds": {
+            "median": 597.9105001315475,
+            "min": 594.4795827381313,
+            "max": 607.3565841652453,
+            "samples": [
+              597.9105001315475,
+              594.4795827381313,
+              607.3565841652453
+            ]
+          },
+          "firstPreviewMs": {
+            "median": 160.74833273887634,
+            "min": 160.03870777785778,
+            "max": 166.3684588856995,
+            "samples": [
+              160.03870777785778,
+              160.74833273887634,
+              166.3684588856995
+            ]
+          },
+          "sourceResultMs": {
+            "median": 160.64579179510474,
+            "min": 159.9372080527246,
+            "max": 166.2569590844214,
+            "samples": [
+              159.9372080527246,
+              160.64579179510474,
+              166.2569590844214
+            ]
+          },
+          "savedMs": {
+            "median": 585.729249753058,
+            "min": 583.0637500621378,
+            "max": 596.0705420002341,
+            "samples": [
+              585.729249753058,
+              583.0637500621378,
+              596.0705420002341
+            ]
+          },
+          "stages": {
+            "load generator /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 7.0,
+              "min": 7.0,
+              "max": 8.0,
+              "samples": [
+                7.0,
+                7.0,
+                8.0
+              ]
+            },
+            "run step model /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 50.0,
+              "min": 50.0,
+              "max": 51.0,
+              "samples": [
+                50.0,
+                50.0,
+                51.0
+              ]
+            },
+            "tree: sidecar payload": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: source result": {
+              "median": 4.0,
+              "min": 4.0,
+              "max": 4.0,
+              "samples": [
+                4.0,
+                4.0,
+                4.0
+              ]
+            },
+            "tree: prepare document": {
+              "median": 9.0,
+              "min": 9.0,
+              "max": 10.0,
+              "samples": [
+                9.0,
+                9.0,
+                10.0
+              ]
+            },
+            "build XCAF document": {
+              "median": 1.0,
+              "min": 1.0,
+              "max": 1.0,
+              "samples": [
+                1.0,
+                1.0,
+                1.0
+              ]
+            },
+            "transfer XCAF to STEP model planetary.step": {
+              "median": 60.0,
+              "min": 59.0,
+              "max": 60.0,
+              "samples": [
+                60.0,
+                59.0,
+                60.0
+              ]
+            },
+            "renumber NAUO ids": {
+              "median": 2.0,
+              "min": 2.0,
+              "max": 2.0,
+              "samples": [
+                2.0,
+                2.0,
+                2.0
+              ]
+            },
+            "plan style tail order": {
+              "median": 3.0,
+              "min": 2.0,
+              "max": 3.0,
+              "samples": [
+                2.0,
+                3.0,
+                3.0
+              ]
+            },
+            "write STEP file planetary.step": {
+              "median": 42.0,
+              "min": 42.0,
+              "max": 44.0,
+              "samples": [
+                44.0,
+                42.0,
+                42.0
+              ]
+            },
+            "canonicalize style tail (in file)": {
+              "median": 3.0,
+              "min": 3.0,
+              "max": 3.0,
+              "samples": [
+                3.0,
+                3.0,
+                3.0
+              ]
+            },
+            "tree: assemble STEP planetary.step": {
+              "median": 122.0,
+              "min": 121.0,
+              "max": 122.0,
+              "samples": [
+                122.0,
+                121.0,
+                122.0
+              ]
+            },
+            "tree: re-read STEP planetary.step": {
+              "median": 252.0,
+              "min": 251.0,
+              "max": 257.0,
+              "samples": [
+                251.0,
+                252.0,
+                257.0
+              ]
+            },
+            "tree: re-read components": {
+              "median": 0.0,
+              "min": 0.0,
+              "max": 0.0,
+              "samples": [
+                0.0,
+                0.0,
+                0.0
+              ]
+            },
+            "tree: canonical document": {
+              "median": 34.0,
+              "min": 33.0,
+              "max": 37.0,
+              "samples": [
+                37.0,
+                33.0,
+                34.0
+              ]
+            },
+            "tree: components": {
+              "median": 455.0,
+              "min": 452.0,
+              "max": 459.0,
+              "samples": [
+                455.0,
+                452.0,
+                459.0
+              ]
+            },
+            "write tree": {
+              "median": 462.0,
+              "min": 459.0,
+              "max": 467.0,
+              "samples": [
+                462.0,
+                459.0,
+                467.0
+              ]
+            },
+            "generated /Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/models/tmp/descriptor-bounds-integration-20260911/split-comparison/lifecycle/src/planetary_gear_assembly.py": {
+              "median": 580.0,
+              "min": 578.0,
+              "max": 589.0,
+              "samples": [
+                580.0,
+                578.0,
+                589.0
+              ]
+            },
+            "total": {
+              "median": 591.0,
+              "min": 588.0,
+              "max": 600.0,
+              "samples": [
+                591.0,
+                588.0,
+                600.0
+              ]
+            }
+          }
+        }
+      },
+      "pairedDeltas": {
+        "baseline->provider": {
+          "firstPreviewMs": {
+            "median": -14.749334193766117,
+            "min": -19.06970888376236,
+            "max": -9.451582562178373,
+            "samples": [
+              -14.749334193766117,
+              -9.451582562178373,
+              -19.06970888376236
+            ]
+          },
+          "milliseconds": {
+            "median": -14.365334063768387,
+            "min": -17.28624990209937,
+            "max": -12.241415679454803,
+            "samples": [
+              -14.365334063768387,
+              -12.241415679454803,
+              -17.28624990209937
+            ]
+          }
+        },
+        "provider->lifecycle": {
+          "firstPreviewMs": {
+            "median": -10.8580831438303,
+            "min": -14.360959641635418,
+            "max": -5.114666186273098,
+            "samples": [
+              -10.8580831438303,
+              -14.360959641635418,
+              -5.114666186273098
+            ]
+          },
+          "milliseconds": {
+            "median": 5.2135419100522995,
+            "min": -6.223501637578011,
+            "max": 5.33537520095706,
+            "samples": [
+              5.33537520095706,
+              -6.223501637578011,
+              5.2135419100522995
+            ]
+          }
+        },
+        "baseline->lifecycle": {
+          "firstPreviewMs": {
+            "median": -24.184375070035458,
+            "min": -25.607417337596416,
+            "max": -23.81254220381379,
+            "samples": [
+              -25.607417337596416,
+              -23.81254220381379,
+              -24.184375070035458
+            ]
+          },
+          "milliseconds": {
+            "median": -12.072707992047071,
+            "min": -18.464917317032814,
+            "max": -9.029958862811327,
+            "samples": [
+              -9.029958862811327,
+              -18.464917317032814,
+              -12.072707992047071
+            ]
+          }
+        }
+      }
+    }
+  },
+  "qualifications": [
+    "Three samples per primed edit; three distinct new values each executed once per condition. No outlier removal.",
+    "One root interpreter and dedicated two-worker daemon/store per condition; startup, controller barriers and source writes outside each build timer. Normal child IPC and declared output completion included.",
+    "Call order repeats baseline/provider/lifecycle, lifecycle/provider/baseline, provider/baseline/lifecycle. Interleaved but not perfectly balanced by position; unrelated host/user activity uncontrolled.",
+    "No browser, native meshing experiment, or hand input. Completed save total includes CLI bookkeeping after saved event.",
+    "Functional equality tests compare complete source/tree/STEP/appearance/maps; timing checks exact source and canonical document hashes, actual root/child STEP bytes and exact child pins."
+  ],
+  "phase1Tests": {
+    "files": {
+      "store/build.py": "14ae307a99f30b270559ac1d4c7b2343a1a80b5a1ea9d289c3c26d213fd51928",
+      "store/_descriptor_bounds.py": "949d3f0846c17ec27ff473be1b39b3b56e4107ab678ca5a4543d3337a1249124"
+    },
+    "testSha256": "bea5980137d01448e34f53c61951005a3501c7285028e96664cdf8fcfffa47e0",
+    "providerTestSha256": "bea5980137d01448e34f53c61951005a3501c7285028e96664cdf8fcfffa47e0",
+    "proofSha256": "3d3493bd5ea154e55c279114dad7e97c3dcddc1329ed86d6fa0d4483479de496",
+    "tests": 10,
+    "completeEqualityRows": 20,
+    "patchSha256": "1a21f4d6f5e1627dbfc56bf64e5767ba71778c19c25a5290efb5a4fce5334911",
+    "commonOpMemo": {
+      "sha256": "20db00495955e00911e08d00abc66811edc09009070412974b8a1ec71ccd0464",
+      "source": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen/src/cadgen/_internal/op_memo.py",
+      "variants": [
+        "baseline",
+        "provider",
+        "lifecycle"
+      ],
+      "scope": "Identical root-owned RAM admission and actual native dependency identity correction; op salt v7. All benchmark stores remain unprimed/fresh. Historical measured archive and earlier parity spike unchanged."
+    },
+    "productionChanges": false,
+    "freshPerTestCache": true
+  },
+  "phase2Tests": {
+    "files": {
+      "store/build.py": "012c0d39dfe90419dac78de94402ec93e534375bbe69fe29997f8d3a5497994e",
+      "store/_descriptor_bounds.py": "353718b0835d4ca3f65b46d311a1edc076722af061cdeccb57656f2b54d6b823",
+      "_internal/generation.py": "139087eb035971af5554a16c9056ea90b8ab32feceaadcecc4c1bb717fa34d6d"
+    },
+    "testSha256": "40f936b61c9659b5a960f89b078313504bd28b8939003372233c214c97357a3f",
+    "providerTestSha256": "bea5980137d01448e34f53c61951005a3501c7285028e96664cdf8fcfffa47e0",
+    "proofSha256": "4e760b96a8ae55549e5b3c2b492615ea4c3b9f6a6be7619850126bbd639dc969",
+    "tests": 21,
+    "completeEqualityRows": 40,
+    "patchSha256": "691815f9a9a5ea0e6a87d355e0baaa14ac77ccc5a2ed416d0d8bfa288a126720",
+    "commonOpMemo": {
+      "sha256": "20db00495955e00911e08d00abc66811edc09009070412974b8a1ec71ccd0464",
+      "source": "/Users/jakefitzgerald/.codex/worktrees/3c6b/text-to-cad/packages/cadgen/src/cadgen/_internal/op_memo.py",
+      "variants": [
+        "baseline",
+        "provider",
+        "lifecycle"
+      ],
+      "scope": "Identical root-owned RAM admission and actual native dependency identity correction; op salt v7. All benchmark stores remain unprimed/fresh. Historical measured archive and earlier parity spike unchanged."
+    },
+    "productionChanges": false,
+    "prepublicationNativeValidation": "Each unique owned BREP is decoded and each exact occurrence transform is constructed before callback; same private prototypes supply bounds misses and later ordinary shapes= materialization. Real cached scalar values never certify native validity.",
+    "freshPerTestCache": true
+  },
+  "previewPairsImproved": {
+    "baseline": 0,
+    "provider": 11,
+    "lifecycle": 12
+  },
+  "measuredEditPairsPerComparison": 12,
+  "failedEventCount": 0,
+  "actualStepByteChecks": 960,
+  "allModulePathsSelected": true,
+  "rawProof": {
+    "path": "descriptor-bounds-interleaved-20260911.json.gz",
+    "sha256": "e191cab880fc7643f63c5d3a8fde3d998d0a040eed07f96adde239a14b2e59f1",
+    "uncompressedBytes": 4097147
+  }
+}

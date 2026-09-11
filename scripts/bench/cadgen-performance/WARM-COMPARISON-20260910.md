@@ -1,6 +1,6 @@
 # Warm edits and the FreeCAD comparison
 
-New edits to an imported STEP complete about 15–30% faster in the latest backend
+New edits to an imported STEP complete about 15–30% faster in the matched backend
 study. Returning to an already-built value is faster again because the emitted
 STEP bytes can reuse their verified canonical readback. Full procedural model
 edits are about 1–2% slower in this window; new edits to the split-model fixture
@@ -10,12 +10,27 @@ presented as the latency of every new edit.
 ## Matched study and boundaries
 
 Apple M1 Max, 10 logical CPUs, 64 GiB RAM, macOS 26.5.1. The reviewed original is
-`7aa3e85be76f305437abd3d7aba26e38b28e43cb`. Latest backend measurements use
+`7aa3e85be76f305437abd3d7aba26e38b28e43cb`. The full matched study uses
 fingerprint `f28ff6af1be5d901aaff6006843a1268516ccfccea2bc41b1630b64823028150`:
 source/document schema 3, operation-cache salt 6, exact-output readback reuse,
 private native ownership, the 768 KiB extraction cutoff, SURF recipe reuse,
 call-scoped import syntax and removal of an unused freshness traversal. Browser worker code
 was under development but frozen and unused during these STEP-only studies.
+
+Later commit `a862c3d1e` moves the op cache to scheme 7, binding disk reuse to
+actual OCP/distribution versions and enforcing the existing RAM entry limit on
+disk hits. The tables below retain their original measured runtime and cache
+state; they are not a fresh benchmark of that compatibility cutover.
+The later [interleaved bounds study](DEFERRED-ASSEMBLY-FEASIBILITY-20260911.md#final-private-implementation-and-comparison)
+compares three private variants with identical scheme-7 operation caching.
+Its integrated candidate improves split-model preview medians from
+221/191/235/186 ms to 206/164/215/161 ms for repeated geometry, repeated
+placement, new geometry and new placement respectively. Complete saves are
+approximately neutral for repeated geometry and 6–23 ms lower in the other
+categories. All 96 calls and 32 cross-condition output/pin comparisons pass.
+These are small, interleaved samples with imperfectly balanced order; they do
+not retroactively change the original-versus-current tables below or establish
+a procedural-model speedup. Newly emitted STEP bytes still require readback.
 
 Every study starts with a fresh private store. Python and OCCT are already
 imported; source writes, initial kernel import, browser transport and rendering
