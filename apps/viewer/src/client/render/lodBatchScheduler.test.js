@@ -74,6 +74,26 @@ test("32ms deadline publishes three beside a hung carryover without starting a f
   f.batches[1].gate.resolve(true); await flush(); await cancel(f);
 });
 
+test("Viewer-sized collection window coalesces serialized cached reads and stays bounded", async () => {
+  const pending = [];
+  const f = fixture({ collectionMs: 128, loadLevel: cid => {
+    const read = deferred(); pending.push({ cid, read }); return read.promise;
+  } }, 4);
+  assert.deepEqual(pending.map(item => item.cid), ["0"]);
+  for (let index = 0; index < 4; index++) {
+    pending[index].read.resolve({ cid: String(index) }); await flush();
+    if (index < 3) {
+      assert.equal(f.batches.length, 0);
+      f.time.advance(40);
+    }
+  }
+  assert.deepEqual(pending.map(item => item.cid), ["0", "1", "2", "3"]);
+  assert.equal(f.batches.length, 1);
+  assert.equal(f.batches[0].entries.length, 4);
+  assert.ok(f.scheduler.snapshot().batching.collectionMs <= 128);
+  f.batches[0].gate.resolve(true); await flush(); await cancel(f);
+});
+
 test("temporary sibling denial flushes and retries only after a real ownership transition", async () => {
   const attempts = [], active = new Set(); let token = 0;
   const f = fixture({ reserveLevel: ({ cid }) => { attempts.push(cid);
@@ -150,6 +170,36 @@ test("pressure coarsening stays singleton and never spends unadopted savings bel
   for (let i = 0; i < 3; i++) { assert.equal(batches[i].entries.length, 1); batches[i].gate.resolve(true); await flush(); }
   assert.deepEqual(scheduler.snapshot().levelCounts, { 1: 3 }); assert.equal(batches.length, 3);
   pressure = false; scheduler.onCameraSample(sample()); time.advance(0); await flush(); assert.equal(batches.length, 3); scheduler.dispose();
+});
+
+test("admitted refinements keep filling after staged bytes cross the pressure threshold", async () => {
+  let pressure = false;
+  const f = fixture({
+    memoryPressure: () => pressure,
+    reconcileLevel: () => { pressure = true; return { ok: true }; },
+  }, 4);
+  await flush();
+  assert.deepEqual(f.loads, ["0", "1", "2", "3"]);
+  assert.equal(f.batches.length, 1);
+  assert.equal(f.batches[0].entries.length, 4,
+    "exact per-sibling reservations, not the coarse pressure signal, bound an admitted batch");
+  assert.equal(f.scheduler.snapshot().batching.sealReasons["pressure-fill-stop"], undefined);
+  f.batches[0].gate.resolve(true); await flush(); await cancel(f);
+});
+
+test("an exact sibling reservation denial still flushes the admitted ready subset", async () => {
+  let attempts = 0;
+  const f = fixture({
+    memoryPressure: () => attempts > 0,
+    reserveLevel: () => ++attempts === 1 ? { ok: true, token: "first" } : { ok: false },
+    releaseLevel: token => assert.equal(token, "first"),
+  }, 2);
+  await flush();
+  assert.deepEqual(f.loads, ["0"]);
+  assert.equal(f.batches.length, 1);
+  assert.equal(f.batches[0].entries.length, 1);
+  assert.equal(f.scheduler.snapshot().batching.sealReasons.admission, 1);
+  f.batches[0].gate.resolve(true); await flush(); await cancel(f);
 });
 
 test("impossible late-selector preflight is bounded and leaves no lease or retry loop", async () => {

@@ -32,7 +32,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import struct
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -114,6 +116,7 @@ class _Walk:
     shapes: dict[str, Any] = field(default_factory=dict)
     brep_bytes_by_cid: dict[str, bytes] = field(default_factory=dict)
     prepared: dict[str, dict[str, Any]] = field(default_factory=dict)
+    native_locations: dict[str, Any] = field(default_factory=dict)
     root: dict[str, Any] = field(default_factory=dict)
 
     def draft_tree(self, *, root_name: str) -> dict[str, Any]:
@@ -228,6 +231,10 @@ def _document_walk(
         if color is not None:
             occurrence["color"] = [float(c) for c in color]
         walk.occurrences.append(occurrence)
+        # Publication-only native placement. Canonical bounds use this exact
+        # location rather than reconstructing one from the serialized matrix,
+        # which can re-orthogonalize rotations by a few ulps.
+        walk.native_locations[occurrence_id] = node.location
         located_shapes.append(_build123d_shape_from_topods(scene_occurrence_shape(scene, node)))
         occurrence_map[parsed_id] = [occurrence_id]
         progress.advance(detail=name)
@@ -264,6 +271,7 @@ def _publish_document_scene(
         extra={"capabilities": step_topology_capabilities(),
                "edgeRendering": {"visibilityClasses": list(STEP_EDGE_DEFAULT_RENDER_VISIBILITY_CLASSES)}},
         repair_objects=repair_objects,
+        prepared_occurrence_bounds=True,
     )
     return digest, tree, stats, occurrence_map, node_map
 
@@ -513,6 +521,7 @@ def _publish_tree(
     extra: dict[str, Any] | None,
     repair_objects: bool = False,
     descriptor_bounds: bool = False,
+    prepared_occurrence_bounds: bool = False,
     bbox_override: dict[str, list[float]] | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """Publish verified geometry inputs before any disposable surface work."""
@@ -570,6 +579,8 @@ def _publish_tree(
     if bbox is None and descriptor_bounds and not force:
         from cadgen.store._descriptor_bounds import try_bounds
         bbox = try_bounds(walk.draft_tree(root_name=root_name))
+    if bbox is None and prepared_occurrence_bounds and not force:
+        bbox = _bbox_from_prepared_occurrences(walk)
     if bbox is None:
         bbox = _bbox_from_shape(bbox_shape)
     if bbox is not None:
@@ -584,6 +595,74 @@ def _publish_tree(
         "components_reused": len(reused),
     }
     return tree_hash, tree, stats
+
+
+_PREPARED_OCCURRENCE_BOUNDS_OP = "component_bbox.canonical_native_rotation.algorithm1"
+
+
+def _bbox_from_prepared_occurrences(walk: _Walk) -> dict[str, list[float]] | None:
+    """Exact canonical bounds without serializing every placed occurrence.
+
+    ``_document_walk`` already owns one privately decoded shape per canonical
+    component and the exact native location of each parsed STEP occurrence.
+    Use the component's verified BREP identity, native-leaf ordinal and exact
+    leaf rotation as the memo input, measure that leaf tightly on a miss, and
+    apply only its removed final translation. No transformed local AABB is used.
+
+    Any incomplete private input falls back to the ordinary composed-shape
+    path in ``_publish_tree``. Store component and draft-structure validation
+    have already run before this helper is called.
+    """
+    try:
+        from OCP.TopLoc import TopLoc_Location
+        from OCP.gp import gp_Vec
+
+        from cadgen._internal import op_memo
+        from cadgen._internal.component_package import _world_leaves, optimal_box
+
+        boxes: list[list[float]] = []
+        for occurrence in walk.occurrences:
+            occurrence_id = str(occurrence["id"])
+            cid = str(occurrence["component"])
+            entry = walk.components[cid]
+            prepared = walk.prepared[cid]
+            prototype = prepared.get("shape")
+            location = walk.native_locations[occurrence_id]
+            if prototype is None or location is None:
+                return None
+
+            placed = prototype.wrapped.Located(location)
+            for leaf_ordinal, leaf in enumerate(_world_leaves(placed), start=1):
+                transform = leaf.Location().Transformation()
+                translation = tuple(float(value) for value in transform.TranslationPart().Coord())
+                transform.SetTranslationPart(gp_Vec(0.0, 0.0, 0.0))
+                linear = tuple(float(transform.Value(row, column))
+                               for row in range(1, 4) for column in range(1, 5))
+                untranslated = leaf.Located(TopLoc_Location(transform))
+
+                box = op_memo.memoized_value(
+                    _PREPARED_OCCURRENCE_BOUNDS_OP,
+                    (str(entry["codec"]), str(entry["brep"]), leaf_ordinal,
+                     struct.pack("<12d", *linear)),
+                    lambda untranslated=untranslated: optimal_box(untranslated),
+                )
+                if box is not None:
+                    if (type(box) not in (list, tuple) or len(box) != 6 or
+                            any(type(value) not in (float, int) or not math.isfinite(value)
+                                for value in box)):
+                        return None
+                    boxes.append([
+                        float(value) + translation[index % 3]
+                        for index, value in enumerate(box)
+                    ])
+        if not boxes:
+            return None
+        return {
+            "min": [min(box[axis] for box in boxes) for axis in range(3)],
+            "max": [max(box[axis] for box in boxes) for axis in range(3, 6)],
+        }
+    except Exception:  # noqa: BLE001 - ordinary native bounds remain the exact fallback
+        return None
 
 
 def _transforms_agree(written: list[float], read: tuple[float, ...]) -> bool:

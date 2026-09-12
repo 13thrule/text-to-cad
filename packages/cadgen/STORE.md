@@ -506,6 +506,13 @@ Decided mechanically from the returned geometry and occurrence metadata.
   Rotation still requires its own tight box; control-polygon bounds are not
   substituted. Disabled, memory-hit and disk-hit paths evaluate the same
   origin-normalized function, and cached numeric arrays are never mutated.
+- Canonical saved-document publication already owns each verified component's
+  encoded BREP and each parsed occurrence's exact native placement. Its tight
+  bounds key uses that BREP identity, codec and rotation in the runtime-scoped
+  `op` index, then shifts the six native bounds by translation. A miss measures
+  every native leaf with the same optimal extrema operation; it never transforms
+  a component AABB. Incomplete private inputs fall back to the ordinary composed
+  native document, after the same component validation and closure checks.
 - A bounded descriptor composed entirely of pinned links may instead measure
   exact component bounds from verified canonical BREP objects. The existing
   `op` index stores only six finite numbers, keyed by BREP digest, all 16

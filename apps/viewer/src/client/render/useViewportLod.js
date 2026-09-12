@@ -20,6 +20,14 @@ import { estimateViewportLodMemory } from "./viewportLodMemory.js";
 import { lodPayloadMemory, setLodStaging, lodStagingBuffers, lodStagingSnapshot, syncSelectorCacheAccounting } from "./lodStagingMemory.js";
 import { lodPayloadRequest } from "./lodPayloadRequest.js";
 
+// LOD runs after the model is already visible. Cached component reads are
+// serialized through one loader lane, so a first-ready window shorter than a
+// typical decode publishes one component at a time and makes a large animated
+// scene repeat its whole-scene effects pass for every component. Keep the
+// scheduler's general low-latency default for other hosts; the Viewer can
+// afford this bounded window to fill its four-CID ownership limit.
+export const VIEWPORT_LOD_COLLECTION_MS = 128;
+
 function publishLodMemoryLimitation(detail) {
   if (typeof window === "undefined") return;
   window.__cadViewerMemoryLimitation = detail;
@@ -120,6 +128,7 @@ export function useViewportLod({ viewerRef, lodPackage, modelKey = "", applyComp
     };
     scheduler = createLodScheduler({
       batchSize: typeof window !== "undefined" ? Number(window.__CAD_VIEWER_LOD_BATCH_SIZE__ || 4) : 4,
+      collectionMs: VIEWPORT_LOD_COLLECTION_MS,
       onOccupiedChanged: entries => { syncStaging(entries); publishStatus(); },
       needsPreparation: (cid, _level, payload) => !payload?.bundle && selectorsRef.current?.(cid) === true,
       prepareLevel: (cid, level, payload, options) => prepareRef.current?.(cid, level, payload, options) || payload,

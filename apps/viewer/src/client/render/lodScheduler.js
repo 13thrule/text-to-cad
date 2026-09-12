@@ -510,7 +510,6 @@ export function createLodScheduler({
     if (timer !== null) return; // fresh camera intent must settle before collecting more
     if (!occupied.size) { transientDenied.clear(); sealReason = null; }
     if (occupied.size >= capacity) { publishReady("capacity"); return; }
-    if (occupied.size && memoryPressure?.() === true) { publishReady("pressure-fill-stop"); return; }
     while (!disposed && !loading && !publication) {
       const entries = entriesForPlan();
       const pressure = occupied.size ? false : memoryPressure?.() === true;

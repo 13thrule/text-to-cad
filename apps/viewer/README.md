@@ -230,11 +230,15 @@ the build — detection only; it keeps serving.
   The scheduler holds at most four distinct replacement CIDs across loading,
   ready payloads and actual scene adoption. Its render and late-selector
   preparation share one loader lane, and only one atomic mesh/reference
-  publication awaits adoption. A 32 ms first-ready collection deadline may
+  publication awaits adoption. The Viewer uses a 128 ms first-ready collection
+  deadline so serialized cached reads can fill the four-component batch; it may
   publish a ready subset beside one unfinished carryover; it does not guarantee
-  selector, worker or scene readiness. No fifth replacement starts. Pressure
-  coarsening remains singleton. Separate user-driven topology requests keep
-  their existing worker admission and cache/picking accounting; they are not
+  selector, worker or scene readiness. No fifth replacement starts. Admitted
+  refinements keep filling the batch while exact sibling reservations allow it,
+  even after the coarse pressure threshold is crossed; a denied reservation
+  flushes the ready subset. Pressure coarsening remains singleton. Separate
+  user-driven topology requests keep their existing worker admission and
+  cache/picking accounting; they are not
   included in the scheduler's occupied-CID count.
   Actual payload backing allocations are reconciled before another sibling is
   admitted. Temporary sibling-capacity denials flush and retry after ownership

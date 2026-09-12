@@ -94,6 +94,7 @@ class DocumentTreePackagingTest(unittest.TestCase):
 
     def test_a_native_compound_product_keeps_its_product_boundary(self):
         from build123d import Compound, Location
+        from cadgen._internal import component_package
         from cadgen._internal.step_scene_types import LoadedStepScene, OccurrenceNode
         from cadgen.store.build import build_document_tree
         from cadgen.store.trees import IDENTITY_16
@@ -105,10 +106,99 @@ class DocumentTreePackagingTest(unittest.TestCase):
                                   transform=tuple(IDENTITY_16), prototype_key=1)],
             prototype_shapes={1: shape.wrapped},
         )
-        _, tree, _ = build_document_tree(scene)
+        with mock.patch.object(component_package, "_bbox_from_shape",
+                               wraps=component_package._bbox_from_shape) as fallback:
+            _, tree, _ = build_document_tree(scene)
+        fallback.assert_called_once()
         self.assertEqual(tree["label"], "native-product")
         self.assertEqual(len(tree["occurrences"]), 1)
         self.assertEqual(tree["assembly"]["root"]["children"], [])
+        self.assertIn("bbox", tree)
+
+    def test_canonical_bounds_reuse_exact_native_rotation_without_shape_key_serialization(self):
+        from build123d import Compound, Location
+        from cadgen._internal import component_package, op_memo
+        from cadgen._internal.step_scene_loader import _location_transform_matrix
+        from cadgen._internal.step_scene_types import LoadedStepScene, OccurrenceNode
+        from cadgen.store.build import build_document_tree
+
+        # One STEP product whose nested native shape has two leaves, repeated
+        # at two exact rotations and different translations. The optimized
+        # path must match the old composed-shape bbox bit for bit while
+        # measuring each native leaf only once for each component/rotation.
+        def scene():
+            prototype = Compound(children=[
+                Compound(children=[
+                    self.box("one"),
+                    self.box("two").moved(Location((8, 2, 1), (0, 25, 0))),
+                ]),
+            ])
+            locations = [
+                Location((3, 4, 5), (17, 31, 43)).wrapped,
+                Location((20, -7, 11), (17, 31, 43)).wrapped,
+                Location((-8, 13, 2), (71, 5, 29)).wrapped,
+                Location((14, 9, -6), (71, 5, 29)).wrapped,
+            ]
+            return LoadedStepScene(
+                step_path=self.root / "native-repeat.step",
+                roots=[
+                    OccurrenceNode(
+                        path=(index,), name=f"repeat-{index}", source_name=f"repeat-{index}",
+                        transform=_location_transform_matrix(location), prototype_key=1,
+                        location=location,
+                    )
+                    for index, location in enumerate(locations, start=1)
+                ],
+                prototype_shapes={1: prototype.wrapped},
+            )
+
+        op_memo.clear()
+        expected_hash, expected, _ = build_document_tree(scene(), force=True)
+        real_optimal_box = component_package.optimal_box
+        with mock.patch.object(op_memo, "placed_shape_key",
+                               side_effect=AssertionError("serialized a placed shape key")), \
+                mock.patch.object(component_package, "optimal_box", wraps=real_optimal_box) as measured:
+            actual_hash, actual, _ = build_document_tree(scene())
+            self.assertEqual((actual_hash, actual), (expected_hash, expected))
+            self.assertEqual(measured.call_count, 4)
+
+            # A fresh process-cache state resolves the persisted scalar entry;
+            # it still performs no native key serialization or measurement.
+            op_memo.clear()
+            warm_hash, warm, _ = build_document_tree(scene())
+            self.assertEqual((warm_hash, warm), (expected_hash, expected))
+            self.assertEqual(measured.call_count, 4)
+
+    def test_malformed_prepared_bounds_fall_back_to_exact_composed_shape(self):
+        from build123d import Location
+        from cadgen._internal import component_package, op_memo
+        from cadgen._internal.step_scene_loader import _location_transform_matrix
+        from cadgen._internal.step_scene_types import LoadedStepScene, OccurrenceNode
+        from cadgen.store import build
+
+        location = Location((3, 4, 5), (17, 31, 43)).wrapped
+        scene = LoadedStepScene(
+            step_path=self.root / "malformed-bounds.step",
+            roots=[OccurrenceNode(
+                path=(1,), name="part", source_name="part",
+                transform=_location_transform_matrix(location), prototype_key=1,
+                location=location,
+            )],
+            prototype_shapes={1: self.box().wrapped},
+        )
+        real_memoized_value = op_memo.memoized_value
+
+        def malformed_prepared_only(op_name, args, compute):
+            if op_name == build._PREPARED_OCCURRENCE_BOUNDS_OP:
+                return [0, 0, 0, 1, 1, float("nan")]
+            return real_memoized_value(op_name, args, compute)
+
+        with mock.patch.object(op_memo, "memoized_value", side_effect=malformed_prepared_only), \
+                mock.patch.object(component_package, "_bbox_from_shape",
+                                  wraps=component_package._bbox_from_shape) as fallback:
+            _, tree, _ = build.build_document_tree(scene)
+        fallback.assert_called_once()
+        self.assertIn("bbox", tree)
 
     def test_one_child_groups_keep_exact_document_nodes_even_with_identical_leaf_sets(self):
         from build123d import Compound
