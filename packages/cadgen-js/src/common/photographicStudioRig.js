@@ -1,7 +1,17 @@
 // One neutral product-photography rig shared by the direct light and the HDR
 // reflection cards. Public rotation moves these directions together about Z.
-export const PHOTOGRAPHIC_STUDIO_KEY_DIRECTION = Object.freeze([0.72, -0.62, 0.82]);
-export const PHOTOGRAPHIC_STUDIO_FILL_DIRECTION = Object.freeze([-0.42, 0.78, 0.36]);
+// The key sits above and to the side of the default isometric camera: a
+// camera-aligned key flattens cylinders and hides depth between assembly parts.
+export const PHOTOGRAPHIC_STUDIO_KEY_DIRECTION = Object.freeze([-0.35, -1, 1.5]);
+// The broad rear fill reflects into horizontal surfaces viewed from iso, so
+// polished plates and black plastic retain detail instead of reflecting void.
+export const PHOTOGRAPHIC_STUDIO_FILL_DIRECTION = Object.freeze([-0.65, 0.8, 0.6]);
+
+// Calibrated together at 0 EV. PMREM also supplies diffuse illumination, so
+// its key card and the shadow-casting spotlight share the illumination budget.
+export const PHOTOGRAPHIC_STUDIO_KEY_ILLUMINANCE = 2.1;
+export const PHOTOGRAPHIC_STUDIO_CARD_RADIANCE = 8;
+export const PHOTOGRAPHIC_STUDIO_ROOM_RADIANCE = 0.04;
 
 // Full square-ground width relative to model-bounds radius. Keep the camera's
 // fitted far padding on this same multiplier so the ordinary-depth frustum

@@ -2,8 +2,10 @@ import * as THREE from "three";
 
 import { DEFAULT_RENDER_LIGHTING } from "./sceneSettings.js";
 import {
+  PHOTOGRAPHIC_STUDIO_CARD_RADIANCE,
   PHOTOGRAPHIC_STUDIO_FILL_DIRECTION,
-  PHOTOGRAPHIC_STUDIO_KEY_DIRECTION
+  PHOTOGRAPHIC_STUDIO_KEY_DIRECTION,
+  PHOTOGRAPHIC_STUDIO_ROOM_RADIANCE
 } from "./photographicStudioRig.js";
 
 export const PROCEDURAL_STUDIO_ENVIRONMENT_ID = "photographic-softbox";
@@ -70,15 +72,16 @@ export function createStudioEnvironmentScene(configuration = {}) {
   const lighting = lightingConfiguration(configuration);
   // Emissive radiance is inversely proportional to card area, so changing the
   // apparent softbox size changes highlight width without changing total flux.
-  const cardRadiance = 12 / (lighting.size * lighting.size);
+  const cardRadiance = PHOTOGRAPHIC_STUDIO_CARD_RADIANCE / (lighting.size * lighting.size);
   const scene = new THREE.Scene();
   scene.name = "cadgen-photographic-environment";
-  scene.background = new THREE.Color(0.004, 0.004, 0.004);
+  const roomColor = new THREE.Color().setScalar(PHOTOGRAPHIC_STUDIO_ROOM_RADIANCE);
+  scene.background = roomColor;
 
   const room = new THREE.Mesh(
     new THREE.BoxGeometry(30, 30, 30),
     new THREE.MeshBasicMaterial({
-      color: new THREE.Color(0.006, 0.006, 0.006),
+      color: roomColor,
       side: THREE.BackSide,
       toneMapped: false
     })

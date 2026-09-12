@@ -182,7 +182,11 @@ procedural PMREM, while one aligned, model-scaled spot light supplies direct and
 shadow illumination. Rotation moves both around CAD's Z axis. Softbox size
 changes reflection-card size and bounded PCF shadow softness without changing
 key exposure. The `light` and `dark` studios differ only in their backdrop
-default. Render fixes AgX tone mapping and preserves authored PBR channels; the
+default. The key is offset from the default camera to reveal assembly depth;
+the rear fill and dim enclosure keep dark and metallic surfaces readable.
+Key and environment brightness are calibrated together at zero EV across
+colored assemblies, gray mechanical models, and authored metal/plastic finishes.
+Render fixes Khronos PBR Neutral tone mapping and preserves authored PBR channels; the
 public contract has no global material, color-grading, arbitrary-light, floor
 physics, or glow controls. `applyPhotographicStudio()` owns the synchronous
 light, ground and renderer state. Callers separately cache and dispose the PMREM

@@ -94,7 +94,10 @@ opposing fill card generate a procedural PMREM for authored PBR reflections;
 one aligned, model-scaled SpotLight supplies direct illumination and PCF contact
 shadows. Softbox size changes card area and bounded shadow softness while keeping
 total card flux stable. Rotation moves the direct light and
-`scene.environmentRotation` together around CAD Z. AgX tone mapping is fixed;
+`scene.environmentRotation` together around CAD Z. An overhead side key reveals
+depth; a rear fill card and dim enclosure keep reflections on dark and polished
+surfaces readable. Environment radiance and direct illumination share a
+calibrated zero-EV lighting budget. Khronos PBR Neutral tone mapping is fixed;
 `toneMappingExposure` is `2 ** exposure`. Light and dark differ only in default
 backdrop color.
 

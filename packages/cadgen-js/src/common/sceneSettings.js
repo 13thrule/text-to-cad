@@ -366,7 +366,7 @@ function photographicRenderSettings(configuration) {
       rotationY: 0,
       useAsBackground: false
     },
-    // The helper owns the one logical softbox and AgX exposure. Disable every
+    // The helper owns the one logical softbox and neutral exposure. Disable every
     // legacy light so generic consumers cannot accidentally double the energy.
     lighting: {
       toneMappingExposure: 2 ** configuration.exposure,
@@ -382,7 +382,7 @@ function photographicRenderSettings(configuration) {
   return {
     ...publicRenderSettings(settings),
     renderer: {
-      toneMapping: "agx",
+      toneMapping: "neutral",
       exposure: configuration.exposure
     }
   };

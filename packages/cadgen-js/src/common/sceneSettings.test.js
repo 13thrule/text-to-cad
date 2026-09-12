@@ -120,7 +120,7 @@ test("Render uses a fixed neutral photographic engine policy without authored PB
   assert.equal(light.render.settings.floor.mode, "none");
   assert.equal(light.render.settings.lighting.directional.enabled, false);
   assert.equal(light.render.settings.lighting.ambient.enabled, false);
-  assert.deepEqual(light.render.settings.renderer, { toneMapping: "agx", exposure: -1 });
+  assert.deepEqual(light.render.settings.renderer, { toneMapping: "neutral", exposure: -1 });
 });
 
 test("Render camera, quality, and display are isolated from hostile CAD overrides", () => {

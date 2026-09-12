@@ -4,10 +4,9 @@ import {
 } from "./sceneSettings.js";
 import {
   PHOTOGRAPHIC_STUDIO_KEY_DIRECTION,
+  PHOTOGRAPHIC_STUDIO_KEY_ILLUMINANCE,
   PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER
 } from "./photographicStudioRig.js";
-
-export const PHOTOGRAPHIC_STUDIO_TONE_MAPPING = "agx";
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -179,7 +178,7 @@ function updateKeyLight(THREE, state, configuration, bounds, shadowMapSize, soft
   state.keyLight.penumbra = clamp(0.48 + configuration.lighting.size * 0.1, 0.5, 0.78);
   // SpotLight intensity is candela. Scaling it by distance squared keeps the
   // incident key illumination stable for millimetre CAD and metre-scale URDF.
-  state.keyLight.intensity = 2.4 * distance * distance;
+  state.keyLight.intensity = PHOTOGRAPHIC_STUDIO_KEY_ILLUMINANCE * distance * distance;
   state.keyLight.castShadow = !softwareRendering;
 
   const size = Math.round(clamp(finite(shadowMapSize, 2048), 256, 4096));
@@ -211,7 +210,9 @@ function updateKeyLight(THREE, state, configuration, bounds, shadowMapSize, soft
 
 function updateRendererAndScene(THREE, runtime, state, configuration) {
   const { renderer, scene } = runtime;
-  renderer.toneMapping = THREE.AgXToneMapping;
+  // Product rendering needs authored paint colors and bright whites to remain
+  // distinct. Filmic compression made ordinary CAD albedos look pastel/gray.
+  renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 2 ** configuration.exposure;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   if (renderer.shadowMap) {

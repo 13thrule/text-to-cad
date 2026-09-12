@@ -40,11 +40,8 @@ async function configureScene(page, expectation) {
   if (!expectation.studio) {
     return;
   }
-  await page.getByRole("tab", { name: "Render", exact: true }).click();
-  const enabled = page.getByRole("switch", { name: "Enabled", exact: true });
-  if (!(await enabled.isChecked())) {
-    await enabled.click();
-  }
+  await page.getByRole("button", { name: /^Viewing mode:/ }).click();
+  await page.getByRole("menuitemradio", { name: "Render", exact: true }).click();
   await page.getByRole("combobox", { name: "Studio", exact: true }).click();
   await page.getByRole("option", { name: expectation.studio, exact: true }).click();
 }
@@ -83,7 +80,7 @@ for (const expectation of EXPECTATIONS) {
   const page = await context.newPage();
   const url = `${args.url}?file=${encodeURIComponent(args.file)}`;
   await page.goto(url, { waitUntil: "domcontentloaded" });
-  await page.getByRole("tab", { name: "Render", exact: true }).waitFor({ timeout: 30000 });
+  await page.getByRole("button", { name: /^Viewing mode:/ }).waitFor({ timeout: 30000 });
   await configureScene(page, expectation);
   let placement = null;
   try {

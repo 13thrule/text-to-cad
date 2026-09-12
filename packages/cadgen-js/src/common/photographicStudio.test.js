@@ -56,7 +56,7 @@ function configuration(overrides = {}) {
   };
 }
 
-test("photographic studio applies one scale-stable key, AgX exposure, and grounded backdrop", () => {
+test("photographic studio applies one scale-stable key, Neutral exposure, and grounded backdrop", () => {
   const value = runtime();
   const state = applyPhotographicStudio(THREE, value, configuration({ exposure: 2 }), {
     sceneScale: "cad",
@@ -64,7 +64,7 @@ test("photographic studio applies one scale-stable key, AgX exposure, and ground
   });
 
   assert.equal(value.scene.children.filter((child) => child.name === "cadgen-photographic-studio").length, 1);
-  assert.equal(value.renderer.toneMapping, THREE.AgXToneMapping);
+  assert.equal(value.renderer.toneMapping, THREE.NeutralToneMapping);
   assert.equal(value.renderer.toneMappingExposure, 4);
   assert.equal(value.renderer.outputColorSpace, THREE.SRGBColorSpace);
   assert.equal(value.renderer.shadowMap.type, THREE.PCFShadowMap);
@@ -100,6 +100,19 @@ test("valid metre-scale bounds do not inherit CAD's one-unit minimum radius", ()
   const state = applyPhotographicStudio(THREE, value, configuration(), { sceneScale: "urdf" });
   assert.ok(state.keyLight.position.distanceTo(state.target.position) < 0.1);
   assert.ok(state.keyLight.shadow.normalBias < 0.00005);
+});
+
+test("studio illumination is unchanged by model scale or world placement", () => {
+  const illuminances = [0.001, 1, 1000].map((scale) => {
+    const value = runtime();
+    value.modelBounds = {
+      min: [90, -70, 25].map((coordinate) => coordinate * scale),
+      max: [130, -10, 45].map((coordinate) => coordinate * scale)
+    };
+    const state = applyPhotographicStudio(THREE, value, configuration());
+    return state.keyLight.intensity / state.keyLight.position.distanceToSquared(state.target.position);
+  });
+  assert.ok(illuminances.every((value) => Math.abs(value - illuminances[0]) < 1e-12));
 });
 
 test("shadow normal offset tracks a fitted frustum texel across quality levels", () => {
