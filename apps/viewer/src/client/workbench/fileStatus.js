@@ -43,13 +43,15 @@ function activityStatus(activity) {
 
   const activityLabel = text(activity.label);
   const hint = `${text(activity.kind)} ${activityLabel}`.toLowerCase();
+  // Camera-driven detail work is background viewport activity, not file I/O.
+  if (/refin/.test(hint) && text(activity.kind).toLowerCase() !== "build") {
+    return null;
+  }
   const label = text(activity.kind).toLowerCase() === "build" || /(generat|compil)/.test(hint)
     ? "Building"
     : /sav/.test(hint)
       ? "Saving"
-      : /refin/.test(hint)
-        ? "Refining"
-        : "Loading";
+      : "Loading";
   return status(label, text(activity.title) || activityLabel || `${label} file.`, "info", true);
 }
 
@@ -151,15 +153,6 @@ export function resolveFileStatus({
       "Reduced detail",
       text(qualityStatus.title) || "Available memory limits the visible model detail.",
       "warning"
-    );
-  }
-
-  if (qualityStatus?.state === "refining") {
-    return status(
-      "Refining",
-      text(qualityStatus.title) || "More model detail is loading in the background.",
-      "info",
-      true
     );
   }
 

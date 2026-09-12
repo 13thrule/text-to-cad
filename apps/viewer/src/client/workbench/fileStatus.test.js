@@ -149,7 +149,7 @@ test("real build and loader activity use compact labels and preserve detailed to
   }).label, "Loading", "background interaction preparation is not presented as a model build");
 });
 
-test("quality failures, limits, and refinement replace the old persistent detail success label", () => {
+test("quality failures and limits are visible while background refinement stays quiet", () => {
   assert.equal(resolveFileStatus({
     ...ready,
     qualityStatus: { state: "error", title: "Surface adoption failed." }
@@ -162,11 +162,20 @@ test("quality failures, limits, and refinement replace the old persistent detail
     ...ready,
     qualityStatus: { state: "refining", title: "More detail is loading." }
   }), {
-    label: "Refining",
-    title: "More detail is loading.",
-    tone: "info",
-    busy: true
+    label: "Ready",
+    title: "The saved file is loaded.",
+    tone: "neutral",
+    busy: false
   });
+  assert.deepEqual(resolveFileStatus({
+    ...ready,
+    activity: { loading: true, label: "refining detail" }
+  }), resolveFileStatus(ready));
+  assert.equal(resolveFileStatus({
+    ...ready,
+    qualityStatus: { state: "refining" },
+    editingState: { state: "done", saved: { tree: "tree" } }
+  }).label, "Saved");
   assert.equal(resolveFileStatus({
     ...ready,
     qualityStatus: { state: "high", title: "High-detail geometry is ready." }

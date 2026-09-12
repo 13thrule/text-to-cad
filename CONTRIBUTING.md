@@ -205,6 +205,15 @@ PYTHONPATH=<worktree>/packages/cadgen/src \
 <main>/.venv/bin/python -m cadgen.viewer --host 127.0.0.1 --json
 ```
 
+For a browser regression check of Inspect/Render switching, Studio quality, and
+orbit settling, point this command at a running viewer with a moderate STEP
+assembly. It uses Playwright Chromium from the development requirements and
+does not build the model:
+
+```bash
+python scripts/test/viewer-render-quality.py 'http://127.0.0.1:3259/?file=assembly.step'
+```
+
 Mesh exports (`@stl`/`@3mf`/`@glb`) and DXF previews run the checkout's live
 `packages/cadgen-js/bin` builders in Node, which import `three` and friends
 from `packages/cadgen-js/node_modules`. A fresh worktree has none, and cadgen

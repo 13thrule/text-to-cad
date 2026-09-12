@@ -80,14 +80,14 @@ remain intact. The existing toolbar owns image capture.
 
 Quality is independent of the studio. Normal CAD uses its Interactive policy;
 Render offers **Preview** and **Final**, and defaults to Final. Preview and Final
-share the tessellation ladder, cache entries, and memory budget. Final requests
-a 0.25-pixel screen-error target, 4096-pixel shadow maps, and a 512-pixel softbox
+share the tessellation ladder, cache entries, and memory budget. Preview uses
+a 1-pixel screen-error target, 2048-pixel shadow maps, and a 256-pixel softbox
+environment. Final requests a 0.25-pixel screen-error target, 4096-pixel shadow maps, and a 512-pixel softbox
 environment. Quality changes refine the view without rebuilding exact CAD
 geometry or the model scene. Entering Render creates an ordinary-depth WebGL
 runtime so the photographic ground can receive shadows; returning to CAD restores
 its wide-range logarithmic-depth runtime while decoded geometry stays cached. The
-filename badge reports Refining while work is active and Reduced detail when
-memory limits prevent requested detail. Snapshots use the same policy:
+filename badge reports Reduced detail when memory limits prevent requested detail. Snapshots use the same policy:
 Final selects the existing finest L3 STEP tessellation and 2× capture scale unless
 an explicit output scale overrides it. CAD tessellation controls cannot be combined
 with a photographic snapshot request.
@@ -164,7 +164,8 @@ the build — detection only; it keeps serving.
   breadcrumb menu (or open `?file=part.step&mode=saved`) to inspect the artifact
   read-back; choose **Follow edits** there to return to the live preview. The
   compact badge beside the filename reports loading, edits, save outcomes and
-  detail refinement in one or two words. Loading uses an inline spinner;
+  detail failures or limits in one or two words. Orbit-driven refinement stays
+  in the background without changing the badge. Loading uses an inline spinner;
   warnings and errors use their own icons. Tooltips explain the state.
   Run the model normally; existing decorators need no new imports. The daemon
   must be running for live updates. The prior model stays visible while the

@@ -4337,7 +4337,10 @@ const CadViewer = forwardRef(function CadViewer({
     }
 
     recordSceneSyncTiming(sceneSyncStartedAt, { mode: reuseScene ? "reuse" : "rebuild", records: runtime.displayRecords.length, reason: rebuildReason });
-    if (modelGroupPlacementChanged) lodCameraChangeRef.current?.();
+    // A mode switch replaces the renderer. The parent's quality-change sample
+    // can arrive before this scene is ready, so resample its framed camera on
+    // construction too; otherwise the old quality remains until the next orbit.
+    if (!reuseScene || modelGroupPlacementChanged) lodCameraChangeRef.current?.();
     setError("");
     runtime.requestRender();
     if (shouldRenderParts) {
