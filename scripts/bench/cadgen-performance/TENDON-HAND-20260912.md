@@ -132,11 +132,57 @@ the cross-process drift as a confound for bounds correctness. The review store's
 document index and model record were restored to the original verified saved
 tree before the paired browser comparison.
 
-The larger follow-up is to retain the verified canonical-document snapshot
-privately through warm STEP readback and reuse its identities after exact-byte
-verification. It must retain correspondence checks, private native ownership,
-and recovery when backing objects disappear. It must not trust a mutable scene
-or alias a source result to saved STEP bytes.
+### Canonical snapshot reuse follow-up
+
+The saved-build pipeline now retains its verified canonical-document snapshot
+privately through warm STEP readback. After native reconstruction, placement,
+face-color and complete authored-to-written correspondence checks, it restores
+the exact captured closure and returns the original tree identity. It does not
+re-encode the native shapes. Public scenes carry no capture or certificate;
+generic scene publication still derives current geometry and metadata even if
+the scene retains an existing STEP digest. Forced, cold, invalid and eager-only
+readback retain ordinary canonical derivation.
+
+A fresh-process pair used the same original document tree and isolated store.
+Each run removed only the root model record and executed the model normally.
+The baseline disabled only capture retention after verified native readback,
+reproducing the old canonical publication with the bbox fix still enabled.
+Its document mapping was restored before the candidate. Instrumentation imports
+and preflight closure verification were outside the timed model invocation.
+
+| Measurement | Baseline | Candidate |
+| --- | ---: | ---: |
+| Complete warm model rebuild | 59.270 s | 43.195 s |
+| Canonical document stage | 24.233 s | 0.158 s |
+| Verified native readback | 0.958 s | 1.018 s |
+| STEP assembly and writing | 11.584 s | 16.937 s |
+| Changed component identities | 176 | 0 |
+| Changed BREP payload bytes | 28,905,243 | 0 |
+| Required closure objects | 867 | 867 |
+
+The candidate preserved all 866 component identities, every required object,
+the exact original canonical tree `4e1d7f72…`, source tree `ad7a7389…`, and STEP
+digest `9f14edc8…`. The immutable capture was 67,398,659 bytes and lived only
+through this call; verifying/restoring its objects took 0.125 s. The baseline
+produced canonical tree `ee17a880…` for identical STEP bytes. Object deltas in
+the table compare the two selected closures, not total new files in the store.
+
+The whole invocation was 27.1% faster in this single ordered pair. STEP writing
+was slower in the candidate, so the total is an observed local result rather
+than an isolated timing guarantee. The canonical stage comparison directly
+measures the removed re-encoding work. No new full-hand cold build or browser
+performance claim is included. Machine-readable stage timings and identity
+counts are in [the paired result](results/tendon-canonical-readback-20260912.json);
+full logs are under the review directory's `logs/canonical-*-20260912.log`.
+
+Validation covered 79 focused and adjacent Python cases plus four package-boundary
+checks. Regressions include three repeated warm builds of a 24-occurrence curved
+assembly with canonical re-encoding forbidden, forced and empty-store parity,
+whole captured-closure deletion/damage repair, private native ownership, mutable
+public-scene isolation, honestly hashed native/appearance/placement rejection,
+eager-only fallback, and correspondence failure before restoration. The 11 STEP
+publication integration tests required an unsandboxed local broker socket; they
+passed on rerun after the sandbox denied binding it.
 
 The repeated CLI snapshot remains a separate performance gap. Static inspection
 shows each invocation creates a fresh browser, reconstructs a disposable package
@@ -146,11 +192,54 @@ Snapshot tight framing also visits the vertex positions of each visible
 occurrence before the first draw and PNG readback. These are candidate costs,
 not measured stage attribution for the 181–200 s totals.
 
-The next diagnostic is to preserve the browser's existing `stageTimings`
-(`headlessRenderEntry.js`) and capture timings through `snapshot_core.py`;
-currently Python retains only resolve-time debug information. This would
-separate package loading, scene construction and capture before selecting a
-snapshot optimization. Snapshot implementation is unchanged in this review.
+### Snapshot stage attribution
+
+Snapshot `--debug --json` now retains measured browser stages alongside artifact
+resolution. The previous browser `renderMs` measured viewport setup rather than
+the draw; it is now accurately named `prepareViewportMs`. Capture reports each
+output's model update, camera framing, studio setup, draw submission and image
+readback/encoding separately. Timing objects belong to one job, unavailable
+stages are omitted, and no image payload enters the public result. The normal
+non-debug result stays unchanged.
+
+A 900 × 675 light Render preview of the nine-component planetary assembly had
+identical pixels with the previous committed runtime and the instrumented one.
+The instrumented capture took 1.995 s for the full command and 1.155 s for the
+render packet. This is a diagnostic correctness check, not a speedup claim.
+
+One cached 12.7 MB iris assembly (118 occurrences, 91 components) provided a
+moderate-model attribution check:
+
+| Measured stage | Time |
+| --- | ---: |
+| Artifact resolution | 362 ms |
+| Browser source loading | 107 ms |
+| Model construction | 16 ms |
+| Viewport preparation | 35 ms |
+| Model update for the image | 2 ms |
+| Camera fitting, including tight framing | 10 ms |
+| Draw submission | 293 ms |
+| Image readback and PNG encoding | 74 ms |
+| Complete capture call | 380 ms |
+| Render packet, including browser lifetime/output writing | 1,673 ms |
+| Full command | 2,750 ms |
+
+The capture total includes its image stages; these are overlapping levels of
+attribution. Draw submission can return before GPU completion, so image
+readback may wait for pending GPU work. The browser stages also exclude process
+startup and other host work. On this iris, tight framing was a small part of
+capture and the draw call was largest. That finding does not explain the hand's
+181–200 s snapshots. A subsequent bounded full-hand capture below identifies
+the large model's source-loading bottleneck.
+
+Both reviewed images were complete and emitted no warning. Results are in
+[snapshot stage diagnostics](results/snapshot-stage-diagnostics-20260912.json)
+and the PNGs/logs are under `models/tmp/snapshot-diagnostics-20260912/`.
+Validation passed 72 focused Python snapshot cases, four package-boundary
+checks, and 17 focused shared-renderer tests. A deterministic clock test pins
+the pose, tight-framing, draw and image timings to their actual operations;
+Python tests cover single/multi-job attribution, debug gating, independent
+diagnostic copies and omission of invalid or unavailable timing fields.
 
 ### Validation limits
 
@@ -159,8 +248,8 @@ having checked six of 866 prototypes without findings. This is **partial
 validation**, not a geometry certification. The website's five GLBs and its
 optional video were not regenerated.
 
-The ignored 11 MB animation module was restored from the preserved generated
-output. Its frame manifest and runtime match this rebuild byte-for-byte; all
+The ignored 11 MB animation module was initially restored from the preserved
+generated output. Its frame manifest and runtime matched that rebuild byte-for-byte; all
 1,886 referenced bodies resolve. Node execution of seven clips at start, middle
 and end passed, including 18,333 body lookups and 1,008 tendon deformation calls.
 No nine-minute route re-solve was needed.
@@ -177,8 +266,8 @@ usable full-hand animation in the browser.
 A bounded follow-up Chromium profile with no loaded selectors confirmed real
 geometry motion into the fist pose. Inspect scrubs from 0 to 3.00 s and from
 3.00 to 3.10 s took approximately 563 and 569 ms, respectively, excluding the
-explicit three-second observation wait. The latter is an authored hold, yet
-still pays roughly the same cost. Analytic tendon-path compilation and frame
+explicit three-second observation wait. In that baseline, the authored hold
+still paid roughly the same cost. Analytic tendon-path compilation and frame
 transport account for approximately 350–400 ms of sampled JavaScript work;
 Inspect also deforms the 48 visible tendon edge objects on the CPU. Surface
 deformation already uses the GPU where eligible. Per-frame transformed selector
@@ -189,8 +278,45 @@ In a fresh in-app Render view, the paused 3.00 s fist pose also rendered correct
 Playback advanced; a pause action timed out at the automation interface, and a
 later UI read confirmed playback had paused. Thus animation is functional in
 both modes, but smooth full-hand playback is not established. The hand viewer
-was left open in Render for user review. Animation runtime code is unchanged
-in this review.
+was left open in Render for user review. The later authored-runtime correction
+below removes false changes during holds. Moving-pose costs remain, and post-fix
+browser frame pacing remains unmeasured.
+
+### Held-pose interpolation correction
+
+Replaying the actual R13 `fist` module exposed the hold's cause: weighted
+interpolation of equal endpoints changed 44 of 48 tendon specs between 3.00 and
+3.10 s by up to 5.684e-14 mm. Their exact keys differed, bypassing the shared
+runtime's unchanged-pose exit. Rest plus both posed sets also occupied 134
+distinct keys, exceeding its existing 128-entry path cache.
+
+The hand's `showcase_runtime.js` now returns the original value when interpolation
+endpoints are exactly equal, for tendons, poses, actuators and guides. Unequal
+endpoints retain the original expression. The ignored module's runtime suffix
+was refreshed while preserving all 11,868,271 solved-data bytes. No additional
+cache, approximation, route solve or geometry rebuild was introduced.
+
+| Actual-module CPU replay | Before | After |
+| --- | ---: | ---: |
+| Changed tendon specs, 3.00 → 3.10 s | 44 / 48 | 0 / 48 |
+| First held evaluation | 279.03 ms | 2.64 ms |
+| Seven alternating held evaluations, median | 273.74 ms | 2.64 ms |
+| Moving transition, 0 → 3.00 s | 270.23 ms | 261.81 ms |
+
+The approximately **104× improvement applies only to held CPU evaluation**:
+Node v26.7.0 evaluates the authored clip, normalizes specs, checks equality and
+compiles changed paths. It excludes projection, GPU frame generation/uploads,
+drawing, selectors and UI traversal. This is neither a browser-frame nor a
+snapshot speedup; no meaningful moving-pose improvement is established.
+
+Three source-template tests pass, including exact holds, unchanged interpolation
+for moving endpoints and observable mutable author data. All seven actual clips
+were compared at five times each, including endpoints: 1,186,580 numeric values
+and all target/call structures were checked. Maximum deltas were 5.684e-14 mm
+for tendon values, 1.990e-13 mm for translations and 1.794e-13 for rotation-call
+values. These intentional tiny changes remove equal-endpoint rounding drift;
+whole-module bit parity is not claimed. Timings and parity counts are in
+[the compact replay result](results/tendon-held-pose-20260912.json).
 
 There is no matched FreeCAD run for this hand. Historical branch figures used
 different detail policies and animation conditions and cannot support a causal
@@ -219,3 +345,77 @@ the expanded 596-test viewer suite, including 72 focused scheduler/adoption/
 cleanup cases. The bbox change passed 60 focused and adjacent Python tests.
 The 11-transition real-browser quality regression passed again after batching.
 The canonical bundle was regenerated and its freshness check passed.
+
+
+### Warm snapshot probe admission follow-up
+
+A single 1200 × 900 light Render preview capture used the same saved hand STEP,
+original canonical tree and isolated cache. Preflight found all 866 current SURF
+objects and all 866 exact L1 TESS records (690,357,804 encoded bytes). The run
+forbade cold native compilation, used a 240-second outer deadline, and succeeded
+in **184.82 s** with no warnings. The complete image was visually reviewed.
+
+| Measured stage | Time |
+| --- | ---: |
+| Host input resolution | 2.60 s |
+| Browser startup / shutdown | 0.48 / 0.54 s |
+| Browser source loading | **176.75 s** |
+| Build model / prepare viewport | 0.189 / 0.054 s |
+| Tight camera framing | 2.452 s |
+| Draw submission / image readback and encoding | 0.420 / 0.041 s |
+
+Source loading accounted for approximately 96% of process time. Inspection
+identified a definite admission bug: the assembly submitted 866 metadata keys
+in one call, while the HTTP provider deliberately refuses more than 256.
+Every component therefore fell through to browser SURF loading/tessellation,
+even though the exact TESS cache was complete. No native cache miss occurred.
+
+The shared probe helper now splits metadata requests at 256 keys; snapshot body
+groups honor both that count bound and the existing 32 MiB byte bound. Exact
+object digests, payload identity and render metadata validation remain in place.
+The new `stageTimings.sourceLoad` records cache hits/misses and measured probe,
+body read/validation, decode, render-array, composition and actual miss phases.
+
+A 513-component regression drives the real HTTP cache provider, verifies zero
+SURF fetches, checks every vertex/normal/index against the original tessellation,
+and admits no probe or body group above 256 entries. A separate small planar
+fixture reproduces the old rejected-probe outcome: 108.54 ms with 513 SURF reads
+versus 67.87 ms with 513 cache hits, zero SURF reads and three probe/body groups.
+Geometry hashes match. These in-memory transport timings establish the branch
+change, not full-hand or network throughput.
+
+
+The single post-fix full-hand validation used the rebuilt packaged runtime and
+the same STEP/cache/camera/quality. In addition to forbidding native work, it
+failed immediately on any browser SURF fetch. It succeeded with **866 cache
+hits, zero misses**, 22 admitted body groups and no warnings. The canonical tree
+remained `4e1d7f72f7f4250594a2d16e95e6778958b34f0c2283086ff429ae4643c44285`.
+The 1200 × 900 output is **pixel-for-pixel identical**, with decoded RGBA SHA-256
+`90af71bacd4a4a07a0b7fa46e1926681a4339fdef6acff8a3abaa2f2a1fd8505`.
+
+| Paired hand snapshot | Before | After |
+| --- | ---: | ---: |
+| Complete CLI process | 184.82 s | **25.56 s** |
+| Render packet | 181.86 s | **8.84 s** |
+| Browser source loading | 176.75 s | **3.180 s** |
+| Host input resolution | 2.60 s | 15.78 s |
+| Tight camera framing | 2.452 s | 2.822 s |
+| Draw submission / readback and PNG | 0.420 / 0.041 s | 0.286 / 0.050 s |
+
+The new source phases measured metadata probes at 0.232 s, body transport and
+integrity validation at 2.760 s, component decoding at 0.073 s, owned mesh arrays
+at 0.080 s and occurrence composition at 0.024 s. No surface read, tessellation
+or write-back phase occurred. The approximately **55.6× source-loading** and
+**7.2× whole-process** improvements describe this local pair; host input
+resolution was substantially slower in the second run, so no stable end-to-end
+latency floor is claimed. The post-fix validation overlapped the final JavaScript
+unit suites, so it was not an otherwise-idle throughput benchmark. There was no
+further hand capture.
+
+All 49 focused source/cache/render JavaScript tests and 27 Python diagnostics
+and package-boundary tests pass. The checks retain exact-object admission,
+corrupt-body refusal and independent recovery from unavailable metadata chunks.
+See [the measured probe-admission result](results/snapshot-probe-admission-20260912.json)
+for both complete captures, the moderate comparison and pixel parity. Review
+images and detailed logs remain under
+`models/tmp/tendon-hand-review-20260912/`.
