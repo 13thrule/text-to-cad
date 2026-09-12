@@ -235,8 +235,7 @@ test("snapshot scene policy separates normal CAD, Render quality, and technical 
 
   const explicitScale = renderJobContext(twoPartMeshData(), {
     render: { quality: "preview" },
-    output: { renderScale: 3 },
-    quality: { tessellation: { chordTolerance: 0.001 } }
+    output: { renderScale: 3 }
   });
   assert.equal(explicitScale.quality.id, "standard");
   assert.equal(explicitScale.sharedRenderOptions.renderScale, 3);
@@ -252,18 +251,11 @@ test("per-output views inherit the photographic lens without inheriting a confli
   });
 });
 
-test("photographic Render ignores CAD display and selection while retaining animation", () => {
+test("photographic Render skips CAD runtimes while retaining animation", () => {
   const stepAnimation = resolveAnimationFrame(SLIDE_CLIPS, { clip: "slide", time: 1.5 });
   const job = {
     kind: "step",
     render: {},
-    camera: { projection: "orthographic", preset: "top" },
-    display: {
-      mode: "wireframe",
-      exploded: { enabled: true, amount: 1 },
-      partColor: { mode: "single", color: "#ff0000" }
-    },
-    selection: { hide: ["left"], focus: ["right"], selectedPartId: "right" },
     selectorRuntime: {},
     displayEdgeRuntime: {},
     stepAnimation
@@ -451,5 +443,12 @@ test("a snapshot frame layers over the kinematics pose in the viewer's order", (
     assert.deepEqual(roundedPoint(left.effectMatrix, [0, 0, 0]), [1.5, 0, 4]);
   } finally {
     composed.dispose();
+  }
+});
+
+test("photographic scene requests reject explicitly supplied CAD controls", () => {
+  for (const key of ["camera", "display", "selection", "kinematics", "jointValues", "quality"]) {
+    assert.throws(() => renderJobContext(twoPartMeshData(), { render: {}, [key]: null }),
+      new RegExp(`render cannot be combined.*${key}`));
   }
 });

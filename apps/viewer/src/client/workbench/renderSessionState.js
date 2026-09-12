@@ -30,7 +30,10 @@ export function createRenderSessionState(value = null) {
   const source = isPlainObject(value) ? value : {};
   let payload;
   try {
-    payload = normalizeRenderPayload(isPlainObject(source.payload) ? source.payload : DEFAULT_RENDER_PAYLOAD);
+    // Studio selection belongs to snapshot requests. Viewer defaults always use
+    // global appearance; only explicit photographic customizations are stored.
+    const { studio: _studio, ...settings } = isPlainObject(source.payload) ? source.payload : DEFAULT_RENDER_PAYLOAD;
+    payload = normalizeRenderPayload(settings);
   } catch {
     payload = normalizeRenderPayload(DEFAULT_RENDER_PAYLOAD);
   }
@@ -115,11 +118,6 @@ export function setRenderPayloadValue(payload, path, value) {
   return normalizeRenderPayload(nextPayload);
 }
 
-export function updateRenderPayload(payload, patch = {}) {
-  const normalizedPayload = normalizeRenderPayload(payload || DEFAULT_RENDER_PAYLOAD);
-  return normalizeRenderPayload({ ...normalizedPayload, ...patch });
-}
-
 export function resetRenderPayload(activeCamera = null) {
   const camera = renderCameraSnapshot(activeCamera);
   return normalizeRenderPayload({
@@ -169,47 +167,6 @@ export function renderSessionForEnabledChange(session, enabled, {
   });
 }
 
-export function renderSessionForPayloadApply(session, payload, {
-  activeCamera = null,
-  activeProjection = null
-} = {}) {
-  const current = createRenderSessionState(session);
-  if (current.enabled) {
-    return createRenderSessionState({ ...current, payload });
-  }
-  const cadCamera = renderCameraSnapshot(activeCamera) || current.cadCamera;
-  return createRenderSessionState({
-    ...current,
-    enabled: true,
-    payload,
-    cadCamera,
-    cadProjection: cadCamera?.projection || activeProjection || current.cadProjection
-  });
-}
-
-export function renderPayloadForCopy(session, {
-  activeCamera = null,
-  activeProjection = null
-} = {}) {
-  const current = createRenderSessionState(session);
-  if (!current.enabled) {
-    return current.payload;
-  }
-  const camera = renderCameraSnapshot(activeCamera);
-  return createRenderSessionState({
-    ...current,
-    payload: camera
-      ? {
-          ...current.payload,
-          camera: {
-            ...renderCameraSeed(camera),
-            projection: camera.projection || activeProjection
-          }
-        }
-      : current.payload
-  }).payload;
-}
-
 export function renderVisualPayload(payload) {
   const {
     camera: _camera,
@@ -232,27 +189,4 @@ export function resolveRenderSessionQuality(session, options = {}) {
       ? (current.payload.quality ? { quality: current.payload.quality } : {})
       : null
   }).quality;
-}
-
-export function parseRenderSettingsText(text, options = {}) {
-  let parsed;
-  try {
-    parsed = JSON.parse(String(text || ""));
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid JSON: ${message}`);
-  }
-  if (!isPlainObject(parsed)) {
-    throw new Error("Invalid render settings: expected a JSON object.");
-  }
-  try {
-    return resolveSceneSettings({
-      appearance: options.appearance,
-      prefersDark: options.prefersDark === true,
-      render: parsed
-    }).render.payload;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid render settings: ${message}`);
-  }
 }

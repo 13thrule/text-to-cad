@@ -27,6 +27,8 @@ before its freshness gate runs, and this module rides along.
 
 from __future__ import annotations
 
+import contextvars
+import functools
 from pathlib import Path
 
 from cadgen.results import SnapshotResult
@@ -48,6 +50,27 @@ DOOR_KINDS: dict[str, tuple[str, ...]] = {
 ALL_KINDS: tuple[str, ...] = tuple(
     dict.fromkeys(kind for kinds in DOOR_KINDS.values() for kind in kinds)
 )
+
+
+# Direct calls need the same omitted-versus-explicit distinction the generated
+# CLI preserves. The wrapper retains the public function's inspectable
+# signature through ``functools.wraps``; ContextVar keeps concurrent calls
+# independent.
+_EXPLICIT_SNAPSHOT_OPTIONS: contextvars.ContextVar[frozenset[str]] = contextvars.ContextVar(
+    "cadgen_explicit_snapshot_options", default=frozenset()
+)
+
+
+def _track_explicit_options(function):
+    @functools.wraps(function)
+    def tracked(*args, **kwargs):
+        token = _EXPLICIT_SNAPSHOT_OPTIONS.set(frozenset(kwargs))
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _EXPLICIT_SNAPSHOT_OPTIONS.reset(token)
+
+    return tracked
 
 
 def _run(
@@ -91,16 +114,18 @@ def _run(
         view_labels=view_labels,
         debug=debug,
     )
+    explicit = _EXPLICIT_SNAPSHOT_OPTIONS.get()
+    options.mode_specified = "mode" in explicit
     # `None` is "not given" for each of these, which is not the same as the
     # default: the machinery distinguishes them through the `<name>_specified`
     # flags, and an explicit Render preset must still count as a scene choice.
-    if render is not None:
+    if render is not None or "render" in explicit:
         options.render, options.render_specified = render, True
-    if display is not None:
+    if display is not None or "display" in explicit:
         options.display, options.display_specified = display, True
-    if camera is not None:
+    if camera is not None or "camera" in explicit:
         options.camera, options.camera_specified = camera, True
-    if kinematics is not None:
+    if kinematics is not None or "kinematics" in explicit:
         options.kinematics, options.kinematics_specified = kinematics, True
     # `time` is the second half of the `animation` request — the moment in the
     # clip — and means nothing without the clip it indexes.
@@ -117,14 +142,16 @@ def _run(
             "video and time cannot be used together: time freezes one frame, video renders "
             "the span — use video start/seconds to say where the sequence begins"
         )
-    if animation is not None:
+    if animation is not None or "animation" in explicit:
         options.animation, options.animation_time, options.animation_specified = animation, time, True
-    if video is not None:
+    if video is not None or "video" in explicit:
         options.video, options.video_specified = video, True
-    if joint_values is not None:
+    if joint_values is not None or "joint_values" in explicit:
         options.joint_values, options.joint_values_specified = joint_values, True
+    options.focus_specified = "focus" in explicit
     if focus:
         options.focus = [str(value) for value in focus]
+    options.hide_specified = "hide" in explicit
     if hide:
         options.hide = [str(value) for value in hide]
     # A direct normal-CAD call can reject this before any I/O. With a job file,
@@ -141,6 +168,7 @@ def step_snapshot_verb(door: str):
     """The STEP-shaped ``snapshot`` verb: the full surface."""
     kinds = DOOR_KINDS[door]
 
+    @_track_explicit_options
     def snapshot(
         target: Path | None = None,
         out: Path | None = None,
@@ -183,10 +211,10 @@ def step_snapshot_verb(door: str):
             orthographic view's scale. Render uses its envelope's camera.
         render: light, dark, or photographic JSON with quality, exposure,
             lighting, backdrop, and camera (inline or a file path); view mode only.
-        display: normal-CAD display settings; ignored while Render is enabled.
+        display: normal-CAD display settings; incompatible with Render.
         kinematics: pose values — a declared preset name or {dof: value}
             JSON, validated against the model's kinematics declaration;
-            normal-CAD only and ignored during Render.
+            normal-CAD only and incompatible with Render.
         animation: one still frame of a clip the document's render module
             (<name>.step.js beside it) declares — the clip name (with --time),
             or {"clip": name, "time": seconds} JSON. Normal CAD layers it
@@ -197,8 +225,8 @@ def step_snapshot_verb(door: str):
             "start": 0, "quality": "review", "loop": true} JSON or a path to it;
             requires animation, excludes time, and needs ffmpeg on PATH.
         focus: normal-CAD occurrence ref rendered at full opacity (repeatable);
-            the rest of the assembly is ghosted in place. Ignored during Render.
-        hide: normal-CAD occurrence ref left out (repeatable); ignored during Render.
+            the rest of the assembly is ghosted in place. Incompatible with Render.
+        hide: normal-CAD occurrence ref left out (repeatable); incompatible with Render.
         width: output width in pixels, overriding the size profile.
         height: output height in pixels, overriding the size profile.
         size_profile: simple, diagnostic, labeled, assembly, presentation,
@@ -224,6 +252,7 @@ def mesh_snapshot_verb(door: str):
     kinds = DOOR_KINDS[door]
     suffixes = ", ".join(f".{kind}" for kind in kinds)
 
+    @_track_explicit_options
     def snapshot(
         target: Path | None = None,
         out: Path | None = None,
@@ -256,7 +285,7 @@ def mesh_snapshot_verb(door: str):
             orthographic view's scale. Render uses its envelope's camera.
         render: light, dark, or photographic JSON with quality, exposure,
             lighting, backdrop, and camera (inline or a file path); view mode only.
-        display: normal-CAD settings for this input kind; ignored during Render.
+        display: normal-CAD settings for this input kind; incompatible with Render.
         width: output width in pixels, overriding the size profile.
         height: output height in pixels, overriding the size profile.
         size_profile: simple, diagnostic, labeled, assembly, presentation,
@@ -280,6 +309,7 @@ def robot_snapshot_verb(door: str):
     kinds = DOOR_KINDS[door]
     suffixes = ", ".join(f".{kind}" for kind in kinds)
 
+    @_track_explicit_options
     def snapshot(
         target: Path | None = None,
         out: Path | None = None,
@@ -309,13 +339,13 @@ def robot_snapshot_verb(door: str):
             {"jobs": [...]}. When given it wins: target/out are ignored.
         mode: view (default) or list.
         joint_values: {joint: degrees} JSON posing the robot; joints not
-            named stay at the rest pose. Ignored during Render.
+            named stay at the rest pose. Incompatible with Render.
         camera: a normal-CAD preset, an "azimuth:elevation" pair, or camera JSON;
             focalLength is 20..200 mm and orthographicHalfHeight preserves an
             orthographic view's scale. Render uses its envelope's camera.
         render: light, dark, or photographic JSON with quality, exposure,
             lighting, backdrop, and camera (inline or a file path); view mode only.
-        display: normal-CAD settings for this robot input; ignored during Render.
+        display: normal-CAD settings for this robot input; incompatible with Render.
         width: output width in pixels, overriding the size profile.
         height: output height in pixels, overriding the size profile.
         size_profile: simple, diagnostic, labeled, assembly, presentation,
@@ -340,6 +370,7 @@ def polymorphic_snapshot_verb():
     and a job packet may mix formats — each input is still held to its own
     format's rules at resolve time."""
 
+    @_track_explicit_options
     def snapshot(
         target: Path | None = None,
         out: Path | None = None,
@@ -377,10 +408,10 @@ def polymorphic_snapshot_verb():
             orthographic view's scale. Render uses its envelope's camera.
         render: light, dark, or photographic JSON with quality, exposure,
             lighting, backdrop, and camera (inline or a file path); view mode only.
-        display: normal-CAD settings; ignored during Render. CAD-edge and
+        display: normal-CAD settings; incompatible with Render. CAD-edge and
             exploded modes require STEP topology.
         kinematics: pose values for a STEP model's kinematics — a preset
-            name or {dof: value} JSON; normal-CAD only and ignored during Render.
+            name or {dof: value} JSON; normal-CAD only and incompatible with Render.
         animation: one still frame of a STEP model's clip — the clip name
             (with --time), or {"clip": name, "time": seconds} JSON.
         time: seconds into the animation clip (default 0); requires animation.
@@ -389,10 +420,10 @@ def polymorphic_snapshot_verb():
             "quality": "review", "loop": true} JSON or a path to it; requires
             animation, excludes time, and needs ffmpeg on PATH.
         joint_values: normal-CAD {joint: degrees} JSON posing a robot;
-            ignored during Render.
+            incompatible with Render.
         focus: normal-CAD occurrence ref rendered at full opacity (STEP only);
-            ignored during Render.
-        hide: normal-CAD occurrence ref left out (STEP only); ignored during Render.
+            incompatible with Render.
+        hide: normal-CAD occurrence ref left out (STEP only); incompatible with Render.
         width: output width in pixels, overriding the size profile.
         height: output height in pixels, overriding the size profile.
         size_profile: simple, diagnostic, labeled, assembly, presentation,

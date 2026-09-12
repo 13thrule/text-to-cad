@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
-  Aperture,
+  Clapperboard,
   Box,
   Check,
   CircleAlert,
@@ -1082,7 +1082,7 @@ export default function CadWorkspaceTopBar({
   const appearanceLabel = "Appearance";
   const AppearanceIcon = resolvedColorSchemeMode === "dark" ? Moon : Sun;
   const viewingModeLabel = renderMode ? "Render" : "Inspect";
-  const ViewingModeIcon = renderMode ? Aperture : Box;
+  const ViewingModeIcon = renderMode ? Clapperboard : Box;
 
   return (
     <header
@@ -1281,7 +1281,7 @@ export default function CadWorkspaceTopBar({
                     Inspect
                   </DropdownMenuRadioItem>
                   <DropdownMenuRadioItem value="render" className="text-xs">
-                    <Aperture className="size-3.5" strokeWidth={2} aria-hidden="true" />
+                    <Clapperboard className="size-3.5" strokeWidth={2} aria-hidden="true" />
                     Render
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>

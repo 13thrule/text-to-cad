@@ -200,7 +200,13 @@ bounded L3 rung, a 0.25px viewport target, 4096px shadows, a 512px procedural
 environment, and 2x snapshot render scale. Explicit
 `output.renderScale` remains authoritative. `quality.tessellation` is a
 normal-CAD-only technical override; Render derives its bounded mesh rung only
-from `render.quality`.
+from `render.quality`. Snapshot job validation rejects a Render envelope combined
+with explicit top-level `camera`, `display`, `selection`, `kinematics`,
+`jointValues`, or `quality` fields, including null or empty values, before
+loading assets. Render supports only the `view` capture mode; animation, video,
+per-output cameras, and output sizing remain available. The interactive viewer
+keeps dormant CAD session state separate rather than treating it as a snapshot
+request.
 
 Canonical display modes are `shaded`, `shaded_edges`, `transparent`,
 `hidden_edges`, `hidden_lines_removed`, `unshaded`, and `wireframe`. Retired

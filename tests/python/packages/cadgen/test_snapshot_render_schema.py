@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import io
+import json
 import re
+import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from tests.python.support.paths import add_repo_path, repo_path
@@ -19,6 +23,7 @@ from cadgen.snapshot_core import (  # noqa: E402
     SUPPORTED_OUTPUT_SETTINGS_KEYS,
     SUPPORTED_QUALITY_KEYS,
     SUPPORTED_RENDER_KEYS,
+    RENDER_INCOMPATIBLE_JOB_KEYS,
     SnapshotError,
     normalize_common_job,
     validate_render_tessellation,
@@ -142,23 +147,27 @@ class RenderKeySchemaTest(unittest.TestCase):
             self.assertNotIn("moved", str(caught.exception))
             self.assertNotIn("use ", str(caught.exception))
 
-    def test_render_normalization_drops_top_level_cad_scene_state(self):
+    def test_render_rejects_every_top_level_cad_control_by_presence(self):
+        self.assertEqual(
+            {"camera", "display", "selection", "kinematics", "jointValues", "quality"},
+            set(RENDER_INCOMPATIBLE_JOB_KEYS),
+        )
+        for key in RENDER_INCOMPATIBLE_JOB_KEYS:
+            for explicit_value in (None, {}):
+                with self.subTest(key=key, value=explicit_value), self.assertRaisesRegex(
+                    SnapshotError, rf"top-level CAD control\(s\): {key}"
+                ):
+                    normalize(render={"camera": {"preset": "front"}}, **{key: explicit_value})
+
+    def test_animation_and_output_capture_controls_remain_composable(self):
         job = normalize(
             render={"camera": {"preset": "front"}},
-            camera={"preset": "back"},
-            display={"mode": "wireframe"},
-            selection={"focus": ["missing"]},
-            kinematics={"hinge": 45},
-            jointValues={"joint": 20},
-            quality={"tessellation": {"chordTolerance": "ignored"}},
             animation={"clip": "spin", "time": 0.5},
+            output={"sizeProfile": "diagnostic", "viewLabels": True},
         )
         self.assertEqual(job["render"]["camera"], {"preset": "front"})
         self.assertEqual(job["animation"], {"clip": "spin", "time": 0.5})
-        for dormant in (
-            "camera", "display", "selection", "kinematics", "jointValues", "quality",
-        ):
-            self.assertNotIn(dormant, job)
+        self.assertEqual(job["output"], {"sizeProfile": "diagnostic", "viewLabels": True})
 
     def test_render_rejects_every_non_view_mode(self):
         for mode in ("section", "list"):
@@ -176,6 +185,47 @@ class RenderKeySchemaTest(unittest.TestCase):
                     resolved_cwd=Path("."),
                     timestamp="20260907-000000",
                 )
+
+    def test_generated_cli_rejects_a_cad_flag_before_clearing_output(self):
+        from cadgen.cli import step_snapshot
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            output = root / "out.png"
+            output.write_bytes(b"previous")
+            stdout = io.StringIO()
+            with redirect_stderr(io.StringIO()), redirect_stdout(stdout):
+                code = step_snapshot.main(
+                    [
+                        str(root / "missing.step"),
+                        str(output),
+                        "--render", "{}",
+                        "--display", "shaded",
+                        "--json",
+                    ]
+                )
+            self.assertEqual(1, code)
+            self.assertIn(
+                "top-level CAD control(s): display",
+                json.loads(stdout.getvalue()).get("error", ""),
+            )
+            self.assertEqual(b"previous", output.read_bytes())
+
+    def test_public_api_distinguishes_an_explicit_default_from_omission(self):
+        from cadgen import step
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with self.assertRaisesRegex(SnapshotError, "top-level CAD control\\(s\\): camera"):
+                step.snapshot(
+                    root / "missing.step",
+                    root / "out.png",
+                    render={},
+                    camera=None,
+                )
+            with self.assertRaises(Exception) as omitted:
+                step.snapshot(root / "missing.step", root / "out.png", render={})
+            self.assertNotIn("top-level CAD control", str(omitted.exception))
 
     def test_output_and_quality_are_closed(self):
         output = {

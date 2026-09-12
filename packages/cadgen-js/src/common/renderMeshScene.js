@@ -73,6 +73,7 @@ import {
   disposeEnvironmentResource
 } from "./environmentMap.js";
 import { applyPhotographicStudio, disposePhotographicStudio } from "./photographicStudio.js";
+import { validateSnapshotRenderJob } from "./snapshotJobValidation.js";
 
 const DEFAULT_RENDER_SCALE = 1;
 const RENDER_SCENE_SCALE_SETTINGS = Object.freeze({
@@ -808,13 +809,8 @@ function snapshotDisplayOverride(job = {}) {
 }
 
 export function renderJobContext(meshData, job = {}) {
-  if (Object.prototype.hasOwnProperty.call(job, "theme")) {
-    throw new Error("Unsupported snapshot field: theme");
-  }
+  validateSnapshotRenderJob(job);
   const mode = String(job.mode || "view").trim().toLowerCase();
-  if (job.render != null && mode !== "view") {
-    throw new Error("Photographic Render supports only view mode");
-  }
   const sceneScale = resolveRenderSceneScale(job, meshData);
   const sourceKind = String(job.resolved?.kind || job.kind || meshData?.sourceFormat || "").trim().toLowerCase();
   const stepDisplayEnabled = sourceKind === "step" || sourceKind === "stp";

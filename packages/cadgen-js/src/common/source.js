@@ -6,6 +6,7 @@ import { buildMeshDataFromSurf } from "../lib/surf/surfMeshData.js";
 import { parseSurf } from "../lib/surf/container.js";
 import { tessellateComponent } from "../lib/surf/tessellate.js";
 import { lodTessellationForLevel } from "../lib/surf/lodPolicy.js";
+import { validateSnapshotRenderJob } from "./snapshotJobValidation.js";
 import {
   SCENE_QUALITY,
   resolveSceneQuality,
@@ -237,6 +238,7 @@ export function normalizeRenderTessellation(value) {
 }
 
 export function tessellationForSnapshotQuality(input = {}) {
+  validateSnapshotRenderJob(input);
   const explicit = input.render != null ? null : input.quality?.tessellation;
   if (explicit != null) {
     return normalizeRenderTessellation(explicit);
@@ -496,6 +498,7 @@ export function packageSourceFromBaseUrl(baseUrl, descriptor) {
 
 export async function loadSource(input, options = {}) {
   const inputObject = isObject(input) ? input : {};
+  validateSnapshotRenderJob(inputObject);
   const photographicRender = inputObject.render != null;
   const resolved = isObject(inputObject.resolved) ? inputObject.resolved : {};
   const explicitMeshData = inputObject.meshData || options.meshData || (

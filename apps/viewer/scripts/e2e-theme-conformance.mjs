@@ -25,9 +25,7 @@ const SCENE_SETTINGS = [
   { id: "cad-light", appearance: "Light", render: false },
   { id: "cad-dark", appearance: "Dark", render: false },
   { id: "render-adaptive-light", appearance: "Light", render: true },
-  { id: "render-adaptive-dark", appearance: "Dark", render: true },
-  { id: "render-light-pinned", appearance: "Dark", render: true, studio: "Light studio" },
-  { id: "render-dark-pinned", appearance: "Light", render: true, studio: "Dark studio" }
+  { id: "render-adaptive-dark", appearance: "Dark", render: true }
 ];
 
 // One scene per RENDERER, not per format. The mesh fixture is an STL because it loads with
@@ -82,10 +80,7 @@ async function configureScene(page, setting) {
   }
   await page.getByRole("button", { name: /^Viewing mode:/ }).click();
   await page.getByRole("menuitemradio", { name: "Render", exact: true }).click();
-  if (setting.studio) {
-    await page.getByRole("combobox", { name: "Studio", exact: true }).click();
-    await page.getByRole("option", { name: setting.studio, exact: true }).click();
-  }
+
 }
 
 async function main() {
@@ -121,19 +116,14 @@ async function main() {
       // The viewer under test must already be serving modelsRoot (its launch cwd).
       const url = `${args.url}?file=${encodeURIComponent(scene.file)}`;
       await page.goto(url, { waitUntil: "domcontentloaded" });
-      await page.getByRole("tab", { name: "Render", exact: true }).waitFor({ timeout: 30000 });
+      await page.getByRole("button", { name: /^Viewing mode:/ }).waitFor({ timeout: 30000 });
       await configureScene(page, setting);
       await page.waitForTimeout(9000);
 
       const activeAppearance = await page.evaluate(() => (
         document.documentElement.classList.contains("dark") ? "Dark" : "Light"
       ));
-      const renderEnabled = setting.render
-        ? await page.getByRole("switch", { name: "Enabled", exact: true }).isChecked()
-        : false;
-      const activeStudio = setting.render
-        ? String(await page.getByRole("combobox", { name: "Studio", exact: true }).textContent() || "").trim()
-        : "";
+      const renderEnabled = await page.getByRole("button", { name: "Viewing mode: Render", exact: true }).count() === 1;
 
       const backgroundPng = PNG.sync.read(await page.screenshot({ clip: BACKGROUND_CLIP }));
       const surfacePng = PNG.sync.read(await page.screenshot({ clip: SURFACE_CLIP }));
@@ -150,8 +140,6 @@ async function main() {
         settingId: setting.id,
         expectedAppearance: setting.appearance,
         activeAppearance,
-        expectedStudio: setting.studio || "",
-        activeStudio,
         renderEnabled,
         background: meanRgb(backgroundPng).map((value) => Number(value.toFixed(2))),
         surface: meanRgb(surfacePng).map((value) => Number(value.toFixed(2))),
@@ -171,9 +159,6 @@ async function main() {
     if (result.settingId.includes("render") && !result.renderEnabled) {
       failures.push(`${result.renderer}/${result.settingId}: Render did not remain enabled`);
     }
-    if (result.expectedStudio && !result.activeStudio.includes(result.expectedStudio)) {
-      failures.push(`${result.renderer}/${result.settingId}: expected ${result.expectedStudio}, saw ${result.activeStudio}`);
-    }
     for (const error of result.errors) {
       failures.push(`${result.renderer}/${result.settingId}: page error ${error}`);
     }
@@ -192,8 +177,8 @@ async function main() {
     console.log(`  ${ok ? "ok  " : "FAIL"} ${scene.renderer.padEnd(9)} spread=${spread.toFixed(1)}/255`);
     for (const pass of passes) console.log(`         ${pass.settingId.padEnd(24)} ${pass.surface}`);
 
-    const lightStudio = passes.find((pass) => pass.settingId === "render-light-pinned");
-    const darkStudio = passes.find((pass) => pass.settingId === "render-dark-pinned");
+    const lightStudio = passes.find((pass) => pass.settingId === "render-adaptive-light");
+    const darkStudio = passes.find((pass) => pass.settingId === "render-adaptive-dark");
     const studioSpread = lightStudio && darkStudio ? rgbDistance(lightStudio.surface, darkStudio.surface) : 0;
     if (studioSpread <= 4) failures.push(`${scene.renderer}: Light studio and Dark studio are visually identical`);
   }

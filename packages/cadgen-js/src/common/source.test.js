@@ -126,13 +126,9 @@ test("snapshot quality selects bounded shared tessellation policy", () => {
     tessellationForSnapshotQuality({ render: { quality: "final" } }),
     { chordTolerance: 0.00015, angleTolerance: 0.35 }
   );
-  assert.deepEqual(
-    tessellationForSnapshotQuality({
-      render: { quality: "final" },
-      quality: { tessellation: { chordTolerance: 0.001 } }
-    }),
-    { chordTolerance: 0.00015, angleTolerance: 0.35 }
-  );
+  assert.throws(() => tessellationForSnapshotQuality({
+    render: { quality: "final" }, quality: { tessellation: { chordTolerance: 0.001 } }
+  }), /render cannot be combined.*quality/);
   assert.throws(() => tessellationForSnapshotQuality({ render: { quality: "ultra" } }), /quality/i);
 });
 
@@ -486,7 +482,6 @@ test("photographic source loading keeps authored data without requesting CAD sel
     glbUrl: "/unused-topology.glb",
     sourceSidecar: HINGE_SIDECAR,
     documentHash: HINGE_SIDECAR.documentHash,
-    kinematics: "unknown-cad-pose",
     selectorRuntime: { stale: true },
     displayEdgeRuntime: { stale: true }
   });
@@ -568,4 +563,21 @@ test("loadSource routes 3MF sources through the non-step return path", async () 
   assert.equal(source.stepParameterSource, null);
   assert.equal(source.selectorRuntime, null);
   assert.equal(source.displayEdgeRuntime, null);
+});
+
+test("photographic requests reject contradictory CAD fields before loading a source", async (t) => {
+  const originalFetch = globalThis.fetch;
+  let fetches = 0;
+  globalThis.fetch = async () => { fetches += 1; throw new Error("unexpected fetch"); };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  for (const key of ["camera", "display", "selection", "kinematics", "jointValues", "quality"]) {
+    for (const value of [null, {}, ""]) {
+      await assert.rejects(() => loadSource({ kind: "step", url: "/never.step", render: {}, [key]: value }),
+        new RegExp(`render cannot be combined.*${key}`));
+    }
+  }
+  for (const render of [null, false, "dark", { unknown: true }]) {
+    await assert.rejects(() => loadSource({ kind: "step", url: "/never.step", render }), /render/);
+  }
+  assert.equal(fetches, 0);
 });

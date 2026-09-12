@@ -180,19 +180,15 @@ import {
 } from "@/workbench/fileSessionState";
 import {
   createRenderSessionState,
-  parseRenderSettingsText,
   renderCameraSeed,
   renderCameraSnapshot,
-  renderPayloadForCopy,
   renderSessionForEnabledChange,
-  renderSessionForPayloadApply,
   renderSessionForReset,
   renderVisualPayload,
   renderVisualSettingsKey,
   resolveRenderSessionQuality,
   resolveRenderCameraSnapshot,
-  setRenderPayloadValue,
-  updateRenderPayload
+  setRenderPayloadValue
 } from "@/workbench/renderSessionState.js";
 import {
   CAD_DIRECTORY_STORAGE_EVENT_ACTION,
@@ -7192,13 +7188,6 @@ export default function CadWorkspace({
     setTabToolsOpen
   ]);
 
-  const handleRenderStudioChange = useCallback((studio) => {
-    setRenderSession((current) => createRenderSessionState({
-      ...current,
-      payload: updateRenderPayload(current.payload, { studio })
-    }));
-  }, []);
-
   const handleRenderQualityChange = useCallback((quality) => {
     setRenderSession((current) => createRenderSessionState({
       ...current,
@@ -7250,37 +7239,6 @@ export default function CadWorkspace({
     const next = renderSessionForReset(renderSession, { activeCamera: camera });
     setRenderSession(next);
   }, [renderSession]);
-
-  const handleRenderPayloadPaste = useCallback((text) => {
-    const payload = parseRenderSettingsText(text, {
-      appearance: colorSchemePreference,
-      prefersDark: systemPrefersDark
-    });
-    const next = renderSessionForPayloadApply(renderSession, payload, {
-      activeCamera: activePerspectiveRef.current,
-      activeProjection: resolvedScene.camera.projection
-    });
-    renderEnabledRef.current = true;
-    setRenderSession(next);
-    applyActiveCamera(resolveSceneSettings({
-      appearance: colorSchemePreference,
-      prefersDark: systemPrefersDark,
-      render: next.payload
-    }).camera, { resetZoomBaseline: true });
-  }, [
-    applyActiveCamera,
-    colorSchemePreference,
-    renderSession,
-    resolvedScene.camera.projection,
-    systemPrefersDark
-  ]);
-
-  const handleRenderPayloadCopy = useCallback(() => {
-    return renderPayloadForCopy(renderSession, {
-      activeCamera: activePerspectiveRef.current,
-      activeProjection: resolvedScene.camera.projection
-    });
-  }, [renderSession, resolvedScene.camera.projection]);
 
   useCadWorkspaceShortcuts({
     copyStatus,
@@ -7483,12 +7441,9 @@ export default function CadWorkspace({
       : null,
     renderSession.enabled ? buildRenderSettingsTab({
       scene: resolvedScene,
-      onStudioChange: handleRenderStudioChange,
       onQualityChange: handleRenderQualityChange,
       onPayloadValueChange: handleRenderPayloadValueChange,
-      onReset: handleRenderReset,
-      onCopyPayload: handleRenderPayloadCopy,
-      onApplyPayload: handleRenderPayloadPaste
+      onReset: handleRenderReset
     }) : null
   ].filter(Boolean);
 

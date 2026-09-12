@@ -24,7 +24,7 @@ Tab body                    px-0, vertical stack of sections
 - A tab body is a flat list of sections. Sections never nest.
 - **Every section carries a heading, and every row carries a label** — including
   a section that holds a single row, which shows both (`Material` / `Thickness`,
-  `Studio` / `Preset`, `Model` / `Mode`). A heading never stands in for a row's label: a labelless
+  `Setup` / `Quality`, `Model` / `Mode`). A heading never stands in for a row's label: a labelless
   row reads as an orphaned control, and a row whose only name is the heading
   above it cannot be scanned in a list. Name the group and the control
   differently; if the only honest name for both is the same word, the group is
@@ -34,9 +34,8 @@ Tab body                    px-0, vertical stack of sections
 - Everyday settings stay visible. Progressive disclosure is allowed only when a
   gate switch turns a whole feature off (Floor, Grid, Environment, a light):
   the switch stays, the dependent rows unmount.
-- Keep inline Copy/Paste Settings buttons in the Studio tab's top Setup section
-  before Reset, without a disclosure control. The navbar owns entry into Render,
-  so the Studio tab has no second enable switch.
+- Reset sits at the bottom of the Studio tab. The navbar owns entry into Render,
+  so the Studio tab has no second enable switch or studio preset selector.
 - A gate reaches every row it owns. Whether they unmount (Floor, Grid) or go
   disabled (Kinematics, Animation), the section picks one and applies it to all
   of them: one live control under an off switch reads as a control that still
@@ -192,7 +191,7 @@ glyphs (a DXF bend's `↑`/`↓`). Two words as long as `Orthographic` and
 
 **The stacked exception.** A select is stacked full-width only when it is a
 *primary* control: the first row of its group, whose value reframes everything
-under it. There are exactly four — Render › `Studio`, Display › `Mode`,
+under it. There are exactly three — Display › `Mode`,
 Joints › `Group state`, and Animation › `Clip`, which reframes the transport
 and the time/speed rows beneath it. Pass `stacked` for those and for nothing
 else; a second stacked select in one group means one of them is not primary.
@@ -289,11 +288,12 @@ available. Display, selection, visibility, clipping, exploded view,
 measurement, drawing, and pose controls remain hidden and their CAD values are
 restored unchanged when the user returns to Inspect.
 
-The top Setup section contains Studio, Quality, inline Copy/Paste, and Reset.
+The top Setup section contains Quality. Reset sits below the Backdrop section.
 Camera contains Lens and Exposure; Lighting contains Rotation,
 Softbox size, and Fill ratio; Backdrop contains Transparent, Color, and Ground.
-An untouched studio follows global app appearance without storing an override;
-Light studio or Dark studio pins it for the model session. Do not add material,
+Studio defaults follow global app appearance. Customized backdrop settings remain
+in the model session until Reset, which restores defaults for the current
+appearance. Do not add preset or settings clipboard controls. Do not add material,
 grading, arbitrary light, environment-map, or image-export controls. Authored
 materials stay authoritative and image capture stays in the viewer toolbar.
 

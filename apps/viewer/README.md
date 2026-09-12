@@ -63,13 +63,13 @@ surfaces with CAD edges; **Shaded** shows those surfaces without edges. Grid and
 origin axes remain world references.
 
 The navbar's **Viewing mode** icon menu switches between **Inspect** and
-**Render**, showing the active mode's cube or aperture icon. Inspect shows only
+**Render**, showing the active mode's cube or clapperboard icon. Inspect shows only
 CAD inspection tabs and restores their saved split, order, and active selection unchanged.
 Render enters an isolated photographic view with **Studio** first and active;
 **Animation** follows when the model provides clips. The Render tabs start in
 one row on each entry. Dragging and splitting them is temporary and never
 overwrites the durable per-kind CAD arrangement. The default Light or Dark
-studio follows app appearance until the user pins one.
+studio follows global app appearance. Backdrop customizations remain local to the model session.
 The compact editor controls lens and exposure, softbox rotation, size and fill,
 plus backdrop color, transparency, and ground. Khronos PBR Neutral tone mapping and a generated
 softbox environment provide the Render lighting. The overhead side key models
@@ -89,7 +89,8 @@ its wide-range logarithmic-depth runtime while decoded geometry stays cached. Th
 filename badge reports Refining while work is active and Reduced detail when
 memory limits prevent requested detail. Snapshots use the same policy:
 Final selects the existing finest L3 STEP tessellation and 2× capture scale unless
-explicit tessellation or output scale overrides it.
+an explicit output scale overrides it. CAD tessellation controls cannot be combined
+with a photographic snapshot request.
 
 Normal CAD settings and Render settings are separate per-model session state.
 Entering Render applies its perspective camera and fixed presentation view
@@ -102,12 +103,12 @@ ephemeral state; they are not written beside models, into the geometry cache,
 or into global app appearance. A normal geometry rebuild preserves the
 render setup. Closing the browser tab ends its session.
 
-The top **Setup** section in Studio also owns Reset and inline Copy/Paste
-Settings buttons. Invalid settings fail before replacing the current setup. The sparse JSON is
-`{studio?, quality?, exposure?, lighting?, backdrop?, camera?}` and uses the same
-contract as `cadgen step snapshot --render`. A payload without `studio` stays
-adaptive; an explicit `light` or `dark` value pins it. Both clients resolve the
-photographic scene through the shared cadgen-js implementation.
+The top **Setup** section in Studio contains Quality. Reset sits at the bottom
+of the tab and clears photographic customizations, restoring defaults for the
+current global light/dark appearance while keeping the current camera pose.
+The viewer has no studio preset selector or settings clipboard. Viewer and
+snapshot commands resolve photographic scenes through the same cadgen-js
+implementation; snapshots choose their studio and custom settings with `--render`.
 
 ## Launching
 

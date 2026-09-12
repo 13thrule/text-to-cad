@@ -33,6 +33,7 @@ from cadgen.snapshot_core import (  # noqa: E402
     SnapshotError,
     validate_camera_option,
     validate_render_option,
+    validate_render_job_compatibility,
 )
 
 SCENE = repo_path("packages/cadgen-js/src/common/sceneSettings.js")
@@ -59,6 +60,49 @@ def frozen_enum_values(path, export: str, next_export: str) -> set[str]:
 
 
 class SharedSceneContractParityTests(unittest.TestCase):
+    def test_snapshot_render_conflicts_match_shared_js(self):
+        cases = [
+            {},
+            {"display": {"mode": "wireframe"}},
+            {"render": {}},
+            {"render": {"camera": {"preset": "front"}, "quality": "preview"}},
+            {"render": {}, "animation": {"clip": "spin", "time": 1},
+             "outputs": [{"camera": "front", "width": 640}]},
+            *({"render": {}, key: value}
+              for key in ("camera", "display", "selection", "kinematics", "jointValues", "quality")
+              for value in (None, {})),
+            {"render": {}, "mode": "section"},
+            {"render": {}, "mode": "list"},
+            {"render": None},
+        ]
+        validator = repo_path("packages/cadgen-js/src/common/snapshotJobValidation.js")
+        script = f"""
+import fs from "node:fs";
+import {{ validateSnapshotRenderJob }} from {json.dumps(validator.as_uri())};
+const cases = JSON.parse(fs.readFileSync(0, "utf8"));
+console.log(JSON.stringify(cases.map((job) => {{
+  try {{ validateSnapshotRenderJob(job); return true; }}
+  catch {{ return false; }}
+}})));
+"""
+        completed = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            input=json.dumps(cases), text=True, capture_output=True, check=True,
+            cwd=repo_path(),
+        )
+        python_accepted = []
+        for job in cases:
+            try:
+                if "render" in job:
+                    validate_render_option(job["render"], source_label="parity test")
+                validate_render_job_compatibility(job)
+            except SnapshotError:
+                python_accepted.append(False)
+            else:
+                python_accepted.append(True)
+        self.assertEqual([True] * 5 + [False] * 15, python_accepted)
+        self.assertEqual(python_accepted, json.loads(completed.stdout))
+
     def test_render_envelope_keys_match(self):
         self.assertEqual(exported_strings(SCENE, "RENDER_PAYLOAD_KEYS"), set(SUPPORTED_RENDER_KEYS))
 

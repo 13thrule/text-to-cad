@@ -255,8 +255,8 @@ OUT — the second positional — is written exactly as given, with a relative p
 current working directory. The target is deleted before the render starts and the
 finished image is written atomically, so: reuse one name while iterating (every read
 is provably the render you just ran), name the iterations when you genuinely need to
-compare two, and treat a missing file as the failure signal — there is never an older
-image at the path to mistake for output. A directory (`tmp/` as OUT) is the
+compare two. Invalid request combinations fail before touching OUT; after a request is
+accepted, OUT is cleared first so a later failure leaves no stale image. A directory (`tmp/` as OUT) is the
 don't-care case and gets a generated timestamped name inside it, printed on the
 `saved snapshot:` line.
 
@@ -265,7 +265,7 @@ Grammar: `cadgen dxf snapshot TARGET [OUT] [flags]`. Flags: `--mode view|list`,
 `--job`, `--view-labels`, `--debug`, `--json`. `--render` opts into the photographic
 scene and accepts `light`, `dark`, compact Render JSON, or a file path.
 Set the photographic camera inside Render JSON. Top-level `--camera` and `--display`
-control normal drawing snapshots and are ignored while Render is enabled.
+control normal drawing snapshots and cannot be combined with Render.
 A drawing has no selectors, kinematics, section mode, exploded assembly structure,
 or CAD-edge topology, and those combinations are absent or rejected clearly.
 

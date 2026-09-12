@@ -104,6 +104,7 @@ from cadgen.snapshot_core import (
     clear_render_output_targets,
     resolve_output_target,
     snapshot_result,
+    validate_render_job_compatibility,
 )
 from cadgen._internal.cli_from_function import emit, result_payload
 
@@ -435,8 +436,12 @@ class SnapshotCliTests(unittest.TestCase):
             "parts/STEP/cylindrical_cap.step", "tmp/cap.png", "--render", "{}",
         ])
         self.assertEqual(job["render"], {"studio": "light"})
+        self.assertFalse(
+            {"camera", "display", "selection", "kinematics", "jointValues", "quality"}
+            & set(job)
+        )
 
-    def test_top_level_camera_and_display_flags_are_dormant_during_render(self) -> None:
+    def test_top_level_camera_and_display_flags_conflict_with_render(self) -> None:
         job = job_from_argv([
             "parts/STEP/cylindrical_cap.step", "tmp/cap.png",
             "--render", '{"camera":{"preset":"front"}}',
@@ -444,8 +449,12 @@ class SnapshotCliTests(unittest.TestCase):
             "--display", "wireframe",
         ])
         self.assertEqual(job["render"]["camera"], {"preset": "front"})
-        self.assertNotIn("camera", job["outputs"][0])
-        self.assertNotIn("display", job)
+        self.assertEqual(job["camera"], "back")
+        self.assertEqual(job["display"], "wireframe")
+        with self.assertRaisesRegex(
+            SnapshotError, "top-level CAD control\\(s\\): camera, display"
+        ):
+            validate_render_job_compatibility(job)
 
     def test_old_render_values_are_plain_schema_errors(self) -> None:
         for studio in ("studio-light", "studio-dark", "default", "colorful"):
@@ -1301,7 +1310,7 @@ class SnapshotCliTests(unittest.TestCase):
                         cwd=root,
                     )
 
-    def test_render_rejects_embedded_display_and_ignores_top_level_display_capabilities(self) -> None:
+    def test_render_rejects_embedded_and_top_level_display(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
             with self.assertRaisesRegex(SnapshotError, r"render has unknown key\(s\): display"):
@@ -1320,10 +1329,12 @@ class SnapshotCliTests(unittest.TestCase):
                 "display": {"mode": "hidden_edges", "exploded": {"enabled": True}},
                 "outputs": [{"path": "tmp/iso.png"}],
             }
-            packet = resolve_render_job_packet(job, cwd=root)
-            self.assertNotIn("display", packet["jobs"][0])
+            with self.assertRaisesRegex(
+                SnapshotError, "top-level CAD control\\(s\\): display"
+            ):
+                resolve_render_job_packet(job, cwd=root)
 
-    def test_render_drops_cad_state_but_retains_render_and_per_output_camera(self) -> None:
+    def test_render_rejects_all_cad_state_and_retains_per_output_camera(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
             base = {
@@ -1336,20 +1347,19 @@ class SnapshotCliTests(unittest.TestCase):
                 "jointValues": {"joint": 30},
                 "quality": {"tessellation": {"chordTolerance": "ignored"}},
             }
-            packet = resolve_render_job_packet(
-                {**base, "outputs": [{"path": "tmp/render.png"}]}, cwd=root,
-            )
-            job = packet["jobs"][0]
-            self.assertEqual(job["render"]["camera"], {"preset": "front"})
-            for dormant in (
-                "camera", "display", "selection", "kinematics", "jointValues", "quality",
+            with self.assertRaisesRegex(
+                SnapshotError,
+                "top-level CAD control\\(s\\): camera, display, jointValues, "
+                "kinematics, quality, selection",
             ):
-                self.assertNotIn(dormant, job)
-            self.assertNotIn("camera", job["outputs"][0])
+                resolve_render_job_packet(
+                    {**base, "outputs": [{"path": "tmp/render.png"}]}, cwd=root,
+                )
 
             packet = resolve_render_job_packet(
                 {
-                    **base,
+                    "input": "models/widget.glb",
+                    "render": {"studio": "light", "camera": {"preset": "front"}},
                     "outputs": [{"path": "tmp/overridden.png", "camera": {"preset": "top"}}],
                 },
                 cwd=root,

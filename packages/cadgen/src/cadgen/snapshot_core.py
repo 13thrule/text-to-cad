@@ -99,7 +99,7 @@ SUPPORTED_JOB_KEYS = frozenset(
 SUPPORTED_RENDER_KEYS = frozenset(
     {"studio", "quality", "exposure", "lighting", "backdrop", "camera"}
 )
-RENDER_ISOLATED_JOB_KEYS = frozenset(
+RENDER_INCOMPATIBLE_JOB_KEYS = frozenset(
     {"camera", "display", "selection", "kinematics", "jointValues", "quality"}
 )
 RENDER_LIGHTING_KEYS = frozenset({"rotation", "size", "fill"})
@@ -655,26 +655,36 @@ def validate_quality_settings(value: object) -> dict[str, object]:
 def effective_display_request(job: Mapping[str, object]) -> dict[str, object]:
     """Return the CAD display request that can affect this snapshot.
 
-    Photographic Render owns a private shaded presentation and ignores the
-    top-level CAD display controls. Capability checks must do the same so a
-    valid, dormant display preference cannot reject a Render request.
+    Photographic Render owns a private shaded presentation. Its top-level CAD
+    display controls have already been rejected by
+    :func:`validate_render_job_compatibility`.
     """
-    if is_plain_object(job.get("render")):
-        return {}
     display = job.get("display") if is_plain_object(job.get("display")) else {}
     return copy.deepcopy(dict(display))
 
 
-def isolate_render_job(
+def validate_render_job_compatibility(
     job: Mapping[str, object], *, mode: object | None = None,
 ) -> dict[str, object]:
-    """Remove normal-CAD scene state from a photographic Render job."""
+    """Reject normal-CAD scene state paired with photographic Render.
+
+    Presence is the contract: ``null`` and empty objects are still explicit
+    inputs, so they fail instead of being silently treated as absent. Callers
+    validate raw jobs before clearing outputs or resolving an input.
+    """
     if "render" not in job:
         return dict(job)
     render_mode = str(mode if mode is not None else (job.get("mode") or "view")).strip().lower()
     if render_mode != "view":
         raise SnapshotError("Photographic Render supports only view mode")
-    return {key: value for key, value in job.items() if key not in RENDER_ISOLATED_JOB_KEYS}
+    conflicts = sorted(set(job) & RENDER_INCOMPATIBLE_JOB_KEYS)
+    if conflicts:
+        raise SnapshotError(
+            "Photographic Render cannot be combined with top-level CAD control(s): "
+            f"{', '.join(conflicts)}. Put photographic camera and quality settings "
+            "inside render."
+        )
+    return dict(job)
 
 
 def path_is_inside_or_equal(child: Path, parent: Path) -> bool:
@@ -980,7 +990,7 @@ def normalize_common_job(
     ``job_index``/``job_count`` are this job's place in its packet, needed only
     so a directory-valued output's generated name can discriminate across jobs
     as well as within one (see :func:`generated_output_name`)."""
-    job = isolate_render_job(job, mode=mode)
+    job = validate_render_job_compatibility(job, mode=mode)
     outputs = job.get("outputs") if isinstance(job.get("outputs"), list) else []
     if mode != "list" and not outputs:
         raise SnapshotError("render job must include outputs for non-list modes")
@@ -1142,7 +1152,7 @@ def resolve_mesh_render_job(
     Meshes render through the shared mesh path, so this skips the STEP artifact/package
     pipeline entirely and hands the renderer a plain asset URL. STEP-only options are
     rejected up front with clear errors rather than silently ignored downstream."""
-    job = isolate_render_job(job)
+    job = validate_render_job_compatibility(job)
     label = kind.upper()
 
     # Selector focus/hide/refs need the selector index built from STEP topology.
@@ -1181,8 +1191,7 @@ def resolve_mesh_render_job(
         )
 
     # A normal mesh snapshot has no CAD topology for edge modes or exploded views.
-    # Photographic Render ignores CAD display controls, and effective_display_request
-    # returns an empty request for it.
+    # Photographic Render's incompatible CAD display request has already failed.
     display = effective_display_request(job)
     raw_display_mode = re.sub(r"[\s-]+", "_", str(display.get("mode") or "").strip().lower())
     canonical_display_mode = DISPLAY_MODE_ALIASES.get(raw_display_mode, raw_display_mode)

@@ -87,10 +87,9 @@ automatically.
 
 A normal snapshot uses deterministic light CAD lighting and hides grid and axis guides.
 Pass `--render light` or `--render dark` (or photographic Render JSON or a file path)
-for the shared Render scene. An envelope with no `studio` follows app appearance in the viewer
-and resolves Light in the CLI. Set its camera inside Render JSON; top-level `--camera`
-and `--display` control normal snapshots and are ignored during Render. Render also ignores
-`--joint-values`; robot poses are normal-CAD state. Robot link meshes have no CAD-edge or exploded assembly
+for the shared Render scene. An envelope with no `studio` resolves Light in the CLI.
+Set its camera inside Render JSON; top-level `--camera`, `--display`, and `--joint-values`
+control normal snapshots and cannot be combined with Render. Robot link meshes have no CAD-edge or exploded assembly
 topology, so those display combinations are rejected clearly.
 
 Link meshes are resolved relative to the description, so they must be present: an

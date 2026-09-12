@@ -102,9 +102,8 @@ Existing slice intent:
 - `largeFile`: large-file decisions such as selectable topology opt-in.
 - `display`: normal CAD display controls for the model.
 - `render`: Render mode, its active Studio/Animation tab, sparse photographic
-  configuration, and separate CAD/Render camera state. An omitted studio
-  follows global app appearance; an explicit `light` or `dark` pins it. The
-  slice accepts exposure, softbox, backdrop, lens, and Preview/Final quality
+  configuration, and separate CAD/Render camera state. Studio defaults follow
+  global app appearance; the session does not store a studio choice. The slice accepts exposure, softbox, backdrop, lens, and Preview/Final quality
   values. Display stays in the CAD slice and never enters the Render payload.
 
 When adding another large-file control, reuse the `largeFile` slice instead of

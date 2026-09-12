@@ -30,20 +30,18 @@ const require = createRequire(import.meta.url);
 const EXPECTATIONS = [
   { id: "cad-light", appearance: "Light", floorEnabled: false },
   { id: "cad-dark", appearance: "Dark", floorEnabled: false },
-  { id: "render-light", appearance: "Dark", studio: "Light studio", floorEnabled: true },
-  { id: "render-dark", appearance: "Light", studio: "Dark studio", floorEnabled: true }
+  { id: "render-light", appearance: "Light", render: true, floorEnabled: true },
+  { id: "render-dark", appearance: "Dark", render: true, floorEnabled: true }
 ];
 
 async function configureScene(page, expectation) {
   await page.getByRole("button", { name: "Appearance", exact: true }).click();
   await page.getByRole("menuitemradio", { name: expectation.appearance, exact: true }).click();
-  if (!expectation.studio) {
+  if (!expectation.render) {
     return;
   }
   await page.getByRole("button", { name: /^Viewing mode:/ }).click();
   await page.getByRole("menuitemradio", { name: "Render", exact: true }).click();
-  await page.getByRole("combobox", { name: "Studio", exact: true }).click();
-  await page.getByRole("option", { name: expectation.studio, exact: true }).click();
 }
 
 function parseArgs(argv) {
