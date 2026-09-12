@@ -355,8 +355,9 @@ test("display and Render setup survive ordinary geometry revisions", () => {
         enabled: true,
         cadProjection: "orthographic",
         payload: {
-          quality: "standard",
-          settings: { materials: { roughness: 0.32 } }
+          quality: "preview",
+          exposure: 0.75,
+          lighting: { size: 1.4 }
         }
       }
     }
@@ -366,8 +367,9 @@ test("display and Render setup survive ordinary geometry revisions", () => {
   assert.equal(restored.slices.tab, undefined);
   assert.equal(restored.slices.display.mode, "wireframe");
   assert.equal(restored.slices.render.enabled, true);
-  assert.equal(restored.slices.render.payload.quality, "standard");
-  assert.equal(restored.slices.render.payload.settings.materials.roughness, 0.32);
+  assert.equal(restored.slices.render.payload.quality, "preview");
+  assert.equal(restored.slices.render.payload.exposure, 0.75);
+  assert.equal(restored.slices.render.payload.lighting.size, 1.4);
 });
 
 test("A to B to A restores distinct CAD and Render cameras", () => {
@@ -391,7 +393,7 @@ test("A to B to A restores distinct CAD and Render cameras", () => {
           cadCamera,
           cadProjection: cadCamera.projection,
           payload: {
-            quality: "high",
+            quality: "final",
             camera: renderCamera
           }
         }

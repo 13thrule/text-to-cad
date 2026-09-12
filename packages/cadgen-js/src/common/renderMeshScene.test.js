@@ -12,7 +12,8 @@ import {
   projectedVisibleGeometryFrame,
   renderJobContext,
   renderMeshJob,
-  resolveOutputCameraProjection
+  resolveOutputCameraProjection,
+  resolveOutputCameraSpec
 } from "./renderMeshScene.js";
 import { evaluateAnimationClip, normalizeAnimationClips } from "./animationRuntime.js";
 import { resolveAnimationFrame } from "./animationClock.js";
@@ -233,12 +234,62 @@ test("snapshot scene policy separates normal CAD, Render quality, and technical 
   assert.equal(rendered.sharedRenderOptions.renderScale, 2);
 
   const explicitScale = renderJobContext(twoPartMeshData(), {
-    render: { quality: "standard" },
+    render: { quality: "preview" },
     output: { renderScale: 3 },
     quality: { tessellation: { chordTolerance: 0.001 } }
   });
   assert.equal(explicitScale.quality.id, "standard");
   assert.equal(explicitScale.sharedRenderOptions.renderScale, 3);
+});
+
+test("per-output views inherit the photographic lens without inheriting a conflicting pose", () => {
+  const context = { camera: { projection: "perspective", focalLength: 85, position: [2, 3, 4], target: [0, 0, 0] } };
+  assert.deepEqual(resolveOutputCameraSpec(context, "top"), {
+    preset: "top", projection: "perspective", focalLength: 85
+  });
+  assert.deepEqual(resolveOutputCameraSpec(context, { preset: "front", focalLength: 35 }), {
+    preset: "front", projection: "perspective", focalLength: 35
+  });
+});
+
+test("photographic Render ignores CAD display and selection while retaining animation", () => {
+  const stepAnimation = resolveAnimationFrame(SLIDE_CLIPS, { clip: "slide", time: 1.5 });
+  const job = {
+    kind: "step",
+    render: {},
+    camera: { projection: "orthographic", preset: "top" },
+    display: {
+      mode: "wireframe",
+      exploded: { enabled: true, amount: 1 },
+      partColor: { mode: "single", color: "#ff0000" }
+    },
+    selection: { hide: ["left"], focus: ["right"], selectedPartId: "right" },
+    selectorRuntime: {},
+    displayEdgeRuntime: {},
+    stepAnimation
+  };
+  const context = renderJobContext(twoPartMeshData(), job);
+  const cleanContext = renderJobContext(twoPartMeshData(), { kind: "step", render: {} });
+  assert.deepEqual(context.sceneSettings, cleanContext.sceneSettings);
+  assert.equal(context.selectorRuntime, null);
+  assert.equal(context.displayEdgeRuntime, null);
+  assert.equal(context.edgesVisible, false);
+  const options = modelOptionsForRenderJob(context, job);
+  assert.equal(options.callbacks.animation, stepAnimation);
+  assert.deepEqual(options.selection, { showEdges: false });
+  const model = buildModel(THREE, { kind: "step", meshData: twoPartMeshData() }, options);
+  model.update({ stepParameters: null });
+  assert.deepEqual(model.displayRecords.map((record) => record.partId), ["left", "right"]);
+  for (const record of model.displayRecords) assert.equal(record.material.opacity, 1);
+  const left = model.displayRecords.find((record) => record.partId === "left");
+  assert.deepEqual(roundedPoint(left.effectMatrix, [0, 0, 0]), [1.5, 0, 0]);
+  model.dispose();
+});
+
+test("photographic Render rejects CAD-only capture modes", () => {
+  for (const mode of ["list", "section"]) {
+    assert.throws(() => renderJobContext(twoPartMeshData(), { mode, render: {} }), /Render supports only view mode/);
+  }
 });
 
 test("snapshot scene disposal releases owned stage resources without touching model resources", () => {

@@ -103,6 +103,7 @@ from cadgen.snapshot_core import (
     effective_display_request,
     explicit_size_profile,
     is_plain_object,
+    isolate_render_job,
     load_render_option,
     load_display_option,
     load_json_text,
@@ -340,23 +341,25 @@ def apply_option_overrides_to_job(job: object, options: SnapshotOptions, *, cwd:
     ):
         return job
     next_job = copy.deepcopy(job)
-    merge_focus_hide_options(next_job, options)
     if options.debug:
         next_job["debug"] = True
     if options.render_specified:
         next_job["render"] = load_render_option(options.render, cwd=cwd)
-    if options.kinematics_specified:
-        next_job["kinematics"] = parse_kinematics_option(options.kinematics)
+    render_enabled = "render" in next_job
+    if not render_enabled:
+        merge_focus_hide_options(next_job, options)
+        if options.kinematics_specified:
+            next_job["kinematics"] = parse_kinematics_option(options.kinematics)
+        if options.joint_values_specified:
+            next_job["jointValues"] = parse_joint_values_option(options.joint_values)
+        if options.display_specified:
+            next_job["display"] = load_display_option(options.display, cwd=cwd)
+        if options.camera_specified:
+            next_job["camera"] = parse_camera_option(options.camera)
     if options.animation_specified:
         next_job["animation"] = parse_animation_option(options.animation, options.animation_time)
     if options.video_specified:
         next_job["video"] = parse_video_option(options.video, cwd=cwd)
-    if options.joint_values_specified:
-        next_job["jointValues"] = parse_joint_values_option(options.joint_values)
-    if options.display_specified:
-        next_job["display"] = load_display_option(options.display, cwd=cwd)
-    if options.camera_specified:
-        next_job["camera"] = parse_camera_option(options.camera)
     output_settings = dict(next_job.get("output") if is_plain_object(next_job.get("output")) else {})
     if options.view_labels:
         output_settings["viewLabels"] = True
@@ -407,7 +410,7 @@ def load_job_from_options(
     output: dict[str, object] = {
         "path": options.output,
     }
-    if options.camera_specified:
+    if options.camera_specified and not options.render_specified:
         output["camera"] = parse_camera_option(options.camera)
     if options.width:
         output["width"] = options.width
@@ -428,19 +431,20 @@ def load_job_from_options(
         output_settings["sizeProfile"] = options.size_profile
     if output_settings:
         job["output"] = output_settings
-    if options.display_specified:
+    if options.display_specified and not options.render_specified:
         job["display"] = load_display_option(options.display, cwd=resolved_cwd)
-    if options.kinematics_specified:
+    if options.kinematics_specified and not options.render_specified:
         job["kinematics"] = parse_kinematics_option(options.kinematics)
     if options.animation_specified:
         job["animation"] = parse_animation_option(options.animation, options.animation_time)
     if options.video_specified:
         job["video"] = parse_video_option(options.video, cwd=resolved_cwd)
-    if options.joint_values_specified:
+    if options.joint_values_specified and not options.render_specified:
         job["jointValues"] = parse_joint_values_option(options.joint_values)
     if options.debug:
         job["debug"] = True
-    merge_focus_hide_options(job, options)
+    if not options.render_specified:
+        merge_focus_hide_options(job, options)
     return job
 
 
@@ -701,6 +705,7 @@ def resolve_robot_render_job(
     The browser assembles the robot: the parser resolves each link mesh against the
     description's own URL, so this hands over one asset URL and the pose, and the shared
     mesh backend renders the result. STEP-only options are rejected up front."""
+    job = isolate_render_job(job)
     label = kind.upper()
 
     if selection_filter_values(job):
@@ -810,18 +815,9 @@ def resolve_render_job(
     # the key were absent.
     unknown_keys = sorted(set(job) - SUPPORTED_JOB_KEYS)
     if unknown_keys:
-        replacements = {
-            "theme": "render",
-            "sizeProfile": "output.sizeProfile",
-            "width": "outputs[].width",
-            "height": "outputs[].height",
-            "sceneScale": "scale",
-        }
-        hints = [f"{key} was retired; use {replacements[key]}" for key in unknown_keys if key in replacements]
-        detail = f"; {'; '.join(hints)}" if hints else ""
         raise SnapshotError(
             f"unknown render job key(s): {', '.join(unknown_keys)}; "
-            f"supported keys: {', '.join(sorted(SUPPORTED_JOB_KEYS))}{detail}"
+            f"supported keys: {', '.join(sorted(SUPPORTED_JOB_KEYS))}"
         )
 
     resolved_cwd = (cwd or Path.cwd()).resolve()
@@ -829,7 +825,15 @@ def resolve_render_job(
     if not raw_input:
         raise SnapshotError("render job is missing input")
 
-    # A job's own `display` string gets the same treatment as the --display
+    # Validate Render before any dormant CAD-state option can trigger its own
+    # parsing or a format capability check. Photographic Render is an isolated
+    # scene; only animation remains composable with the CAD document state.
+    render_enabled = "render" in job
+    if render_enabled:
+        job["render"] = validate_render_option(job["render"], source_label="job render")
+        job = isolate_render_job(job)
+
+    # A normal job's own `display` string gets the same treatment as the --display
     # flag: a mode name, an inline JSON object, or a path to a display JSON.
     # Without this it fell through to normalize_common_job, which accepts only
     # a plain object, so a mode name, a file path, or a typo could lose the
@@ -845,8 +849,6 @@ def resolve_render_job(
     # Validate the new common envelopes before a STEP input can trigger package
     # compilation. normalize_common_job repeats these guards for callers that
     # invoke a kind resolver directly.
-    if "render" in job:
-        job["render"] = validate_render_option(job["render"], source_label="job render")
     if "output" in job:
         job["output"] = validate_output_settings(job["output"])
     if "quality" in job:
@@ -921,6 +923,7 @@ def resolve_step_render_job(
     job_count: int = 1,
     **_kind_context: object,
 ) -> dict[str, object]:
+    job = isolate_render_job(job)
     has_param_render = has_kinematics_render_values(job.get("kinematics"))
     # The frame request is validated for SHAPE up front (a packet may carry it
     # directly, so it did not necessarily pass through the flag parser); which
@@ -1163,6 +1166,7 @@ def resolve_drawing_render_job(
     renders. Drawings carry no CAD topology, so the STEP-only options are
     rejected the way they are for every other non-STEP kind.
     """
+    job = isolate_render_job(job)
     if selection_filter_values(job):
         raise SnapshotError(
             "selection focus/hide/refs require STEP topology; drawings have no "

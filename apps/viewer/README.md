@@ -55,51 +55,51 @@ are blocked. The synchronous startup script applies the preference before the
 app mounts. Neutral light and charcoal panel tokens remain independent from
 the model's lighting and materials.
 
-**Display** owns projection, inspection style, edges, grid, origin axes, part
-color overrides, clipping, and exploded view. **Shaded with edges** shows shaded
-surfaces with CAD edges; **Shaded** shows those surfaces without edges. Neither
-mode selects a studio or changes geometry detail. Camera projection belongs to
-the shared camera configuration even though its control appears in Display.
-Grid and origin axes are world references, independent of the studio floor.
+**Display** owns the CAD inspection projection, style, edges, grid, origin axes,
+part colors, clipping, and exploded view. **Shaded with edges** shows shaded
+surfaces with CAD edges; **Shaded** shows those surfaces without edges. Grid and
+origin axes remain world references. Display is hidden while Render is enabled,
+and its state is restored unchanged when the user returns to CAD.
 
-**Render** is the last inspector tab by default. Its enable switch applies a
-studio setup; changing inspector tabs does not disable it. The default studio
-follows app appearance without storing an override. Choosing **Light studio**
-or **Dark studio** pins that studio for the model session. Lighting,
-environment, physical floor, materials, background, and exposure remain
-customizable. The existing toolbar owns image capture.
+**Render** is the last inspector tab by default. Its enable switch enters an
+isolated photographic view; changing inspector tabs does not disable it. The
+default Light or Dark studio follows app appearance until the user pins one.
+The compact editor controls lens and exposure, softbox rotation, size and fill,
+plus backdrop color, transparency, and ground. AgX tone mapping and a generated
+softbox environment provide the Render lighting. Authored material properties
+remain intact. The existing toolbar owns image capture.
 
-Quality is independent of the studio. Normal CAD uses the Interactive policy;
-Render defaults to High, with Standard and Interactive available. These policies
-share the same renderer, tessellation ladder, cache entries, and memory budget.
-High requests a 0.25-pixel screen-error target, 4096-pixel shadow maps and a
-512-pixel softbox environment, and increases the idle pixel-ratio cap. It refines
-the view within the available tessellation ladder without rebuilding exact CAD
-geometry or the WebGL scene. The status indicator reports High detail after the
-available refinement settles, and reports when memory limits prevent extra detail.
-Snapshots use the same policy: High selects the existing finest L3 STEP tessellation
-and 2× capture scale unless explicit tessellation or output scale overrides it.
+Quality is independent of the studio. Normal CAD uses its Interactive policy;
+Render offers **Preview** and **Final**, and defaults to Final. Preview and Final
+share the tessellation ladder, cache entries, and memory budget. Final requests
+a 0.25-pixel screen-error target, 4096-pixel shadow maps, and a 512-pixel softbox
+environment. Quality changes refine the view without rebuilding exact CAD
+geometry or the model scene. Entering Render creates an ordinary-depth WebGL
+runtime so the photographic ground can receive shadows; returning to CAD restores
+its wide-range logarithmic-depth runtime while decoded geometry stays cached. The
+status indicator reports High detail after the available refinement settles and
+reports when memory limits prevent extra detail. Snapshots use the same policy:
+Final selects the existing finest L3 STEP tessellation and 2× capture scale unless
+explicit tessellation or output scale overrides it.
 
 Normal CAD settings and Render settings are separate per-model session state.
-Enabling Render applies its default projection and display settings plus that
-model's custom overrides. Disabling restores the CAD view; reenabling restores
-the customized Render view. Display controls show the effective values and
-edit the active view. These settings use sessionStorage with other per-model
+Enabling Render applies its perspective camera and fixed presentation view
+(shaded authored colors; guides, edges, clipping, exploded transforms, and
+selection effects are off). Animation playback remains available. Disabling restores
+the CAD camera and inspection state; reenabling restores the photographic view.
+These settings use sessionStorage with other per-model
 ephemeral state; they are not written beside models, into the geometry cache,
 or into global app appearance. A normal geometry rebuild preserves the
 render setup. Closing the browser tab ends its session.
 
-The top **Render** section also owns Reset and a collapsed **Debug** control for
-Copy/Paste Settings. Its JSON uses the same render contract as
-`cadgen step snapshot --render`; invalid settings fail before replacing the
-current setup. Debug and Reset stay available while Render is off, so a saved
-setup can be copied or applied directly from the CAD view. Keeping a JSON file
-is optional and manual. CLI snapshots
-default to a deterministic light CAD view; supplying `--render` opts into
-studio settings, and explicit camera or display options override the studio's
-defaults. Both clients resolve scene settings through the shared cadgen-js
-implementation. A copied payload without `studio` stays adaptive; choose an
-explicit Light studio or Dark studio when the copied setup needs a fixed look.
+The top **Render** section also owns Reset and inline Copy/Paste Settings
+buttons. Invalid settings fail before replacing the current setup. Copy/Paste
+and Reset stay available while Render is off, so a saved setup can be copied or
+applied directly from the CAD view. The sparse JSON is
+`{studio?, quality?, exposure?, lighting?, backdrop?, camera?}` and uses the same
+contract as `cadgen step snapshot --render`. A payload without `studio` stays
+adaptive; an explicit `light` or `dark` value pins it. Both clients resolve the
+photographic scene through the shared cadgen-js implementation.
 
 ## Launching
 

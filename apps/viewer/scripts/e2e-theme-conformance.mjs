@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Do CAD appearance and Render studios actually reach the pixels?
 //
-// CAD appearance and Render studios share one mesh renderer. This drives the current
-// navbar and Render-tab controls, then records the background and model surface.
+// CAD appearance and Render studios use their respective inspection and photographic
+// renderer epochs. This drives the current navbar and Render-tab controls, then records
+// the background and model surface.
 //
 // It asserts that the model pixels change across those real settings. A renderer that
 // ignores lighting can still start and draw while every pass looks identical.

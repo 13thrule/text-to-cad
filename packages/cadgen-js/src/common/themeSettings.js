@@ -237,9 +237,8 @@ export const DEFAULT_FLOOR_GRID_SETTINGS = Object.freeze({
   density: 1
 });
 
-// The viewer's soft fill and rim directionals. Partial theme JSON (an inline
-// `--theme {...}` object) normalizes absent fill/rim blocks to these exact
-// structural defaults.
+// CAD inspection's soft fill and rim directionals. Internal scene settings
+// normalize absent fill/rim blocks to these structural defaults.
 export const DEFAULT_FILL_LIGHT_SETTINGS = Object.freeze({
   enabled: true,
   color: "#6b7f95",

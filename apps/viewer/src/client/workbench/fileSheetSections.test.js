@@ -84,6 +84,22 @@ test("rendered file sheet sections include closed-by-default sections", () => {
   assert.deepEqual(renderedFileSheetSectionIds("mesh"), ["measurements", "display", "render"]);
 });
 
+test("Render mode exposes only photographic controls and animation playback", () => {
+  assert.deepEqual(renderedFileSheetSectionIds("step", {
+    renderMode: true,
+    hasStepPosePanel: true,
+    hasStepAnimationPanel: true
+  }), ["animation", "render"]);
+  assert.deepEqual(renderedFileSheetSectionIds("step", { renderMode: true }), ["render"]);
+  assert.deepEqual(renderedFileSheetSectionIds("mesh", { renderMode: true }), ["render"]);
+  assert.deepEqual(renderedFileSheetSectionIds("dxf", { renderMode: true }), ["render"]);
+  assert.deepEqual(renderedFileSheetSectionIds("sdf", { renderMode: true }), ["render"]);
+  assert.deepEqual(defaultOpenFileSheetSectionIds("step", {
+    renderMode: true,
+    hasStepAnimationPanel: true
+  }), ["render"]);
+});
+
 test("viewer-origin selection reveals do not open the file sheet on mobile", () => {
   assert.equal(shouldOpenFileSheetForSelectionReveal({ isDesktop: true, source: "viewer" }), true);
   assert.equal(shouldOpenFileSheetForSelectionReveal({ isDesktop: false, source: "viewer" }), false);

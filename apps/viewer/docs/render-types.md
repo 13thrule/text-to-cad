@@ -131,9 +131,11 @@ Recorded so they are not mistaken for bugs, and so the next person knows the cos
 
 ## Scene conformance
 
-CAD appearance and Render studio fields reach the mesh renderer
-(STEP/STL/3MF/GLB/DXF) and change the picture. Shared cadgen-js scene settings are
-the single public schema; internal stage normalization remains shared as well.
+CAD appearance and the isolated photographic Render configuration reach every
+mesh renderer (STEP/STL/3MF/GLB/DXF) and change the picture. Render always uses
+its fixed shaded, authored-color view policy; CAD selection, clipping,
+visibility, edges, guides, and exploded transforms never enter that path.
+Shared cadgen-js scene settings are the single public schema.
 
 ### Conformance harness
 
@@ -147,5 +149,5 @@ asserts **surface response**: the model's pixels must actually differ across the
 settings. A renderer that drops lighting fields still starts and draws while
 rendering every pass identically.
 
-`scripts/theme-conformance-baseline.json` records the measured means so a change of
-look is visible in a diff rather than only in a pass/fail.
+Pass `--baseline <file>` to write the measured means when a visual review needs a
+before/after artifact in addition to the pass/fail result.

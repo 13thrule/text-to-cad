@@ -121,19 +121,19 @@ test("snapshot tessellation is explicit, finite and restricted to exact surfaces
 
 test("snapshot quality selects bounded shared tessellation policy", () => {
   assert.deepEqual(tessellationForSnapshotQuality({}), {});
-  assert.deepEqual(tessellationForSnapshotQuality({ render: { quality: "standard" } }), {});
+  assert.deepEqual(tessellationForSnapshotQuality({ render: { quality: "preview" } }), {});
   assert.deepEqual(
-    tessellationForSnapshotQuality({ render: { quality: "high" } }),
+    tessellationForSnapshotQuality({ render: { quality: "final" } }),
     { chordTolerance: 0.00015, angleTolerance: 0.35 }
   );
   assert.deepEqual(
     tessellationForSnapshotQuality({
-      render: { quality: "high" },
+      render: { quality: "final" },
       quality: { tessellation: { chordTolerance: 0.001 } }
     }),
-    { chordTolerance: 0.001 }
+    { chordTolerance: 0.00015, angleTolerance: 0.35 }
   );
-  assert.throws(() => tessellationForSnapshotQuality({ render: { quality: "ultra" } }), /Unknown scene quality/);
+  assert.throws(() => tessellationForSnapshotQuality({ render: { quality: "ultra" } }), /quality/i);
 });
 
 test("macro tessellation changes the rendered surface and uses its own cache entry", async (t) => {
@@ -472,6 +472,28 @@ test("loadSource accepts sidecar kinematics for STEP sources", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("photographic source loading keeps authored data without requesting CAD selectors or poses", async (t) => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("Render must not fetch selector topology"); };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const source = await loadSource({
+    kind: "step",
+    meshData: meshData(),
+    render: {},
+    cadPath: "hinge.step",
+    glbUrl: "/unused-topology.glb",
+    sourceSidecar: HINGE_SIDECAR,
+    documentHash: HINGE_SIDECAR.documentHash,
+    kinematics: "unknown-cad-pose",
+    selectorRuntime: { stale: true },
+    displayEdgeRuntime: { stale: true }
+  });
+  assert.equal(source.kind, "step");
+  assert.equal(source.selectorRuntime, null);
+  assert.equal(source.displayEdgeRuntime, null);
+  assert.equal(source.stepParameterSource, null);
 });
 
 function binaryStlTriangle() {

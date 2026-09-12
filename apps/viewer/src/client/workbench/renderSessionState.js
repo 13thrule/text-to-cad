@@ -1,5 +1,4 @@
 import {
-  SCENE_QUALITY,
   normalizeRenderPayload,
   resolveSceneSettings
 } from "cadgen-js/common/sceneSettings.js";
@@ -10,9 +9,7 @@ import {
 } from "cadgen-js/common/camera.js";
 import { clonePerspectiveSnapshot } from "cadgen-js/lib/perspective.js";
 
-export const DEFAULT_RENDER_PAYLOAD = Object.freeze({
-  quality: SCENE_QUALITY.HIGH
-});
+export const DEFAULT_RENDER_PAYLOAD = Object.freeze({});
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -51,7 +48,10 @@ export function renderSessionStateEqual(a, b) {
   return JSON.stringify(createRenderSessionState(a)) === JSON.stringify(createRenderSessionState(b));
 }
 
-export function renderCameraSeed(snapshot, { includeOrthographicFraming = true } = {}) {
+export function renderCameraSeed(snapshot, {
+  includeOrthographicFraming = true,
+  includeFocalLength = true
+} = {}) {
   const camera = clonePerspectiveSnapshot(snapshot);
   if (!camera) {
     return null;
@@ -61,6 +61,9 @@ export function renderCameraSeed(snapshot, { includeOrthographicFraming = true }
     target: camera.target,
     up: camera.up,
     ...(Object.prototype.hasOwnProperty.call(camera, "zoom") ? { zoom: camera.zoom } : {}),
+    ...(includeFocalLength && Object.prototype.hasOwnProperty.call(camera, "focalLength")
+      ? { focalLength: camera.focalLength }
+      : {}),
     ...(includeOrthographicFraming && Object.prototype.hasOwnProperty.call(camera, "orthographicHalfHeight")
       ? { orthographicHalfHeight: camera.orthographicHalfHeight }
       : {})
@@ -78,6 +81,7 @@ export function renderCameraSnapshot(camera) {
     up: snapshot.up,
     ...(Object.prototype.hasOwnProperty.call(snapshot, "zoom") ? { zoom: snapshot.zoom } : {}),
     ...(Object.prototype.hasOwnProperty.call(snapshot, "projection") ? { projection: snapshot.projection } : {}),
+    ...(Object.prototype.hasOwnProperty.call(snapshot, "focalLength") ? { focalLength: snapshot.focalLength } : {}),
     ...(Object.prototype.hasOwnProperty.call(snapshot, "orthographicHalfHeight")
       ? { orthographicHalfHeight: snapshot.orthographicHalfHeight }
       : {})
@@ -88,35 +92,33 @@ export function resolveRenderCameraSnapshot(camera, bounds = null, { sceneScale 
   return renderCameraSnapshot(resolveCameraSnapshot(camera, bounds, { sceneScale }));
 }
 
-export function setRenderSetting(payload, path, value) {
+export function setRenderPayloadValue(payload, path, value) {
   const normalizedPayload = normalizeRenderPayload(payload || DEFAULT_RENDER_PAYLOAD);
   const normalizedPath = (Array.isArray(path) ? path : []).map((part) => String(part || "").trim()).filter(Boolean);
   if (!normalizedPath.length) {
     return normalizedPayload;
   }
-  const settings = cloneValue(normalizedPayload.settings || {});
-  let cursor = settings;
+  const nextPayload = cloneValue(normalizedPayload);
+  let cursor = nextPayload;
   for (let index = 0; index < normalizedPath.length - 1; index += 1) {
     const part = normalizedPath[index];
     cursor[part] = isPlainObject(cursor[part]) ? { ...cursor[part] } : {};
     cursor = cursor[part];
   }
   cursor[normalizedPath[normalizedPath.length - 1]] = cloneValue(value);
-  return normalizeRenderPayload({ ...normalizedPayload, settings });
+  return normalizeRenderPayload(nextPayload);
 }
 
-export function replaceRenderPreset(payload, patch = {}) {
+export function updateRenderPayload(payload, patch = {}) {
   const normalizedPayload = normalizeRenderPayload(payload || DEFAULT_RENDER_PAYLOAD);
-  const next = { ...normalizedPayload, ...patch };
-  delete next.settings;
-  return normalizeRenderPayload(next);
+  return normalizeRenderPayload({ ...normalizedPayload, ...patch });
 }
 
 export function resetRenderPayload(activeCamera = null) {
   const camera = renderCameraSnapshot(activeCamera);
   return normalizeRenderPayload({
     ...DEFAULT_RENDER_PAYLOAD,
-    ...(camera ? { camera: renderCameraSeed(camera) } : {})
+    ...(camera ? { camera: renderCameraSeed(camera, { includeFocalLength: false }) } : {})
   });
 }
 
@@ -125,6 +127,38 @@ export function renderSessionForReset(session, { activeCamera = null } = {}) {
   return createRenderSessionState({
     ...current,
     payload: resetRenderPayload(current.enabled ? activeCamera : null)
+  });
+}
+
+export function renderSessionForEnabledChange(session, enabled, {
+  activeCamera = null,
+  activeProjection = null
+} = {}) {
+  const current = createRenderSessionState(session);
+  if (enabled === current.enabled) {
+    return current;
+  }
+  const camera = renderCameraSnapshot(activeCamera);
+  if (enabled) {
+    return createRenderSessionState({
+      ...current,
+      enabled: true,
+      cadCamera: camera || current.cadCamera,
+      cadProjection: camera?.projection || activeProjection || current.cadProjection
+    });
+  }
+  return createRenderSessionState({
+    ...current,
+    enabled: false,
+    payload: camera
+      ? {
+          ...current.payload,
+          camera: {
+            ...renderCameraSeed(camera),
+            projection: camera.projection || activeProjection
+          }
+        }
+      : current.payload
   });
 }
 
@@ -187,7 +221,9 @@ export function resolveRenderSessionQuality(session, options = {}) {
   return resolveSceneSettings({
     appearance: options.appearance,
     prefersDark: options.prefersDark === true,
-    render: current.enabled ? { quality: current.payload.quality } : null
+    render: current.enabled
+      ? (current.payload.quality ? { quality: current.payload.quality } : {})
+      : null
   }).quality;
 }
 

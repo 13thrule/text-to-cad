@@ -6,6 +6,7 @@ import {
   normalizeCameraSpec,
   resolveCameraSnapshot
 } from "./camera.js";
+import { clonePerspectiveSnapshot, perspectiveSnapshotEqual } from "../lib/perspective.js";
 import {
   RENDER_SCENE_SCALE
 } from "./renderOptions.js";
@@ -145,4 +146,21 @@ test("invalid camera specs fail clearly", () => {
   assert.equal(permissive.target, null);
   assert.equal(permissive.zoom, 1.5);
   assert.equal(permissive.orthographicHalfHeight, 12);
+});
+
+test("photographic lenses survive camera resolution and session snapshots", () => {
+  const snapshot = resolveCameraSnapshot({
+    position: [10, -20, 30], target: [0, 0, 0], up: [0, 0, 1],
+    projection: "perspective", focalLength: 85
+  });
+  assert.equal(snapshot.focalLength, 85);
+  const copied = clonePerspectiveSnapshot(snapshot);
+  assert.equal(copied.focalLength, 85);
+  assert.equal(perspectiveSnapshotEqual(copied, { ...copied }), true);
+  assert.equal(perspectiveSnapshotEqual(copied, { ...copied, focalLength: 50 }), false);
+  for (const invalid of [null, true, "50", NaN, Infinity, 19, 201]) {
+    assert.throws(() => normalizeCameraSpec({ focalLength: invalid }), /camera.focalLength/);
+  }
+  assert.equal(normalizeCameraSpec({ focalLength: 20 }).focalLength, 20);
+  assert.equal(normalizeCameraSpec({ focalLength: 200 }).focalLength, 200);
 });

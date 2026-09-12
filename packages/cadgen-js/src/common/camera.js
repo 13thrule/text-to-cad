@@ -43,6 +43,7 @@ export const CAMERA_SPEC_KEYS = Object.freeze([
   "up",
   "zoom",
   "orthographicHalfHeight",
+  "focalLength",
   "direction",
   "name",
   "projection"
@@ -152,6 +153,16 @@ export function normalizeOrthographicHalfHeight(value, fallback = null, {
   return fallback;
 }
 
+export function normalizeCameraFocalLength(value, fallback = null, { strict = false } = {}) {
+  if (value === undefined) return fallback;
+  const numericValue = strict ? value : Number(value);
+  if (typeof numericValue === "number" && Number.isFinite(numericValue) && numericValue >= 20 && numericValue <= 200) {
+    return numericValue;
+  }
+  if (strict) throw new Error("camera.focalLength must be a finite number between 20 and 200 mm");
+  return fallback;
+}
+
 function clonePreset(preset) {
   return {
     name: preset.name,
@@ -251,12 +262,14 @@ export function normalizeCameraSpec(rawCamera = DEFAULT_CAMERA_PRESET, {
       up: preset.up,
       zoom: 1,
       orthographicHalfHeight: null,
+      focalLength: null,
       projection: normalizeCameraSpecProjection(undefined, defaultProjection, { strict }),
       hasExplicitPosition: false,
       hasExplicitTarget: false,
       hasExplicitUp: false,
       hasExplicitZoom: false,
       hasExplicitOrthographicHalfHeight: false,
+      hasExplicitFocalLength: false,
       hasExplicitProjection: false
     };
   }
@@ -297,12 +310,14 @@ export function normalizeCameraSpec(rawCamera = DEFAULT_CAMERA_PRESET, {
     up,
     zoom: normalizeCameraZoom(source.zoom, 1, { strict, fieldName: "camera.zoom" }),
     orthographicHalfHeight: normalizeOrthographicHalfHeight(source.orthographicHalfHeight, null, { strict }),
+    focalLength: normalizeCameraFocalLength(source.focalLength, null, { strict }),
     projection: normalizeCameraSpecProjection(source.projection, defaultProjection, { strict }),
     hasExplicitPosition: Object.prototype.hasOwnProperty.call(source, "position"),
     hasExplicitTarget: Object.prototype.hasOwnProperty.call(source, "target"),
     hasExplicitUp: Object.prototype.hasOwnProperty.call(source, "up"),
     hasExplicitZoom,
     hasExplicitOrthographicHalfHeight,
+    hasExplicitFocalLength: Object.prototype.hasOwnProperty.call(source, "focalLength"),
     hasExplicitProjection: Object.prototype.hasOwnProperty.call(source, "projection")
   };
 }
@@ -370,6 +385,7 @@ export function resolveCameraView(rawCamera = DEFAULT_CAMERA_PRESET, options = {
   if (spec.orthographicHalfHeight != null) {
     view.orthographicHalfHeight = spec.orthographicHalfHeight;
   }
+  if (spec.focalLength != null) view.focalLength = spec.focalLength;
   return view;
 }
 
@@ -409,6 +425,7 @@ export function resolveCameraSnapshot(rawCamera = DEFAULT_CAMERA_PRESET, bounds 
     up: up.normalize().toArray(),
     zoom: spec.zoom,
     orthographicHalfHeight: spec.orthographicHalfHeight,
+    ...(spec.focalLength != null ? { focalLength: spec.focalLength } : {}),
     projection: spec.projection,
     direction: resolvedDirection.normalize().toArray(),
     view: {
@@ -423,6 +440,7 @@ export function resolveCameraSnapshot(rawCamera = DEFAULT_CAMERA_PRESET, bounds 
     hasExplicitUp: spec.hasExplicitUp,
     hasExplicitZoom: spec.hasExplicitZoom,
     hasExplicitOrthographicHalfHeight: spec.hasExplicitOrthographicHalfHeight,
+    hasExplicitFocalLength: spec.hasExplicitFocalLength,
     hasExplicitProjection: spec.hasExplicitProjection,
     radius,
     size: size.toArray()

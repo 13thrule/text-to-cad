@@ -1,101 +1,152 @@
 import * as THREE from "three";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
+import { DEFAULT_RENDER_LIGHTING } from "./sceneSettings.js";
 import {
-  getEnvironmentPresetById
-} from "./themeSettings.js";
+  PHOTOGRAPHIC_STUDIO_FILL_DIRECTION,
+  PHOTOGRAPHIC_STUDIO_KEY_DIRECTION
+} from "./photographicStudioRig.js";
 
-export const PROCEDURAL_STUDIO_ENVIRONMENT_ID = "studio-softbox";
+export const PROCEDURAL_STUDIO_ENVIRONMENT_ID = "photographic-softbox";
 
-function environmentPreset(settings = {}) {
-  return getEnvironmentPresetById(settings.presetId);
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function finite(value, fallback) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
 function proceduralEnvironmentSize(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric) || numeric <= 0) {
-    return 256;
-  }
-  return Math.min(Math.max(2 ** Math.round(Math.log2(numeric)), 64), 1024);
+  const numeric = finite(value, 256);
+  return Math.min(Math.max(2 ** Math.round(Math.log2(Math.max(numeric, 1))), 64), 1024);
 }
 
-export function environmentResourceIdentity(settings = {}, { size = 256 } = {}) {
-  if (settings.enabled !== true) {
-    return "";
-  }
-  const preset = environmentPreset(settings);
-  if (preset?.kind === "procedural") {
-    return `procedural:${preset.id}@${proceduralEnvironmentSize(size)}`;
-  }
-  const url = String(preset?.url || "").trim();
-  return url ? `texture:${url}` : "";
+function lightingConfiguration(configuration = {}) {
+  const lighting = configuration?.lighting || {};
+  return {
+    size: clamp(finite(lighting.size, DEFAULT_RENDER_LIGHTING.size), 0.25, 3),
+    fill: clamp(finite(lighting.fill, DEFAULT_RENDER_LIGHTING.fill), 0, 1)
+  };
 }
 
-function ownedEnvironmentResource(identity, texture, disposeOwned) {
+export function environmentResourceIdentity(configuration = {}, { size = 256 } = {}) {
+  const lighting = lightingConfiguration(configuration);
+  return `${PROCEDURAL_STUDIO_ENVIRONMENT_ID}:${JSON.stringify([
+    lighting.size,
+    lighting.fill,
+    proceduralEnvironmentSize(size)
+  ])}`;
+}
+
+function card(scene, {
+  name,
+  direction,
+  width,
+  height,
+  intensity
+}) {
+  if (!(intensity > 0)) return null;
+  const material = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(intensity, intensity, intensity),
+    side: THREE.DoubleSide,
+    toneMapped: false
+  });
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), material);
+  mesh.name = name;
+  mesh.position.copy(direction).normalize().multiplyScalar(6);
+  mesh.lookAt(0, 0, 0);
+  mesh.updateMatrixWorld(true);
+  scene.add(mesh);
+  return mesh;
+}
+
+/**
+ * Build the normalized HDR source scene used by PMREM. It contains a bright
+ * neutral key card and an opposing fill card. Their directions match the
+ * photographic direct-light rig; scene.environmentRotation rotates both at
+ * runtime without rebuilding this resource.
+ */
+export function createStudioEnvironmentScene(configuration = {}) {
+  const lighting = lightingConfiguration(configuration);
+  // Emissive radiance is inversely proportional to card area, so changing the
+  // apparent softbox size changes highlight width without changing total flux.
+  const cardRadiance = 12 / (lighting.size * lighting.size);
+  const scene = new THREE.Scene();
+  scene.name = "cadgen-photographic-environment";
+  scene.background = new THREE.Color(0.004, 0.004, 0.004);
+
+  const room = new THREE.Mesh(
+    new THREE.BoxGeometry(30, 30, 30),
+    new THREE.MeshBasicMaterial({
+      color: new THREE.Color(0.006, 0.006, 0.006),
+      side: THREE.BackSide,
+      toneMapped: false
+    })
+  );
+  room.name = "studio-room";
+  scene.add(room);
+
+  card(scene, {
+    name: "studio-key-card",
+    direction: new THREE.Vector3(...PHOTOGRAPHIC_STUDIO_KEY_DIRECTION),
+    width: 2.5 * lighting.size,
+    height: 3.6 * lighting.size,
+    intensity: cardRadiance
+  });
+  card(scene, {
+    name: "studio-fill-card",
+    direction: new THREE.Vector3(...PHOTOGRAPHIC_STUDIO_FILL_DIRECTION),
+    width: 3.2 * lighting.size,
+    height: 4.2 * lighting.size,
+    intensity: cardRadiance * lighting.fill
+  });
+  return scene;
+}
+
+function disposeScene(scene) {
+  scene?.traverse?.((object) => {
+    object.geometry?.dispose?.();
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) material?.dispose?.();
+  });
+}
+
+function ownedEnvironmentResource(identity, target) {
   let disposed = false;
   return {
     identity,
-    texture,
+    texture: target.texture,
     dispose() {
-      if (disposed) {
-        return;
-      }
+      if (disposed) return;
       disposed = true;
-      disposeOwned?.();
+      target.dispose?.();
     }
   };
 }
 
 /**
- * Create one environment resource owned by the caller. Procedural studios keep
- * their PMREM render target alive for exactly as long as its texture is in use;
- * callers must release the returned resource instead of disposing only the
- * texture. Remote image presets retain their existing TextureLoader behavior.
+ * Create a caller-owned PMREM resource. Rotation is intentionally absent from
+ * its identity: callers apply it through scene.environmentRotation so rotating
+ * the studio remains a cheap live update.
  */
-export async function createEnvironmentResource(renderer, settings = {}, {
-  textureLoader = null,
+export async function createEnvironmentResource(renderer, configuration = {}, {
   size = 256
 } = {}) {
-  const identity = environmentResourceIdentity(settings, { size });
-  if (!identity) {
-    return null;
+  if (!renderer) {
+    throw new Error("A WebGL renderer is required for the photographic studio environment");
   }
-  const preset = environmentPreset(settings);
-  if (preset?.kind === "procedural") {
-    if (!renderer) {
-      throw new Error("A WebGL renderer is required for the procedural studio environment");
-    }
-    const room = new RoomEnvironment();
-    const generator = new THREE.PMREMGenerator(renderer);
-    try {
-      // Preserve the source softbox shapes. Material roughness selects the
-      // appropriate PMREM mip; source blur would erase polished-part detail at
-      // every roughness and defeat the higher-resolution Render policy.
-      const target = generator.fromScene(room, 0, 0.1, 100, {
-        size: proceduralEnvironmentSize(size)
-      });
-      target.texture.name = preset.label || preset.id;
-      return ownedEnvironmentResource(identity, target.texture, () => target.dispose());
-    } finally {
-      room.dispose();
-      generator.dispose();
-    }
-  }
-
-  const loader = textureLoader || new THREE.TextureLoader();
-  if (typeof loader.setCrossOrigin === "function") {
-    loader.setCrossOrigin("anonymous");
-  }
-  let texture = null;
+  const identity = environmentResourceIdentity(configuration, { size });
+  const environmentScene = createStudioEnvironmentScene(configuration);
+  const generator = new THREE.PMREMGenerator(renderer);
   try {
-    texture = await loader.loadAsync(String(preset?.url || "").trim());
-    texture.mapping = THREE.EquirectangularReflectionMapping;
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.needsUpdate = true;
-    return ownedEnvironmentResource(identity, texture, () => texture.dispose?.());
-  } catch (error) {
-    texture?.dispose?.();
-    throw error;
+    const target = generator.fromScene(environmentScene, 0, 0.1, 100, {
+      size: proceduralEnvironmentSize(size)
+    });
+    target.texture.name = PROCEDURAL_STUDIO_ENVIRONMENT_ID;
+    return ownedEnvironmentResource(identity, target);
+  } finally {
+    disposeScene(environmentScene);
+    generator.dispose();
   }
 }
 

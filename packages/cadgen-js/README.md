@@ -167,28 +167,40 @@ tessellation v4 keys, headers and mesh-index records ↔ `cadgen/store/meshes.py
 
 `common/sceneSettings.js` is the public scene-policy boundary shared by the
 Viewer and snapshot runtime. `resolveSceneSettings()` applies base CAD defaults,
-then an optional sparse Render envelope, then explicit camera/display overrides.
-The Render envelope is `{studio, quality, settings, camera, display}`. Its
-optional studio is `studio-light` or `studio-dark`; omission follows the
-resolved global appearance and remains omitted in the normalized payload.
-The resolved scene exposes the effective studio for UI display. Render uses a
-built-in procedural softbox PMREM for shape-revealing PBR reflections without
-depending on a remote image. The light and dark studios share material,
-environment, lighting, and tone-mapping policy; their backdrop and floor colors
-differ.
-Camera owns projection; display owns mode, clipping, exploded view, edge style,
-world-origin guides, and part colors. Studio settings own materials, background,
-floor, environment, and lighting. Quality is independent from the studio preset:
-interactive and standard retain the canonical snapshot mesh rung, while high
-uses the bounded L3 rung, a 0.25px viewport target, 4096px shadows, a 512px
-procedural environment, and 2x snapshot render scale. Explicit
-`quality.tessellation` and `output.renderScale` remain authoritative.
+or resolves an isolated sparse Render envelope when Render is enabled.
+The closed Render envelope is `{studio, quality, exposure, lighting, backdrop,
+camera}`. `studio` is `light` or `dark`; omission follows the resolved
+global appearance and remains omitted in the normalized payload. `quality` is
+`preview` or `final` and defaults to `final`. Exposure is an EV adjustment from
+-5 to +5. Lighting exposes only rotation, relative softbox size and fill ratio.
+Backdrop exposes its color, transparency and whether the model is grounded.
+`resolved.render.configuration` expands these defaults for rendering and UI
+display without turning the sparse session payload into a pinned studio.
+
+Render uses one photographic rig: neutral HDR key and fill cards feed a
+procedural PMREM, while one aligned, model-scaled spot light supplies direct and
+shadow illumination. Rotation moves both around CAD's Z axis. Softbox size
+changes reflection-card size and bounded PCF shadow softness without changing
+key exposure. The `light` and `dark` studios differ only in their backdrop
+default. Render fixes AgX tone mapping and preserves authored PBR channels; the
+public contract has no global material, color-grading, arbitrary-light, floor
+physics, or glow controls. `applyPhotographicStudio()` owns the synchronous
+light, ground and renderer state. Callers separately cache and dispose the PMREM
+returned by `createEnvironmentResource()`; rotating the rig does not rebuild it.
+Render owns its camera and uses fixed shaded, authored-color display policy with
+no edges, guides, clipping, or exploded-view state. CAD inspection camera,
+display, and quality overrides do not cross the Render boundary. A Render
+perspective camera defaults to a 50 mm focal length. Quality is independent from the studio: `preview` maps to
+the existing standard scene policy and `final` maps to high. High uses the
+bounded L3 rung, a 0.25px viewport target, 4096px shadows, a 512px procedural
+environment, and 2x snapshot render scale. Explicit
+`output.renderScale` remains authoritative. `quality.tessellation` is a
+normal-CAD-only technical override; Render derives its bounded mesh rung only
+from `render.quality`.
 
 Canonical display modes are `shaded`, `shaded_edges`, `transparent`,
 `hidden_edges`, `hidden_lines_removed`, `unshaded`, and `wireframe`. Retired
-`rendered` and `solid` values fail with their replacements. Render material
-settings are fallbacks for authored PBR channels; only sparse explicit PBR edits
-become material overrides. Normal CAD keeps authored albedo and opacity but
+`rendered` and `solid` values fail with their replacements. Normal CAD keeps authored albedo and opacity but
 applies the matte workbench PBR channels because its inspection scene has no
 reflection environment. `resolveDisplayMaterialSettings()` applies the shared
 Original, Single color, and Color by part policy without app state.

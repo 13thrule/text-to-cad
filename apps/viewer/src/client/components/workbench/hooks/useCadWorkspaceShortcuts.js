@@ -8,6 +8,7 @@ export function useCadWorkspaceShortcuts({
   setCopyStatus,
   setScreenshotStatus,
   previewMode,
+  inspectionEnabled = true,
   viewerAlertOpen,
   tabToolsOpen,
   isDesktop,
@@ -54,13 +55,13 @@ export function useCadWorkspaceShortcuts({
           lowerKey === "y" ||
           (lowerKey === "z" && event.shiftKey);
         const undoShortcut = lowerKey === "z" && !event.shiftKey;
-        if (undoShortcut && drawingUndoStackRef.current.length) {
+        if (inspectionEnabled && undoShortcut && drawingUndoStackRef.current.length) {
           event.preventDefault();
           handleUndoDrawing();
           return;
         }
 
-        if (redoShortcut && drawingRedoStackRef.current.length) {
+        if (inspectionEnabled && redoShortcut && drawingRedoStackRef.current.length) {
           event.preventDefault();
           handleRedoDrawing();
           return;
@@ -80,7 +81,7 @@ export function useCadWorkspaceShortcuts({
           }
           return;
         }
-        if (tabToolMode === TAB_TOOL_MODE.MEASURE) {
+        if (inspectionEnabled && tabToolMode === TAB_TOOL_MODE.MEASURE) {
           // Escape cancels the measurement in progress and leaves the tool
           // armed, the way it does in a CAD measure tool. Only once there is
           // nothing to cancel does it back out of the tool itself.
@@ -109,6 +110,7 @@ export function useCadWorkspaceShortcuts({
     handleRedoDrawing,
     handleUndoDrawing,
     isDesktop,
+    inspectionEnabled,
     previewMode,
     previewUiStateRef,
     setPreviewMode,

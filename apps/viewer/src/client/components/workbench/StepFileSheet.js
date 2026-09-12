@@ -412,6 +412,7 @@ export default function StepFileSheet({
   stepAnimation = null,
   viewerServerInfo = null,
   suppressDynamicMetadataStatus = false,
+  renderMode = false,
   settingsTabs = [],
   openSectionIds = [],
   onOpenSectionIdsChange
@@ -724,7 +725,7 @@ export default function StepFileSheet({
     )
   };
 
-  const sections = [
+  const allSections = [
     {
       id: treeSectionId,
       title: "Tree",
@@ -1218,6 +1219,12 @@ export default function StepFileSheet({
     measurementsSection,
     ...settingsTabs
   ];
+  const sections = renderMode
+    ? allSections.filter((section) => section && (
+        section.id === FILE_SHEET_SECTION_IDS.STEP_ANIMATION ||
+        section.id === FILE_SHEET_SECTION_IDS.THEME_RENDER
+      ))
+    : allSections;
 
   return (
     <FileSheet

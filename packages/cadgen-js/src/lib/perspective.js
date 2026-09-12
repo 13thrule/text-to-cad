@@ -3,6 +3,7 @@ import {
   cloneCameraVector,
   normalizeCameraProjection,
   normalizeCameraZoom,
+  normalizeCameraFocalLength,
   normalizeOrthographicHalfHeight
 } from "../common/camera.js";
 
@@ -36,6 +37,10 @@ export function clonePerspectiveSnapshot(snapshot) {
   }
   if (Object.prototype.hasOwnProperty.call(snapshot, "projection")) {
     clonedSnapshot.projection = normalizeCameraProjection(snapshot.projection);
+  }
+  if (Object.prototype.hasOwnProperty.call(snapshot, "focalLength")) {
+    const focalLength = normalizeCameraFocalLength(snapshot.focalLength);
+    if (focalLength != null) clonedSnapshot.focalLength = focalLength;
   }
   if (Object.prototype.hasOwnProperty.call(snapshot, "orthographicHalfHeight")) {
     const orthographicHalfHeight = normalizeOrthographicHalfHeight(snapshot.orthographicHalfHeight);
@@ -112,6 +117,11 @@ export function perspectiveSnapshotEqual(a, b, epsilon = 1e-4) {
   const orthographicHalfHeightEqual = aOrthographicHalfHeight == null || bOrthographicHalfHeight == null
     ? aOrthographicHalfHeight == null && bOrthographicHalfHeight == null
     : Math.abs(aOrthographicHalfHeight - bOrthographicHalfHeight) <= epsilon;
+  const aFocalLength = normalizeCameraFocalLength(a.focalLength);
+  const bFocalLength = normalizeCameraFocalLength(b.focalLength);
+  const focalLengthEqual = aFocalLength == null || bFocalLength == null
+    ? aFocalLength == null && bFocalLength == null
+    : Math.abs(aFocalLength - bFocalLength) <= epsilon;
   return (
     perspectiveVectorEqual(a.position, b.position, epsilon) &&
     perspectiveVectorEqual(a.target, b.target, epsilon) &&
@@ -119,6 +129,7 @@ export function perspectiveSnapshotEqual(a, b, epsilon = 1e-4) {
     Math.abs(normalizeCameraZoom(a.zoom, 1) - normalizeCameraZoom(b.zoom, 1)) <= epsilon &&
     normalizeCameraProjection(a.projection) === normalizeCameraProjection(b.projection) &&
     orthographicHalfHeightEqual &&
+    focalLengthEqual &&
     normalizePerspectiveMetadataValue(a.modelKey) === normalizePerspectiveMetadataValue(b.modelKey) &&
     normalizePerspectiveMetadataValue(a.sceneScaleMode) === normalizePerspectiveMetadataValue(b.sceneScaleMode) &&
     normalizePerspectiveMetadataValue(a.coordinateSystem) === normalizePerspectiveMetadataValue(b.coordinateSystem)

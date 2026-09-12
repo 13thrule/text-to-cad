@@ -1,15 +1,4 @@
-"""Snapshot scene, output and quality are separate closed schemas.
-
-Two failure modes this pins, both of which used to be silent or opaque:
-
-* old technical ``render`` keys fail with their new output/quality home;
-* an absurd tolerance was accepted here and killed the browser later, so the
-  caller saw `Connection closed while reading from the driver` and no cause.
-
-The page validates the same field (packages/cadgen-js/src/common/source.js,
-which also serves the viewer); this side refuses the job before a browser is
-launched, so the floors have to agree — the parity test below reads the JS.
-"""
+"""Photographic Render, technical output, and tessellation are closed schemas."""
 
 from __future__ import annotations
 
@@ -23,8 +12,10 @@ add_repo_path("packages/cadgen/src")
 
 from cadgen.snapshot_core import (  # noqa: E402
     MIN_RENDER_TESSELLATION,
+    RENDER_BACKDROP_KEYS,
+    RENDER_LIGHTING_KEYS,
+    RENDER_QUALITY_IDS,
     RENDER_STUDIO_IDS,
-    SCENE_QUALITY_IDS,
     SUPPORTED_OUTPUT_SETTINGS_KEYS,
     SUPPORTED_QUALITY_KEYS,
     SUPPORTED_RENDER_KEYS,
@@ -36,8 +27,8 @@ from cadgen.snapshot_core import (  # noqa: E402
 
 def normalize(**settings: object) -> dict[str, object]:
     return normalize_common_job(
-        {"input": "part.step", "outputs": [], **settings},
-        mode="list",
+        {"input": "part.step", "outputs": [{"path": "out.png"}], **settings},
+        mode="view",
         resolved_cwd=Path("."),
         timestamp="20260907-000000",
     )
@@ -46,83 +37,72 @@ def normalize(**settings: object) -> dict[str, object]:
 class RenderKeySchemaTest(unittest.TestCase):
     def test_every_supported_render_key_is_accepted(self):
         values = {
-            "studio": "studio-light",
-            "quality": "high",
-            "settings": {"materials": {"roughness": 0.5}},
-            "camera": {"projection": "perspective", "orthographicHalfHeight": 42.5},
-            "display": {"mode": "shaded"},
+            "studio": "light",
+            "quality": "final",
+            "exposure": 0.5,
+            "lighting": {"rotation": -30, "size": 1.5, "fill": 0.4},
+            "backdrop": {"color": "#abc", "transparent": False, "ground": True},
+            "camera": {"projection": "perspective", "focalLength": 70},
         }
         self.assertEqual(set(values), set(SUPPORTED_RENDER_KEYS))
         for key, value in values.items():
             normalize(render={key: value})
 
-    def test_scene_presets_are_closed_and_old_names_are_not_aliases(self):
-        self.assertEqual(
-            {"studio-light", "studio-dark"},
-            set(RENDER_STUDIO_IDS),
-        )
-        self.assertEqual({}, normalize(render={})["render"])
-        replacements = {
-            "default": "omit studio to follow appearance",
-            "cinematic": "studio-dark",
-            "vibrant": "studio-light",
-            "blue": "customize render.settings",
-            "pink": "customize render.settings",
-            "colorful": "customize render.settings",
-            "clay-sunrise": "customize render.settings",
-            "terminal": "customize render.settings",
-            "snapshot": "expected one of",
-            "workbench-light": "expected one of",
-        }
-        for retired, replacement in replacements.items():
+    def test_render_ids_are_closed_and_cli_defaults_to_light(self):
+        self.assertEqual({"light", "dark"}, set(RENDER_STUDIO_IDS))
+        self.assertEqual({"preview", "final"}, set(RENDER_QUALITY_IDS))
+        self.assertEqual({"studio": "light"}, normalize(render={})["render"])
+        for retired in (
+            "studio-light", "studio-dark", "default", "cinematic", "vibrant",
+            "blue", "pink", "colorful", "clay-sunrise", "terminal",
+        ):
             with self.subTest(studio=retired), self.assertRaisesRegex(
-                SnapshotError, re.escape(replacement)
+                SnapshotError, "render.studio must be light or dark"
             ):
                 normalize(render={"studio": retired})
+        for invalid in (None, True, [], {}):
+            with self.subTest(studio=invalid), self.assertRaisesRegex(
+                SnapshotError, "render.studio must be light or dark"
+            ):
+                normalize(render={"studio": invalid})
+        for retired in ("interactive", "standard", "high"):
+            with self.subTest(quality=retired), self.assertRaisesRegex(
+                SnapshotError, "render.quality must be preview or final"
+            ):
+                normalize(render={"quality": retired})
+        for invalid in (None, False, [], {}):
+            with self.subTest(quality=invalid), self.assertRaisesRegex(
+                SnapshotError, "render.quality must be preview or final"
+            ):
+                normalize(render={"quality": invalid})
 
-    def test_render_appearance_is_removed_with_an_actionable_replacement(self):
-        with self.assertRaisesRegex(
-            SnapshotError,
-            r"render\.appearance was removed; omit studio to follow appearance",
-        ):
-            normalize(render={"appearance": "dark"})
-
-    def test_render_scene_values_are_strict_and_sparse_payload_is_preserved(self):
+    def test_render_values_are_strict_and_sparse(self):
         render = {
-            "studio": "studio-dark",
-            "quality": "high",
-            "settings": {
-                "materials": {"roughness": 0.35, "overrideSourceColors": False},
-                "lighting": {"directional": {"position": {"x": 3, "y": 4, "z": 5}}},
-            },
+            "studio": "dark",
+            "quality": "preview",
+            "exposure": -1.25,
+            "lighting": {"rotation": 180, "size": 0.25, "fill": 1},
+            "backdrop": {"color": "#123456", "transparent": True, "ground": False},
         }
         self.assertEqual(render, normalize(render=render)["render"])
-        self.assertEqual(
-            {"studio": "studio-light", "quality": "high"},
-            normalize(render={"studio": " STUDIO-LIGHT ", "quality": " HIGH "})["render"],
-        )
-        self.assertEqual(
-            {"settings": {"environment": {"presetId": "studio-softbox"}}},
-            normalize(render={
-                "settings": {"environment": {"presetId": "studio-softbox"}},
-            })["render"],
-        )
-        self.assertEqual({"interactive", "standard", "high"}, set(SCENE_QUALITY_IDS))
+        self.assertEqual({"rotation", "size", "fill"}, set(RENDER_LIGHTING_KEYS))
+        self.assertEqual({"color", "transparent", "ground"}, set(RENDER_BACKDROP_KEYS))
 
-        invalid_settings = (
-            {"materials": {"roughness": "0.35"}},
-            {"materials": {"overrideSourceColors": 1}},
-            {"materials": {"metalness": 1.1}},
-            {"background": {"solidColor": "blue"}},
-            {"environment": {"presetId": "unknown"}},
-            {"lighting": {"directional": {"position": [1, 2, 3]}}},
-            {"floor": {"grid": True}},
+        invalid = (
+            {"exposure": True}, {"exposure": "0"}, {"exposure": -5.01}, {"exposure": 5.01},
+            {"lighting": []}, {"lighting": {"rotation": float("inf")}},
+            {"lighting": {"rotation": -180.01}}, {"lighting": {"size": 0.24}},
+            {"lighting": {"size": 3.01}}, {"lighting": {"fill": -0.01}},
+            {"lighting": {"fill": 1.01}}, {"lighting": {"fill": False}},
+            {"lighting": {"key": 1}}, {"backdrop": []},
+            {"backdrop": {"color": "white"}}, {"backdrop": {"transparent": 1}},
+            {"backdrop": {"ground": "true"}}, {"backdrop": {"floor": True}},
         )
-        for settings in invalid_settings:
-            with self.subTest(settings=settings), self.assertRaises(SnapshotError):
-                normalize(render={"settings": settings})
+        for render_value in invalid:
+            with self.subTest(render=render_value), self.assertRaises(SnapshotError):
+                normalize(render=render_value)
 
-    def test_render_camera_and_display_are_closed(self):
+    def test_render_camera_is_closed_and_display_is_not_a_render_field(self):
         with self.assertRaisesRegex(SnapshotError, "camera has unknown key"):
             normalize(render={"camera": {"projection": "perspective", "fov": 30}})
         with self.assertRaisesRegex(SnapshotError, "camera projection"):
@@ -138,29 +118,64 @@ class RenderKeySchemaTest(unittest.TestCase):
                 "projection": "perspective", "orthographicHalfHeight": 18.25,
             }})["render"]["camera"]["orthographicHalfHeight"],
         )
-        with self.assertRaisesRegex(SnapshotError, "display mode .* retired"):
-            normalize(render={"display": {"mode": "rendered"}})
-        with self.assertRaisesRegex(SnapshotError, "display guides.grid has unknown key"):
-            normalize(render={"display": {"guides": {"grid": {"visible": False}}}})
-        for display in (
-            {"clip": {"offset": "0.5"}},
-            {"exploded": {"enabled": 1}},
-            {"edges": {"thickness": 0}},
-            {"guides": {"grid": {"density": 0.1}}},
-            {"partColor": {"mode": "by_part", "colors": []}},
-        ):
-            with self.subTest(display=display), self.assertRaises(SnapshotError):
-                normalize(render={"display": display})
+        for focal_length in (19.9, 200.1, True, "50", float("inf"), float("nan")):
+            with self.subTest(focalLength=focal_length), self.assertRaisesRegex(
+                SnapshotError, "focalLength must be a finite number between 20 and 200"
+            ):
+                normalize(render={"camera": {"focalLength": focal_length}})
+        self.assertEqual(
+            85,
+            normalize(render={"camera": {"focalLength": 85}})["render"]["camera"]["focalLength"],
+        )
+        with self.assertRaisesRegex(SnapshotError, r"render has unknown key\(s\): display"):
+            normalize(render={"display": {"mode": "shaded"}})
 
-    def test_old_technical_render_keys_name_their_new_home(self):
-        with self.assertRaises(SnapshotError) as caught:
-            normalize(render={"tessellation": {"chordTolerance": 0.001}})
-        message = str(caught.exception)
-        self.assertIn("quality.tessellation", message)
-        with self.assertRaisesRegex(SnapshotError, "output.sizeProfile"):
-            normalize(render={"sizeProfile": "diagnostic"})
-        with self.assertRaisesRegex(SnapshotError, "render.scale moved to scale"):
-            normalize(render={"scale": "cad"})
+    def test_old_render_shapes_are_plain_unsupported_schema_errors(self):
+        for key, value in {
+            "settings": {}, "appearance": "dark", "tessellation": {},
+            "sizeProfile": "diagnostic", "scale": "cad", "display": {}, "_comment": "old",
+        }.items():
+            with self.subTest(key=key), self.assertRaisesRegex(
+                SnapshotError, rf"render has unknown key\(s\): {key}; supported keys:"
+            ) as caught:
+                normalize(render={key: value})
+            self.assertNotIn("moved", str(caught.exception))
+            self.assertNotIn("use ", str(caught.exception))
+
+    def test_render_normalization_drops_top_level_cad_scene_state(self):
+        job = normalize(
+            render={"camera": {"preset": "front"}},
+            camera={"preset": "back"},
+            display={"mode": "wireframe"},
+            selection={"focus": ["missing"]},
+            kinematics={"hinge": 45},
+            jointValues={"joint": 20},
+            quality={"tessellation": {"chordTolerance": "ignored"}},
+            animation={"clip": "spin", "time": 0.5},
+        )
+        self.assertEqual(job["render"]["camera"], {"preset": "front"})
+        self.assertEqual(job["animation"], {"clip": "spin", "time": 0.5})
+        for dormant in (
+            "camera", "display", "selection", "kinematics", "jointValues", "quality",
+        ):
+            self.assertNotIn(dormant, job)
+
+    def test_render_rejects_every_non_view_mode(self):
+        for mode in ("section", "list"):
+            with self.subTest(mode=mode), self.assertRaisesRegex(
+                SnapshotError, "Photographic Render supports only view mode"
+            ):
+                normalize_common_job(
+                    {
+                        "input": "part.step",
+                        "mode": mode,
+                        "render": {},
+                        "outputs": [] if mode == "list" else [{"path": "out.png"}],
+                    },
+                    mode=mode,
+                    resolved_cwd=Path("."),
+                    timestamp="20260907-000000",
+                )
 
     def test_output_and_quality_are_closed(self):
         output = {

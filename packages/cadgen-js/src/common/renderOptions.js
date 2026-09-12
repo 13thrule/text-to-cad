@@ -14,7 +14,6 @@ import {
   DEFAULT_FLOOR_GRID_SETTINGS,
   DEFAULT_RIM_LIGHT_SETTINGS,
   FLOOR_AXIS_RADIUS_MULTIPLE,
-  getEnvironmentPresetById,
   MAX_FLOOR_GRID_DENSITY,
   MIN_FLOOR_GRID_DENSITY,
   THEME_FLOOR_MODES,
@@ -24,6 +23,7 @@ import {
 import {
   createCadWebGlRenderer
 } from "./webglRenderer.js";
+import { PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER } from "./photographicStudioRig.js";
 import {
   BASE_VIEWER_THEME,
   createStageFloorGlowPlane,
@@ -31,10 +31,6 @@ import {
   createStageShadowPlane,
   getStageFloorSize
 } from "../lib/viewer/stageTheme.js";
-import {
-  createEnvironmentResource,
-  disposeEnvironmentResource
-} from "./environmentMap.js";
 import {
   clampSceneModelRadius,
   getLightingScopeRadius,
@@ -251,44 +247,6 @@ export function colorTextureFromBackground(background, width, height) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
-}
-
-export async function applyEnvironment(scene, themeSettings, warnings = [], {
-  renderer = null,
-  environmentMapSize = 256
-} = {}) {
-  const environment = themeSettings.environment || {};
-  if (!environment.enabled) {
-    scene.environment = null;
-    scene.environmentIntensity = 0;
-    return null;
-  }
-  let resource = null;
-  try {
-    resource = await createEnvironmentResource(renderer, environment, {
-      size: environmentMapSize
-    });
-    if (!resource) {
-      scene.environment = null;
-      return null;
-    }
-    scene.environment = resource.texture;
-    scene.environmentIntensity = Math.max(toFiniteNumber(environment.intensity, 1), 0);
-    if (scene.environmentRotation?.set) {
-      scene.environmentRotation.set(0, toFiniteNumber(environment.rotationY), 0);
-    }
-    if (environment.useAsBackground) {
-      scene.background = resource.texture;
-    }
-    return resource;
-  } catch {
-    disposeEnvironmentResource(resource);
-    scene.environment = null;
-    scene.environmentIntensity = 0;
-    const preset = getEnvironmentPresetById(environment.presetId);
-    warnings.push(`Environment preset unavailable: ${preset?.label || environment.presetId || "default"}`);
-    return null;
-  }
 }
 
 function modelRadiusFromBounds(bounds, sceneScale) {
@@ -603,6 +561,9 @@ export function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, 
     strict
   });
   camera.aspect = Math.max(width / Math.max(height, 1), 0.01);
+  if (resolvedCamera.focalLength != null) {
+    camera.setFocalLength(resolvedCamera.focalLength);
+  }
   camera.position.set(...resolvedCamera.position);
   camera.up.set(...resolvedCamera.up);
   camera.zoom = normalizeCameraZoom(resolvedCamera.zoom, 1);
@@ -662,6 +623,67 @@ export function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, 
   return resolvedCamera;
 }
 
+function groundPlaneFrustumDepths(camera, groundZ) {
+  if (!camera?.isPerspectiveCamera && !camera?.isOrthographicCamera) return [];
+  const depths = [];
+  const cameraPosition = new THREE.Vector3();
+  const origin = new THREE.Vector3();
+  const direction = new THREE.Vector3();
+  const sample = new THREE.Vector3();
+  const hit = new THREE.Vector3();
+  camera.getWorldPosition(cameraPosition);
+
+  // A plane clipped by a convex perspective frustum reaches its nearest
+  // positive camera-space depth on the viewport boundary. Its depth over each
+  // boundary edge is monotonic, so the four corner rays are sufficient here.
+  for (const [x, y] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    if (camera.isPerspectiveCamera) {
+      origin.copy(cameraPosition);
+      sample.set(x, y, 0).unproject(camera);
+      direction.subVectors(sample, origin);
+    } else {
+      origin.set(x, y, -1).unproject(camera);
+      direction.set(0, 0, -1).transformDirection(camera.matrixWorld);
+    }
+    if (Math.abs(direction.z) <= 1e-12) continue;
+    const distance = (groundZ - origin.z) / direction.z;
+    hit.copy(origin).addScaledVector(direction, distance);
+    const depth = -hit.applyMatrix4(camera.matrixWorldInverse).z;
+    if (Number.isFinite(depth) && depth > 0) depths.push(depth);
+  }
+  return depths;
+}
+
+// Ordinary depth is required for the photographic shadow pass. Fit its range
+// to the subject as the camera moves, retaining room behind it for the stage.
+// The bounds corners cover the model; frustum-corner intersections cover the
+// foreground ground that is actually visible without forcing an arbitrary
+// scene-scale near plane.
+export function fitCameraDepthToBounds(camera, bounds) {
+  if (!camera?.isCamera || !Array.isArray(bounds?.min) || !Array.isArray(bounds?.max)
+    || bounds.min.length < 3 || bounds.max.length < 3
+    || !bounds.min.every(Number.isFinite) || !bounds.max.every(Number.isFinite)
+    || bounds.max.some((value, axis) => value < bounds.min[axis])) return false;
+  camera.updateMatrixWorld(true);
+  const corners = boundsCorners(bounds);
+  const depths = corners.map((point) => -point.applyMatrix4(camera.matrixWorldInverse).z);
+  const radius = Math.max(Math.hypot(...bounds.max.map((value, axis) => value - bounds.min[axis])) / 2, 1e-6);
+  const subjectNear = Math.min(...depths) - radius * 0.1;
+  const groundDepths = groundPlaneFrustumDepths(camera, bounds.min[2]);
+  const groundNear = groundDepths.length
+    ? Math.min(...groundDepths) * 0.98
+    : Number.POSITIVE_INFINITY;
+  const near = Math.max(Math.min(subjectNear, groundNear), radius * 1e-5, 1e-7);
+  const far = Math.max(Math.max(...depths) + radius * PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER, near * 2);
+  const unchanged = (actual, next) => Math.abs(actual - next)
+    <= Math.max(Math.abs(next) * 1e-6, 1e-12);
+  if (unchanged(camera.near, near) && unchanged(camera.far, far)) return false;
+  camera.near = near;
+  camera.far = far;
+  camera.updateProjectionMatrix();
+  return true;
+}
+
 export function lockedFrameHalfHeight(outputs, bounds, width, height, job, sceneScale, settingsByScale) {
   const padding = framePadding(job);
   return Math.max(
@@ -685,7 +707,11 @@ export function configurePngRenderer(width, height, job, themeSettings, {
   defaultRenderScale = 1
 } = {}) {
   const renderer = createCadWebGlRenderer(THREE, {
-    preserveDrawingBuffer: true
+    preserveDrawingBuffer: true,
+    // Three's logarithmic depth shaders do not compare correctly with the
+    // standard shadow map depth. Render uses a model-fitted camera range and
+    // ordinary depth; CAD inspection retains its wide-range depth buffer.
+    logarithmicDepthBuffer: job.render == null
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;

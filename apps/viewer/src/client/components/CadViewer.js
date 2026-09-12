@@ -64,6 +64,10 @@ import {
   environmentResourceIdentity
 } from "cadgen-js/common/environmentMap.js";
 import {
+  applyPhotographicStudio,
+  disposePhotographicStudio
+} from "cadgen-js/common/photographicStudio.js";
+import {
   clampSceneModelRadius,
   defaultSceneGridRadius,
   getLightingScopeRadius,
@@ -164,7 +168,6 @@ import { buildRuntimeInitializationAlert } from "cadgen-js/lib/viewer/webglSuppo
 import { DRAWING_TOOL } from "@/workbench/constants";
 import { hasCapability } from "cadgen-js/lib/renderCapabilities";
 import {
-  getEnvironmentPresetById,
   THEME_FLOOR_MODES
 } from "cadgen-js/lib/themeSettings";
 import ViewPlaneControl from "./viewer/ViewPlaneControl";
@@ -173,6 +176,11 @@ import { useViewerMeasureOverlay } from "./viewer/hooks/useViewerMeasureOverlay"
 import { useViewerPicking } from "./viewer/hooks/useViewerPicking";
 import { useViewerRuntime } from "./viewer/hooks/useViewerRuntime";
 import { PREVIEW_AUTO_ROTATE_SPEED } from "./viewer/orbitControls";
+import {
+  CAD_DEFAULT_VERTICAL_FOV_DEGREES,
+  explicitViewerFocalLength,
+  perspectiveDistanceScale
+} from "./viewer/cameraLens.js";
 import {
   applyOrbitDelta,
   cameraMatchesViewPreset,
@@ -1048,8 +1056,22 @@ function readPerspectiveSnapshot(runtime) {
     up: [runtime.camera.up.x, runtime.camera.up.y, runtime.camera.up.z],
     zoom: runtime.camera.zoom,
     projection: runtimeCameraProjection(runtime),
+    ...(Number.isFinite(runtime.perspectiveCamera?.getFocalLength?.())
+      ? { focalLength: runtime.perspectiveCamera.getFocalLength() }
+      : {}),
     ...(orthographicHalfHeight ? { orthographicHalfHeight } : {})
   };
+}
+
+function setRuntimePerspectiveFocalLength(runtime, focalLength) {
+  const camera = runtime?.perspectiveCamera;
+  const next = Number(focalLength);
+  if (!camera?.setFocalLength || !Number.isFinite(next) || next <= 0) {
+    return false;
+  }
+  camera.setFocalLength(next);
+  camera.userData.cadFocalLength = next;
+  return true;
 }
 
 function readScopedPerspectiveSnapshot(runtime, { modelKey = "", sceneScaleMode = "" } = {}) {
@@ -1090,6 +1112,9 @@ function applyPerspectiveSnapshot(runtime, perspective, { scheduleIdle = true } 
   if (Object.prototype.hasOwnProperty.call(nextPerspective, "projection")) {
     syncRuntimeCameraProjection(runtime, nextPerspective.projection, { scheduleIdle: false });
   }
+  if (Number.isFinite(nextPerspective.focalLength) && nextPerspective.focalLength > 0) {
+    setRuntimePerspectiveFocalLength(runtime, nextPerspective.focalLength);
+  }
   runtime.camera.position.set(...nextPerspective.position);
   runtime.controls.target.set(...nextPerspective.target);
   runtime.camera.up.set(...nextPerspective.up);
@@ -1127,6 +1152,9 @@ function transitionCameraToPerspectiveSnapshot(runtime, perspective, {
   clearKeyboardOrbitState(runtime.keyboardOrbitState);
   if (Object.prototype.hasOwnProperty.call(nextPerspective, "projection")) {
     syncRuntimeCameraProjection(runtime, nextPerspective.projection, { scheduleIdle: false });
+  }
+  if (Number.isFinite(nextPerspective.focalLength) && nextPerspective.focalLength > 0) {
+    setRuntimePerspectiveFocalLength(runtime, nextPerspective.focalLength);
   }
   const endPosition = new runtime.THREE.Vector3(...nextPerspective.position);
   const endTarget = new runtime.THREE.Vector3(...nextPerspective.target);
@@ -1667,12 +1695,15 @@ const CadViewer = forwardRef(function CadViewer({
   perspective = null,
   perspectiveRef = null,
   projection = CAMERA_PROJECTION.PERSPECTIVE,
+  focalLength = null,
   showEdges,
   recomputeNormals,
   theme = BASE_VIEWER_THEME,
   themeSettings = null,
   materialOverrides = null,
   receiveShadows = false,
+  renderMode = false,
+  renderConfiguration = null,
   quality = null,
   floorModeOverride = "",
   previewMode = false,
@@ -1975,6 +2006,29 @@ const CadViewer = forwardRef(function CadViewer({
     : 2048;
   const renderShadowMapSizeRef = useRef(renderShadowMapSize);
   renderShadowMapSizeRef.current = renderShadowMapSize;
+  const renderConfigurationRef = useRef(renderConfiguration);
+  renderConfigurationRef.current = renderConfiguration;
+  const applyActivePhotographicStudio = useCallback((runtime, bounds = runtime?.modelBounds) => {
+    const configuration = renderConfigurationRef.current;
+    if (!renderMode || !configuration || !runtime?.THREE) {
+      return;
+    }
+    applyPhotographicStudio(runtime.THREE, runtime, configuration, {
+      bounds,
+      sceneScale: normalizedSceneScaleMode,
+      shadowMapSize: renderShadowMapSizeRef.current
+    });
+    if (typeof window !== "undefined" && window.__cadModelPlacement) {
+      window.__cadModelPlacement = {
+        ...window.__cadModelPlacement,
+        floorFollowsModel: configuration.backdrop?.ground === true
+      };
+    }
+  }, [normalizedSceneScaleMode, renderMode]);
+
+  useEffect(() => {
+    applyActivePhotographicStudio(runtimeRef.current);
+  }, [applyActivePhotographicStudio, renderConfiguration, viewerReadyTick]);
   const updateActiveGridHelper = useCallback((
     runtime,
     activeViewerTheme,
@@ -2628,12 +2682,13 @@ const CadViewer = forwardRef(function CadViewer({
       applyRuntimeModelBounds(runtime.THREE, runtime, bounds, sceneScaleModeRef.current, {
         shadowMapSize: renderShadowMapSizeRef.current
       });
+      applyActivePhotographicStudio(runtime, bounds);
       runtime.hasVisibleModel = true;
       resetZoomAndPan({ animate: false });
     }
     runtime?.requestRender?.();
     return undefined;
-  }, [drawingIsDocument, drawingGeometry, drawingHiddenLayers, viewerReadyTick]);
+  }, [applyActivePhotographicStudio, drawingIsDocument, drawingGeometry, drawingHiddenLayers, viewerReadyTick]);
 
   // Applied SYNCHRONOUSLY when the meshes already exist. The previous version restored flat
   // positions in its cleanup and re-folded on the next animation frame — so every slider
@@ -3213,7 +3268,12 @@ const CadViewer = forwardRef(function CadViewer({
       if (options?.animate) {
         return transitionCameraToPerspectiveSnapshot(runtimeRef.current, perspective, options);
       }
-      return applyPerspectiveSnapshot(runtimeRef.current, perspective);
+      const applied = applyPerspectiveSnapshot(runtimeRef.current, perspective);
+      if (applied && options?.resetZoomBaseline) {
+        resetRuntimeZoomBaseline(runtimeRef.current);
+        syncCameraZoomPercent(runtimeRef.current);
+      }
+      return applied;
     },
     resetZoom() {
       return resetZoomAndPan({ animate: true });
@@ -3419,12 +3479,69 @@ const CadViewer = forwardRef(function CadViewer({
     defaultGridRadius,
     sceneScaleMode: normalizedSceneScaleMode,
     floorMode: resolvedFloorMode,
+    renderMode,
     onInitializationError: handleRuntimeInitializationError,
     onContextLost: handleRuntimeContextLost,
     onContextRestored: handleRuntimeContextRestored,
     preserveInteractionPixelRatio,
     runtimeResetToken
   });
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    const camera = runtime?.perspectiveCamera;
+    const nextFocalLength = explicitViewerFocalLength(focalLength);
+    if (
+      !renderMode &&
+      runtime?.controls &&
+      camera &&
+      nextFocalLength == null
+    ) {
+      delete camera.userData.cadFocalLength;
+      if (Math.abs(camera.fov - CAD_DEFAULT_VERTICAL_FOV_DEGREES) >= 1e-4) {
+        camera.fov = CAD_DEFAULT_VERTICAL_FOV_DEGREES;
+        camera.updateProjectionMatrix();
+        camera.lookAt(runtime.controls.target);
+        runtime.controls.update?.();
+        emitPerspectiveChange(runtime);
+        runtime.requestRender?.();
+      }
+      return;
+    }
+    if (
+      !runtime?.controls ||
+      !camera?.getFocalLength ||
+      nextFocalLength == null
+    ) {
+      return;
+    }
+    const previousFocalLength = camera.getFocalLength();
+    if (Math.abs(previousFocalLength - nextFocalLength) < 1e-4) {
+      camera.userData.cadFocalLength = nextFocalLength;
+      return;
+    }
+    const previousFov = camera.fov * Math.PI / 180;
+    const offset = camera.position.clone().sub(runtime.controls.target);
+    setRuntimePerspectiveFocalLength(runtime, nextFocalLength);
+    const nextFov = camera.fov * Math.PI / 180;
+    if (runtime.camera === camera && offset.lengthSq() > 1e-8) {
+      const distanceScale = perspectiveDistanceScale(
+        previousFov * 180 / Math.PI,
+        nextFov * 180 / Math.PI
+      );
+      if (Number.isFinite(distanceScale) && distanceScale > 0) {
+        camera.position.copy(runtime.controls.target).add(offset.multiplyScalar(distanceScale));
+        if (Number.isFinite(runtime.zoomBaseDistance) && runtime.zoomBaseDistance > 0) {
+          runtime.zoomBaseDistance *= distanceScale;
+        }
+      }
+    }
+    camera.lookAt(runtime.controls.target);
+    runtime.controls.update?.();
+    emitPerspectiveChange(runtime);
+    runtime.scheduleIdleQuality?.();
+    runtime.requestRender?.();
+  }, [focalLength, renderMode, viewerReadyTick]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -3436,6 +3553,10 @@ const CadViewer = forwardRef(function CadViewer({
 
   useEffect(() => {
     const runtime = runtimeRef.current;
+    if (renderMode) {
+      applyActivePhotographicStudio(runtime);
+      return;
+    }
     const shadow = runtime?.keyLight?.shadow;
     if (!runtime?.THREE || !shadow?.mapSize) {
       return;
@@ -3460,7 +3581,7 @@ const CadViewer = forwardRef(function CadViewer({
     }
     runtime.invalidateShadows?.();
     runtime.requestRender?.();
-  }, [normalizedSceneScaleMode, renderShadowMapSize, viewerReadyTick]);
+  }, [applyActivePhotographicStudio, normalizedSceneScaleMode, renderMode, renderShadowMapSize, viewerReadyTick]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -3493,6 +3614,49 @@ const CadViewer = forwardRef(function CadViewer({
       return;
     }
 
+    const materialSettings = { ...normalizedMaterialSettings };
+    if (runtime.cadScene) {
+      runtime.cadScene.update({
+        theme: normalizedThemeSettings,
+        materialSettings,
+        materialOverrides,
+        receiveShadows
+      });
+      runtime.displayRecords = runtime.cadScene.displayRecords;
+    } else {
+      for (const record of runtime.displayRecords || []) {
+        applyMaterialSettingsToRecord(runtime.THREE, record, materialSettings, {
+          displayMode: normalizedDisplayMode,
+          materialOverrides
+        });
+      }
+    }
+    runtime.cadScene?.syncSurfaceInstances();
+
+    if (renderMode) {
+      runtime.hemisphereLight.visible = false;
+      runtime.ambientLight.visible = false;
+      runtime.keyLight.visible = false;
+      runtime.fillLight.visible = false;
+      runtime.rimLight.visible = false;
+      runtime.spotLight.visible = false;
+      runtime.pointLight.visible = false;
+      runtime.gridConfig = null;
+      updateActiveGridHelper(
+        runtime,
+        viewerTheme,
+        runtime.gridRadius ?? defaultGridRadius,
+        0,
+        normalizedSceneScaleMode,
+        THEME_FLOOR_MODES.NONE
+      );
+      clearSceneGroup(runtime.stageGroup);
+      applyActivePhotographicStudio(runtime);
+      runtime.requestRender();
+      return;
+    }
+
+    disposePhotographicStudio(runtime);
     applyActiveSceneBackground(runtime, viewerTheme, normalizedThemeSettings.background);
     runtime.renderer.toneMappingExposure = Math.max(normalizedThemeSettings.lighting.toneMappingExposure, 0.05);
 
@@ -3542,25 +3706,6 @@ const CadViewer = forwardRef(function CadViewer({
     runtime.keyLight.castShadow = runtime.keyLight.visible && runtime.softwareRendering !== true;
     runtime.spotLight.castShadow = false;
 
-    const materialSettings = { ...normalizedMaterialSettings };
-    if (runtime.cadScene) {
-      runtime.cadScene.update({
-        theme: normalizedThemeSettings,
-        materialSettings,
-        materialOverrides,
-        receiveShadows
-      });
-      runtime.displayRecords = runtime.cadScene.displayRecords;
-    } else {
-      for (const record of runtime.displayRecords || []) {
-        applyMaterialSettingsToRecord(runtime.THREE, record, materialSettings, {
-          displayMode: normalizedDisplayMode,
-          materialOverrides
-        });
-      }
-    }
-    runtime.cadScene?.syncSurfaceInstances();
-
     runtime.gridConfig = null;
     const themeFloorZCandidate = floorFollowsModel
       ? runtime.modelFloorZBelowModel
@@ -3600,10 +3745,12 @@ const CadViewer = forwardRef(function CadViewer({
     normalizedSceneScaleMode,
     resolvedFloorMode,
     receiveShadows,
+    renderMode,
     floorFollowsModel,
     viewerReadyTick,
     viewerTheme,
-    updateActiveGridHelper
+    updateActiveGridHelper,
+    applyActivePhotographicStudio
   ]);
 
   useEffect(() => {
@@ -3612,31 +3759,31 @@ const CadViewer = forwardRef(function CadViewer({
       return;
     }
 
-    let cancelled = false;
-    const environmentSettings = normalizedThemeSettings.environment;
-    runtime.scene.environmentIntensity = environmentSettings.enabled
-      ? environmentSettings.intensity
-      : 0;
     const clearEnvironmentResource = () => {
       runtime.scene.environment = null;
       disposeEnvironmentResource(runtime.environmentResource);
       runtime.environmentResource = null;
       runtime.environmentResourceIdentity = "";
     };
+    if (!renderMode || !renderConfiguration) {
+      clearEnvironmentResource();
+      runtime.scene.environmentIntensity = 0;
+      applyActiveSceneBackground(runtime, viewerTheme, normalizedThemeSettings.background);
+      viewerAlertChangeRef.current?.(null);
+      runtime.requestRender();
+      return;
+    }
+
+    let cancelled = false;
+    runtime.scene.environmentIntensity = 1;
     const applyBackgroundFallback = () => {
       clearEnvironmentResource();
-      applyActiveSceneBackground(runtime, viewerTheme, normalizedThemeSettings.background);
+      applyActivePhotographicStudio(runtime);
       runtime.requestRender();
     };
 
     const loadAndApplyEnvironment = async () => {
-      if (!environmentSettings.enabled) {
-        viewerAlertChangeRef.current?.(null);
-        applyBackgroundFallback();
-        return;
-      }
-
-      const resourceIdentity = environmentResourceIdentity(environmentSettings, {
+      const resourceIdentity = environmentResourceIdentity(renderConfiguration, {
         size: renderEnvironmentMapSize
       });
       if (!resourceIdentity) {
@@ -3646,7 +3793,7 @@ const CadViewer = forwardRef(function CadViewer({
       }
 
       if (!runtime.environmentResource || runtime.environmentResourceIdentity !== resourceIdentity) {
-        const nextResource = await createEnvironmentResource(runtime.renderer, environmentSettings, {
+        const nextResource = await createEnvironmentResource(runtime.renderer, renderConfiguration, {
           size: renderEnvironmentMapSize
         });
         if (cancelled) {
@@ -3663,17 +3810,7 @@ const CadViewer = forwardRef(function CadViewer({
       runtime.scene.environment = runtime.environmentResource.texture;
       viewerAlertChangeRef.current?.(null);
 
-      if (runtime.scene.environmentRotation?.set) {
-        runtime.scene.environmentRotation.set(0, environmentSettings.rotationY, 0);
-      }
-      if (environmentSettings.useAsBackground) {
-        runtime.scene.background = runtime.environmentResource.texture;
-        if (runtime.scene.backgroundRotation?.set) {
-          runtime.scene.backgroundRotation.set(0, environmentSettings.rotationY, 0);
-        }
-      } else {
-        applyActiveSceneBackground(runtime, viewerTheme, normalizedThemeSettings.background);
-      }
+      applyActivePhotographicStudio(runtime);
       runtime.requestRender();
     };
 
@@ -3684,7 +3821,7 @@ const CadViewer = forwardRef(function CadViewer({
           severity: "warning",
           summary: "Environment unavailable",
           title: "Environment preset could not be loaded",
-          message: `Failed to load ${String(getEnvironmentPresetById(environmentSettings.presetId)?.label || "the selected environment preset")}.`,
+          message: "Failed to build the photographic studio environment.",
           resolution: "The viewer fell back to the current background settings. Reload the viewer or choose another preset."
         });
         console.error("Failed to apply environment resource", error);
@@ -3695,11 +3832,13 @@ const CadViewer = forwardRef(function CadViewer({
       cancelled = true;
     };
   }, [
+    applyActivePhotographicStudio,
+    renderConfiguration,
     renderEnvironmentMapSize,
+    renderMode,
     viewerReadyTick,
     viewerTheme,
-    normalizedThemeSettings.background,
-    normalizedThemeSettings.environment
+    normalizedThemeSettings.background
   ]);
 
   useEffect(() => {
@@ -4014,15 +4153,19 @@ const CadViewer = forwardRef(function CadViewer({
     const { radius } = applyRuntimeModelBounds(THREE, runtime, displayBounds, normalizedSceneScaleMode, {
       shadowMapSize: renderShadowMapSizeRef.current
     });
-    syncRuntimeScaledLightingAndShadow(
-      THREE,
-      runtime,
-      normalizedThemeSettings.lighting,
-      radius,
-      displayBounds,
-      normalizedSceneScaleMode,
-      renderShadowMapSizeRef.current
-    );
+    if (renderMode) {
+      applyActivePhotographicStudio(runtime, displayBounds);
+    } else {
+      syncRuntimeScaledLightingAndShadow(
+        THREE,
+        runtime,
+        normalizedThemeSettings.lighting,
+        radius,
+        displayBounds,
+        normalizedSceneScaleMode,
+        renderShadowMapSizeRef.current
+      );
+    }
     updateActiveGridHelper(
       runtime,
       viewerTheme,
@@ -4031,8 +4174,10 @@ const CadViewer = forwardRef(function CadViewer({
       normalizedSceneScaleMode,
       resolvedFloorMode
     );
-    updateSpotLightTarget(runtime);
-    updateStageEffects(runtime, viewerTheme, normalizedThemeSettings, radius, runtime.gridFloorZ ?? 0, resolvedFloorMode, normalizedSceneScaleMode);
+    if (!renderMode) {
+      updateSpotLightTarget(runtime);
+      updateStageEffects(runtime, viewerTheme, normalizedThemeSettings, radius, runtime.gridFloorZ ?? 0, resolvedFloorMode, normalizedSceneScaleMode);
+    }
 
     const modelGroupPlacementChanged = !modelGroup.position.equals(modelOffset);
     modelGroup.position.copy(modelOffset);
@@ -4050,7 +4195,9 @@ const CadViewer = forwardRef(function CadViewer({
         boundsMin: [...boundsMin],
         boundsMax: [...boundsMax],
         gridFloorZ: Number.isFinite(Number(runtime.gridFloorZ)) ? Number(runtime.gridFloorZ) : null,
-        floorFollowsModel
+        floorFollowsModel: renderMode
+          ? renderConfigurationRef.current?.backdrop?.ground === true
+          : floorFollowsModel
       };
     }
     facePickGroup.updateMatrixWorld(true);
@@ -4262,13 +4409,15 @@ const CadViewer = forwardRef(function CadViewer({
     normalizedSceneScaleMode,
     resolvedFloorMode,
     receiveShadows,
+    renderMode,
     floorFollowsModel,
     viewerTheme,
     displayEdgeSettings,
     hiddenAwareVisualEdgeSettings,
     visualEdgeSettings,
     syncCameraZoomPercent,
-    wireframeEdgeColor
+    wireframeEdgeColor,
+    applyActivePhotographicStudio
   ]);
 
   useEffect(() => {
@@ -4317,15 +4466,19 @@ const CadViewer = forwardRef(function CadViewer({
     const { radius } = applyRuntimeModelBounds(runtime.THREE, runtime, meshData.bounds, normalizedSceneScaleMode, {
       shadowMapSize: renderShadowMapSizeRef.current
     });
-    syncRuntimeScaledLightingAndShadow(
-      runtime.THREE,
-      runtime,
-      normalizedThemeSettings.lighting,
-      radius,
-      meshData.bounds,
-      normalizedSceneScaleMode,
-      renderShadowMapSizeRef.current
-    );
+    if (renderMode) {
+      applyActivePhotographicStudio(runtime, meshData.bounds);
+    } else {
+      syncRuntimeScaledLightingAndShadow(
+        runtime.THREE,
+        runtime,
+        normalizedThemeSettings.lighting,
+        radius,
+        meshData.bounds,
+        normalizedSceneScaleMode,
+        renderShadowMapSizeRef.current
+      );
+    }
     const cachedFloorZ = floorFollowsModel
       ? modelTransformRef.current.floorZBelowModel
       : modelTransformRef.current.floorZ;
@@ -4345,8 +4498,10 @@ const CadViewer = forwardRef(function CadViewer({
       normalizedSceneScaleMode,
       resolvedFloorMode
     );
-    updateSpotLightTarget(runtime);
-    updateStageEffects(runtime, viewerTheme, normalizedThemeSettings, radius, runtime.gridFloorZ ?? 0, resolvedFloorMode, normalizedSceneScaleMode);
+    if (!renderMode) {
+      updateSpotLightTarget(runtime);
+      updateStageEffects(runtime, viewerTheme, normalizedThemeSettings, radius, runtime.gridFloorZ ?? 0, resolvedFloorMode, normalizedSceneScaleMode);
+    }
     runtime.requestRender();
   }, [
     meshData?.parts,
@@ -4355,11 +4510,13 @@ const CadViewer = forwardRef(function CadViewer({
     effectiveRenderPartsIndividually,
     normalizedSceneScaleMode,
     normalizedThemeSettings,
+    renderMode,
     resolvedFloorMode,
     floorFollowsModel,
     viewerTheme,
     viewerReadyTick,
-    updateActiveGridHelper
+    updateActiveGridHelper,
+    applyActivePhotographicStudio
   ]);
 
   useEffect(() => {

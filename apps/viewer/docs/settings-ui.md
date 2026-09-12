@@ -34,8 +34,8 @@ Tab body                    px-0, vertical stack of sections
 - Everyday settings stay visible. Progressive disclosure is allowed only when a
   gate switch turns a whole feature off (Floor, Grid, Environment, a light):
   the switch stays, the dependent rows unmount.
-- Render's collapsed Debug controls are an explicit exception: keep Copy/Paste
-  Settings in the top Render section before Reset. Debug and Reset remain
+- Keep inline Copy/Paste Settings buttons in the top Render section before
+  Reset, without a disclosure control. Copy/Paste and Reset remain
   available while Render is disabled so a saved setup can be copied or applied
   directly from the CAD view.
 - A gate reaches every row it owns. Whether they unmount (Floor, Grid) or go
@@ -282,15 +282,20 @@ Primitives only use theme tokens (`border`, `muted`, `accent`, `primary`,
 a fixed color pair (e.g. the switch track), it is defined once in
 `FileSheet.js` with its dark variant beside it.
 
-App appearance is global. Model CAD views, Render enablement, and studio
-customizations are per-model session state. Render is last in the default tab
-order; entering another tab never changes its enabled state. Display controls
-edit the active CAD or Render view, and enabling/disabling Render restores the
-corresponding camera and display settings. An untouched Render studio follows
-global app appearance without storing a studio override; choosing Light studio
-or Dark studio pins that studio for the model session. Do not add a second
-image-export action to this tab: image capture stays in the existing viewer
-toolbar.
+App appearance is global. CAD inspection state and photographic Render state
+are separate per-model session data. Render is last in the default tab order;
+entering another tab never changes its enabled state. While Render is enabled,
+the file sheet exposes Render and authored animation playback only. Display,
+selection, visibility, clipping, exploded view, measurement, drawing, and pose
+controls remain hidden and their CAD values are restored unchanged on disable.
+
+The top Render section contains Enabled, Studio, Quality, inline Copy/Paste,
+and Reset. Camera contains Lens and Exposure; Lighting contains Rotation,
+Softbox size, and Fill ratio; Backdrop contains Transparent, Color, and Ground.
+An untouched studio follows global app appearance without storing an override;
+Light studio or Dark studio pins it for the model session. Do not add material,
+grading, arbitrary light, environment-map, or image-export controls. Authored
+materials stay authoritative and image capture stays in the viewer toolbar.
 
 ## Checklist for a new settings row
 

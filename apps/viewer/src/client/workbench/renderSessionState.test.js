@@ -8,155 +8,108 @@ import {
   parseRenderSettingsText,
   renderCameraSeed,
   renderPayloadForCopy,
+  renderSessionForEnabledChange,
   renderSessionForPayloadApply,
   renderSessionForReset,
   renderVisualSettingsKey,
   resetRenderPayload,
-  resolveRenderSessionQuality,
   resolveRenderCameraSnapshot,
-  replaceRenderPreset,
-  setRenderSetting
+  resolveRenderSessionQuality,
+  setRenderPayloadValue,
+  updateRenderPayload
 } from "./renderSessionState.js";
 
-test("render sessions default to an off, high-quality adaptive studio", () => {
+test("render sessions default to an off, sparse photographic setup", () => {
   const state = createRenderSessionState();
 
   assert.equal(state.enabled, false);
   assert.deepEqual(state.payload, DEFAULT_RENDER_PAYLOAD);
   assert.equal(state.cadProjection, "orthographic");
   assert.equal(state.cadCamera, null);
-  assert.equal(Object.prototype.hasOwnProperty.call(state.payload, "studio"), false);
 });
 
-test("an omitted studio follows global appearance until a studio is explicitly pinned", () => {
+test("an omitted studio follows app appearance until explicitly pinned", () => {
   const adaptive = createRenderSessionState({ enabled: true }).payload;
-  const adaptiveLight = resolveSceneSettings({ appearance: "light", render: adaptive });
-  const adaptiveDark = resolveSceneSettings({ appearance: "dark", render: adaptive });
-  assert.equal(adaptiveLight.render.studio, "studio-light");
-  assert.equal(adaptiveDark.render.studio, "studio-dark");
-  assert.deepEqual(adaptiveLight.render.settings.lighting, adaptiveDark.render.settings.lighting);
-  assert.deepEqual(adaptiveLight.render.settings.environment, adaptiveDark.render.settings.environment);
-  assert.deepEqual(adaptiveLight.render.settings.materials, adaptiveDark.render.settings.materials);
-  assert.notDeepEqual(adaptiveLight.render.settings.background, adaptiveDark.render.settings.background);
-  assert.equal(Object.prototype.hasOwnProperty.call(adaptive, "studio"), false);
+  assert.equal(resolveSceneSettings({ appearance: "light", render: adaptive }).render.configuration.studio, "light");
+  assert.equal(resolveSceneSettings({ appearance: "dark", render: adaptive }).render.configuration.studio, "dark");
+  assert.equal(Object.hasOwn(adaptive, "studio"), false);
 
-  const pinned = replaceRenderPreset(adaptive, { studio: "studio-light" });
-  const pinnedLight = resolveSceneSettings({ appearance: "light", render: pinned });
-  const pinnedDark = resolveSceneSettings({ appearance: "dark", render: pinned });
-  assert.equal(pinnedDark.render.studio, "studio-light");
-  assert.deepEqual(pinnedLight.render.settings, pinnedDark.render.settings);
-  assert.equal(pinned.studio, "studio-light");
+  const pinned = updateRenderPayload(adaptive, { studio: "light" });
+  assert.equal(resolveSceneSettings({ appearance: "dark", render: pinned }).render.configuration.studio, "light");
+  assert.equal(pinned.studio, "light");
 });
 
-test("render setting edits remain sparse and preserve quality", () => {
-  const payload = setRenderSetting(DEFAULT_RENDER_PAYLOAD, ["materials", "roughness"], 0.23);
+test("photographic edits write directly into the sparse public payload", () => {
+  let payload = setRenderPayloadValue(DEFAULT_RENDER_PAYLOAD, ["lighting", "size"], 1.75);
+  payload = setRenderPayloadValue(payload, ["backdrop", "transparent"], true);
+  payload = setRenderPayloadValue(payload, ["exposure"], -0.7);
 
   assert.deepEqual(payload, {
-    ...DEFAULT_RENDER_PAYLOAD,
-    settings: { materials: { roughness: 0.23 } }
+    lighting: { size: 1.75 },
+    backdrop: { transparent: true },
+    exposure: -0.7
   });
 });
 
-test("changing studio clears authored studio settings but keeps camera and display", () => {
-  const payload = replaceRenderPreset({
-    ...DEFAULT_RENDER_PAYLOAD,
-    settings: { materials: { metalness: 0.4 } },
-    camera: { preset: "front" },
-    display: { mode: "wireframe" }
-  }, { studio: "studio-dark" });
-
-  assert.equal(payload.studio, "studio-dark");
-  assert.equal(payload.settings, undefined);
-  assert.deepEqual(payload.camera, { preset: "front" });
-  assert.deepEqual(payload.display, { mode: "wireframe" });
-});
-
-test("reset clears studio and authored settings while preserving the live camera pose", () => {
+test("reset clears every customization while preserving the live pose, not its Render lens", () => {
   const payload = resetRenderPayload({
     position: [10, 20, 30],
     target: [1, 2, 3],
     up: [0, 0, 1],
     zoom: 1.2,
-    projection: "orthographic",
-    orthographicHalfHeight: 42
+    projection: "perspective",
+    focalLength: 85
   });
 
   assert.deepEqual(payload, {
-    ...DEFAULT_RENDER_PAYLOAD,
     camera: {
       position: [10, 20, 30],
       target: [1, 2, 3],
       up: [0, 0, 1],
-      zoom: 1.2,
-      orthographicHalfHeight: 42
+      zoom: 1.2
     }
   });
-  assert.equal(Object.prototype.hasOwnProperty.call(payload, "studio"), false);
-  assert.equal(payload.settings, undefined);
 });
 
-test("reset preserves enablement and CAD restore state while clearing the saved Render payload", () => {
+test("reset preserves enablement and the saved CAD restore camera", () => {
   const cadCamera = {
-    position: [10, 20, 30],
-    target: [1, 2, 3],
-    up: [0, 0, 1],
-    projection: "orthographic",
-    orthographicHalfHeight: 24
+    position: [10, 20, 30], target: [1, 2, 3], up: [0, 0, 1],
+    projection: "orthographic", orthographicHalfHeight: 24
   };
-  const activeRenderCamera = {
-    position: [50, 60, 70],
-    target: [4, 5, 6],
-    up: [0, 0, 1],
-    projection: "perspective"
+  const renderCamera = {
+    position: [50, 60, 70], target: [4, 5, 6], up: [0, 0, 1],
+    projection: "perspective", focalLength: 90
   };
   const customized = createRenderSessionState({
     enabled: false,
     cadCamera,
     cadProjection: "orthographic",
-    payload: {
-      quality: "standard",
-      studio: "studio-dark",
-      settings: { materials: { roughness: 0.2 } },
-      camera: { preset: "front" }
-    }
+    payload: { studio: "dark", quality: "preview", exposure: 1, camera: renderCamera }
   });
 
-  const disabledReset = renderSessionForReset(customized, { activeCamera: activeRenderCamera });
+  const disabledReset = renderSessionForReset(customized, { activeCamera: renderCamera });
   assert.equal(disabledReset.enabled, false);
-  assert.deepEqual(disabledReset.payload, DEFAULT_RENDER_PAYLOAD);
+  assert.deepEqual(disabledReset.payload, {});
   assert.deepEqual(disabledReset.cadCamera, cadCamera);
-  assert.equal(disabledReset.cadProjection, "orthographic");
 
-  const enabledReset = renderSessionForReset({ ...customized, enabled: true }, {
-    activeCamera: activeRenderCamera
-  });
+  const enabledReset = renderSessionForReset({ ...customized, enabled: true }, { activeCamera: renderCamera });
   assert.equal(enabledReset.enabled, true);
   assert.deepEqual(enabledReset.cadCamera, cadCamera);
-  assert.deepEqual(enabledReset.payload, {
-    ...DEFAULT_RENDER_PAYLOAD,
-    camera: {
-      position: activeRenderCamera.position,
-      target: activeRenderCamera.target,
-      up: activeRenderCamera.up
-    }
+  assert.deepEqual(enabledReset.payload.camera, {
+    position: renderCamera.position,
+    target: renderCamera.target,
+    up: renderCamera.up
   });
 });
 
 test("pasting while disabled captures the current CAD camera before enabling Render", () => {
   const activeCadCamera = {
-    position: [12, 22, 32],
-    target: [1, 2, 3],
-    up: [0, 0, 1],
-    zoom: 1.15,
-    projection: "orthographic",
-    orthographicHalfHeight: 24
+    position: [12, 22, 32], target: [1, 2, 3], up: [0, 0, 1], zoom: 1.15,
+    projection: "orthographic", focalLength: 22, orthographicHalfHeight: 24
   };
-  const next = renderSessionForPayloadApply(createRenderSessionState({
-    enabled: false,
-    cadCamera: { position: [1, 1, 1], target: [0, 0, 0], up: [0, 0, 1] }
-  }), {
-    ...DEFAULT_RENDER_PAYLOAD,
-    camera: { preset: "front" }
+  const next = renderSessionForPayloadApply(createRenderSessionState({ enabled: false }), {
+    studio: "dark",
+    camera: { preset: "front", focalLength: 70 }
   }, {
     activeCamera: activeCadCamera,
     activeProjection: "orthographic"
@@ -165,139 +118,136 @@ test("pasting while disabled captures the current CAD camera before enabling Ren
   assert.equal(next.enabled, true);
   assert.deepEqual(next.cadCamera, activeCadCamera);
   assert.equal(next.cadProjection, "orthographic");
-  assert.deepEqual(next.payload.camera, { preset: "front" });
+  assert.deepEqual(next.payload.camera, { preset: "front", focalLength: 70 });
 });
 
-test("pasting while enabled keeps the CAD restore camera", () => {
+test("first enable saves the CAD camera without seeding Render composition from it", () => {
+  const cadCamera = {
+    position: [90, 80, 70], target: [9, 8, 7], up: [0, 0, 1], zoom: 1.4,
+    projection: "orthographic", focalLength: 21, orthographicHalfHeight: 18
+  };
+  const first = renderSessionForEnabledChange(createRenderSessionState(), true, {
+    activeCamera: cadCamera,
+    activeProjection: "orthographic"
+  });
+  assert.equal(first.enabled, true);
+  assert.deepEqual(first.cadCamera, cadCamera);
+  assert.deepEqual(first.payload, {});
+
+  const savedRenderCamera = {
+    position: [30, 40, 50], target: [3, 4, 5], up: [0, 0, 1],
+    projection: "perspective", focalLength: 75
+  };
+  const disabled = renderSessionForEnabledChange({ ...first, payload: { exposure: 1 } }, false, {
+    activeCamera: savedRenderCamera
+  });
+  const reenabled = renderSessionForEnabledChange(disabled, true, { activeCamera: cadCamera });
+  assert.deepEqual(reenabled.payload.camera, savedRenderCamera);
+  assert.deepEqual(reenabled.cadCamera, cadCamera);
+});
+
+test("pasting while enabled leaves the CAD restore camera untouched", () => {
   const cadCamera = { position: [5, 6, 7], target: [0, 0, 0], up: [0, 0, 1], projection: "orthographic" };
   const next = renderSessionForPayloadApply(createRenderSessionState({
     enabled: true,
-    cadCamera,
-    payload: DEFAULT_RENDER_PAYLOAD
-  }), {
-    ...DEFAULT_RENDER_PAYLOAD,
-    studio: "studio-dark"
-  }, {
+    cadCamera
+  }), { exposure: 1.5 }, {
     activeCamera: { position: [50, 60, 70], target: [4, 5, 6], up: [0, 0, 1], projection: "perspective" }
   });
 
   assert.deepEqual(next.cadCamera, cadCamera);
-  assert.equal(next.payload.studio, "studio-dark");
+  assert.equal(next.payload.exposure, 1.5);
 });
 
-test("copy uses the stored Render camera while disabled and the live camera while enabled", () => {
-  const storedRenderCamera = { position: [30, 40, 50], target: [3, 4, 5], up: [0, 0, 1], projection: "perspective" };
-  const activeCadCamera = { position: [10, 20, 30], target: [1, 2, 3], up: [0, 0, 1], projection: "orthographic" };
-  const disabled = createRenderSessionState({
-    enabled: false,
-    payload: { ...DEFAULT_RENDER_PAYLOAD, camera: storedRenderCamera }
-  });
-  assert.deepEqual(
-    renderPayloadForCopy(disabled, { activeCamera: activeCadCamera }).camera,
-    storedRenderCamera
-  );
+test("copy uses stored Render camera while disabled and live Render camera while enabled", () => {
+  const storedRenderCamera = {
+    position: [30, 40, 50], target: [3, 4, 5], up: [0, 0, 1], projection: "perspective", focalLength: 65
+  };
+  const disabled = createRenderSessionState({ enabled: false, payload: { camera: storedRenderCamera } });
+  assert.deepEqual(renderPayloadForCopy(disabled, {
+    activeCamera: { position: [10, 20, 30], target: [1, 2, 3], up: [0, 0, 1], projection: "orthographic" }
+  }).camera, storedRenderCamera);
 
-  const activeRenderCamera = { position: [60, 70, 80], target: [6, 7, 8], up: [0, 0, 1], projection: "perspective" };
-  assert.deepEqual(
-    renderPayloadForCopy({ ...disabled, enabled: true }, { activeCamera: activeRenderCamera }).camera,
-    activeRenderCamera
-  );
+  const activeRenderCamera = {
+    position: [60, 70, 80], target: [6, 7, 8], up: [0, 0, 1], projection: "perspective", focalLength: 105
+  };
+  assert.deepEqual(renderPayloadForCopy({ ...disabled, enabled: true }, {
+    activeCamera: activeRenderCamera
+  }).camera, activeRenderCamera);
 });
 
-test("render camera seeds retain framing without carrying CAD projection or revision metadata", () => {
+test("render camera seeds retain lens and framing without CAD projection or model metadata", () => {
   assert.deepEqual(renderCameraSeed({
-    position: [10, 20, 30],
-    target: [1, 2, 3],
-    up: [0, 0, 1],
-    zoom: 1.4,
-    projection: "orthographic",
-    orthographicHalfHeight: 42,
-    modelKey: "old-revision"
+    position: [10, 20, 30], target: [1, 2, 3], up: [0, 0, 1], zoom: 1.4,
+    projection: "orthographic", focalLength: 72, orthographicHalfHeight: 42, modelKey: "old"
   }), {
-    position: [10, 20, 30],
-    target: [1, 2, 3],
-    up: [0, 0, 1],
-    zoom: 1.4,
-    orthographicHalfHeight: 42
+    position: [10, 20, 30], target: [1, 2, 3], up: [0, 0, 1], zoom: 1.4,
+    focalLength: 72, orthographicHalfHeight: 42
   });
 });
 
 test("camera presets and projection-only payloads resolve against current model bounds", () => {
   const bounds = { min: [0, 0, 0], max: [20, 40, 10] };
-  const front = resolveRenderCameraSnapshot({ preset: "front", projection: "perspective" }, bounds);
+  const front = resolveRenderCameraSnapshot({ preset: "front", projection: "perspective", focalLength: 80 }, bounds);
   assert.deepEqual(front.target, [10, 20, 5]);
-  assert.equal(front.position[0], 10);
   assert.ok(front.position[1] < 20);
   assert.equal(front.projection, "perspective");
+  assert.equal(front.focalLength, 80);
 
-  const projectionOnly = resolveRenderCameraSnapshot({ projection: "orthographic" }, bounds);
-  assert.deepEqual(projectionOnly.target, [10, 20, 5]);
-  assert.equal(projectionOnly.projection, "orthographic");
+  assert.equal(resolveRenderCameraSnapshot({ projection: "orthographic" }, bounds).projection, "orthographic");
 });
 
-test("camera-only changes retain the Render visual settings key", () => {
-  const base = {
-    ...DEFAULT_RENDER_PAYLOAD,
-    settings: { materials: { roughness: 0.4 } },
-    display: { mode: "shaded" }
-  };
+test("camera and quality changes retain the Render visual settings identity", () => {
+  const base = { exposure: 0.5, lighting: { size: 1.2 }, backdrop: { ground: true } };
   assert.equal(
     renderVisualSettingsKey({ ...base, camera: { preset: "front" } }),
     renderVisualSettingsKey({ ...base, camera: { preset: "top" } })
   );
   assert.equal(
-    renderVisualSettingsKey({ ...base, quality: "interactive" }),
-    renderVisualSettingsKey({ ...base, quality: "high" })
+    renderVisualSettingsKey({ ...base, quality: "preview" }),
+    renderVisualSettingsKey({ ...base, quality: "final" })
   );
-  assert.notEqual(
-    renderVisualSettingsKey(base),
-    renderVisualSettingsKey({ ...base, settings: { materials: { roughness: 0.7 } } })
-  );
+  assert.notEqual(renderVisualSettingsKey(base), renderVisualSettingsKey({ ...base, exposure: 1 }));
 });
 
-test("quality resolves independently while Render visual settings stay stable", () => {
+test("Render quality resolves independently from the photographic visual payload", () => {
   assert.equal(resolveRenderSessionQuality(createRenderSessionState()).id, "interactive");
   assert.equal(resolveRenderSessionQuality(createRenderSessionState({
     enabled: true,
-    payload: { ...DEFAULT_RENDER_PAYLOAD, quality: "standard" }
+    payload: { quality: "preview" }
   })).id, "standard");
-  const high = resolveRenderSessionQuality(createRenderSessionState({
-    enabled: true,
-    payload: DEFAULT_RENDER_PAYLOAD
-  }));
-  assert.equal(high.id, "high");
-  assert.equal(high.targetPixelError, 0.25);
-  assert.equal(high.snapshotLodLevel, 3);
-  assert.equal(high.shadowMapSize, 4096);
-  assert.equal(high.environmentMapSize, 512);
+  const final = resolveRenderSessionQuality(createRenderSessionState({ enabled: true }));
+  assert.equal(final.id, "high");
+  assert.equal(final.targetPixelError, 0.25);
+  assert.equal(final.snapshotLodLevel, 3);
+  assert.equal(final.shadowMapSize, 4096);
+  assert.equal(final.environmentMapSize, 512);
 });
 
-test("copied render envelopes validate and canonicalize for the CLI", () => {
+test("clipboard envelopes validate and canonicalize for the CLI", () => {
   const payload = parseRenderSettingsText(JSON.stringify({
-    studio: "studio-light",
-    quality: "standard",
-    settings: { lighting: { toneMappingExposure: 1.25 } }
-  }), { prefersDark: true });
+    studio: "dark",
+    quality: "preview",
+    exposure: -0.5,
+    lighting: { rotation: 45, size: 1.5, fill: 0.4 },
+    backdrop: { color: "#123456", transparent: false, ground: true },
+    camera: { preset: "front", focalLength: 85 }
+  }));
 
   assert.deepEqual(payload, {
-    studio: "studio-light",
-    quality: "standard",
-    settings: { lighting: { toneMappingExposure: 1.25 } }
+    studio: "dark",
+    quality: "preview",
+    exposure: -0.5,
+    lighting: { rotation: 45, size: 1.5, fill: 0.4 },
+    backdrop: { color: "#123456", transparent: false, ground: true },
+    camera: { preset: "front", focalLength: 85 }
   });
 });
 
-test("pasted render envelopes report JSON and schema failures", () => {
+test("clipboard parsing reports malformed JSON and closed-schema failures", () => {
   assert.throws(() => parseRenderSettingsText("{broken"), /Invalid JSON/);
-  assert.throws(
-    () => parseRenderSettingsText('{"studio":"studio-light","unknown":true}'),
-    /Unsupported render fields: unknown/
-  );
-  assert.throws(
-    () => parseRenderSettingsText('{"appearance":"dark"}'),
-    /appearance/
-  );
-  assert.throws(
-    () => parseRenderSettingsText('{"display":{"mode":"solid"}}'),
-    /use 'shaded_edges'/
-  );
+  assert.throws(() => parseRenderSettingsText('{"unknown":true}'), /Unsupported render fields: unknown/);
+  assert.throws(() => parseRenderSettingsText('{"display":{"mode":"wireframe"}}'), /Unsupported render fields: display/);
+  assert.throws(() => parseRenderSettingsText('{"lighting":{"size":5}}'), /size/);
+  assert.throws(() => parseRenderSettingsText('{"camera":{"focalLength":10}}'), /focalLength/);
 });

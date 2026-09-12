@@ -25,13 +25,11 @@ from cadgen.snapshot_core import (  # noqa: E402
     DISPLAY_OPTION_KEYS,
     DISPLAY_PART_COLOR_KEYS,
     PART_COLOR_MODES,
-    RENDER_ENVIRONMENT_IDS,
-    RENDER_LIGHT_KEYS,
-    RENDER_SETTING_BLOCK_KEYS,
+    RENDER_BACKDROP_KEYS,
+    RENDER_LIGHTING_KEYS,
+    RENDER_QUALITY_IDS,
     RENDER_STUDIO_IDS,
-    SCENE_QUALITY_IDS,
     SUPPORTED_RENDER_KEYS,
-    SUPPORTED_RENDER_SETTINGS_KEYS,
     SnapshotError,
     validate_camera_option,
     validate_render_option,
@@ -40,7 +38,6 @@ from cadgen.snapshot_core import (  # noqa: E402
 SCENE = repo_path("packages/cadgen-js/src/common/sceneSettings.js")
 CAMERA = repo_path("packages/cadgen-js/src/common/camera.js")
 DISPLAY = repo_path("packages/cadgen-js/src/common/displaySettings.js")
-THEME = repo_path("packages/cadgen-js/src/common/themeSettings.js")
 
 
 def exported_strings(path, export: str) -> set[str]:
@@ -61,26 +58,9 @@ def frozen_enum_values(path, export: str, next_export: str) -> set[str]:
     return set(re.findall(r':\s*"([^"]+)"', source[start:end]))
 
 
-def frozen_object_array_ids(path, export: str) -> set[str]:
-    source = path.read_text(encoding="utf-8")
-    match = re.search(
-        rf"export const {re.escape(export)}\s*=\s*Object\.freeze\(\[(.*?)\]\);",
-        source,
-        re.S,
-    )
-    assert match, f"{path.name} no longer exports {export} as a frozen array"
-    return set(re.findall(r'\bid:\s*"([^"]+)"', match.group(1)))
-
-
 class SharedSceneContractParityTests(unittest.TestCase):
     def test_render_envelope_keys_match(self):
         self.assertEqual(exported_strings(SCENE, "RENDER_PAYLOAD_KEYS"), set(SUPPORTED_RENDER_KEYS))
-
-    def test_render_settings_keys_match(self):
-        self.assertEqual(
-            exported_strings(SCENE, "RENDER_SETTINGS_KEYS"),
-            set(SUPPORTED_RENDER_SETTINGS_KEYS),
-        )
 
     def test_studio_ids_match(self):
         self.assertEqual(
@@ -88,83 +68,127 @@ class SharedSceneContractParityTests(unittest.TestCase):
             set(RENDER_STUDIO_IDS),
         )
 
-    def test_sparse_render_and_retired_studios_match_shared_js(self):
-        retired = [
-            {"studio": "default"},
-            {"studio": "blue"},
-            {"studio": "pink"},
-            {"studio": "colorful"},
-            {"studio": "clay-sunrise"},
-            {"studio": "terminal"},
-            {"appearance": "dark"},
-        ]
+    def test_render_quality_and_nested_keys_match(self):
+        self.assertEqual(
+            frozen_enum_values(SCENE, "RENDER_QUALITY", "RENDER_QUALITY_PRESETS"),
+            set(RENDER_QUALITY_IDS),
+        )
+        self.assertEqual(exported_strings(SCENE, "RENDER_LIGHTING_KEYS"), set(RENDER_LIGHTING_KEYS))
+        self.assertEqual(exported_strings(SCENE, "RENDER_BACKDROP_KEYS"), set(RENDER_BACKDROP_KEYS))
+
+    def test_shared_defaults_and_capture_quality_are_the_photographic_contract(self):
         script = f"""
-import fs from "node:fs";
-import {{ normalizeRenderPayload, resolveSceneSettings }} from {json.dumps(SCENE.as_uri())};
-const retired = JSON.parse(fs.readFileSync(0, "utf8"));
-const sparse = normalizeRenderPayload({{}});
-const failures = retired.map((render) => {{
-  try {{ normalizeRenderPayload(render); return false; }}
-  catch {{ return true; }}
+import {{ normalizeRenderPayload, resolveRenderQuality, resolveSceneSettings }}
+  from {json.dumps(SCENE.as_uri())};
+const resolved = resolveSceneSettings({{ render: {{}} }}).render.configuration;
+const isolated = resolveSceneSettings({{
+  render: {{ camera: {{ preset: "front" }} }},
+  camera: {{ preset: "back" }},
+  display: {{ mode: "wireframe" }},
+  quality: "interactive"
 }});
 console.log(JSON.stringify({{
-  sparseHasStudio: Object.prototype.hasOwnProperty.call(sparse, "studio"),
-  effectiveStudio: resolveSceneSettings({{ render: {{}} }}).render.studio,
-  failures
+  sparse: normalizeRenderPayload({{}}),
+  resolved,
+  isolated: {{
+    camera: isolated.camera.preset,
+    display: isolated.display.mode,
+    quality: isolated.quality.id
+  }},
+  preview: resolveRenderQuality("preview"),
+  final: resolveRenderQuality("final")
 }}));
 """
         completed = subprocess.run(
             ["node", "--input-type=module", "-e", script],
-            input=json.dumps(retired),
             text=True,
             capture_output=True,
             check=True,
             cwd=repo_path(),
         )
         shared = json.loads(completed.stdout)
-        self.assertFalse(shared["sparseHasStudio"])
-        self.assertEqual("studio-light", shared["effectiveStudio"])
-        self.assertEqual({}, validate_render_option({}, source_label="parity test"))
-        python_failures = []
-        for render in retired:
+        self.assertEqual({}, shared["sparse"])
+        self.assertEqual("light", shared["resolved"]["studio"])
+        self.assertEqual("final", shared["resolved"]["quality"])
+        self.assertEqual(0, shared["resolved"]["exposure"])
+        self.assertEqual({"rotation": 0, "size": 1, "fill": 0.25}, shared["resolved"]["lighting"])
+        self.assertEqual({"transparent": False, "ground": True}, {
+            key: shared["resolved"]["backdrop"][key] for key in ("transparent", "ground")
+        })
+        self.assertEqual(
+            {"camera": "front", "display": "shaded", "quality": "high"},
+            shared["isolated"],
+        )
+        self.assertEqual((1, 1), (
+            shared["preview"]["snapshotLodLevel"], shared["preview"]["renderScale"]
+        ))
+        self.assertEqual((3, 2), (
+            shared["final"]["snapshotLodLevel"], shared["final"]["renderScale"]
+        ))
+
+    def test_strict_render_values_match_shared_js(self):
+        cases = [
+            {},
+            {"studio": "light", "quality": "final", "exposure": 0},
+            {"studio": "studio-light"},
+            {"studio": []},
+            {"studio": {}},
+            {"studio": True},
+            {"studio": None},
+            {"quality": "high"},
+            {"quality": []},
+            {"quality": {}},
+            {"quality": False},
+            {"quality": None},
+            {"display": {}},
+            {"settings": {}},
+            {"appearance": "dark"},
+            {"_comment": "unsupported"},
+            {"exposure": True},
+            {"exposure": 5.01},
+            {"lighting": {"rotation": -180, "size": 0.25, "fill": 1}},
+            {"lighting": {"rotation": -180.01}},
+            {"lighting": {"size": "1"}},
+            {"lighting": {"fill": False}},
+            {"lighting": {"key": 1}},
+            {"backdrop": {"color": "#abc", "transparent": False, "ground": True}},
+            {"backdrop": {"color": "white"}},
+            {"backdrop": {"transparent": 0}},
+            {"backdrop": {"floor": True}},
+        ]
+        script = f"""
+import fs from "node:fs";
+import {{ normalizeRenderPayload }} from {json.dumps(SCENE.as_uri())};
+const cases = JSON.parse(fs.readFileSync(0, "utf8"));
+console.log(JSON.stringify(cases.map((render) => {{
+  try {{ normalizeRenderPayload(render); return true; }}
+  catch {{ return false; }}
+}})));
+"""
+        completed = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            input=json.dumps(cases),
+            text=True,
+            capture_output=True,
+            check=True,
+            cwd=repo_path(),
+        )
+        js_accepted = json.loads(completed.stdout)
+        python_accepted = []
+        for render in cases:
             try:
                 validate_render_option(render, source_label="parity test")
             except SnapshotError:
-                python_failures.append(True)
+                python_accepted.append(False)
             else:
-                python_failures.append(False)
-        self.assertEqual(shared["failures"], python_failures)
-        self.assertEqual([True] * len(retired), python_failures)
-
-    def test_environment_preset_ids_match(self):
+                python_accepted.append(True)
+        self.assertEqual(js_accepted, python_accepted)
         self.assertEqual(
-            frozen_object_array_ids(THEME, "ENVIRONMENT_PRESETS"),
-            set(RENDER_ENVIRONMENT_IDS),
+            [True, True, False, False, False, False, False, False, False, False,
+             False, False, False, False, False, False, False, False, True, False, False,
+             False, False, True, False, False, False],
+            python_accepted,
         )
-
-    def test_scene_quality_ids_match(self):
-        self.assertEqual(
-            frozen_enum_values(SCENE, "SCENE_QUALITY", "SCENE_QUALITY_PRESETS"),
-            set(SCENE_QUALITY_IDS),
-        )
-
-    def test_nested_render_setting_keys_match(self):
-        source = SCENE.read_text(encoding="utf-8")
-        start = source.index("const STUDIO_SETTING_BLOCK_KEYS =")
-        end = source.index("const LIGHT_KEYS =", start)
-        block = source[start:end]
-        for name, expected in RENDER_SETTING_BLOCK_KEYS.items():
-            match = re.search(rf"{name}: Object\.freeze\(\[(.*?)\]\)", block, re.S)
-            self.assertIsNotNone(match, f"sceneSettings.js no longer declares {name} setting keys")
-            self.assertEqual(set(re.findall(r'"([^"]+)"', match.group(1))), set(expected))
-
-        light_start = source.index("const LIGHT_KEYS =")
-        light_end = source.index("const EXPLICIT_PBR_MATERIAL_KEYS", light_start)
-        light_block = source[light_start:light_end]
-        for name, expected in RENDER_LIGHT_KEYS.items():
-            match = re.search(rf"{name}: Object\.freeze\(\[(.*?)\]\)", light_block, re.S)
-            self.assertIsNotNone(match, f"sceneSettings.js no longer declares {name} light keys")
-            self.assertEqual(set(re.findall(r'"([^"]+)"', match.group(1))), set(expected))
 
     def test_camera_keys_match(self):
         self.assertEqual(exported_strings(CAMERA, "CAMERA_SPEC_KEYS"), set(CAMERA_OPTION_KEYS))
@@ -181,6 +205,11 @@ console.log(JSON.stringify({{
             {"orthographicHalfHeight": "12"},
             {"orthographicHalfHeight": False},
             {"orthographicHalfHeight": None},
+            {"focalLength": "50"},
+            {"focalLength": True},
+            {"focalLength": 19.9},
+            {"focalLength": 200.1},
+            {"focalLength": None},
         ]
         script = f"""
 import fs from "node:fs";

@@ -35,55 +35,89 @@ import {
 
 `resolveSceneSettings({ appearance, render, quality, camera, display })` is the
 shared Viewer/snapshot policy resolver. A missing `render` selects responsive
-CAD inspection defaults. A Render envelope has this closed sparse shape:
+CAD inspection defaults, where the top-level quality, camera, and display fields
+apply. A Render envelope is isolated from those CAD fields and has this closed
+sparse shape:
 
 ```js
 {
-  studio: "studio-light",
-  quality: "high",
-  settings: { materials, background, floor, environment, lighting },
-  camera: { preset, projection, position, target, up, direction, zoom, orthographicHalfHeight },
-  display: { mode, clip, exploded, edges, guides, partColor }
+  studio: "light", // or "dark"; omit to follow global appearance
+  quality: "final", // or "preview"
+  exposure: 0, // EV, -5..5
+  lighting: {
+    rotation: 0, // degrees around CAD Z, -180..180
+    size: 1, // relative softbox size, 0.25..3
+    fill: 0.25 // opposing fill ratio, 0..1
+  },
+  backdrop: { color: "#e7e7e5", transparent: false, ground: true },
+  camera: {
+    preset, projection, position, target, up, direction, zoom,
+    orthographicHalfHeight, focalLength
+  }
 }
 ```
 
-Precedence is CAD defaults, Render defaults and envelope overrides, then the
-top-level camera/display overrides. A higher-priority camera preset replaces a
-lower-priority custom pose. A higher-priority direction replaces a copied
-position while retaining its target and up vector; a projection-only override
-preserves the complete pose.
-Viewer base camera/display state must stay separate from top-level explicit
-overrides while Render is active.
+The normalized Render payload preserves omission. The resolved scene expands
+the effective values under `resolved.render.configuration`, so a UI can display
+the active studio and defaults without pinning them into session state. Render
+always uses its private `shaded`, authored-color display policy with edges,
+guides, clipping, exploded view, selectors, and selection disabled. The Render
+camera comes only from `render.camera`; per-output snapshot cameras are applied
+later by the capture adapter. Animation remains active because it is authored
+model choreography rather than CAD inspection state.
+
 `orthographicHalfHeight` is the positive pre-zoom vertical half-extent of an
 orthographic camera. It may remain in a perspective camera payload so switching
 back restores the prior orthographic scale.
+`focalLength` is a perspective-camera lens in millimetres from 20 to 200 and
+defaults to 50 in Render.
 
-Studio ids are exactly `studio-light` and `studio-dark`. Omitting `studio`
+Studio ids are exactly `light` and `dark`. Omitting `studio`
 follows the resolver's global appearance while keeping the normalized Render
-payload sparse; `resolved.render.studio` reports the effective id for UI.
-`render.appearance` and the former default/colorful studio ids are rejected
-with migration guidance.
-Quality is `interactive`, `standard`, or `high` and does not select a studio.
-Render defaults to perspective, `shaded`, edges and guides off, authored
-materials, studio lighting, and high quality. Normal CAD defaults to
+payload sparse. `resolved.render.configuration.studio` reports the effective id
+for UI. Quality is `preview` or `final` and does not select a studio; it maps to
+the internal standard or high scene policy respectively. Render defaults to
+perspective, `shaded`, authored materials, and final quality. Normal CAD defaults to
 orthographic `shaded_edges`, Original part colors, and interactive quality;
 it keeps authored albedo and opacity while applying matte workbench PBR
 channels, and the snapshot adapter turns normal CAD guides off for deterministic
 stills.
-High uses the bounded finest mesh rung, a 0.25px viewport target, 4096px
-directional shadows, a 512px procedural environment, and 2x snapshot capture.
+Final uses the bounded finest mesh rung, a 0.25px viewport target, 4096px
+spotlight shadows, a 512px procedural environment, and 2x snapshot capture.
 Those values are derived from the quality id and do not expand the public JSON.
 
 `resolveDisplayMaterialSettings(materials, partColor)` applies the display-owned
-Original, Single color, or Color by part palette to material settings. Render
-studio PBR values remain fallbacks for authored part materials unless the sparse
-Render settings explicitly contain that PBR channel.
+Original, Single color, or Color by part palette to normal CAD material settings.
 
-The two built-in studios use the same neutral material fallbacks, ACES exposure,
-key/fill/rim rig, and procedural `studio-softbox` PMREM environment. Only their
-backdrop and floor colors differ. The environment resource owns its PMREM render
-target and must be disposed through `disposeEnvironmentResource()`; viewport
-clients can reuse it by `environmentResourceIdentity()`.
+The two studios use one physical Render pipeline. A neutral HDR key card and
+opposing fill card generate a procedural PMREM for authored PBR reflections;
+one aligned, model-scaled SpotLight supplies direct illumination and PCF contact
+shadows. Softbox size changes card area and bounded shadow softness while keeping
+total card flux stable. Rotation moves the direct light and
+`scene.environmentRotation` together around CAD Z. AgX tone mapping is fixed;
+`toneMappingExposure` is `2 ** exposure`. Light and dark differ only in default
+backdrop color.
+
+`applyPhotographicStudio(THREE, runtime, configuration, options)` owns the
+synchronous light, ground and renderer state and updates those objects in place.
+`disposePhotographicStudio(runtime)` releases only those objects. The caller
+separately owns the asynchronous PMREM returned by
+`createEnvironmentResource(renderer, configuration, {size})`, assigns its
+texture to `scene.environment`, and releases it through
+`disposeEnvironmentResource()`. `environmentResourceIdentity()` includes
+softbox size, fill, and PMREM resolution; it excludes rotation so rotating the
+rig is a live scene update rather than an environment rebuild.
+
+The ground uses `PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER` for its full
+square width. Camera fitting uses the same constant as far-plane padding, which
+keeps the finite two-triangle ground outside practical product views without
+weakening the model-fitted near plane.
+
+Photographic Render creates its WebGL renderer with
+`logarithmicDepthBuffer: false`. Three's logarithmic depth shader path does not
+produce usable contact shadows. Render callers fit ordinary-depth near/far
+planes to current model bounds with `fitCameraDepthToBounds(camera, bounds)`;
+normal CAD retains logarithmic depth for broad inspection scales.
 
 ### `common/source.js`
 
@@ -129,8 +163,9 @@ Accepted input fields:
   key and the sidecar section.
 - `stepParameterUrl` or `resolved.stepParameterUrl`: model sidecar
   (`.step.json`) URL, whose `kinematics` section is compiled here.
-- `quality.tessellation`: explicit STEP snapshot tolerances. This technical
-  override wins over the bounded mesh rung chosen by `render.quality`.
+- `quality.tessellation`: explicit STEP tolerances for normal CAD snapshots.
+  Render is isolated from this top-level CAD quality field and derives its
+  bounded mesh rung only from `render.quality`.
 
 STEP-only options are rejected for non-STEP sources. The old shared `params`
 field is rejected, and so is the retired `stepParameters` spelling; use

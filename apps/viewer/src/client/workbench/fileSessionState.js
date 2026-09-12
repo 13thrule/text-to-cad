@@ -15,7 +15,7 @@ import {
   renderSessionStateEqual
 } from "./renderSessionState.js";
 
-export const FILE_SESSION_STORAGE_VERSION = 2;
+export const FILE_SESSION_STORAGE_VERSION = 3;
 export const FILE_SESSION_STORAGE_KEY_PREFIX = "cad-viewer:file-session";
 const FILE_SESSION_INDEX_KEY_PREFIX = "cad-viewer:file-session:index";
 const DEFAULT_FILE_SESSION_NAMESPACE = "__root__";

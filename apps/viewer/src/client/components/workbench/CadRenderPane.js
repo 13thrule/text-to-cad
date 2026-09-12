@@ -263,9 +263,12 @@ export default function CadRenderPane({
   viewerPerspective,
   viewerPerspectiveRef,
   projection = CAMERA_PROJECTION.ORTHOGRAPHIC,
+  focalLength = null,
   themeSettings,
   materialOverrides = null,
   receiveShadows = false,
+  renderMode = false,
+  renderConfiguration = null,
   quality = null,
   previewMode,
   viewportFrameInsets,
@@ -372,11 +375,13 @@ export default function CadRenderPane({
   // no parts, so it gets the stripped-down prop set.
   const hasParts = capabilities.parts;
   const hasTopology = capabilities.topology;
+  const inspectionEnabled = !renderMode;
+  const effectivePlanMode = inspectionEnabled && planMode;
   const displaySettingsActive = capabilities.displayModes && !!displaySettings;
   // A plan view additionally forces orthographic: a top-down lock still
   // foreshortens off-centre under perspective, which is exactly what a plan view must
   // not do. Every other format receives projection from the resolved scene camera.
-  const cadProjection = planMode
+  const cadProjection = effectivePlanMode
     ? CAMERA_PROJECTION.ORTHOGRAPHIC
     : normalizeCameraProjection(projection, CAMERA_PROJECTION.ORTHOGRAPHIC);
   const cadViewerBoundsAnimationActive = Boolean(
@@ -405,9 +410,9 @@ export default function CadRenderPane({
   // included, since it lost its 2D fallback in phase 3a and now renders its baked preview,
   // so a failed build must read as "nothing renderable" and let the viewer alert block.
   const viewportHasRenderableContent = !!selectedMeshData;
-  const ctaMode = drawEnabled && drawToolActive
+  const ctaMode = inspectionEnabled && drawEnabled && drawToolActive
     ? "screenshot"
-    : (hasParts || hasTopology) && selectionCount > 0
+    : inspectionEnabled && (hasParts || hasTopology) && selectionCount > 0
       ? "selection"
       : "";
   const bottomOverlayStyle = {
@@ -490,7 +495,7 @@ export default function CadRenderPane({
         modelKey={selectedKey}
         renderFormat={renderFormat}
         drawingThicknessScale={drawingThicknessScale}
-        planMode={planMode}
+        planMode={effectivePlanMode}
         bendAxisX={bendAxisX}
         drawingBendLines={drawingBendLines}
         bendAnglesRad={bendAnglesRad}
@@ -509,12 +514,15 @@ export default function CadRenderPane({
         onMeshSourceAdoption={onMeshSourceAdoption}
         perspective={viewerPerspective}
         projection={cadProjection}
+        focalLength={focalLength}
         perspectiveRef={viewerPerspectiveRef}
         showEdges
         recomputeNormals={false}
         themeSettings={themeSettings}
         materialOverrides={materialOverrides}
         receiveShadows={receiveShadows}
+        renderMode={renderMode}
+        renderConfiguration={renderConfiguration}
         quality={quality}
         displaySettings={displaySettingsActive ? displaySettings : null}
         previewMode={previewMode}
@@ -525,7 +533,7 @@ export default function CadRenderPane({
         compactViewPlane={false}
         viewportFrameInsets={viewportFrameInsets}
         isLoading={viewerLoading && !retainingPreviousStepMesh}
-        pickMode={retainingPreviousStepMesh || (!hasTopology && !hasParts && !measureModeActive)
+        pickMode={!inspectionEnabled || retainingPreviousStepMesh || (!hasTopology && !hasParts && !measureModeActive)
           ? VIEWER_PICK_MODE.NONE
           : viewerPickModeForRenderPane({
             panToolActive,
@@ -542,46 +550,45 @@ export default function CadRenderPane({
             focusedPartIds,
             measureMode: measureModeActive
           })}
-        panToolActive={panToolActive}
+        panToolActive={inspectionEnabled && panToolActive}
         renderPartsIndividually={capabilities.sceneScale === "urdf"
           ? true
-          : (renderPartsIndividually
-            || Boolean(stepParameters?.definition)
+          : ((inspectionEnabled && (renderPartsIndividually || Boolean(stepParameters?.definition)))
             || Boolean(resolvedStepAnimation?.clip))}
-        pickableParts={hasParts && !retainingPreviousStepMesh ? assemblyParts : EMPTY_LIST}
-        hiddenPartIds={hasParts ? hiddenPartIds : []}
-        selectedPartIds={hasParts ? selectedPartIds : []}
-        hoveredPartId={hasParts ? hoveredPartId : ""}
-        hoveredReferenceId={hasTopology && !retainingPreviousStepMesh ? hoveredReferenceId : ""}
-        selectedReferenceIds={hasTopology && !retainingPreviousStepMesh ? selectedReferenceIds : []}
-        selectorRuntime={hasTopology && !retainingPreviousStepMesh ? selectorRuntime : null}
-        displayEdgeRuntime={hasTopology && !retainingPreviousStepMesh ? displayEdgeRuntime : null}
-        stepParameters={capabilities.params === PARAMETER_SOURCE.SIDECAR ? stepParameters : null}
+        pickableParts={inspectionEnabled && hasParts && !retainingPreviousStepMesh ? assemblyParts : EMPTY_LIST}
+        hiddenPartIds={inspectionEnabled && hasParts ? hiddenPartIds : []}
+        selectedPartIds={inspectionEnabled && hasParts ? selectedPartIds : []}
+        hoveredPartId={inspectionEnabled && hasParts ? hoveredPartId : ""}
+        hoveredReferenceId={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? hoveredReferenceId : ""}
+        selectedReferenceIds={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? selectedReferenceIds : []}
+        selectorRuntime={hasTopology && !retainingPreviousStepMesh && (inspectionEnabled || resolvedStepAnimation?.clip) ? selectorRuntime : null}
+        displayEdgeRuntime={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? displayEdgeRuntime : null}
+        stepParameters={inspectionEnabled && capabilities.params === PARAMETER_SOURCE.SIDECAR ? stepParameters : null}
         stepAnimation={capabilities.params === PARAMETER_SOURCE.SIDECAR ? resolvedStepAnimation : null}
-        pickableFaces={hasTopology && !retainingPreviousStepMesh ? pickableFaces : []}
-        pickableEdges={hasTopology && !retainingPreviousStepMesh ? pickableEdges : []}
-        pickableVertices={hasTopology && !retainingPreviousStepMesh ? pickableVertices : []}
-        focusedPartId={hasParts ? focusedPartIds : ""}
+        pickableFaces={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? pickableFaces : []}
+        pickableEdges={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? pickableEdges : []}
+        pickableVertices={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? pickableVertices : []}
+        focusedPartId={inspectionEnabled && hasParts ? focusedPartIds : ""}
         boundsAnimationActive={cadViewerBoundsAnimationActive}
-        drawingEnabled={drawEnabled && drawToolActive}
+        drawingEnabled={inspectionEnabled && drawEnabled && drawToolActive}
         drawingTool={drawingTool}
-        drawingStrokes={drawEnabled ? drawingStrokes : []}
-        onDrawingStrokesChange={handleDrawingStrokesChange}
+        drawingStrokes={inspectionEnabled && drawEnabled ? drawingStrokes : []}
+        onDrawingStrokesChange={inspectionEnabled ? handleDrawingStrokesChange : null}
         onPerspectiveChange={handlePerspectiveChange}
-        onHoverReferenceChange={handleModelHoverChange}
-        onActivateReference={handleModelReferenceActivate}
-        onDoubleActivateReference={handleModelReferenceDoubleActivate}
-        onContextReference={handleModelReferenceContext}
-        onMeasurePick={onMeasurePick}
-        onMeasureHoverPoint={onMeasureHoverPoint}
+        onHoverReferenceChange={inspectionEnabled ? handleModelHoverChange : null}
+        onActivateReference={inspectionEnabled ? handleModelReferenceActivate : null}
+        onDoubleActivateReference={inspectionEnabled ? handleModelReferenceDoubleActivate : null}
+        onContextReference={inspectionEnabled ? handleModelReferenceContext : null}
+        onMeasurePick={inspectionEnabled ? onMeasurePick : null}
+        onMeasureHoverPoint={inspectionEnabled ? onMeasureHoverPoint : null}
         activeMeasurementId={activeMeasurementId}
-        measureState={measureState}
-        measureModeActive={measureModeActive}
-        allowMeshVertexSnap={!hasTopology}
+        measureState={inspectionEnabled ? measureState : null}
+        measureModeActive={inspectionEnabled && measureModeActive}
+        allowMeshVertexSnap={inspectionEnabled && !hasTopology}
         onViewerAlertChange={handleViewerAlertChange}
         onStepModuleTransformDetectedChange={handleStepModuleTransformDetectedChange}
       />
-      {!previewMode ? (
+      {!previewMode && inspectionEnabled ? (
         <ViewerContextMenu
           menu={viewerContextMenu}
           positionStyle={viewerContextMenuStyle}
@@ -671,7 +678,7 @@ export default function CadRenderPane({
           </div>
         </div>
       ) : null}
-      {!previewMode && stepUpdateInProgress ? (
+      {!previewMode && inspectionEnabled && stepUpdateInProgress ? (
         <div className="pointer-events-none absolute z-20 flex justify-center px-4" style={modelViewportBottomOverlayStyle}>
           <Alert
             role="status"
@@ -681,7 +688,7 @@ export default function CadRenderPane({
           </Alert>
         </div>
       ) : null}
-      {!previewMode && !stepUpdateInProgress && topologySelectionPending ? (
+      {!previewMode && inspectionEnabled && !stepUpdateInProgress && topologySelectionPending ? (
         <div className="pointer-events-none absolute z-20 flex justify-center px-4" style={modelViewportBottomOverlayStyle}>
           <Alert
             role="status"

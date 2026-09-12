@@ -32,6 +32,14 @@ function normalizeSectionIds(value) {
 
 export function renderedFileSheetSectionIds(kind, options = {}) {
   const normalizedKind = normalizeString(kind);
+  if (options.renderMode === true) {
+    return [
+      ...(normalizedKind === "step" && options.hasStepAnimationPanel
+        ? [FILE_SHEET_SECTION_IDS.STEP_ANIMATION]
+        : []),
+      FILE_SHEET_SECTION_IDS.THEME_RENDER
+    ];
+  }
   const isSdf = options.isSdf === true || normalizedKind === "sdf";
   const showJoints = options.showJoints !== false;
   switch (normalizedKind) {
@@ -96,6 +104,9 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
 
 export function defaultOpenFileSheetSectionIds(kind, options = {}) {
   const normalizedKind = normalizeString(kind);
+  if (options.renderMode === true) {
+    return [FILE_SHEET_SECTION_IDS.THEME_RENDER];
+  }
   const isSdf = options.isSdf === true || normalizedKind === "sdf";
   const showJoints = options.showJoints !== false;
   switch (normalizedKind) {

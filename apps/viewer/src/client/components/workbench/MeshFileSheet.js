@@ -18,6 +18,7 @@ export default function MeshFileSheet({
   onStartResize,
   viewerServerInfo = null,
   suppressDynamicMetadataStatus = false,
+  renderMode = false,
   settingsTabs = [],
   openSectionIds = [],
   onOpenSectionIdsChange,
@@ -44,10 +45,13 @@ export default function MeshFileSheet({
       )
     }
     : null;
-  const sections = [
+  const allSections = [
     ...(measureTab ? [measureTab] : []),
     ...settingsTabs
   ];
+  const sections = renderMode
+    ? allSections.filter((section) => section?.id === FILE_SHEET_SECTION_IDS.THEME_RENDER)
+    : allSections;
 
   return (
     <FileSheet

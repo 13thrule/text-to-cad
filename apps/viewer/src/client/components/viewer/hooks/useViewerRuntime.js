@@ -9,25 +9,26 @@ import {
 import {
   createCadWebGlRenderer
 } from "cadgen-js/common/webglRenderer";
+import { fitCameraDepthToBounds } from "cadgen-js/common/renderOptions.js";
 import {
   screenSpaceLineDeviceResolution
 } from "cadgen-js/common/renderEdges";
 import { disposeEnvironmentResource } from "cadgen-js/common/environmentMap.js";
+import { disposePhotographicStudio } from "cadgen-js/common/photographicStudio.js";
 import {
   resolveInteractionPixelRatioCap
 } from "cadgen-js/lib/viewer/renderQuality";
 import { updateOrbitControls } from "../orbitControls.js";
+import { viewerLogarithmicDepthBuffer } from "../renderDepthPolicy.js";
 
-// Perf experiment: render with a model-fitted depth range instead of a
-// logarithmic depth buffer so early-Z rejection stays enabled. Flip to false
-// to restore the log-depth renderer if depth artifacts appear.
-const FITTED_DEPTH_RANGE_ENABLED = true;
-
-function createWebGlRenderer(THREE) {
+function createWebGlRenderer(THREE, renderMode) {
   return createCadWebGlRenderer(THREE, {
     allowFallback: true,
     isRecoverableError: isWebGlContextCreationError,
-    logarithmicDepthBuffer: !FITTED_DEPTH_RANGE_ENABLED
+    // Three's logarithmic-depth shaders suppress the photographic ground's
+    // shadow material. CAD inspection retains logarithmic depth for very wide
+    // model ranges; Render fits an ordinary depth range to the subject.
+    logarithmicDepthBuffer: viewerLogarithmicDepthBuffer(renderMode)
   });
 }
 
@@ -81,6 +82,7 @@ export function useViewerRuntime({
   defaultGridRadius,
   sceneScaleMode,
   floorMode,
+  renderMode = false,
   onManualCameraInteraction,
   onViewportResize,
   onContextLost,
@@ -145,6 +147,10 @@ export function useViewerRuntime({
         const aspect = Math.max(nextWidth, 1) / Math.max(nextHeight, 1);
         if (targetCamera.isPerspectiveCamera) {
           targetCamera.aspect = aspect;
+          const focalLength = Number(targetCamera.userData?.cadFocalLength);
+          if (Number.isFinite(focalLength) && focalLength > 0) {
+            targetCamera.setFocalLength(focalLength);
+          }
         } else if (targetCamera.isOrthographicCamera) {
           const halfHeight = Math.max(Number(targetCamera.userData?.cadHalfHeight) || 120, 1e-3);
           targetCamera.left = -halfHeight * aspect;
@@ -166,7 +172,7 @@ export function useViewerRuntime({
       syncCameraViewport(perspectiveCamera, width, height);
       syncCameraViewport(orthographicCamera, width, height);
 
-      const renderer = createWebGlRenderer(THREE);
+      const renderer = createWebGlRenderer(THREE, renderMode);
       const softwareRendering = isSoftwareWebGlRenderer(renderer);
       let idlePixelRatioCap = softwareRendering
         ? 1
@@ -381,26 +387,13 @@ export function useViewerRuntime({
       const fitCameraDepthRange = (runtime) => {
         const activeCamera = runtime?.camera;
         if (
-          !FITTED_DEPTH_RANGE_ENABLED ||
-          !activeCamera?.isPerspectiveCamera ||
+          !renderMode ||
+          !activeCamera?.isCamera ||
           renderer.capabilities?.logarithmicDepthBuffer
         ) {
           return;
         }
-        const radius = Math.max(Number(runtime?.modelRadius) || 1, 1e-6);
-        const sceneExtent = Math.max(radius, Number(runtime?.gridConfig?.radius) || 0);
-        const target = runtime?.controls?.target || controls.target;
-        const distance = Math.max(activeCamera.position.distanceTo(target), radius * 1e-3);
-        const near = Math.max(distance - radius * 4, distance / 250);
-        const far = Math.max(distance + sceneExtent * 50, near * 16);
-        if (
-          Math.abs(near - activeCamera.near) > activeCamera.near * 0.1 ||
-          Math.abs(far - activeCamera.far) > activeCamera.far * 0.1
-        ) {
-          activeCamera.near = near;
-          activeCamera.far = far;
-          activeCamera.updateProjectionMatrix();
-        }
+        fitCameraDepthToBounds(activeCamera, runtime?.modelBounds);
       };
 
       let rafId = 0;
@@ -816,6 +809,7 @@ export function useViewerRuntime({
         sceneBackgroundTexture: null,
         environmentResource: null,
         environmentResourceIdentity: "",
+        photographicStudio: null,
         shadowMapSize: 2048,
         gridConfig: null,
         gridHelper: null,
@@ -917,6 +911,7 @@ export function useViewerRuntime({
         disposeSceneObject(runtime.axesHelper);
         disposeTexture(runtime.sceneBackgroundTexture);
         disposeEnvironmentResource(runtime.environmentResource);
+        disposePhotographicStudio(runtime);
         runtime.keyLight?.shadow?.map?.dispose?.();
         if (runtime.keyLight?.shadow) {
           runtime.keyLight.shadow.map = null;
@@ -941,5 +936,5 @@ export function useViewerRuntime({
       cleanup();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runtimeResetToken]);
+  }, [renderMode, runtimeResetToken]);
 }

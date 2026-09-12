@@ -103,6 +103,7 @@ function DesktopFloatingToolBar({
   drawingViewMode = "3d",
   onDrawingViewModeChange,
   previewMode = false,
+  renderMode = false,
   toolbarHidden = false,
   onToolbarEnter,
   onToolbarLeave,
@@ -189,7 +190,7 @@ function DesktopFloatingToolBar({
   // A drawing's own toolbar, in its own pill to the LEFT of the shared one: 2D and 3D are a
   // property of the drawing being viewed, not a tool that acts on it, so grouping them with
   // select/pan/draw would read as a fourth mode of the same kind.
-  const drawingViewToolbar = drawingViewToggle ? (
+  const drawingViewToolbar = !renderMode && drawingViewToggle ? (
     <div
       className={`${toolbarHidden ? "pointer-events-none" : "pointer-events-auto"} inline-flex h-8 w-fit items-center gap-0.5 rounded-md p-1 ${FLOATING_TOOL_BAR_SURFACE_CLASS}`}
       onPointerEnter={onToolbarEnter}
@@ -258,7 +259,7 @@ function DesktopFloatingToolBar({
                   work against any viewport; Select is only meaningful where there is
                   something to pick. Each button asks the capability table, so enabling
                   one for a new format is a data change. */}
-              {showToolCluster ? (
+              {!renderMode && showToolCluster ? (
                 <>
                   <ToolbarButton
                     label={selectLabel}
@@ -303,6 +304,7 @@ function DesktopFloatingToolBar({
                   {animationButton}
                 </>
               ) : null}
+              {renderMode ? animationButton : null}
 
               <ToolbarButton
                 label="Orbit"
@@ -320,7 +322,7 @@ function DesktopFloatingToolBar({
       </TooltipProvider>
 
 
-      {!previewMode && supportsTool(renderFormat, "draw") && drawToolActive ? (
+      {!renderMode && !previewMode && supportsTool(renderFormat, "draw") && drawToolActive ? (
         <DrawingToolbar
           className={CAD_WORKSPACE_TOOLBAR_DESKTOP_WIDTH_CLASS}
           drawingToolOptions={drawingToolOptions}

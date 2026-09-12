@@ -10,7 +10,6 @@ import {
 } from "./themeSettings.js";
 import {
   addFloor,
-  applyEnvironment,
   applyLighting,
   createSharedRenderOptions,
   RENDER_SCENE_SCALE,
@@ -19,6 +18,7 @@ import {
   centerAndRadiusFromBounds,
   fitOrthographicCamera,
   fitPerspectiveCamera,
+  fitCameraDepthToBounds,
   frameHalfHeightForView,
   framePadding,
   inferRenderSceneScale,
@@ -49,6 +49,25 @@ function assertClose(actual, expected, epsilon = 1e-6) {
   assert.ok(Math.abs(actual - expected) <= epsilon, `${actual} !== ${expected}`);
 }
 
+function groundHitAtNdc(camera, x, y, groundZ) {
+  camera.updateMatrixWorld(true);
+  const cameraPosition = new THREE.Vector3();
+  const origin = new THREE.Vector3();
+  const direction = new THREE.Vector3();
+  camera.getWorldPosition(cameraPosition);
+  if (camera.isPerspectiveCamera) {
+    origin.copy(cameraPosition);
+    direction.set(x, y, 0).unproject(camera).sub(origin);
+  } else {
+    origin.set(x, y, -1).unproject(camera);
+    direction.set(0, 0, -1).transformDirection(camera.matrixWorld);
+  }
+  if (Math.abs(direction.z) <= 1e-12) return null;
+  const hit = origin.addScaledVector(direction, (groundZ - origin.z) / direction.z);
+  const depth = -hit.clone().applyMatrix4(camera.matrixWorldInverse).z;
+  return depth > 0 ? { hit, depth } : null;
+}
+
 test("shared render options preserve explicit caller-owned values without defaults", () => {
   const options = createSharedRenderOptions({
     displayMode: "wireframe",
@@ -61,18 +80,6 @@ test("shared render options preserve explicit caller-owned values without defaul
   assert.equal(Object.hasOwn(options, "displayMode"), false);
   assert.equal(options.background, false);
   assert.equal(options.renderScale, 0);
-});
-
-test("disabled environments clear both the texture and shared intensity", async () => {
-  const scene = new THREE.Scene();
-  scene.environment = new THREE.Texture();
-  scene.environmentIntensity = 4;
-  const resource = await applyEnvironment(scene, {
-    environment: { enabled: false, intensity: 0.25 }
-  });
-  assert.equal(resource, null);
-  assert.equal(scene.environment, null);
-  assert.equal(scene.environmentIntensity, 0);
 });
 
 test("theme resolution uses saved theme ids or direct theme settings", () => {
@@ -233,6 +240,90 @@ test("perspective framing preserves explicit camera position and target", () => 
     assert.deepEqual(camera.position.toArray(), cameraSpec.position);
     assert.deepEqual(resolved.position, cameraSpec.position);
     assert.deepEqual(resolved.target, cameraSpec.target);
+  }
+});
+
+test("lens focal length changes perspective while automatic framing keeps the subject in frame", () => {
+  const bounds = { min: [-20, -15, 0], max: [20, 15, 25] };
+  for (const [width, height] of [[1200, 800], [800, 1200]]) {
+    const distances = [];
+    for (const focalLength of [24, 85, 200]) {
+      const camera = new THREE.PerspectiveCamera(48);
+      const spec = { preset: "iso", projection: "perspective", focalLength };
+      const result = fitPerspectiveCamera(camera, spec, bounds, width, height, {
+        padding: 0.04, sceneScale: RENDER_SCENE_SCALE.CAD, settingsByScale: SCALE_SETTINGS
+      });
+      assertClose(camera.getFocalLength(), focalLength);
+      assert.equal(result.focalLength, focalLength);
+      for (const x of [-20, 20]) for (const y of [-15, 15]) for (const z of [0, 25]) {
+        const point = new THREE.Vector3(x, y, z).project(camera);
+        assert.ok(Math.abs(point.x) <= 0.920001 && Math.abs(point.y) <= 0.920001);
+      }
+      distances.push(camera.position.distanceTo(new THREE.Vector3(...result.target)));
+    }
+    assert.ok(distances[0] < distances[1] && distances[1] < distances[2]);
+  }
+});
+
+test("photographic depth fitting preserves the subject at CAD and robot scales as cameras move", () => {
+  for (const scale of [0.001, 1, 1000]) {
+    const bounds = { min: [-20 * scale, -10 * scale, 0], max: [20 * scale, 10 * scale, 8 * scale] };
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.00001, 50000);
+    for (const position of [[60, -60, 80], [90, 20, 15], [300, 300, 300]]) {
+      camera.position.set(...position.map((value) => value * scale));
+      camera.lookAt(0, 0, 4 * scale);
+      assert.equal(fitCameraDepthToBounds(camera, bounds), true);
+      assert.ok(camera.far / camera.near < 100, "ordinary depth stays precise around the subject and studio stage");
+      for (const point of boundsCorners(bounds)) {
+        const z = point.project(camera).z;
+        assert.ok(z > -1 && z < 1, `subject is not clipped: ${z}`);
+      }
+      assert.equal(fitCameraDepthToBounds(camera, bounds), false, "unchanged cameras do not rewrite projection");
+    }
+    camera.position.set(0, 0, 4 * scale);
+    camera.lookAt(0, 1, 4 * scale);
+    fitCameraDepthToBounds(camera, bounds);
+    assert.ok(camera.near > 0 && camera.far > camera.near, "camera inside the subject remains navigable");
+  }
+});
+
+test("photographic depth fitting retains foreground ground at oblique and low camera angles", () => {
+  for (const scale of [0.001, 1, 1000]) {
+    const bounds = { min: [-20 * scale, -10 * scale, 0], max: [20 * scale, 10 * scale, 8 * scale] };
+    const radius = Math.hypot(40 * scale, 20 * scale, 8 * scale) / 2;
+    const cases = [
+      {
+        camera: new THREE.PerspectiveCamera(50, 16 / 9, 0.000001 * scale, 100000 * scale),
+        position: [0, -55, 6]
+      },
+      {
+        camera: new THREE.OrthographicCamera(-30 * scale, 30 * scale, 18 * scale, -18 * scale, 0.000001 * scale, 100000 * scale),
+        position: [40, -40, 40]
+      }
+    ];
+    for (const { camera, position } of cases) {
+      camera.position.set(...position.map((value) => value * scale));
+      camera.lookAt(0, 0, 4 * scale);
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld(true);
+      const hits = [[-1, -1], [1, -1], [-1, 1], [1, 1]]
+        .map(([x, y]) => groundHitAtNdc(camera, x, y, bounds.min[2]))
+        .filter(Boolean);
+      const foreground = hits.reduce((nearest, entry) => (
+        !nearest || entry.depth < nearest.depth ? entry : nearest
+      ), null);
+      assert.ok(foreground, "the fixture exposes foreground ground");
+
+      const subjectNear = Math.min(...boundsCorners(bounds).map(
+        (point) => -point.applyMatrix4(camera.matrixWorldInverse).z
+      )) - radius * 0.1;
+      assert.ok(subjectNear > foreground.depth, "the old subject-only near plane would clip the ground");
+
+      fitCameraDepthToBounds(camera, bounds);
+      const projected = foreground.hit.clone().project(camera);
+      assert.ok(projected.z > -1 && projected.z < 1, `foreground ground is not clipped: ${projected.z}`);
+      assert.ok(camera.near > radius * 0.01, "near stays view-fitted instead of collapsing to the safety floor");
+    }
   }
 });
 

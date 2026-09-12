@@ -80,8 +80,8 @@ keys.
 Per-file state is namespaced by the active root directory and keyed by file:
 
 ```text
-cad-viewer:file-session:v1:<namespace>:<fileKey>
-cad-viewer:file-session:index:v1:<namespace>
+cad-viewer:file-session:v3:<namespace>:<fileKey>
+cad-viewer:file-session:index:v3:<namespace>
 ```
 
 Per-file session state is intentionally tab-local. Do not sync these keys from
@@ -97,9 +97,11 @@ Existing slice intent:
 - `urdf`: joint values and motion-planning controls.
 - `largeFile`: large-file decisions such as selectable topology opt-in.
 - `display`: normal CAD display controls for the model.
-- `render`: Render enablement, sparse studio customizations, quality, and the
-  separate CAD/Render camera state. An omitted studio follows global app
-  appearance; an explicit `studio-light` or `studio-dark` pins the studio.
+- `render`: Render enablement, sparse photographic configuration, and separate
+  CAD/Render camera state. An omitted studio follows global app appearance;
+  an explicit `light` or `dark` pins it. The slice accepts exposure, softbox,
+  backdrop, lens, and Preview/Final quality values. Display stays in the CAD
+  slice and never enters the Render payload.
 
 When adding another large-file control, reuse the `largeFile` slice instead of
 adding a separate session storage key.

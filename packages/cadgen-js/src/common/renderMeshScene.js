@@ -40,7 +40,6 @@ import {
 } from "../lib/viewer/explodedView.js";
 import {
   addFloor as addSharedFloor,
-  applyEnvironment as applySharedEnvironment,
   applyLighting as applySharedLighting,
   boundsCorners as sharedBoundsCorners,
   boundsFromVertices as sharedBoundsFromVertices,
@@ -50,6 +49,7 @@ import {
   createSharedRenderOptions,
   drawBurnedInLabel as drawSharedBurnedInLabel,
   fitPerspectiveCamera as fitSharedPerspectiveCamera,
+  fitCameraDepthToBounds,
   fitOrthographicCamera,
   frameHalfHeightForView as sharedFrameHalfHeightForView,
   framePadding as sharedFramePadding,
@@ -69,8 +69,10 @@ import {
   resolveSceneSettings
 } from "./sceneSettings.js";
 import {
+  createEnvironmentResource,
   disposeEnvironmentResource
 } from "./environmentMap.js";
+import { applyPhotographicStudio, disposePhotographicStudio } from "./photographicStudio.js";
 
 const DEFAULT_RENDER_SCALE = 1;
 const RENDER_SCENE_SCALE_SETTINGS = Object.freeze({
@@ -134,10 +136,6 @@ function centerAndRadiusFromBounds(bounds, sceneScale = RENDER_SCENE_SCALE.CAD) 
 
 function colorTextureFromBackground(background, width, height) {
   return sharedColorTextureFromBackground(background, width, height);
-}
-
-async function applyEnvironment(scene, themeSettings, warnings, renderer, environmentMapSize) {
-  return applySharedEnvironment(scene, themeSettings, warnings, { renderer, environmentMapSize });
 }
 
 function applyLighting(scene, themeSettings, bounds, sceneScale, shadowMapSize) {
@@ -754,7 +752,7 @@ export function listRenderableParts(meshData) {
   });
 }
 
-function outputCameraSpec(context, cameraSpec) {
+export function resolveOutputCameraSpec(context, cameraSpec) {
   const contextCamera = context?.camera || {
     preset: "iso",
     projection: context?.projection || CAMERA_PROJECTION.ORTHOGRAPHIC
@@ -765,10 +763,12 @@ function outputCameraSpec(context, cameraSpec) {
   if (typeof cameraSpec === "string") {
     return {
       preset: cameraSpec,
-      projection: contextCamera.projection
+      projection: contextCamera.projection,
+      ...(contextCamera.focalLength != null ? { focalLength: contextCamera.focalLength } : {})
     };
   }
   return {
+    ...(contextCamera.focalLength != null ? { focalLength: contextCamera.focalLength } : {}),
     ...cameraSpec,
     projection: cameraSpec.projection ?? contextCamera.projection
   };
@@ -778,7 +778,7 @@ function outputCameraSpec(context, cameraSpec) {
 // output view inherits the job camera's projection unless it explicitly says
 // otherwise.
 export function resolveOutputCameraProjection(context, cameraSpec) {
-  return normalizeCameraSpec(outputCameraSpec(context, cameraSpec), {
+  return normalizeCameraSpec(resolveOutputCameraSpec(context, cameraSpec), {
     presets: RENDER_VIEW_PRESETS,
     strict: true,
     defaultProjection: context?.camera?.projection || CAMERA_PROJECTION.ORTHOGRAPHIC
@@ -790,7 +790,7 @@ function snapshotDisplayOverride(job = {}) {
     ? job.display
     : {};
   if (job.render != null) {
-    return display;
+    return null;
   }
   return {
     ...display,
@@ -809,9 +809,12 @@ function snapshotDisplayOverride(job = {}) {
 
 export function renderJobContext(meshData, job = {}) {
   if (Object.prototype.hasOwnProperty.call(job, "theme")) {
-    throw new Error("Snapshot field 'theme' was removed; use 'render'.");
+    throw new Error("Unsupported snapshot field: theme");
   }
   const mode = String(job.mode || "view").trim().toLowerCase();
+  if (job.render != null && mode !== "view") {
+    throw new Error("Photographic Render supports only view mode");
+  }
   const sceneScale = resolveRenderSceneScale(job, meshData);
   const sourceKind = String(job.resolved?.kind || job.kind || meshData?.sourceFormat || "").trim().toLowerCase();
   const stepDisplayEnabled = sourceKind === "step" || sourceKind === "stp";
@@ -834,7 +837,7 @@ export function renderJobContext(meshData, job = {}) {
     camera: sceneSettings.camera,
     sceneScale,
     clip: displaySettings.clip,
-    selection: job.selection || null,
+    selection: sceneSettings.render.enabled ? null : job.selection || null,
     floor: theme.floor || null,
     background: theme.background || null,
     lighting: theme.lighting || null,
@@ -848,8 +851,12 @@ export function renderJobContext(meshData, job = {}) {
   };
   const wireframeMode = displayModeIsWireframe(displayMode);
   const edgesVisible = stepDisplayEnabled && displayModeShowsEdges(displayMode);
-  const selectorRuntime = job.stepParameters?.selectorRuntime || job.selectorRuntime || null;
-  const displayEdgeRuntime = job.stepParameters?.displayEdgeRuntime || job.displayEdgeRuntime || null;
+  const selectorRuntime = sceneSettings.render.enabled
+    ? null
+    : job.stepParameters?.selectorRuntime || job.selectorRuntime || null;
+  const displayEdgeRuntime = sceneSettings.render.enabled
+    ? null
+    : job.stepParameters?.displayEdgeRuntime || job.displayEdgeRuntime || null;
   const topologyDisplayEdgesVisible = shouldRenderTopologyDisplayEdges({
     edgesVisible,
     wireframeMode,
@@ -885,7 +892,7 @@ export function renderJobContext(meshData, job = {}) {
 }
 
 export function modelOptionsForRenderJob(context, job = {}) {
-  const selection = job.selection || {};
+  const selection = context.sceneSettings.render.enabled ? {} : job.selection || {};
   const keepsAllParts = context.mode === "view";
   const filterSelection = keepsAllParts
     ? {
@@ -918,7 +925,7 @@ export function modelOptionsForRenderJob(context, job = {}) {
     silhouette: context.topologyDisplayEdgesVisible && context.edgeSettings.silhouette === true,
     renderPartsIndividually: true,
     selection: {
-      ...(job.selection || {}),
+      ...selection,
       ...(focusedPartId.length ? { focusedPartId } : {}),
       showEdges: context.edgesVisible
     },
@@ -960,19 +967,27 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
   let disposed = false;
   let environmentResource = null;
   let backgroundTexture = null;
-  if (normalizeBoolean(job.output?.transparent, false) || context.theme.background?.type === "transparent") {
+  const photographicConfiguration = context.sceneSettings.render.configuration || null;
+  const studioConfiguration = photographicConfiguration && normalizeBoolean(job.output?.transparent, false)
+    ? { ...photographicConfiguration, backdrop: { ...photographicConfiguration.backdrop, transparent: true } }
+    : photographicConfiguration;
+  const studioRuntime = studioConfiguration ? { scene, renderer, modelBounds: model.bounds || context.bounds } : null;
+  if (studioRuntime) {
+    applyPhotographicStudio(THREE, studioRuntime, studioConfiguration, {
+      bounds: viewportOptions.floorBounds || studioRuntime.modelBounds,
+      sceneScale: context.sceneScale,
+      shadowMapSize: context.quality.shadowMapSize
+    });
+  } else if (normalizeBoolean(job.output?.transparent, false) || context.theme.background?.type === "transparent") {
     scene.background = null;
     renderer.setClearColor(new THREE.Color("#000000"), 0);
   } else {
     backgroundTexture = colorTextureFromBackground(context.theme.background || {}, firstSize.width, firstSize.height);
     scene.background = backgroundTexture;
   }
-  const ready = applyEnvironment(
-    scene,
-    context.theme,
-    context.warnings,
-    renderer,
-    context.quality.environmentMapSize
+  const ready = (studioRuntime
+    ? createEnvironmentResource(renderer, studioConfiguration, { size: context.quality.environmentMapSize })
+    : Promise.resolve(null)
   ).then((resource) => {
     if (disposed) {
       if (scene.environment === resource?.texture) scene.environment = null;
@@ -981,9 +996,10 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
       return null;
     }
     environmentResource = resource;
+    scene.environment = resource?.texture || null;
     return resource;
   });
-  applyLighting(
+  if (!studioRuntime) applyLighting(
     scene,
     context.theme,
     model.bounds || context.bounds,
@@ -1004,7 +1020,7 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
   // to be in right now — right for a still, which is posed before it gets here,
   // and wrong for a video, whose camera frames the union across its frames and
   // would otherwise show the grid's edge with the moving part walking off it.
-  addFloor(
+  if (!studioRuntime) addFloor(
     scene,
     viewportOptions.floorBounds || model.bounds || context.bounds,
     context.theme,
@@ -1020,6 +1036,8 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
     renderer,
     orthographicCamera,
     perspectiveCamera,
+    studioRuntime,
+    studioConfiguration,
     context,
     sceneBuildStarted,
     ready,
@@ -1028,6 +1046,7 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
       disposed = true;
       model.dispose?.();
       scene.remove?.(model.root);
+      if (studioRuntime) disposePhotographicStudio(studioRuntime);
       if (scene.environment === environmentResource?.texture) scene.environment = null;
       if (scene.background === environmentResource?.texture) scene.background = null;
       disposeEnvironmentResource(environmentResource);
@@ -1037,11 +1056,14 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
       renderer.dispose?.();
     }
   };
-  Promise.resolve(ready).finally(() => {
+  const cleanDisposedResources = () => {
     if (disposed) {
       disposeSnapshotSceneResources(scene, model.root, [backgroundTexture]);
     }
-  });
+  };
+  // Observe both outcomes without creating a second unhandled rejection. The
+  // original ready promise remains the caller's authoritative render failure.
+  Promise.resolve(ready).then(cleanDisposedResources, cleanDisposedResources);
   return viewport;
 }
 
@@ -1190,9 +1212,7 @@ export async function captureModel(viewport, captureOptions = {}) {
   const sceneBuildMs = performance.now() - viewport.sceneBuildStarted;
   const padding = framePadding(job);
   const parametersForOutput = (output) => (
-    output.stepParameters ||
-    job.stepParameters ||
-    null
+    context.sceneSettings.render.enabled ? null : output.stepParameters || job.stepParameters || null
   );
   const renderedOutputs = [];
   const renderStarted = performance.now();
@@ -1225,7 +1245,7 @@ export async function captureModel(viewport, captureOptions = {}) {
       lineResolution.width,
       lineResolution.height
     );
-    const cameraSpec = outputCameraSpec(context, output.camera || null);
+    const cameraSpec = resolveOutputCameraSpec(context, output.camera || null);
     const outputProjection = resolveOutputCameraProjection(context, cameraSpec);
     const usePerspectiveCamera = outputProjection === CAMERA_PROJECTION.PERSPECTIVE;
     const cameraView = usePerspectiveCamera ? null : resolveView(cameraSpec);
@@ -1248,6 +1268,14 @@ export async function captureModel(viewport, captureOptions = {}) {
     if (!usePerspectiveCamera && useTightFrame) {
       viewport.scene.updateMatrixWorld(true);
       applyTightOrthographicFrame(renderCamera, viewport.model.displayRecords, width, height, padding, cameraView?.zoom);
+    }
+    if (viewport.studioRuntime) {
+      fitCameraDepthToBounds(renderCamera, outputBounds);
+      applyPhotographicStudio(THREE, viewport.studioRuntime, viewport.studioConfiguration, {
+        bounds: outputBounds,
+        sceneScale,
+        shadowMapSize: context.quality.shadowMapSize
+      });
     }
     viewport.renderer.render(viewport.scene, renderCamera);
     const viewLabel = String(output.viewLabel || output.label || resolvedCamera.name || "").toUpperCase();
