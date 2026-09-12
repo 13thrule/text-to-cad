@@ -18,6 +18,10 @@ test("file sheet section defaults match current sheet behavior", () => {
     ["tree"]
   );
   assert.deepEqual(defaultOpenFileSheetSectionIds("mesh"), ["measurements"]);
+  assert.deepEqual(defaultOpenFileSheetSectionIds("mesh", {
+    hasEmbeddedGlbAnimationPanel: true,
+    measurementAvailable: false
+  }), ["animation"]);
   assert.deepEqual(defaultOpenFileSheetSectionIds("srdf"), ["joints"]);
   assert.deepEqual(defaultOpenFileSheetSectionIds("srdf", { motionEnabled: true }), ["motion", "joints"]);
   assert.deepEqual(defaultOpenFileSheetSectionIds("sdf"), ["sdf", "joints"]);
@@ -78,6 +82,10 @@ test("rendered file sheet sections include closed-by-default sections", () => {
   ]);
   assert.deepEqual(renderedFileSheetSectionIds("srdf"), ["joints", "display"]);
   assert.deepEqual(renderedFileSheetSectionIds("mesh"), ["measurements", "display"]);
+  assert.deepEqual(renderedFileSheetSectionIds("mesh", {
+    hasEmbeddedGlbAnimationPanel: true,
+    measurementAvailable: false
+  }), ["animation", "display"]);
 });
 
 test("Render mode exposes only photographic controls and animation playback", () => {
@@ -88,6 +96,10 @@ test("Render mode exposes only photographic controls and animation playback", ()
   }), ["render", "animation"]);
   assert.deepEqual(renderedFileSheetSectionIds("step", { renderMode: true }), ["render"]);
   assert.deepEqual(renderedFileSheetSectionIds("mesh", { renderMode: true }), ["render"]);
+  assert.deepEqual(renderedFileSheetSectionIds("mesh", {
+    renderMode: true,
+    hasEmbeddedGlbAnimationPanel: true
+  }), ["render", "animation"]);
   assert.deepEqual(renderedFileSheetSectionIds("dxf", { renderMode: true }), ["render"]);
   assert.deepEqual(renderedFileSheetSectionIds("sdf", { renderMode: true }), ["render"]);
   assert.deepEqual(defaultOpenFileSheetSectionIds("step", {

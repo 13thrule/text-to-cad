@@ -101,6 +101,12 @@ export function resolveRenderCameraSnapshot(camera, bounds = null, { sceneScale 
   return renderCameraSnapshot(resolveCameraSnapshot(camera, bounds, { sceneScale }));
 }
 
+export function readRenderSessionCamera(viewer, fallback = null) {
+  // Automatic framing can precede the first camera-change event. A mode switch
+  // must preserve the actual viewport, including its orthographic frame size.
+  return renderCameraSnapshot(viewer?.getPerspective?.()) || renderCameraSnapshot(fallback);
+}
+
 export function setRenderPayloadValue(payload, path, value) {
   const normalizedPayload = normalizeRenderPayload(payload || DEFAULT_RENDER_PAYLOAD);
   const normalizedPath = (Array.isArray(path) ? path : []).map((part) => String(part || "").trim()).filter(Boolean);

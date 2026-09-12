@@ -2,6 +2,7 @@ import FileSheet from "./FileSheet";
 import FileSheetTabbedSurface from "./FileSheetTabbedSurface";
 import StepMeasurementsSection from "./StepMeasurementsSection";
 import { FILE_SHEET_SECTION_IDS } from "../../workbench/fileSheetSections";
+import { buildAnimationControlsTab } from "./AnimationControlsSection";
 
 const EMPTY_MEASUREMENTS = [];
 
@@ -20,6 +21,8 @@ export default function MeshFileSheet({
   suppressDynamicMetadataStatus = false,
   renderMode = false,
   settingsTabs = [],
+  animationRuntime = null,
+  measurementAvailable = true,
   openSectionIds = [],
   onOpenSectionIdsChange,
   measurements = EMPTY_MEASUREMENTS,
@@ -29,7 +32,8 @@ export default function MeshFileSheet({
   onMeasurementDelete = null,
   onMeasurementsClear = null
 }) {
-  const measureTab = kind === "mesh"
+  const animationTab = buildAnimationControlsTab({ runtime: animationRuntime });
+  const measureTab = kind === "mesh" && measurementAvailable
     ? {
       id: FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS,
       title: "Measure",
@@ -46,11 +50,15 @@ export default function MeshFileSheet({
     }
     : null;
   const allSections = [
+    ...(animationTab ? [animationTab] : []),
     ...(measureTab ? [measureTab] : []),
     ...settingsTabs
   ];
   const sections = renderMode
-    ? allSections.filter((section) => section?.id === FILE_SHEET_SECTION_IDS.THEME_RENDER)
+    ? [
+        ...settingsTabs.filter((section) => section?.id === FILE_SHEET_SECTION_IDS.THEME_RENDER),
+        ...(animationTab ? [animationTab] : [])
+      ]
     : allSections;
 
   return (

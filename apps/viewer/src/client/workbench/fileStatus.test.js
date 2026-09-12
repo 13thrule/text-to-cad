@@ -243,3 +243,14 @@ test("every emitted badge label stays within the one-to-two word contract", () =
     assert.ok(result.label.split(/\s+/).length <= 2, result.label);
   }
 });
+
+
+test("transport errors identify the connection instead of a failed build", () => {
+  const result = resolveFileStatus({
+    hasFile: true,
+    error: { kind: "network", severity: "error", summary: "Connection lost", message: "Check that the viewer is running." }
+  });
+  assert.equal(result.label, "Offline");
+  assert.equal(result.tone, "error");
+  assert.match(result.title, /viewer is running/);
+});

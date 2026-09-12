@@ -29,6 +29,12 @@ import {
 import { VIEWER_PICK_MODE } from "cadgen-js/lib/viewer/constants";
 import { resolveScenePartRendering } from "cadgen-js/lib/viewer/partRendering";
 import { hasMeshGeometry } from "cadgen-js/lib/render/meshCost";
+import { disposeGlbDocument } from "cadgen-js/lib/render/glbMeshData";
+import {
+  createGlbAnimationRuntime,
+  disposeGlbAnimationRuntime,
+  setGlbAnimationTime
+} from "cadgen-js/lib/render/glbAnimationRuntime";
 import { normalizeStepClipSettings } from "cadgen-js/lib/viewer/clipPlane";
 import {
   buildDrawingPoint,
@@ -1568,6 +1574,54 @@ function clearSceneGroup(group) {
   }
 }
 
+function nativeGlbBounds(THREE, root) {
+  root.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(root, true);
+  if (box.isEmpty()) return { min: [0, 0, 0], max: [0, 0, 0] };
+  return { min: box.min.toArray(), max: box.max.toArray() };
+}
+
+function buildNativeGlbCadScene(THREE, document, source, receiveShadows) {
+  const modelGroup = new THREE.Group();
+  modelGroup.matrix.fromArray(document.cadRootMatrix);
+  modelGroup.matrixAutoUpdate = false;
+  modelGroup.matrixWorldNeedsUpdate = true;
+  modelGroup.add(document.scene);
+  document.scene.traverse((object) => {
+    // The viewer owns one lighting rig in both Inspect and Render. Retain the
+    // authored node hierarchy, but do not let embedded punctual lights create
+    // a second, file-specific Studio.
+    if (object?.isLight) {
+      object.visible = false;
+      return;
+    }
+    if (!object?.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = receiveShadows;
+    // Three caches local culling bounds. Bone deformation (and, on imported
+    // files, morph displacement) can leave those rest-pose bounds even though
+    // the hierarchy and framing estimate are correct.
+    if (object.isSkinnedMesh || object.morphTargetInfluences?.length) {
+      object.frustumCulled = false;
+    }
+  });
+  return {
+    source,
+    nativeDocument: document,
+    modelGroup,
+    edgesGroup: new THREE.Group(),
+    displayRecords: [],
+    bounds: document.animatedBounds || nativeGlbBounds(THREE, modelGroup),
+    update() {},
+    syncSurfaceInstances() {},
+    dispose() {
+      // The document owns its native resources across renderer/theme rebuilds.
+      // Detach it before the generic scene cleanup recursively disposes children.
+      document.scene.removeFromParent();
+    }
+  };
+}
+
 function getEdgeThickness(edgeSettings = null, viewerTheme = null) {
   const fallbackThickness = Number.isFinite(Number(viewerTheme?.edgeThickness))
     ? Number(viewerTheme.edgeThickness)
@@ -1729,6 +1783,8 @@ const CadViewer = forwardRef(function CadViewer({
   displayEdgeRuntime = null,
   stepParameters = null,
   stepAnimation = null,
+  glbDocument = null,
+  embeddedGlbAnimation = null,
   pickableFaces = [],
   pickableEdges = [],
   pickableVertices = [],
@@ -4002,9 +4058,13 @@ const CadViewer = forwardRef(function CadViewer({
       },
       receiveShadows
     };
+    const nativeGlbActive = Boolean(glbDocument?.scene && embeddedGlbAnimation?.clip);
     const reuseScene = !!runtime.cadScene &&
       runtime.hasVisibleModel &&
       runtime.activeModelKey === (modelKey || "") &&
+      (nativeGlbActive
+        ? runtime.cadScene.nativeDocument === glbDocument
+        : !runtime.cadScene.nativeDocument) &&
       sceneBuildRef.current.key === sceneBuildKey &&
       sceneBuildRef.current.viewerTheme === viewerTheme;
     const rebuildReason = !reuseScene && runtime.cadScene
@@ -4013,7 +4073,7 @@ const CadViewer = forwardRef(function CadViewer({
     let cadScene;
     if (reuseScene) {
       cadScene = runtime.cadScene;
-      cadScene.update({
+      if (!nativeGlbActive) cadScene.update({
         source: meshData,
         theme: sceneTheme,
         materialSettings,
@@ -4022,7 +4082,9 @@ const CadViewer = forwardRef(function CadViewer({
       });
     } else {
       clearDisplayedModel({ releaseGpu: !runtime.hasVisibleModel || runtime.activeModelKey !== (modelKey || "") });
-      cadScene = buildModel(THREE, meshData, {
+      cadScene = nativeGlbActive
+        ? buildNativeGlbCadScene(THREE, glbDocument, meshData, receiveShadows)
+        : buildModel(THREE, meshData, {
         theme: sceneTheme,
         displayMode: normalizedDisplayMode,
         applyDisplayModeEdgePolicy: !topologyDisplayEdgesVisible,
@@ -4044,7 +4106,7 @@ const CadViewer = forwardRef(function CadViewer({
           wireframeEdgeColor
         },
         ...sceneModelSettings
-      });
+        });
       modelGroup.add(cadScene.modelGroup);
       edgesGroup.add(cadScene.edgesGroup);
       sceneBuildRef.current = { key: sceneBuildKey, viewerTheme };
@@ -4420,7 +4482,45 @@ const CadViewer = forwardRef(function CadViewer({
     visualEdgeSettings,
     syncCameraZoomPercent,
     wireframeEdgeColor,
-    applyActivePhotographicStudio
+    applyActivePhotographicStudio,
+    glbDocument,
+    embeddedGlbAnimation?.clip
+  ]);
+
+  const embeddedGlbMixerRef = useRef(null);
+  useEffect(() => () => {
+    // This component is the sole owner of an interactive document. Detach the
+    // scene before releasing GPU resources so generic group cleanup cannot
+    // recursively dispose the same hierarchy.
+    glbDocument?.scene?.removeFromParent?.();
+    disposeGlbDocument(glbDocument);
+  }, [glbDocument]);
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    const scene = glbDocument?.scene;
+    if (!runtime?.THREE || !scene || !embeddedGlbAnimation?.clip) {
+      embeddedGlbMixerRef.current = null;
+      return undefined;
+    }
+    const mixerState = createGlbAnimationRuntime(runtime.THREE, scene, embeddedGlbAnimation.clip);
+    embeddedGlbMixerRef.current = { ...mixerState, document: glbDocument };
+    return () => {
+      disposeGlbAnimationRuntime(mixerState);
+      if (embeddedGlbMixerRef.current?.mixer === mixerState.mixer) embeddedGlbMixerRef.current = null;
+    };
+  }, [glbDocument, embeddedGlbAnimation?.clip, viewerReadyTick]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
+    const mixerState = embeddedGlbMixerRef.current;
+    if (!runtime?.THREE || !mixerState || runtime.cadScene?.nativeDocument !== glbDocument) return;
+    setGlbAnimationTime(mixerState, embeddedGlbAnimation?.elapsedSec);
+    runtime.requestRender();
+  }, [
+    embeddedGlbAnimation?.clip,
+    embeddedGlbAnimation?.elapsedSec,
+    glbDocument,
+    viewerReadyTick
   ]);
 
   useEffect(() => {

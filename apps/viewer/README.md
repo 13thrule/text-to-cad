@@ -40,6 +40,12 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   compose in the effect records and nowhere else.
 - **Loud failure**: a missing entry, an unresolvable ref, or a failed
   compile surfaces as an alert — never a silently wrong scene.
+- **Actionable errors**: the viewport and file-status dialog share one heading,
+  an explanation, a recovery step, and expandable full diagnostics. Browser
+  transport failures retain request context and report a connection problem;
+  only an explicit compiler failure is labeled as one. Reload rechecks the
+  artifact status and never forces a duplicate build. Compiler output is not
+  line-clamped away.
 - **Geometry and display readiness are separate**: a `compiled` artifact owns
   a complete immutable geometry tree. Display may still be waiting for an
   exact surface derivation or tessellation. A validated warm tessellation can
@@ -75,10 +81,18 @@ plus backdrop color, transparency, and ground. Khronos PBR Neutral tone mapping 
 softbox environment provide the Render lighting. The overhead side key models
 depth, while a rear fill retains detail on dark and polished surfaces. Defaults
 are checked against colored assemblies, mechanical models, and material samples
-in both studios. Authored material properties
-remain intact. A small ground-only fill keeps floor shadows readable in both
-studios without changing model illumination; transparent backgrounds retain their
-shadow catcher. The existing toolbar owns image capture.
+in both studios. STEP package material properties remain intact. A direct GLB
+with embedded animation retains its native hierarchy, skin/morph data, textures,
+and PBR materials for playback; its Animation tab appears in both Inspect and
+Render. A static direct GLB is normalized to base or vertex color and opacity,
+3MF retains color, and STL has no authored color; textures and other static
+direct-GLB PBR channels are not carried into that normalized mesh. Animated GLB
+measurement is unavailable because the normalized triangle picks describe only
+the rest pose. A bounded load-time animation sample estimates stable framing;
+the camera, floor, and studio do not refit on every playback frame. A small ground-only fill keeps floor
+shadows readable in both studios without changing model illumination;
+transparent backgrounds retain their shadow catcher. The existing toolbar owns
+image capture.
 
 Quality is independent of the studio. Normal CAD uses its Interactive policy;
 Render offers **Preview** and **Final**, and defaults to Final. Preview and Final

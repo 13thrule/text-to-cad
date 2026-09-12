@@ -6,7 +6,7 @@ import {
   STEP_TOPOLOGY_SCHEMA_VERSION,
   isCurrentStepTopologySchemaVersion
 } from "../common/stepTopology.mjs";
-import { buildMeshDataFromGlbBuffer } from "./render/glbMeshData.js";
+import { buildGlbDocumentFromBuffer, buildMeshDataFromGlbBuffer } from "./render/glbMeshData.js";
 import { buildMeshDataFromStlBuffer } from "./render/stlMeshData.js";
 import { buildMeshDataFrom3MfBuffer } from "./render/threeMfMeshData.js";
 import { loadGlbMeshDataInWorker } from "./render/glbMeshWorkerClient.js";
@@ -284,6 +284,14 @@ export async function loadRenderGlb(url, { signal, preferWorker = false } = {}) 
 
 export function peekRenderGlb(url) {
   return peekCached(glbCache, url);
+}
+
+// Interactive GLB documents are intentionally uncached: their scene graph is
+// mutable animation state and has one viewer owner with an explicit lifetime.
+export async function loadRenderGlbDocument(url, { signal } = {}) {
+  const buffer = await loadRenderArrayBuffer(url, { signal });
+  assertNotGitLfsPointer(buffer, url, "GLB render asset");
+  return buildGlbDocumentFromBuffer(buffer);
 }
 
 export async function loadRenderSurf(url, {

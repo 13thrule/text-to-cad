@@ -10,10 +10,47 @@ import {
 } from "./stepArtifactStatus.js";
 import { fileKey } from "./sidebar.js";
 
-// A viewer alert is a TITLE and a DESCRIPTION (`message`), plus `severity` and the
-// short `summary` the sidebar keys on. Nothing else: no resolution
-// paragraph, no rebuild command — the description says what went wrong, and the
-// document's own tooling is where a rebuild happens.
+// The summary belongs in the compact file badge. The viewport shows one title,
+// an explanation with a next step, and the complete diagnostic on demand.
+function failureAlert(fileRef, error, failure, compile = false) {
+  const detail = String(failure?.detail || error || "").trim();
+  const kind = failure?.kind || (/^(Failed to fetch|Load failed|NetworkError.*|network failed)$/i.test(detail)
+    ? "network" : compile ? "compile" : "mesh");
+  const operation = failure?.operation || (compile ? "preparing display assets" : "loading geometry");
+  const diagnostics = [
+    `File: ${fileRef}`, `Operation: ${operation}`,
+    failure?.url && `Request: ${failure.method || "GET"} ${failure.url}`,
+    failure?.status && `HTTP status: ${failure.status}`,
+    detail
+  ].filter(Boolean).join("\n");
+  const common = { severity: "error", kind, details: diagnostics };
+  if (kind === "network") return {
+    ...common, summary: "Connection lost", title: "Can’t reach the viewer",
+    message: `The browser lost contact with the viewer while ${operation} for “${fileRef}”. Check that the viewer is running and this tab has the correct address, then reload.`,
+    ...(failure?.method === "POST" ? {
+      recovery: "The build may still be running on the server. Reloading checks its status before starting any work."
+    } : {}),
+    reload: true
+  };
+  if (kind === "http" || kind === "response") return {
+    ...common, summary: "Request failed", title: "The viewer couldn’t complete the request",
+    message: `${failure?.status ? `The server returned HTTP ${failure.status}` : "The server returned an unexpected response"} while ${operation} for “${fileRef}”.`,
+    reason: detail,
+    recovery: "Reload to try again. If this continues, check the viewer’s terminal output for the request shown in Details.",
+    reload: true
+  };
+  return {
+    ...common, summary: compile || kind === "compile" ? "Compile failed" : "Mesh load failed",
+    title: compile || kind === "compile" ? "Couldn’t prepare the model" : "Couldn’t load the model",
+    message: `“${fileRef}” could not be ${compile || kind === "compile" ? "prepared for display" : "loaded"}.`,
+    reason: detail || "No diagnostic was returned by the viewer.",
+    recovery: compile || kind === "compile"
+      ? "Check the reported error and the viewer’s terminal output. Correct or rebuild the source file, then reload."
+      : "Check that the file is complete and readable, then reload. The full loading error is available in Details.",
+    reload: true
+  };
+}
+
 export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = null) {
   const fileRef = fileKey(entry);
   if (!fileRef) {
@@ -22,17 +59,8 @@ export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = n
 
   const sourceFormat = entrySourceFormat(entry);
 
-  // A failed compile is the REASON there is no mesh, so it outranks the generic "no
-  // mesh data" card — and it applies to every compiled kind, not just STEP. The
-  // description is the compile job's own reason, verbatim.
   if (artifact?.status === "failed" && !hasMeshData) {
-    const detail = String(artifact.error || "").trim();
-    return {
-      severity: "error",
-      summary: "Compile failed",
-      title: "Compile failed",
-      message: detail || "The document could not be compiled."
-    };
+    return failureAlert(fileRef, artifact.error, artifact.failure, true);
   }
 
   const stepArtifactError = failedStepArtifact(entry, sourceFormat);
@@ -48,18 +76,16 @@ export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = n
         compact: true,
         summary,
         title: summary,
-        message: stepArtifactStatusMessage(stepArtifactError)
+        message: `“${fileRef}”: ${stepArtifactStatusMessage(stepArtifactError)}`,
+        recovery: "Reload to check for rebuilt display assets. If the problem persists, check the viewer’s terminal output.",
+        details: `File: ${fileRef}\n${String(stepArtifactError.message || code)}`,
+        reload: true
       };
     }
   }
 
   if (loadError) {
-    return {
-      severity: "error",
-      summary: "Mesh load failed",
-      title: "Failed to load render mesh",
-      message: loadError
-    };
+    return failureAlert(fileRef, loadError?.message || loadError, loadError?.failure);
   }
 
   // A dimensioned DRAWING has no mesh BY DESIGN -- it encloses nothing to extrude
@@ -75,8 +101,10 @@ export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = n
     return {
       severity: "error",
       summary: "Mesh unavailable",
-      title: "No mesh data is available",
-      message: "The selected entry is listed in the CAD catalog but no renderable mesh data could be loaded for it."
+      title: "No geometry to display",
+      message: `“${fileRef}” is listed in the file browser, but loading it produced no visible geometry.`,
+      recovery: "Check that the file contains a model and was saved completely, then reload.",
+      reload: true
     };
   }
 

@@ -35,7 +35,7 @@ format. Pure data: no behaviour, no imports beyond the format enum.
 | `planView` | Offers the 2D/3D top-down lock. |
 | `themeProjection` | Honours `themeSettings.projection`. |
 | `params` | `sidecar` (the model's `@step(pose=...)` block), or `null`. |
-| `animations` | Has animation clips, so transport controls apply. |
+| `animations` | Can expose animation clips. STEP gates on render-module clips; direct GLB gates on playable embedded clips. |
 | `artifactManaged` | Builds a package before it can render. A format listed here that the backend cannot produce a package for blocks forever, so a format the viewer renders from its own file belongs out. |
 | `exportFormats` | What `/__cad/export` can produce for it. |
 

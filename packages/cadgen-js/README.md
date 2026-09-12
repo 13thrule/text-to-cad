@@ -126,6 +126,13 @@ snapshot renderer and the node builders in `bin/`).
   meet only in the effect records. Flexible swept bodies use
   [tube deformation](docs/tube-deformation.md), deforming the original STEP
   tessellation through analytic centerlines in that same shared effects pass.
+- **Direct GLB animation stays native**: interactive direct-GLB loading retains
+  the glTF scene graph and standard translation, rotation, scale, skin, and
+  morph-weight tracks for a Three `AnimationMixer`. Static mesh normalization
+  remains the fallback for unanimated files. Interactive documents are mutable,
+  uncached, and explicitly disposed by their viewer owner; a bounded load-time
+  pose sample supplies a stable framing estimate rather than resizing the stage
+  during playback.
 - **Byte determinism**: the tessellator and mesh serializers here produce
   the shipped export bytes — same geometry in, same bytes out. Deterministic
   algorithm changes advance `TESSELLATION_VERSION` and its Python mirror so
@@ -186,7 +193,12 @@ default. The key is offset from the default camera to reveal assembly depth;
 the rear fill and dim enclosure keep dark and metallic surfaces readable.
 Key and environment brightness are calibrated together at zero EV across
 colored assemblies, gray mechanical models, and authored metal/plastic finishes.
-Render fixes Khronos PBR Neutral tone mapping and preserves authored PBR channels; the
+Render fixes Khronos PBR Neutral tone mapping. STEP package material channels
+remain authored inputs to that scene. Static direct mesh normalization retains
+only the appearance data represented by the shared mesh-data contract: GLB base
+or vertex color and opacity, 3MF color, and no authored color for STL. Animated
+direct GLB uses the native hierarchy described above, so its textures and PBR
+channels remain attached to the Viewer scene. The
 public contract has no global material, color-grading, arbitrary-light, floor
 physics, or glow controls. `applyPhotographicStudio()` owns the synchronous
 light, ground and renderer state. Callers separately cache and dispose the PMREM

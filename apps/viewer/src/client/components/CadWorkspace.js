@@ -100,6 +100,7 @@ import {
   renderedFileSheetSectionIds,
   shouldOpenFileSheetForSelectionReveal
 } from "@/workbench/fileSheetSections";
+import { useEmbeddedGlbAnimation } from "@/workbench/useEmbeddedGlbAnimation";
 import {
   entrySourceFormat,
   fileSheetKindForEntry,
@@ -188,6 +189,7 @@ import {
   renderVisualSettingsKey,
   resolveRenderSessionQuality,
   resolveRenderCameraSnapshot,
+  readRenderSessionCamera,
   setRenderPayloadValue
 } from "@/workbench/renderSessionState.js";
 import {
@@ -1975,6 +1977,11 @@ export default function CadWorkspace({
     : (selectedMeshMatches || retainingPreviousStepMesh)
       ? meshState.meshData
       : null;
+  const selectedGlbDocument = selectedMeshMatches ? meshState?.glbDocument || null : null;
+  const embeddedGlbAnimationRuntime = useEmbeddedGlbAnimation(selectedGlbDocument);
+  // Animated direct GLBs render their live hierarchy. Flattened triangle picks
+  // describe only the rest pose, so exposing them would create stale rulers.
+  const effectiveSupportsMeasure = supportsMeasure && !embeddedGlbAnimationRuntime;
   const selectedAnimationClipList = useMemo(
     () => animationClipList(selectedAnimationClips),
     [selectedAnimationClips]
@@ -3268,6 +3275,8 @@ export default function CadWorkspace({
       (selectedRenderModuleUrl && selectedAnimationStatus === "loading") ||
       selectedAnimationError
     ),
+    hasEmbeddedGlbAnimationPanel: Boolean(embeddedGlbAnimationRuntime),
+    measurementAvailable: effectiveSupportsMeasure,
     hasDxfBendsPanel: selectedFileSheetKind === "dxf" && drawingBends.length > 0,
     hasDxfLayersPanel: selectedFileSheetKind === "dxf" && drawingLayers.length > 1,
     renderMode: renderSession.enabled,
@@ -3277,6 +3286,8 @@ export default function CadWorkspace({
     selectedAnimationClipList,
     selectedAnimationError,
     selectedAnimationStatus,
+    embeddedGlbAnimationRuntime,
+    effectiveSupportsMeasure,
     selectedFileSheetKind,
     selectedStepModuleDefinition,
     selectedStepModuleError,
@@ -4736,7 +4747,7 @@ export default function CadWorkspace({
   );
   // Measuring needs a mesh to hit. Topology, when loaded, upgrades STEP hits
   // from free points to edge and face snaps.
-  const measureModeActive = supportsMeasure &&
+  const measureModeActive = effectiveSupportsMeasure &&
     tabToolMode === TAB_TOOL_MODE.MEASURE &&
     Boolean(selectedMeshData) &&
     !stepInteractionBlocked &&
@@ -4803,7 +4814,7 @@ export default function CadWorkspace({
     ));
   }, [measureMeasurements, renderedSelectedFileSheetSectionIds, setTabToolsOpen]);
 
-  const measureToolDisabled = viewerLoading || !selectedMeshData || !supportsMeasure;
+  const measureToolDisabled = viewerLoading || !selectedMeshData || !effectiveSupportsMeasure;
   const topologySelectionActive =
     (isAssemblyView && requestedStepTreeTopologyNodeIds.length > 0) ||
     topLevelReferenceSelectionActive;
@@ -7145,10 +7156,11 @@ export default function CadWorkspace({
     if (enabled === renderSession.enabled) {
       return;
     }
+    const activeCamera = readRenderSessionCamera(viewerRef.current, activePerspectiveRef.current);
     if (enabled) {
       renderEnabledRef.current = true;
       const next = renderSessionForEnabledChange(renderSession, true, {
-        activeCamera: activePerspectiveRef.current,
+        activeCamera,
         activeProjection: resolvedScene.camera.projection
       });
       setRenderSession(next);
@@ -7162,7 +7174,7 @@ export default function CadWorkspace({
     }
 
     renderEnabledRef.current = false;
-    const activeRenderCamera = renderCameraSnapshot(activePerspectiveRef.current);
+    const activeRenderCamera = activeCamera;
     const next = renderSessionForEnabledChange(renderSession, false, {
       activeCamera: activeRenderCamera,
       activeProjection: resolvedScene.camera.projection
@@ -7507,6 +7519,8 @@ export default function CadWorkspace({
           }
           stepParameters={selectedStepParameterRuntime}
           stepAnimation={selectedAnimationRuntime}
+          glbDocument={selectedGlbDocument}
+          embeddedGlbAnimation={embeddedGlbAnimationRuntime?.render || null}
           selectedMeshData={selectedMeshData}
           selectedKey={selectedKey}
           missingFileRef={editingPreview.entry ? "" : missingFileRef}
@@ -7901,6 +7915,8 @@ export default function CadWorkspace({
                 suppressDynamicMetadataStatus={selectedArtifactGenerating}
                 renderMode={renderSession.enabled}
                 settingsTabs={settingsTabs}
+                animationRuntime={embeddedGlbAnimationRuntime}
+                measurementAvailable={effectiveSupportsMeasure}
                 openSectionIds={effectiveFileSheetOpenSectionIds}
                 onOpenSectionIdsChange={handleFileSheetOpenSectionIdsChange}
                 measurements={measureMeasurements}

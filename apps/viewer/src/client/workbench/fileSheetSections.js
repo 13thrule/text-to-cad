@@ -37,6 +37,9 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
       FILE_SHEET_SECTION_IDS.THEME_RENDER,
       ...(normalizedKind === "step" && options.hasStepAnimationPanel
         ? [FILE_SHEET_SECTION_IDS.STEP_ANIMATION]
+        : []),
+      ...(normalizedKind === "mesh" && options.hasEmbeddedGlbAnimationPanel
+        ? [FILE_SHEET_SECTION_IDS.STEP_ANIMATION]
         : [])
     ];
   }
@@ -87,10 +90,11 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
         FILE_SHEET_SECTION_IDS.THEME_DISPLAY
       ];
     case "mesh":
-      // Measure is the one mesh-specific control: vertex-to-vertex distance on
-      // the displayed triangles.
+      // Direct GLB may add embedded animation. Measurement stays the static
+      // triangle tool and is omitted while a native animated hierarchy is live.
       return [
-        FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS,
+        ...(options.hasEmbeddedGlbAnimationPanel ? [FILE_SHEET_SECTION_IDS.STEP_ANIMATION] : []),
+        ...(options.measurementAvailable === false ? [] : [FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS]),
         FILE_SHEET_SECTION_IDS.THEME_DISPLAY
       ];
     default:
@@ -119,7 +123,9 @@ export function defaultOpenFileSheetSectionIds(kind, options = {}) {
         ...(showJoints ? [FILE_SHEET_SECTION_IDS.ROBOT_JOINTS] : [])
       ];
     case "mesh":
-      return [FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS];
+      return options.hasEmbeddedGlbAnimationPanel
+        ? [FILE_SHEET_SECTION_IDS.STEP_ANIMATION]
+        : options.measurementAvailable === false ? [] : [FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS];
     default:
       return [];
   }

@@ -3,6 +3,7 @@ import {
   isAbortError,
   loadRenderDisplayEdgeBundle,
   loadRenderGlb,
+  loadRenderGlbDocument,
   loadRenderSurf,
   loadRenderJson,
   loadRenderSelectorBundle,
@@ -71,6 +72,7 @@ import {
 } from "cadgen-js/lib/render/meshLoaders";
 import { reclaimIdleSurfWorkers, releaseSurfWorkers } from "cadgen-js/lib/renderAssetClient";
 import { estimateMeshRenderCost, shouldUseGlbMeshWorkerForEntry } from "cadgen-js/lib/render/meshCost";
+import { disposeGlbDocument } from "cadgen-js/lib/render/glbMeshData";
 import { RENDER_FORMAT, entrySourceFormat } from "cadgen-js/lib/fileFormats";
 import { buildDisplayEdgeRuntime, buildSelectorRuntime } from "cadgen-js/lib/selectors/runtime";
 import {
@@ -232,6 +234,9 @@ function peekRenderMeshForEntry(entry) {
 }
 
 function loadRenderMeshForEntry(entry, options) {
+  if (entrySourceFormat(entry) === RENDER_FORMAT.GLB) {
+    return loadRenderGlbDocument(entryMeshAssetUrl(entry), options);
+  }
   return loadRenderMeshByUrl(entryMeshAssetUrl(entry), {
     ...options,
     fallback: meshAssetKeyForEntry(entry),
@@ -683,6 +688,11 @@ export function useCadAssets({
       if (!topologyManifest) {
         return buildAssemblyPreviewMeshState(entry, previewMeshData);
       }
+      return null;
+    }
+    // A direct GLB may own a mutable native scene and mixer, so it is never
+    // restored from the shared flattened-mesh cache.
+    if (entrySourceFormat(entry) === RENDER_FORMAT.GLB) {
       return null;
     }
     const meshData = peekRenderMeshForEntry(entry);
@@ -1215,9 +1225,11 @@ export function useCadAssets({
         const assetLabel = meshAssetKeyForEntry(entry).toUpperCase();
         throw new Error(`${assetLabel} entry is missing ${assetLabel} asset: ${entry.file || "(unknown)"}`);
       }
-      const meshData = await loadRenderMeshForEntry(entry, { signal: controller.signal });
+      const loadedMesh = await loadRenderMeshForEntry(entry, { signal: controller.signal });
+      const meshData = loadedMesh?.meshData || loadedMesh;
       const meshHash = entryMeshAssetHash(entry);
-      if (requestId !== requestIdRef.current) {
+      if (requestId !== requestIdRef.current || controller.signal.aborted) {
+        disposeGlbDocument(loadedMesh?.scene ? loadedMesh : null);
         return;
       }
       if (meshData?.sourceFormat === "dxf" && !meshData.vertices?.length) {
@@ -1237,7 +1249,8 @@ export function useCadAssets({
         file: entry.file,
         kind: entry.kind,
         meshHash,
-        meshData
+        meshData,
+        glbDocument: loadedMesh?.scene ? loadedMesh : null
       });
       setStatus(ASSET_STATUS.READY);
     } catch (err) {

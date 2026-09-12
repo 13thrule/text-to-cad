@@ -23,7 +23,9 @@ function failureStatus(error) {
   const isMetadata = /(annotation|metadata)/.test(hint);
   const isBuild = /(build|compile|generat)/.test(hint);
   const isWarning = record.severity === "warning";
-  const label = isMetadata
+  const label = record.kind === "network"
+    ? "Offline"
+    : isMetadata
     ? "Metadata issue"
     : isBuild
     ? (isWarning ? "Build issue" : "Build failed")

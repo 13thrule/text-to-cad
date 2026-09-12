@@ -1,3 +1,5 @@
+import { requestViewerJson } from "./viewerRequest.js";
+
 const CAD_CATALOG_REFRESH_INTERVAL_MS = 2_000;
 const CAD_CATALOG_FETCH_TIMEOUT_MS = 10_000;
 const CAD_FILE_QUERY_PARAM = "file";
@@ -208,20 +210,9 @@ export async function requestArtifactStatus(fileRef, { signal } = {}) {
   if (!normalizedFileRef) {
     throw new Error("Missing file");
   }
-  const response = await fetch(cadApiUrl("/__cad/artifact", {
+  return requestViewerJson(cadApiUrl("/__cad/artifact", {
     params: { file: normalizedFileRef },
-  }), {
-    method: "GET",
-    cache: "no-store",
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(await readJsonError(
-      response,
-      `Failed to check render artifact: ${response.status} ${response.statusText}`
-    ));
-  }
-  return response.json();
+  }), { method: "GET", cache: "no-store", signal }, "checking display assets");
 }
 
 // POST (re)builds the artifact and publishes the refreshed catalog; resolves to
@@ -234,7 +225,7 @@ export async function requestArtifact(fileRef, { force = false, signal } = {}) {
   if (!normalizedFileRef) {
     throw new Error("Missing file");
   }
-  const response = await fetch(cadApiUrl("/__cad/artifact", {
+  const payload = await requestViewerJson(cadApiUrl("/__cad/artifact", {
     params: { file: normalizedFileRef, ...(force ? { force: "1" } : {}) },
   }), {
     method: "POST",
@@ -243,14 +234,7 @@ export async function requestArtifact(fileRef, { force = false, signal } = {}) {
     // Custom header => a cross-origin caller must preflight, and the backend answers
     // no CORS, so a hostile page can never trigger a build (which runs the generator).
     headers: { "x-cadgen-viewer": "1" },
-  });
-  if (!response.ok) {
-    throw new Error(await readJsonError(
-      response,
-      `Failed to generate render artifact: ${response.status} ${response.statusText}`
-    ));
-  }
-  const payload = await response.json();
+  }, "preparing display assets");
   if (payload?.catalog) {
     publishCadManifest(payload.catalog);
   }

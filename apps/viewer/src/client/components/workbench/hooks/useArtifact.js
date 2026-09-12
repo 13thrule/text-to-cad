@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import { serverErrorMessage } from "../../../workbench/viewerRequest.js";
+
 import { requestArtifact, requestArtifactStatus } from "../../../workbench/cadManifestStore.js";
 import {
   ARTIFACT_PROGRESS_FIRST_POLL_MS,
@@ -43,7 +45,7 @@ import {
 const READY = { status: "compiled", error: "", progress: null, advisory: null };
 
 function isAbortError(error) {
-  return error?.name === "AbortError" || /abort/i.test(String(error?.message || ""));
+  return error?.name === "AbortError";
 }
 
 export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {}) {
@@ -151,7 +153,7 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
           return;
         }
         if (action === ARTIFACT_ACTION_ERROR) {
-          settle({ status: "failed", error: String(status?.error || status?.reason || "The document could not be compiled.") });
+          settle({ status: "failed", error: serverErrorMessage(status) });
           return;
         }
         if (action === ARTIFACT_ACTION_ATTACH) {
@@ -183,11 +185,14 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
         }
         settle(result?.ok && result.state === "compiled"
           ? { ...READY, advisory: artifactAdvisoryFor(result) }
-          : { status: "failed", error: String(result?.error || "Compiling the document failed.") });
+          : { status: "failed", error: serverErrorMessage(result) });
       } catch (error) {
         stopPolling();
         if (isCurrent() && !isAbortError(error) && !controller.signal.aborted) {
-          settle({ status: "failed", error: error instanceof Error ? error.message : String(error) });
+          settle({
+            status: "failed", error: error instanceof Error ? error.message : String(error),
+            failure: error?.failure || { kind: "response", operation: "checking display assets" }
+          });
         }
       }
     }
@@ -205,6 +210,7 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
     ? {
       status: state.status,
       error: state.error,
+      failure: state.failure || null,
       progress: state.progress,
       advisory: state.advisory || null
     }

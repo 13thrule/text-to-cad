@@ -6,6 +6,7 @@ import {
   DEFAULT_RENDER_PAYLOAD,
   createRenderSessionState,
   renderCameraSeed,
+  readRenderSessionCamera,
   renderSessionForEnabledChange,
   renderSessionForReset,
   renderVisualSettingsKey,
@@ -14,6 +15,27 @@ import {
   resolveRenderSessionQuality,
   setRenderPayloadValue
 } from "./renderSessionState.js";
+
+test("mode switching preserves the live fitted camera before any camera-change event", () => {
+  const bounds = { min: [0, 0, 0], max: [34000, 0, 18000] };
+  const fitted = resolveRenderCameraSnapshot({
+    projection: "orthographic", orthographicHalfHeight: 21033, zoom: 1.3
+  }, bounds);
+  const viewer = { getPerspective: () => fitted };
+  for (const lastEvent of [null, { ...fitted, orthographicHalfHeight: 120 }]) {
+    const enabled = renderSessionForEnabledChange(createRenderSessionState(), true, {
+      activeCamera: readRenderSessionCamera(viewer, lastEvent)
+    });
+    const disabled = renderSessionForEnabledChange(enabled, false, {
+      activeCamera: resolveRenderCameraSnapshot({ projection: "perspective" }, bounds)
+    });
+    assert.deepEqual(disabled.cadCamera, fitted);
+    assert.equal(disabled.cadCamera.orthographicHalfHeight, 21033);
+    assert.equal(disabled.cadCamera.zoom, 1.3);
+    assert.equal(disabled.cadProjection, "orthographic");
+  }
+  assert.deepEqual(readRenderSessionCamera(null, fitted), fitted);
+});
 
 test("render sessions default to an off, sparse photographic setup", () => {
   const state = createRenderSessionState();
