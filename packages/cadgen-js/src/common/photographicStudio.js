@@ -3,6 +3,8 @@ import {
   DEFAULT_RENDER_LIGHTING
 } from "./sceneSettings.js";
 import {
+  PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY,
+  PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX,
   PHOTOGRAPHIC_STUDIO_KEY_DIRECTION,
   PHOTOGRAPHIC_STUDIO_KEY_ILLUMINANCE,
   PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER
@@ -83,6 +85,19 @@ function disposeGround(state) {
   state.groundKind = null;
 }
 
+function updatePhysicalGroundColor(material, color) {
+  material.color.set(color);
+  material.emissive.set(color);
+  // A tiny neutral component gives near-black backdrop colors enough linear
+  // energy to remain visible without perceptibly cooling ordinary colors.
+  material.emissive.r += (1 - material.emissive.r)
+    * PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX;
+  material.emissive.g += (1 - material.emissive.g)
+    * PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX;
+  material.emissive.b += (1 - material.emissive.b)
+    * PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX;
+}
+
 function createState(THREE, runtime) {
   const group = new THREE.Group();
   group.name = "cadgen-photographic-studio";
@@ -134,6 +149,8 @@ function updateGround(THREE, state, configuration, bounds, sceneScale) {
       ? new THREE.ShadowMaterial({ color: 0x000000, opacity: 0.3, transparent: true })
       : new THREE.MeshStandardMaterial({
         color: configuration.backdrop.color,
+        emissive: configuration.backdrop.color,
+        emissiveIntensity: PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY,
         roughness: 0.88,
         metalness: 0,
         envMapIntensity: 0.22
@@ -148,7 +165,7 @@ function updateGround(THREE, state, configuration, bounds, sceneScale) {
   }
 
   if (state.groundKind === "physical") {
-    state.ground.material.color.set(configuration.backdrop.color);
+    updatePhysicalGroundColor(state.ground.material, configuration.backdrop.color);
   }
   const minimumSize = sceneScale === "urdf" ? 0.5 : 100;
   const spanX = bounds.max[0] - bounds.min[0];

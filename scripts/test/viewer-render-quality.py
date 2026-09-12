@@ -41,9 +41,9 @@ def main():
         def settled(expected):
             page.wait_for_function(SETTLED, arg=expected, timeout=30000)
             state = page.evaluate(STATE)
-            assert state["badge"] == "Ready", state
+            assert state.get("badge") is None, state
             print(json.dumps({"quality": expected, "levels": state["lod"]["levelCounts"],
-                              "badge": state["badge"]}), flush=True)
+                              "badge": state.get("badge")}), flush=True)
 
         def mode(current, next_mode):
             page.get_by_role("button", name=f"Viewing mode: {current}", exact=True).click()

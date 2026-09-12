@@ -76,7 +76,9 @@ softbox environment provide the Render lighting. The overhead side key models
 depth, while a rear fill retains detail on dark and polished surfaces. Defaults
 are checked against colored assemblies, mechanical models, and material samples
 in both studios. Authored material properties
-remain intact. The existing toolbar owns image capture.
+remain intact. A small ground-only fill keeps floor shadows readable in both
+studios without changing model illumination; transparent backgrounds retain their
+shadow catcher. The existing toolbar owns image capture.
 
 Quality is independent of the studio. Normal CAD uses its Interactive policy;
 Render offers **Preview** and **Final**, and defaults to Final. Preview and Final
@@ -165,7 +167,8 @@ the build — detection only; it keeps serving.
   read-back; choose **Follow edits** there to return to the live preview. The
   compact badge beside the filename reports loading, edits, save outcomes and
   detail failures or limits in one or two words. Orbit-driven refinement stays
-  in the background without changing the badge. Loading uses an inline spinner;
+  in the background without changing the badge. A loaded saved file has no badge.
+  Loading uses an inline spinner;
   warnings and errors use their own icons. Tooltips explain the state.
   Run the model normally; existing decorators need no new imports. The daemon
   must be running for live updates. The prior model stays visible while the

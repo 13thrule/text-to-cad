@@ -8,6 +8,8 @@ import {
   disposePhotographicStudio
 } from "./photographicStudio.js";
 import {
+  PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY,
+  PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX,
   PHOTOGRAPHIC_STUDIO_KEY_DIRECTION,
   PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER
 } from "./photographicStudioRig.js";
@@ -80,6 +82,15 @@ test("photographic studio applies one scale-stable key, Neutral exposure, and gr
   ) < 1e-12);
   assert.equal(state.keyLight.shadow.radius, 1.1);
   assert.equal(state.ground.material.isMeshStandardMaterial, true);
+  const expectedGroundEmissive = new THREE.Color("#e7e7e5").lerp(
+    new THREE.Color(0xffffff),
+    PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX
+  );
+  assert.deepEqual(state.ground.material.emissive.toArray(), expectedGroundEmissive.toArray());
+  assert.equal(
+    state.ground.material.emissiveIntensity,
+    PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY
+  );
   assert.equal(state.ground.receiveShadow, true);
   assert.equal(state.ground.position.x, 10);
   assert.equal(state.ground.position.y, 10);
@@ -169,6 +180,24 @@ test("live updates reuse the rig, rotate key and environment together, and resiz
   assert.notDeepEqual(second.keyLight.position.toArray(), firstKeyPosition.toArray());
   assert.equal(value.scene.environmentRotation.z, Math.PI / 2);
   assert.equal(value.scene.children.filter((child) => child.name === "cadgen-photographic-studio").length, 1);
+});
+
+test("opaque ground fill follows backdrop color without changing studio illumination", () => {
+  const value = runtime();
+  const state = applyPhotographicStudio(THREE, value, configuration({ color: "#224466" }));
+  const keyIntensity = state.keyLight.intensity;
+
+  applyPhotographicStudio(THREE, value, configuration({ color: "#663322" }));
+
+  assert.equal(state.ground.material.color.getHexString(), "663322");
+  const customColor = new THREE.Color("#663322");
+  const customColorHsl = customColor.getHSL({});
+  const customEmissiveHsl = state.ground.material.emissive.getHSL({});
+  assert.ok(Math.abs(customEmissiveHsl.h - customColorHsl.h) < 1e-12);
+  assert.ok(customEmissiveHsl.l > customColorHsl.l);
+  assert.ok(customEmissiveHsl.l - customColorHsl.l < 0.02);
+  assert.equal(state.keyLight.intensity, keyIntensity);
+  assert.equal(value.scene.environmentIntensity, 1);
 });
 
 test("transparent backdrops use a shadow catcher and ground can be removed live", () => {

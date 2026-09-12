@@ -13,16 +13,11 @@ test("no selected file has no filename status", () => {
   assert.equal(resolveFileStatus(), null);
 });
 
-test("ordinary saved STEP files stay Ready when the optional editing feed is disconnected", () => {
+test("loaded saved STEP files stay quiet when the optional editing feed is disconnected", () => {
   assert.deepEqual(resolveFileStatus({
     ...ready,
     editingState: { state: "disconnected", error: "The build daemon is unavailable" }
-  }), {
-    label: "Ready",
-    title: "The saved file is loaded.",
-    tone: "neutral",
-    busy: false
-  });
+  }), null);
 });
 
 test("build and load failures outrank usable geometry and loading activity", () => {
@@ -161,12 +156,7 @@ test("quality failures and limits are visible while background refinement stays 
   assert.deepEqual(resolveFileStatus({
     ...ready,
     qualityStatus: { state: "refining", title: "More detail is loading." }
-  }), {
-    label: "Ready",
-    title: "The saved file is loaded.",
-    tone: "neutral",
-    busy: false
-  });
+  }), null);
   assert.deepEqual(resolveFileStatus({
     ...ready,
     activity: { loading: true, label: "refining detail" }
@@ -179,7 +169,7 @@ test("quality failures and limits are visible while background refinement stays 
   assert.equal(resolveFileStatus({
     ...ready,
     qualityStatus: { state: "high", title: "High-detail geometry is ready." }
-  }).label, "Ready");
+  }), null);
 });
 
 test("stable live states distinguish a validated save from an unsaved preview", () => {
@@ -249,6 +239,7 @@ test("every emitted badge label stays within the one-to-two word contract", () =
 
   for (const input of cases) {
     const result = resolveFileStatus(input);
+    if (!result) continue;
     assert.ok(result.label.split(/\s+/).length <= 2, result.label);
   }
 });

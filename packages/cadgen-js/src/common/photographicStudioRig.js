@@ -12,6 +12,11 @@ export const PHOTOGRAPHIC_STUDIO_FILL_DIRECTION = Object.freeze([-0.65, 0.8, 0.6
 export const PHOTOGRAPHIC_STUDIO_KEY_ILLUMINANCE = 2.1;
 export const PHOTOGRAPHIC_STUDIO_CARD_RADIANCE = 8;
 export const PHOTOGRAPHIC_STUDIO_ROOM_RADIANCE = 0.04;
+// A small backdrop-colored floor fill keeps the opaque stage legible in the
+// dark studio and prevents contact shadows from collapsing to black. This is
+// material-local emission: it does not alter the model or the calibrated rig.
+export const PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY = 0.12;
+export const PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX = 0.02;
 
 // Full square-ground width relative to model-bounds radius. Keep the camera's
 // fitted far padding on this same multiplier so the ordinary-depth frustum

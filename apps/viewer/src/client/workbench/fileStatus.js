@@ -192,7 +192,7 @@ export function resolveFileStatus({
   }
 
   if (hasGeometry) {
-    return status("Ready", "The saved file is loaded.");
+    return null;
   }
 
   return status("Loading", "Loading the selected file.", "info", true);
