@@ -890,8 +890,9 @@ def build_tree_through_step(
        node by id (``o1.2.3`` is the XCAF path, because the document's product
        tree mirrors the flattened grouping). Validate own occurrence placement
        and face-color survival without modifying the published source tree.
-    4. Package the parsed scene through the canonical cold-import builder. Verify
-       complete authored-to-written correspondence before returning annotations.
+    4. Verify complete authored-to-written correspondence. A privately retained
+       canonical readback keeps its exact selected component/tree identities;
+       a raw parse goes through the canonical cold-import builder.
 
     Any own occurrence the re-read does not account for — no node at its id, a
     member without a shape, a placement that moved — is a hard error (law 10).
@@ -905,7 +906,7 @@ def build_tree_through_step(
         _normalized_face_colors,
     )
     from cadgen._internal.step_scene_loader import _selector_id, load_step_scene
-    from cadgen._internal.step_scene_package import lookup_document_scene
+    from cadgen._internal.step_scene_package import _lookup_document_readback
     from cadgen.step_export import export_build123d_step_file
     from cadgen.store.materialize import materialize_descriptor
     from cadgen.store.trees import flatten_tree
@@ -976,7 +977,8 @@ def build_tree_through_step(
         step_hash = export_build123d_step_file(document, step_path, logger=logger)
 
     with timed(f"tree: re-read STEP {step_path.name}"):
-        scene, damaged_document = (None, False) if force else lookup_document_scene(step_path, step_hash=step_hash)
+        readback, damaged_document = (None, False) if force else _lookup_document_readback(step_path, step_hash=step_hash)
+        scene = readback.scene if readback is not None else None
         if scene is None:
             scene = load_step_scene(step_path, record_read=False)
     nodes: dict[str, Any] = {}
@@ -1005,17 +1007,25 @@ def build_tree_through_step(
                     "written with per-face colours the STEP does not carry back"
                 )
     with timed("tree: canonical document"):
-        document_hash, _document_tree, _document_stats, parsed_leaves, parsed_nodes = _publish_document_scene(
-            scene, force=force or damaged_document, progress=progress,
-            # A cache hit owns verified private geometry, but its backing
-            # objects can disappear before republishing too. Verify indexed
-            # reuse here; derive and atomically repair only failed entries.
-            repair_objects=True,
-        )
+        if readback is not None and readback.tree_hash is not None:
+            # Only this internal call owns the verified closure and the scene
+            # decoded from it. Public mutable scenes never acquire authority
+            # to reuse a tree through an attribute, digest, or document index.
+            parsed_leaves, parsed_nodes = readback.canonical_maps()
+        else:
+            document_hash, _document_tree, _document_stats, parsed_leaves, parsed_nodes = _publish_document_scene(
+                scene, force=force or damaged_document, progress=progress,
+                repair_objects=True,
+            )
         occurrence_map, appearance, node_map = _document_correspondence(
             descriptor, scene, parsed_leaves, parsed_nodes,
             root_name=root_name, step_name=step_path.name,
         )
+        if readback is not None and readback.tree_hash is not None:
+            # Keep the snapshot until correspondence succeeds. Restore exact
+            # bytes if GC/damage raced the read, without re-encoding native
+            # shapes (a decode/encode need not be a byte fixed point).
+            document_hash = readback.restore()
     stats["documentTree"] = document_hash
     stats["documentAppearance"] = appearance
     stats["documentOccurrenceMap"] = occurrence_map

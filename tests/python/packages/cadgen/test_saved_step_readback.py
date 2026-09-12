@@ -92,6 +92,56 @@ class SavedStepReadbackTest(unittest.TestCase):
         self.assertNotEqual(old[3], changed[3])
         self.assertNotEqual(old[2]["documentTree"], changed[2]["documentTree"])
 
+    def test_repeated_assembly_readback_retains_exact_canonical_objects_without_reencoding(self):
+        from build123d import Compound, Location, Solid
+        from cadgen._internal.step_scene_package import load_step_scene_exact
+        from cadgen.store.build import build_document_tree
+        from cadgen.store.objects import read_verified_object
+        from cadgen.store.trees import tree_objects
+
+        shapes = []
+        for index in range(24):
+            part = Solid.make_cylinder(1 + index % 6, 3)
+            part.label = f"cylinder-{index}"
+            part.color = (index % 2, (index + 1) % 2, .5, 1)
+            shapes.append(part.moved(Location((index * 15, index % 3, 0), (17, 31, 43))))
+        shape = Compound(children=shapes, label="root")
+        expected = self.seed(shape)
+        digest = expected[2]["documentTree"]
+        original = {key: read_verified_object(key) for key in tree_objects(digest)}
+        with mock.patch("cadgen.store.build._publish_document_scene",
+                        side_effect=AssertionError("verified canonical inputs were re-encoded")), \
+                mock.patch("cadgen._internal.step_scene_loader.load_step_scene",
+                           side_effect=AssertionError("exact saved bytes were reparsed")):
+            for _ in range(3):
+                self.assert_same_document(expected, self.build(shape))
+                self.assertEqual({key: read_verified_object(key) for key in tree_objects(digest)}, original)
+        self.assert_same_document(expected, self.build(shape, force=True))
+        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(self.root / "cold-store")}):
+            cold_hash, _, _ = build_document_tree(load_step_scene_exact(self.root / "part.step"))
+            self.assertEqual(cold_hash, digest)
+
+    def test_generic_publication_derives_mutated_scene_despite_matching_document_digest(self):
+        from cadgen._internal.step_scene_package import scene_from_render_package
+        from cadgen.store.build import build_document_tree
+        from cadgen.store.records import tree_for_document_hash
+
+        expected = self.seed()
+        scene = scene_from_render_package(self.root / "part.step", step_hash=expected[3])
+        original = (self.root / "part.step").read_bytes()
+        key = next(iter(scene.prototype_shapes))
+        scene.prototype_shapes[key] = self.shape(9).wrapped
+        scene.prototype_face_colors.clear()
+        scene.roots[0].name = "changed public scene"
+        # Public hashes and invented attestation attributes cannot grant reuse.
+        scene.document_tree = expected[2]["documentTree"]
+        changed_hash, changed_tree, _ = build_document_tree(scene)
+        self.assertNotEqual(changed_hash, expected[2]["documentTree"])
+        self.assertEqual(changed_tree["label"], "changed public scene")
+        self.assertEqual(scene.step_hash, expected[3])
+        self.assertEqual(tree_for_document_hash(expected[3]), expected[2]["documentTree"])
+        self.assertEqual((self.root / "part.step").read_bytes(), original)
+
     def test_current_pbr_is_rebound_without_reading_source_records_or_staged_sidecars(self):
         shape = self.shape()
         shape.cad_material = {"roughness": .2, "metalness": .6}
@@ -204,26 +254,33 @@ class SavedStepReadbackTest(unittest.TestCase):
                 self.assert_same_document(expected, repaired)
                 self.assertEqual(path.read_bytes(), original)
 
-    def test_cache_snapshot_can_repair_an_object_deleted_after_lookup(self):
+    def test_cache_snapshot_repairs_entire_closure_deleted_or_damaged_after_lookup(self):
         from cadgen._internal import step_scene_package
-        from cadgen.store.objects import object_path
-        from cadgen.store.trees import get_tree
+        from cadgen.store.objects import object_path, read_verified_object
+        from cadgen.store.trees import tree_objects
 
         expected = self.seed()
-        brep = next(iter(get_tree(expected[2]["documentTree"])["components"].values()))["brep"]
-        original = step_scene_package.lookup_document_scene
+        captured = {digest: read_verified_object(digest) for digest in tree_objects(expected[2]["documentTree"])}
+        original = step_scene_package._lookup_document_readback
 
-        def delete_after_lookup(*args, **kwargs):
-            result = original(*args, **kwargs)
-            self.assertIsNotNone(result[0])
-            object_path(brep).unlink()
-            return result
+        for damage in ("missing", "mismatched"):
+            with self.subTest(damage=damage):
+                def damage_after_lookup(*args, **kwargs):
+                    result = original(*args, **kwargs)
+                    self.assertIsNotNone(result[0])
+                    for digest in captured:
+                        if damage == "missing":
+                            object_path(digest).unlink()
+                        else:
+                            object_path(digest).write_bytes(b"damage after verified capture")
+                    return result
 
-        with mock.patch.object(step_scene_package, "lookup_document_scene", side_effect=delete_after_lookup), \
-                mock.patch("cadgen._internal.step_scene_loader.load_step_scene", side_effect=AssertionError("verified snapshot was lost")):
-            repaired = self.build()
-        self.assert_same_document(expected, repaired)
-        self.assertTrue(object_path(brep).is_file())
+                with mock.patch.object(step_scene_package, "_lookup_document_readback", side_effect=damage_after_lookup), \
+                        mock.patch("cadgen.store.build._publish_document_scene", side_effect=AssertionError("lost original canonical identity")), \
+                        mock.patch("cadgen._internal.step_scene_loader.load_step_scene", side_effect=AssertionError("verified snapshot was lost")):
+                    repaired = self.build()
+                self.assert_same_document(expected, repaired)
+                self.assertEqual({digest: read_verified_object(digest) for digest in captured}, captured)
 
     def test_linked_tree_is_rejected_before_flattening(self):
         from cadgen._internal.step_scene_package import scene_from_render_package
@@ -238,6 +295,54 @@ class SavedStepReadbackTest(unittest.TestCase):
         note_document_tree(expected[3], put_object(json.dumps(bad_tree).encode()))
         with mock.patch("cadgen.store.trees.flatten_tree", side_effect=AssertionError("linked document flattened")):
             self.assertIsNone(scene_from_render_package(self.root / "part.step", step_hash=expected[3]))
+
+    def test_honestly_hashed_invalid_native_recipe_and_eager_inputs_cannot_reuse_identity(self):
+        from cadgen._internal import component_package as cp, step_scene_package
+        from cadgen._internal.step_scene_loader import load_step_scene
+        from cadgen.store import surfaces
+        from cadgen.store.build import _publish_document_scene
+        from cadgen.store.objects import put_object, read_verified_object
+        from cadgen.store.records import note_document_tree
+        from cadgen.store.trees import get_tree
+
+        expected = self.seed()
+        tree_hash = expected[2]["documentTree"]
+        surface = next(iter(surfaces.derive(tree_hash).values()))["object"]
+        for mode in ("unreadable-native", "absent-face", "eager-only", "singular-placement"):
+            with self.subTest(mode=mode):
+                tree = get_tree(tree_hash)
+                cid, entry = next(iter(tree["components"].items()))
+                payload = read_verified_object(entry["brep"])
+                if mode == "unreadable-native":
+                    payload = cp._BREP_HEADERS[entry["codec"]] + b"honestly hashed invalid native input"
+                    entry["brep"] = put_object(payload)
+                elif mode == "absent-face":
+                    entry["faceColors"]["999"] = [1., 0., 0., 1.]
+                elif mode == "eager-only":
+                    entry.update(kind="eager-only", eagerSurface=surface)
+                else:
+                    tree["occurrences"][0]["transform"][:12] = [0.] * 12
+                entry["contentHash"] = cp.geometry_component_hash(
+                    entry["codec"], payload, entry["faceColors"], kind=entry["kind"],
+                    eager_surface=entry.get("eagerSurface"),
+                )
+                new_cid = entry["contentHash"][:16]
+                tree["components"] = {new_cid: entry}
+                for row in tree["occurrences"]:
+                    if row["component"] == cid:
+                        row["component"] = new_cid
+                bad_hash = put_object(cp.canonical_json_bytes(tree))
+                note_document_tree(expected[3], bad_hash)
+                with mock.patch("cadgen._internal.step_scene_loader.load_step_scene", wraps=load_step_scene) as raw, \
+                        mock.patch.object(step_scene_package, "_scene_from_selected_bytes",
+                                          wraps=step_scene_package._scene_from_selected_bytes) as exact_raw, \
+                        mock.patch("cadgen.store.build._publish_document_scene", wraps=_publish_document_scene) as derived:
+                    actual = self.build()
+                self.assertEqual(raw.call_count + exact_raw.call_count, 1)
+                derived.assert_called_once()
+                self.assert_same_document(expected, actual)
+                self.assertNotEqual(actual[2]["documentTree"], bad_hash)
+                note_document_tree(expected[3], tree_hash)
 
     def test_deleted_asset_between_tree_and_component_reads_reparses(self):
         from cadgen._internal.step_scene_loader import load_step_scene
@@ -270,29 +375,42 @@ class SavedStepReadbackTest(unittest.TestCase):
 
         shape = Compound(children=[self.shape()], label="root")
         self.seed(shape)
-        original = step_scene_package.lookup_document_scene
+        original = step_scene_package._lookup_document_readback
 
         def changed_placement(*args, **kwargs):
-            scene, repair = original(*args, **kwargs)
+            readback, repair = original(*args, **kwargs)
+            scene = readback.scene
             leaf = scene.roots[0]
             while leaf.children:
                 leaf = leaf.children[0]
             transform = list(leaf.transform)
             transform[3] += 1
             leaf.transform = tuple(transform)
-            return scene, repair
+            return readback, repair
 
-        with mock.patch.object(step_scene_package, "lookup_document_scene", side_effect=changed_placement):
+        with mock.patch.object(step_scene_package, "_lookup_document_readback", side_effect=changed_placement):
             with self.assertRaisesRegex(RuntimeError, "placement"):
                 self.build(shape)
 
         def missing_colors(*args, **kwargs):
-            scene, repair = original(*args, **kwargs)
+            readback, repair = original(*args, **kwargs)
+            scene = readback.scene
             scene.prototype_face_colors.clear()
-            return scene, repair
+            return readback, repair
 
-        with mock.patch.object(step_scene_package, "lookup_document_scene", side_effect=missing_colors):
+        with mock.patch.object(step_scene_package, "_lookup_document_readback", side_effect=missing_colors):
             with self.assertRaisesRegex(RuntimeError, "per-face colours"):
+                self.build(shape)
+
+        def wrong_product_name(*args, **kwargs):
+            readback, repair = original(*args, **kwargs)
+            readback.scene.roots[0].name = "wrong hierarchy"
+            return readback, repair
+
+        with mock.patch.object(step_scene_package, "_lookup_document_readback", side_effect=wrong_product_name), \
+                mock.patch.object(step_scene_package._DocumentReadback, "restore",
+                                  side_effect=AssertionError("published before correspondence")):
+            with self.assertRaisesRegex(RuntimeError, "STEP correspondence.*name changed"):
                 self.build(shape)
 
     def test_saved_reader_repairs_corrupt_objects_without_code_index_reads(self):

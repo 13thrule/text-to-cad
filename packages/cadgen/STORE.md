@@ -218,10 +218,20 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   Missing, unreadable or damaged objects cause a raw STEP parse. New output
   bytes and forced builds also use the raw parser. Both paths retain the same
   placement, face-color and complete authored-to-written correspondence checks.
-  Canonical republishing verifies indexed component objects before reuse and
-  derives failed entries again; known damaged closures and forced builds
-  derive all canonical components. Current authored PBR is rebound after
-  readback, without consulting source records, output indexes or staged sidecars.
+  The internal saved-build call retains the selected immutable object bytes
+  beside its independently decoded scene until correspondence succeeds. It
+  then reuses that exact canonical tree and component identities: native
+  decode/re-encode is not assumed to preserve BREP byte identity. Publication
+  verifies existing objects and atomically restores missing or damaged bytes
+  from this captured closure, required components before the tree. No native
+  object or capture survives the call or is attached to a public scene; generic
+  scene publication always derives the current mutable geometry and metadata,
+  regardless of scene hashes or attributes. Eager-only readback parses the
+  selected STEP bytes and uses ordinary canonical publication. Raw publication
+  verifies indexed component objects before reuse and derives failed entries
+  again; known damaged closures and forced builds derive all canonical
+  components. Current authored PBR is rebound after readback, without consulting
+  source records, output indexes or staged sidecars.
 
   Finishes that STEP does not carry persist in the schema-8 sidecar's
   `appearance.occurrences` map, keyed by verified canonical leaf IDs. Resolved
