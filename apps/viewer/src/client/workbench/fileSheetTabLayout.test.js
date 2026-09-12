@@ -5,10 +5,12 @@ import {
   activateFileSheetTab,
   clampSplitRatio,
   defaultFileSheetTabArrangement,
+  defaultRenderFileSheetTabArrangement,
   kindSupportsSplit,
   moveFileSheetTab,
   normalizeFileSheetTabArrangement,
   readFileSheetTabLayoutStore,
+  renderFileSheetTabArrangementForScope,
   resolveFileSheetTabPanes,
   setFileSheetTabRatio,
   setFileSheetTabSplit,
@@ -18,7 +20,7 @@ import {
   MIN_FILE_SHEET_SPLIT_RATIO
 } from "./fileSheetTabLayout.js";
 
-const STEP_SECTIONS = ["tree", "pose", "display", "render", "metadata"];
+const STEP_SECTIONS = ["tree", "pose", "display", "metadata"];
 
 test("only step supports the split", () => {
   assert.equal(kindSupportsSplit("step"), true);
@@ -30,8 +32,87 @@ test("default step arrangement puts the tree on top and everything else on the b
   const arrangement = defaultFileSheetTabArrangement("step", STEP_SECTIONS);
   assert.equal(arrangement.split, true);
   assert.deepEqual(arrangement.top, ["tree"]);
-  assert.deepEqual(arrangement.bottom, ["pose", "display", "render", "metadata"]);
+  assert.deepEqual(arrangement.bottom, ["pose", "display", "metadata"]);
   assert.equal(arrangement.ratio, 0.5);
+});
+
+test("Render starts Studio-first in one row and supports transient tab interaction", () => {
+  const entered = defaultRenderFileSheetTabArrangement(["render", "animation"]);
+  let resolved = resolveFileSheetTabPanes(entered, "step", []);
+  assert.equal(resolved.split, false);
+  assert.deepEqual(resolved.panes[0].tabs, ["render", "animation"]);
+  assert.equal(resolved.panes[0].activeId, "render");
+
+  const animationOpen = activateFileSheetTab([], entered, "step", FILE_SHEET_TAB_PANES.TOP, "animation");
+  resolved = resolveFileSheetTabPanes(entered, "step", animationOpen);
+  assert.equal(resolved.panes[0].activeId, "animation");
+
+  const splitVisit = moveFileSheetTab(
+    entered,
+    "step",
+    "animation",
+    FILE_SHEET_TAB_PANES.BOTTOM,
+    0
+  );
+  assert.equal(splitVisit.split, true);
+  assert.deepEqual(splitVisit.top, ["render"]);
+  assert.deepEqual(splitVisit.bottom, ["animation"]);
+
+  // Re-entering Render derives a fresh transient arrangement rather than
+  // carrying the prior visit's split or changing CAD's durable layout.
+  assert.deepEqual(
+    defaultRenderFileSheetTabArrangement(["render", "animation"]),
+    entered
+  );
+});
+
+test("deriving a Render arrangement leaves the saved CAD arrangement unchanged", () => {
+  const cad = {
+    split: true,
+    top: ["tree", "display"],
+    bottom: ["reference", "measurements"],
+    ratio: 0.65
+  };
+  const before = structuredClone(cad);
+
+  defaultRenderFileSheetTabArrangement(["render", "animation"]);
+
+  assert.deepEqual(cad, before);
+  assert.deepEqual(
+    normalizeFileSheetTabArrangement(cad, "step", ["tree", "reference", "measurements", "display"]),
+    cad
+  );
+});
+
+test("switching models within Render starts the next model in one Studio-first row", () => {
+  const splitForA = {
+    scope: "assembly-a.step",
+    arrangement: {
+      split: true,
+      top: ["render"],
+      bottom: ["animation"],
+      ratio: 0.7
+    }
+  };
+
+  assert.equal(
+    renderFileSheetTabArrangementForScope(
+      splitForA,
+      "assembly-a.step",
+      "step",
+      ["render", "animation"]
+    ).split,
+    true
+  );
+  assert.deepEqual(
+    renderFileSheetTabArrangementForScope(
+      splitForA,
+      "assembly-b.step",
+      "step",
+      ["render", "animation"]
+    ),
+    defaultRenderFileSheetTabArrangement(["render", "animation"])
+  );
 });
 
 test("pose sits between reference and display in the bottom pane", () => {
@@ -99,12 +180,12 @@ test("step with only a tree collapses to a single strip", () => {
 });
 
 test("normalize drops missing tabs and slots new ones into their default pane", () => {
-  const stored = { split: true, top: ["tree"], bottom: ["display", "render"], ratio: 0.6 };
+  const stored = { split: true, top: ["tree"], bottom: ["display"], ratio: 0.6 };
   const normalized = normalizeFileSheetTabArrangement(stored, "step", STEP_SECTIONS);
   // pose + metadata are newly rendered; both default to the bottom pane and
   // land at their render-order position (pose before display, metadata last).
   assert.deepEqual(normalized.top, ["tree"]);
-  assert.deepEqual(normalized.bottom, ["pose", "display", "render", "metadata"]);
+  assert.deepEqual(normalized.bottom, ["pose", "display", "metadata"]);
   assert.equal(normalized.ratio, 0.6);
 });
 
@@ -140,11 +221,11 @@ test("normalize de-dupes a tab present in both panes (top wins)", () => {
 });
 
 test("normalize re-derives the default split when a requested split has an empty pane", () => {
-  const stored = { split: true, top: ["tree", "pose", "display", "render", "metadata"], bottom: [] };
+  const stored = { split: true, top: ["tree", "pose", "display", "metadata"], bottom: [] };
   const normalized = normalizeFileSheetTabArrangement(stored, "step", STEP_SECTIONS);
   assert.equal(normalized.split, true);
   assert.deepEqual(normalized.top, ["tree"]);
-  assert.deepEqual(normalized.bottom, ["pose", "display", "render", "metadata"]);
+  assert.deepEqual(normalized.bottom, ["pose", "display", "metadata"]);
 });
 
 test("normalize forces a single strip for non-split kinds", () => {
@@ -159,7 +240,7 @@ test("moving a tab across panes updates assignment", () => {
   const arrangement = defaultFileSheetTabArrangement("step", STEP_SECTIONS);
   const next = moveFileSheetTab(arrangement, "step", "display", FILE_SHEET_TAB_PANES.TOP, 1);
   assert.deepEqual(next.top, ["tree", "display"]);
-  assert.deepEqual(next.bottom, ["pose", "render", "metadata"]);
+  assert.deepEqual(next.bottom, ["pose", "metadata"]);
   assert.equal(next.split, true);
 });
 
@@ -175,12 +256,12 @@ test("toggling the split off merges panes, on restores the default split", () =>
   const arrangement = defaultFileSheetTabArrangement("step", STEP_SECTIONS);
   const merged = setFileSheetTabSplit(arrangement, "step", false, STEP_SECTIONS);
   assert.equal(merged.split, false);
-  assert.deepEqual(merged.top, ["tree", "pose", "display", "render", "metadata"]);
+  assert.deepEqual(merged.top, ["tree", "pose", "display", "metadata"]);
 
   const reSplit = setFileSheetTabSplit(merged, "step", true, STEP_SECTIONS);
   assert.equal(reSplit.split, true);
   assert.deepEqual(reSplit.top, ["tree"]);
-  assert.deepEqual(reSplit.bottom, ["pose", "display", "render", "metadata"]);
+  assert.deepEqual(reSplit.bottom, ["pose", "display", "metadata"]);
 });
 
 test("split ratio is clamped", () => {
@@ -191,7 +272,7 @@ test("split ratio is clamped", () => {
 });
 
 test("resolve panes: each pane defaults to its leftmost tab", () => {
-  const sections = ["tree", "reference", "pose", "display", "render", "metadata"];
+  const sections = ["tree", "reference", "pose", "display", "metadata"];
   const arrangement = defaultFileSheetTabArrangement("step", sections);
   const resolved = resolveFileSheetTabPanes(arrangement, "step", []);
   assert.equal(resolved.split, true);

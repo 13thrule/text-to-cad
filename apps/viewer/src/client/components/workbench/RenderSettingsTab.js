@@ -157,9 +157,7 @@ function RenderSettingsClipboard({ payload, onCopyPayload, onApplyPayload }) {
 }
 
 function RenderSettingsContent({
-  enabled,
   scene,
-  onEnabledChange,
   onStudioChange,
   onQualityChange,
   onPayloadValueChange,
@@ -175,17 +173,7 @@ function RenderSettingsContent({
 
   return (
     <div className="py-2" data-cad-render-settings-section="true">
-      <FileSheetSubsection
-        title="Render"
-        trailing={(
-          <FileSheetToggleRow
-            label="Enabled"
-            checked={enabled}
-            onCheckedChange={onEnabledChange}
-            className="min-h-0 px-0"
-          />
-        )}
-      >
+      <FileSheetSubsection title="Setup">
         <FileSheetSelectRow
           stacked
           label="Studio"
@@ -210,26 +198,22 @@ function RenderSettingsContent({
         </FileSheetButtonRow>
       </FileSheetSubsection>
 
-      {enabled ? (
-        <>
-          <FileSheetSubsection title="Camera">
-            <RenderSlider label="Lens" value={scene.camera.focalLength} min={20} max={200} step={1} unit=" mm" digits={0} onChange={(value) => setValue(["camera", "focalLength"], value)} />
-            <RenderSlider label="Exposure" value={configuration.exposure} min={-5} max={5} step={0.1} unit=" EV" digits={1} onChange={(value) => setValue(["exposure"], value)} />
-          </FileSheetSubsection>
+      <FileSheetSubsection title="Camera">
+        <RenderSlider label="Lens" value={scene.camera.focalLength} min={20} max={200} step={1} unit=" mm" digits={0} onChange={(value) => setValue(["camera", "focalLength"], value)} />
+        <RenderSlider label="Exposure" value={configuration.exposure} min={-5} max={5} step={0.1} unit=" EV" digits={1} onChange={(value) => setValue(["exposure"], value)} />
+      </FileSheetSubsection>
 
-          <FileSheetSubsection title="Lighting">
-            <RenderSlider label="Rotation" value={configuration.lighting.rotation} min={-180} max={180} step={1} unit="°" digits={0} onChange={(value) => setValue(["lighting", "rotation"], value)} />
-            <RenderSlider label="Softbox size" value={configuration.lighting.size} min={0.25} max={3} step={0.05} digits={2} onChange={(value) => setValue(["lighting", "size"], value)} />
-            <RenderSlider label="Fill ratio" value={configuration.lighting.fill} min={0} max={1} step={0.01} digits={2} onChange={(value) => setValue(["lighting", "fill"], value)} />
-          </FileSheetSubsection>
+      <FileSheetSubsection title="Lighting">
+        <RenderSlider label="Rotation" value={configuration.lighting.rotation} min={-180} max={180} step={1} unit="°" digits={0} onChange={(value) => setValue(["lighting", "rotation"], value)} />
+        <RenderSlider label="Softbox size" value={configuration.lighting.size} min={0.25} max={3} step={0.05} digits={2} onChange={(value) => setValue(["lighting", "size"], value)} />
+        <RenderSlider label="Fill ratio" value={configuration.lighting.fill} min={0} max={1} step={0.01} digits={2} onChange={(value) => setValue(["lighting", "fill"], value)} />
+      </FileSheetSubsection>
 
-          <FileSheetSubsection title="Backdrop">
-            <FileSheetToggleRow label="Transparent" checked={configuration.backdrop.transparent} onCheckedChange={(value) => setValue(["backdrop", "transparent"], value)} />
-            <FileSheetColorRow label="Color" value={configuration.backdrop.color} disabled={configuration.backdrop.transparent} onChange={(value) => setValue(["backdrop", "color"], value)} />
-            <FileSheetToggleRow label="Ground" checked={configuration.backdrop.ground} onCheckedChange={(value) => setValue(["backdrop", "ground"], value)} />
-          </FileSheetSubsection>
-        </>
-      ) : null}
+      <FileSheetSubsection title="Backdrop">
+        <FileSheetToggleRow label="Transparent" checked={configuration.backdrop.transparent} onCheckedChange={(value) => setValue(["backdrop", "transparent"], value)} />
+        <FileSheetColorRow label="Color" value={configuration.backdrop.color} disabled={configuration.backdrop.transparent} onChange={(value) => setValue(["backdrop", "color"], value)} />
+        <FileSheetToggleRow label="Ground" checked={configuration.backdrop.ground} onCheckedChange={(value) => setValue(["backdrop", "ground"], value)} />
+      </FileSheetSubsection>
     </div>
   );
 }
@@ -237,7 +221,7 @@ function RenderSettingsContent({
 export function buildRenderSettingsTab(props) {
   return {
     id: FILE_SHEET_SECTION_IDS.THEME_RENDER,
-    title: "Render",
+    title: "Studio",
     content: <RenderSettingsContent {...props} />
   };
 }

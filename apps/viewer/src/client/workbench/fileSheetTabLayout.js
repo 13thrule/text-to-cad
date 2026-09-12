@@ -7,15 +7,15 @@ import { FILE_SHEET_SECTION_IDS } from "./fileSheetSections.js";
 // can be dragged between panes and a resizable divider between them. Other file
 // kinds render a single tab strip.
 //
-// The arrangement (which pane each tab lives in, tab order, split ratio, and
-// whether the split is active) is a global per-kind preference persisted to
-// localStorage. Which tab is *active* in each pane is resolved from the
-// per-file `openSectionIds` list (see resolveFileSheetTabPanes) so that the
-// existing reveal-on-select behavior keeps working.
+// The CAD arrangement (which pane each tab lives in, tab order, split ratio,
+// and whether the split is active) is a global per-kind preference persisted
+// to localStorage. Render begins as one Studio-first row and keeps drag/split
+// changes only for that visit. Which tab is *active* in each pane is resolved
+// from the mode's per-file `openSectionIds` list (see resolveFileSheetTabPanes).
 
 // Bumped to reset saved arrangements when the default pane assignment changes.
-// v6: Display now owns inspection presentation and Render is the final tab for
-// every 3D format. Reset old arrangements so the new tabs land consistently.
+// v6: Display took ownership of inspection presentation. Older stored Render
+// ids are harmlessly dropped when CAD arrangements normalize.
 export const FILE_SHEET_TAB_LAYOUT_STORAGE_KEY = "cad-viewer:file-sheet-tab-layout:v6";
 
 export const DEFAULT_FILE_SHEET_SPLIT_RATIO = 0.5;
@@ -51,7 +51,7 @@ export function clampSplitRatio(ratio) {
 
 // Tabs that live in the top pane of a split layout; everything else defaults to
 // the bottom pane, in render order. STEP: the Tree on top, Reference/Pose/
-// Animation/Measure/Display/Render below. DXF: Material on top (it always
+// Animation/Measure/Display below. DXF: Material on top (it always
 // renders), the conditional Bends/Layers tabs below.
 const TOP_PANE_SECTION_IDS = Object.freeze(new Set([
   FILE_SHEET_SECTION_IDS.STEP_TREE,
@@ -107,6 +107,35 @@ export function defaultFileSheetTabArrangement(kind, sectionIds) {
     bottom: split ? bottom : [],
     ratio: DEFAULT_FILE_SHEET_SPLIT_RATIO
   };
+}
+
+// Render starts as one Studio-first strip on every entry. The surface keeps any
+// drag/split edits in component state for that Render visit; this arrangement is
+// never part of the durable per-kind CAD layout store.
+export function defaultRenderFileSheetTabArrangement(sectionIds) {
+  return {
+    split: false,
+    top: uniqueStrings(sectionIds),
+    bottom: [],
+    ratio: DEFAULT_FILE_SHEET_SPLIT_RATIO
+  };
+}
+
+export function renderFileSheetTabArrangementForScope(
+  arrangementState,
+  scope,
+  kind,
+  sectionIds
+) {
+  const normalizedScope = normalizeString(scope);
+  const scopedArrangement = arrangementState?.scope === normalizedScope
+    ? arrangementState.arrangement
+    : null;
+  return normalizeFileSheetTabArrangement(
+    scopedArrangement || defaultRenderFileSheetTabArrangement(sectionIds),
+    kind,
+    sectionIds
+  );
 }
 
 // Reconcile a stored arrangement against the sections currently rendered:

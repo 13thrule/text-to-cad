@@ -1,7 +1,7 @@
 # Settings UI Guidelines
 
 The contract for every settings surface rendered inside a file sheet tab:
-the per-model Render and Display tabs, and the DXF,
+the per-model Studio and Display tabs, and the DXF,
 STEP, URDF/SDF, and mesh sheets. The tab strip, navbar, and
 sheet frame are out of scope — this document governs the *contents* of a tab.
 
@@ -34,10 +34,9 @@ Tab body                    px-0, vertical stack of sections
 - Everyday settings stay visible. Progressive disclosure is allowed only when a
   gate switch turns a whole feature off (Floor, Grid, Environment, a light):
   the switch stays, the dependent rows unmount.
-- Keep inline Copy/Paste Settings buttons in the top Render section before
-  Reset, without a disclosure control. Copy/Paste and Reset remain
-  available while Render is disabled so a saved setup can be copied or applied
-  directly from the CAD view.
+- Keep inline Copy/Paste Settings buttons in the Studio tab's top Setup section
+  before Reset, without a disclosure control. The navbar owns entry into Render,
+  so the Studio tab has no second enable switch.
 - A gate reaches every row it owns. Whether they unmount (Floor, Grid) or go
   disabled (Kinematics, Animation), the section picks one and applies it to all
   of them: one live control under an off switch reads as a control that still
@@ -283,14 +282,14 @@ a fixed color pair (e.g. the switch track), it is defined once in
 `FileSheet.js` with its dark variant beside it.
 
 App appearance is global. CAD inspection state and photographic Render state
-are separate per-model session data. Render is last in the default tab order;
-entering another tab never changes its enabled state. While Render is enabled,
-the file sheet exposes Render and authored animation playback only. Display,
-selection, visibility, clipping, exploded view, measurement, drawing, and pose
-controls remain hidden and their CAD values are restored unchanged on disable.
+are separate per-model session data. The navbar enters Render. Its file sheet
+starts with Studio active in a single row, followed by authored Animation when
+available. Display, selection, visibility, clipping, exploded view,
+measurement, drawing, and pose controls remain hidden and their CAD values are
+restored unchanged when the user returns to CAD.
 
-The top Render section contains Enabled, Studio, Quality, inline Copy/Paste,
-and Reset. Camera contains Lens and Exposure; Lighting contains Rotation,
+The top Setup section contains Studio, Quality, inline Copy/Paste, and Reset.
+Camera contains Lens and Exposure; Lighting contains Rotation,
 Softbox size, and Fill ratio; Backdrop contains Transparent, Color, and Ground.
 An untouched studio follows global app appearance without storing an override;
 Light studio or Dark studio pins it for the model session. Do not add material,

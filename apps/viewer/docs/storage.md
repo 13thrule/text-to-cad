@@ -36,6 +36,10 @@ Current intended use:
   dismissed. A tip is recorded only when its close button is pressed — clicking
   away, Escape, and reloads all leave it unrecorded, so it comes back on the next
   chance until it is actually acknowledged. Cleared by `?resetTips=1`.
+- `cad-viewer:file-sheet-tab-layout:v6`: the draggable per-kind CAD tab order,
+  split assignment, and split ratio. Render starts with a separate single-row
+  Studio-first arrangement on every entry; its temporary drag/split changes are
+  never written to this store.
 
 Avoid adding file-specific state to `localStorage`. If the value depends on the
 selected file, the active root directory, a generated asset hash, or a tab
@@ -97,11 +101,11 @@ Existing slice intent:
 - `urdf`: joint values and motion-planning controls.
 - `largeFile`: large-file decisions such as selectable topology opt-in.
 - `display`: normal CAD display controls for the model.
-- `render`: Render enablement, sparse photographic configuration, and separate
-  CAD/Render camera state. An omitted studio follows global app appearance;
-  an explicit `light` or `dark` pins it. The slice accepts exposure, softbox,
-  backdrop, lens, and Preview/Final quality values. Display stays in the CAD
-  slice and never enters the Render payload.
+- `render`: Render mode, its active Studio/Animation tab, sparse photographic
+  configuration, and separate CAD/Render camera state. An omitted studio
+  follows global app appearance; an explicit `light` or `dark` pins it. The
+  slice accepts exposure, softbox, backdrop, lens, and Preview/Final quality
+  values. Display stays in the CAD slice and never enters the Render payload.
 
 When adding another large-file control, reuse the `largeFile` slice instead of
 adding a separate session storage key.

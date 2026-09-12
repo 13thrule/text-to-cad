@@ -1220,10 +1220,10 @@ export default function StepFileSheet({
     ...settingsTabs
   ];
   const sections = renderMode
-    ? allSections.filter((section) => section && (
-        section.id === FILE_SHEET_SECTION_IDS.STEP_ANIMATION ||
-        section.id === FILE_SHEET_SECTION_IDS.THEME_RENDER
-      ))
+    ? [
+        allSections.find((section) => section?.id === FILE_SHEET_SECTION_IDS.THEME_RENDER),
+        allSections.find((section) => section?.id === FILE_SHEET_SECTION_IDS.STEP_ANIMATION)
+      ].filter(Boolean)
     : allSections;
 
   return (
@@ -1238,6 +1238,8 @@ export default function StepFileSheet({
     >
       <FileSheetTabbedSurface
         kind="step"
+        layoutMode={renderMode ? "render" : "cad"}
+        layoutScope={selectedEntry?.rootRelativeFile || selectedEntry?.file || ""}
         sections={sections}
         openSectionIds={openSectionIds}
         onOpenSectionIdsChange={onOpenSectionIdsChange}

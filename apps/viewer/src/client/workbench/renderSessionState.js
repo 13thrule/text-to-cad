@@ -8,6 +8,7 @@ import {
   resolveCameraSnapshot
 } from "cadgen-js/common/camera.js";
 import { clonePerspectiveSnapshot } from "cadgen-js/lib/perspective.js";
+import { FILE_SHEET_SECTION_IDS, normalizeFileSheetOpenSectionIds } from "./fileSheetSections.js";
 
 export const DEFAULT_RENDER_PAYLOAD = Object.freeze({});
 
@@ -36,6 +37,11 @@ export function createRenderSessionState(value = null) {
   return {
     enabled: source.enabled === true,
     payload,
+    openSectionIds: Array.isArray(source.openSectionIds)
+      ? normalizeFileSheetOpenSectionIds(source.openSectionIds, [
+          FILE_SHEET_SECTION_IDS.THEME_RENDER, FILE_SHEET_SECTION_IDS.STEP_ANIMATION
+        ])
+      : [FILE_SHEET_SECTION_IDS.THEME_RENDER],
     cadCamera: renderCameraSnapshot(source.cadCamera),
     cadProjection: normalizeCameraProjection(
       source.cadProjection || source.cadCamera?.projection,
@@ -143,6 +149,7 @@ export function renderSessionForEnabledChange(session, enabled, {
     return createRenderSessionState({
       ...current,
       enabled: true,
+      openSectionIds: [FILE_SHEET_SECTION_IDS.THEME_RENDER],
       cadCamera: camera || current.cadCamera,
       cadProjection: camera?.projection || activeProjection || current.cadProjection
     });

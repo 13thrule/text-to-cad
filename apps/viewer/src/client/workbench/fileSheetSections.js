@@ -34,10 +34,10 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
   const normalizedKind = normalizeString(kind);
   if (options.renderMode === true) {
     return [
+      FILE_SHEET_SECTION_IDS.THEME_RENDER,
       ...(normalizedKind === "step" && options.hasStepAnimationPanel
         ? [FILE_SHEET_SECTION_IDS.STEP_ANIMATION]
-        : []),
-      FILE_SHEET_SECTION_IDS.THEME_RENDER
+        : [])
     ];
   }
   const isSdf = options.isSdf === true || normalizedKind === "sdf";
@@ -53,12 +53,11 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
       return [
         FILE_SHEET_SECTION_IDS.DXF_MATERIAL,
         ...(options.hasDxfBendsPanel ? [FILE_SHEET_SECTION_IDS.DXF_BENDS] : []),
-        ...(options.hasDxfLayersPanel ? [FILE_SHEET_SECTION_IDS.DXF_LAYERS] : []),
-        FILE_SHEET_SECTION_IDS.THEME_RENDER
+        ...(options.hasDxfLayersPanel ? [FILE_SHEET_SECTION_IDS.DXF_LAYERS] : [])
       ];
     case "step":
-      // Display and Render are per-file session state. Render sits last so it
-      // reads as the presentation pass after inspection and measurement.
+      // Display is per-file CAD inspection state. The separate navbar Render
+      // mode owns its Studio tab, so it does not appear in this strip.
       return [
         FILE_SHEET_SECTION_IDS.STEP_TREE,
         FILE_SHEET_SECTION_IDS.STEP_REFERENCE,
@@ -71,8 +70,7 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
         // Measurements then follows: it and Reference are both readouts about geometry the
         // user has picked, as against the Tree's inventory of what is in the file.
         FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS,
-        FILE_SHEET_SECTION_IDS.THEME_DISPLAY,
-        FILE_SHEET_SECTION_IDS.THEME_RENDER
+        FILE_SHEET_SECTION_IDS.THEME_DISPLAY
       ];
     case "urdf":
     case "srdf":
@@ -86,16 +84,14 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
         ...(isSdf ? [FILE_SHEET_SECTION_IDS.ROBOT_SDF] : []),
         ...(options.motionEnabled ? [FILE_SHEET_SECTION_IDS.ROBOT_MOTION] : []),
         ...(showJoints ? [FILE_SHEET_SECTION_IDS.ROBOT_JOINTS] : []),
-        FILE_SHEET_SECTION_IDS.THEME_DISPLAY,
-        FILE_SHEET_SECTION_IDS.THEME_RENDER
+        FILE_SHEET_SECTION_IDS.THEME_DISPLAY
       ];
     case "mesh":
       // Measure is the one mesh-specific control: vertex-to-vertex distance on
       // the displayed triangles.
       return [
         FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS,
-        FILE_SHEET_SECTION_IDS.THEME_DISPLAY,
-        FILE_SHEET_SECTION_IDS.THEME_RENDER
+        FILE_SHEET_SECTION_IDS.THEME_DISPLAY
       ];
     default:
       return [];

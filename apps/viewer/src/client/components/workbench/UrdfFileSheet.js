@@ -441,6 +441,8 @@ export default function UrdfFileSheet({
     >
       <FileSheetTabbedSurface
         kind={isSdf ? "sdf" : (sourceFormat || "urdf")}
+        layoutMode={renderMode ? "render" : "cad"}
+        layoutScope={selectedEntry?.rootRelativeFile || selectedEntry?.file || ""}
         sections={sections}
         openSectionIds={openSectionIds}
         onOpenSectionIdsChange={onOpenSectionIdsChange}

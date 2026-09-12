@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
   Check,
-  Circle,
   CircleAlert,
   CircleCheck,
   Copy,
@@ -10,6 +9,7 @@ import {
   Monitor,
   Moon,
   Sun,
+  TriangleAlert,
   SlidersHorizontal
 } from "lucide-react";
 import EntryIcon from "./EntryIcon";
@@ -33,6 +33,7 @@ import {
   BreadcrumbSeparator
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +41,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -89,36 +91,36 @@ function fileSheetLabel(fileSheetKind) {
   return "file sheet";
 }
 
-function ViewportQualityIndicator({ qualityStatus }) {
-  if (!qualityStatus?.state) {
+function FileStatusBadge({ status }) {
+  if (!status) {
     return null;
   }
-  const state = qualityStatus.state;
-  const ready = state === "standard" || state === "high";
-  const Icon = ready ? CircleCheck
-    : state === "preview" ? Circle
-      : state === "refining" ? LoaderCircle
-        : CircleAlert;
-  const iconClassName = ready
-    ? "text-primary"
-    : state === "limited"
-      ? "text-amber-500 dark:text-amber-300"
-      : state === "error"
-        ? "text-destructive dark:text-red-300"
-        : "text-muted-foreground";
   return (
-    <span
-      role="status"
-      data-quality-state={state}
-      title={qualityStatus.title}
-      className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
-    >
-      <Icon
-        className={`${iconClassName} size-3.5 shrink-0 ${state === "refining" ? "animate-spin" : ""}`}
-        aria-hidden="true"
-      />
-      <span className="max-w-32 truncate">{qualityStatus.label}</span>
-    </span>
+    <TooltipProvider delayDuration={250}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            role="status"
+            aria-live="polite"
+            tabIndex={0}
+            data-file-status={status.label}
+            className={cn(
+              "inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              status.tone === "error" ? "border-destructive/30 bg-destructive/10 text-destructive dark:text-red-300"
+                : status.tone === "warning" ? "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                  : "border-border bg-muted/40 text-muted-foreground"
+            )}
+          >
+            {status.busy ? <LoaderCircle className="size-3 animate-spin" aria-hidden="true" />
+              : status.tone === "error" ? <CircleAlert className="size-3" aria-hidden="true" />
+                : status.tone === "warning" ? <TriangleAlert className="size-3" aria-hidden="true" />
+                  : null}
+            {status.label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="max-w-72 text-xs">{status.title}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -357,7 +359,9 @@ function BreadcrumbNodeDropdown({
   canCopyFileAssetPaths = false,
   onRevealInExplorerView,
   onCopyFileAssetReference,
-  filenameLoadActivity
+  editingAvailable = false,
+  followEdits = true,
+  onFollowEditsChange
 }) {
   const label = String(node?.label || "");
   const title = String(node?.title || label);
@@ -365,8 +369,10 @@ function BreadcrumbNodeDropdown({
     ? node?.menuDirectory || null
     : null;
   const canBrowse = !!menuDirectory && listSidebarItems(menuDirectory).length > 0;
+  const canChooseInput = current && node?.type === "entry" && editingAvailable &&
+    typeof onFollowEditsChange === "function";
 
-  if (!canBrowse) {
+  if (!canBrowse && !canChooseInput) {
     const labelNode = (
       <span
         className={cn(
@@ -375,9 +381,6 @@ function BreadcrumbNodeDropdown({
         )}
         title={title}
       >
-        {current && node?.type === "entry" ? (
-          <FilenameLoadStatus activity={filenameLoadActivity} />
-        ) : null}
         <span className="block min-w-0 truncate">{label}</span>
       </span>
     );
@@ -417,9 +420,6 @@ function BreadcrumbNodeDropdown({
         }
       }}
     >
-      {current && node?.type === "entry" ? (
-        <FilenameLoadStatus activity={filenameLoadActivity} />
-      ) : null}
       <span className="block min-w-0 truncate">{label}</span>
     </button>
   );
@@ -444,6 +444,24 @@ function BreadcrumbNodeDropdown({
     <DropdownMenu>
       {trigger}
       <DropdownMenuContent align="start" sideOffset={6} className="w-max max-w-80">
+        {canChooseInput ? (
+          <>
+            <DropdownMenuLabel className="text-xs">Model updates</DropdownMenuLabel>
+            <DropdownMenuRadioGroup value={followEdits ? "live" : "saved"}
+              onValueChange={(value) => onFollowEditsChange(value === "live")}>
+              <DropdownMenuRadioItem value="live" className="text-xs"
+                title="Show completed build previews while STEP is saving.">
+                Follow edits
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="saved" className="text-xs"
+                title="Inspect the saved STEP file and its matching annotations.">
+                Inspect saved STEP
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+            {canBrowse ? <DropdownMenuSeparator /> : null}
+          </>
+        ) : null}
+        {canBrowse ? (
         <DropdownMenuScrollArea>
           <BreadcrumbDirectoryMenuItems
             directory={menuDirectory}
@@ -460,6 +478,7 @@ function BreadcrumbNodeDropdown({
             onCopyFileAssetReference={onCopyFileAssetReference}
           />
         </DropdownMenuScrollArea>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -550,30 +569,6 @@ function BreadcrumbEllipsisDropdown({
         </DropdownMenuScrollArea>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-/**
- * A bare spinner, left of the filename. No chip, no text, no percent.
- *
- * The overlay already carries the words and the number; repeating them in the breadcrumb
- * gave the same state two competing readouts that could disagree mid-poll. This says only
- * "this file is busy" and leaves the detail to the one place that owns it. The label still
- * rides on `title` and the screen-reader text, so nothing is lost for a11y or hover.
- */
-function FilenameLoadStatus({ activity }) {
-  if (!activity?.loading) {
-    return null;
-  }
-
-  const label = String(activity?.label || "").trim();
-  const title = String(activity?.title || label || "Loading").trim();
-
-  return (
-    <span role="status" aria-live="polite" title={title} className="inline-flex shrink-0 items-center">
-      <LoaderCircle className="size-3 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
-      <span className="sr-only">{title}</span>
-    </span>
   );
 }
 
@@ -1011,11 +1006,11 @@ function VersionReleaseLink({ version, releaseUrl, releaseCheck = emptyLatestRel
 export default function CadWorkspaceTopBar({
   previewMode,
   editingAvailable = false,
-  followEdits = false,
+  followEdits = true,
   onFollowEditsChange,
-  editingStatus = "",
-  qualityStatus = null,
-  annotationError = "",
+  fileStatus = null,
+  renderMode = false,
+  onRenderModeChange,
   sidebarLabelForEntry,
   directoryTree = null,
   selectedKey = "",
@@ -1027,7 +1022,6 @@ export default function CadWorkspaceTopBar({
   entryHasUrdf,
   activeStepArtifactGenerationFile = "",
   stepArtifactGenerationAvailable = true,
-  filenameLoadActivity = null,
   selectedStepSourceStatus = null,
   canCopyFileAssetPaths = false,
   onRevealInExplorerView,
@@ -1036,6 +1030,7 @@ export default function CadWorkspaceTopBar({
   fileSheetOpen = false,
   onToggleFileSheet,
   colorSchemePreference = "system",
+  resolvedColorSchemeMode = "light",
   onColorSchemePreferenceChange,
   navigationAvailable = true
 }) {
@@ -1084,11 +1079,7 @@ export default function CadWorkspaceTopBar({
     ? `Collapse ${fileSheetLabel(fileSheetKind)}`
     : `Expand ${fileSheetLabel(fileSheetKind)}`;
   const appearanceLabel = "Appearance";
-  const AppearanceIcon = colorSchemePreference === "light"
-    ? Sun
-    : colorSchemePreference === "dark"
-      ? Moon
-      : Monitor;
+  const AppearanceIcon = resolvedColorSchemeMode === "dark" ? Moon : Sun;
 
   return (
     <header
@@ -1129,7 +1120,9 @@ export default function CadWorkspaceTopBar({
                   canCopyFileAssetPaths={canCopyFileAssetPaths}
                   onRevealInExplorerView={onRevealInExplorerView}
                   onCopyFileAssetReference={onCopyFileAssetReference}
-                  filenameLoadActivity={filenameLoadActivity}
+                  editingAvailable={editingAvailable}
+                  followEdits={followEdits}
+                  onFollowEditsChange={onFollowEditsChange}
                 />
               </BreadcrumbItem>
             </BreadcrumbList>
@@ -1171,7 +1164,9 @@ export default function CadWorkspaceTopBar({
                       canCopyFileAssetPaths={canCopyFileAssetPaths}
                       onRevealInExplorerView={onRevealInExplorerView}
                       onCopyFileAssetReference={onCopyFileAssetReference}
-                      filenameLoadActivity={filenameLoadActivity}
+                      editingAvailable={editingAvailable}
+                      followEdits={followEdits}
+                      onFollowEditsChange={onFollowEditsChange}
                     />
                   )}
                 </BreadcrumbItem>
@@ -1186,11 +1181,13 @@ export default function CadWorkspaceTopBar({
       ) : (
         <div className="min-w-0" />
       )}
+      <FileStatusBadge status={fileStatus} />
 
       <div className="min-w-0 flex-1" />
 
       <TooltipProvider delayDuration={250}>
         <div className="flex shrink-0 items-center gap-1.5">
+          <div className="hidden sm:contents">
           <VersionReleaseLink
             version={viewerVersion}
             releaseUrl={releaseUrl}
@@ -1223,17 +1220,17 @@ export default function CadWorkspaceTopBar({
             </Button>
           ) : null}
 
-          {editingAvailable ? (
-            <div className="flex min-w-0 items-center gap-2">
-              {followEdits ? <span role="status" className="max-w-48 truncate text-xs text-muted-foreground" title={editingStatus}>{editingStatus}</span> : null}
-              <Button type="button" variant="ghost" size="sm" aria-pressed={followEdits}
-                aria-label="Follow edits" onClick={onFollowEditsChange}>
-                {followEdits ? "Follow edits" : "Saved file"}
-              </Button>
-            </div>
+          </div>
+          {selectedEntry && typeof onRenderModeChange === "function" ? (
+            <ToggleGroup type="single" value={renderMode ? "render" : "cad"}
+              onValueChange={(value) => { if (value) onRenderModeChange(value === "render"); }}
+              aria-label="Viewing mode" className="gap-0.5 rounded-md border border-border bg-muted/40 p-0.5">
+              <ToggleGroupItem value="cad" aria-label="CAD mode"
+                className="h-6 rounded px-2 text-xs data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm">CAD</ToggleGroupItem>
+              <ToggleGroupItem value="render" aria-label="Render mode"
+                className="h-6 rounded px-2 text-xs data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm">Render</ToggleGroupItem>
+            </ToggleGroup>
           ) : null}
-          <ViewportQualityIndicator qualityStatus={qualityStatus} />
-          {annotationError ? <span role="alert" className="max-w-48 truncate text-xs text-destructive" title={annotationError}>Annotations unavailable</span> : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -1249,7 +1246,6 @@ export default function CadWorkspaceTopBar({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-36">
-              <DropdownMenuLabel className="text-xs">Appearance</DropdownMenuLabel>
               <DropdownMenuRadioGroup
                 value={colorSchemePreference}
                 onValueChange={(value) => onColorSchemePreferenceChange?.(value)}

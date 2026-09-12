@@ -28,10 +28,11 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   (`<name>.step.js`), and the cache. The viewer never reads
   source code and never rebuilds on source changes — generated outputs are
   detached, and a stale artifact stays stale until someone runs its script.
-  **Follow edits** is an explicit alternative input: the runtime announces
+  Generated STEP entries default to **Follow edits**: the runtime announces
   complete immutable preview trees while an already-running decorated build
   saves its outputs. The viewer consumes those trees and resolved kinematics,
-  never source or model/output records. Plain links remain saved-file views.
+  never source or model/output records. **Inspect saved STEP** in the file
+  breadcrumb, or `?mode=saved`, selects the artifact read-back instead.
 - **Kinematics/animation independence**: the Kinematics tab drives the sidecar's
   mate data through the shared FK runtime; the Animation tab evaluates the
   `clips` the authored render module beside the artifact (`<name>.step.js`)
@@ -52,18 +53,22 @@ the live OS preference. A host-scoped `cad-viewer-appearance` cookie remembers
 the choice across browser sessions and viewer ports; a localStorage mirror
 notifies other tabs on the same origin and provides a fallback when cookies
 are blocked. The synchronous startup script applies the preference before the
-app mounts. Neutral light and charcoal panel tokens remain independent from
+app mounts. The navbar shows the resolved Sun or Moon icon; System appears only
+as a dropdown choice. Neutral light and charcoal panel tokens remain independent from
 the model's lighting and materials.
 
 **Display** owns the CAD inspection projection, style, edges, grid, origin axes,
 part colors, clipping, and exploded view. **Shaded with edges** shows shaded
 surfaces with CAD edges; **Shaded** shows those surfaces without edges. Grid and
-origin axes remain world references. Display is hidden while Render is enabled,
-and its state is restored unchanged when the user returns to CAD.
+origin axes remain world references.
 
-**Render** is the last inspector tab by default. Its enable switch enters an
-isolated photographic view; changing inspector tabs does not disable it. The
-default Light or Dark studio follows app appearance until the user pins one.
+The navbar switches between **CAD** and **Render**. CAD shows only inspection
+tabs and restores their saved split, order, and active selection unchanged.
+Render enters an isolated photographic view with **Studio** first and active;
+**Animation** follows when the model provides clips. The Render tabs start in
+one row on each entry. Dragging and splitting them is temporary and never
+overwrites the durable per-kind CAD arrangement. The default Light or Dark
+studio follows app appearance until the user pins one.
 The compact editor controls lens and exposure, softbox rotation, size and fill,
 plus backdrop color, transparency, and ground. AgX tone mapping and a generated
 softbox environment provide the Render lighting. Authored material properties
@@ -77,25 +82,24 @@ environment. Quality changes refine the view without rebuilding exact CAD
 geometry or the model scene. Entering Render creates an ordinary-depth WebGL
 runtime so the photographic ground can receive shadows; returning to CAD restores
 its wide-range logarithmic-depth runtime while decoded geometry stays cached. The
-status indicator reports High detail after the available refinement settles and
-reports when memory limits prevent extra detail. Snapshots use the same policy:
+filename badge reports Refining while work is active and Reduced detail when
+memory limits prevent requested detail. Snapshots use the same policy:
 Final selects the existing finest L3 STEP tessellation and 2× capture scale unless
 explicit tessellation or output scale overrides it.
 
 Normal CAD settings and Render settings are separate per-model session state.
-Enabling Render applies its perspective camera and fixed presentation view
+Entering Render applies its perspective camera and fixed presentation view
 (shaded authored colors; guides, edges, clipping, exploded transforms, and
-selection effects are off). Animation playback remains available. Disabling restores
-the CAD camera and inspection state; reenabling restores the photographic view.
+selection effects are off). Animation playback remains available. Returning to
+CAD restores the CAD camera and inspection state; returning to Render restores
+the photographic view.
 These settings use sessionStorage with other per-model
 ephemeral state; they are not written beside models, into the geometry cache,
 or into global app appearance. A normal geometry rebuild preserves the
 render setup. Closing the browser tab ends its session.
 
-The top **Render** section also owns Reset and inline Copy/Paste Settings
-buttons. Invalid settings fail before replacing the current setup. Copy/Paste
-and Reset stay available while Render is off, so a saved setup can be copied or
-applied directly from the CAD view. The sparse JSON is
+The top **Setup** section in Studio also owns Reset and inline Copy/Paste
+Settings buttons. Invalid settings fail before replacing the current setup. The sparse JSON is
 `{studio?, quality?, exposure?, lighting?, backdrop?, camera?}` and uses the same
 contract as `cadgen step snapshot --render`. A payload without `studio` stays
 adaptive; an explicit `light` or `dark` value pins it. Both clients resolve the
@@ -150,8 +154,13 @@ the build — detection only; it keeps serving.
 
 ## Behaviours worth knowing before concluding something is broken
 
-- Choose **Follow edits** in the file toolbar, or open
-  `?file=part.step&mode=editing`, to see the root preview before its STEP save.
+- Generated STEP entries open in **Follow edits** by default, showing the root
+  preview before its STEP save. Choose **Inspect saved STEP** from the file
+  breadcrumb menu (or open `?file=part.step&mode=saved`) to inspect the artifact
+  read-back; choose **Follow edits** there to return to the live preview. The
+  compact badge beside the filename reports loading, edits, save outcomes and
+  detail refinement in one or two words. Loading uses an inline spinner;
+  warnings and errors use their own icons. Tooltips explain the state.
   Run the model normally; existing decorators need no new imports. The daemon
   must be running for live updates. The prior model stays visible while the
   next request builds; save errors or a disconnected feed remain visible.
@@ -169,7 +178,7 @@ the build — detection only; it keeps serving.
   reconnects it. Source files hold authored changes; there is no hidden durable
   preview document. Every explicit model run still waits for declared outputs.
   A successful save leaves that revision's authored preview displayed, labelled
-  **Preview · STEP saved**. Choose **Saved file** to inspect the STEP read-back
+  **Saved**. Choose **Inspect saved STEP** to inspect the STEP read-back
   and its bound sidecar. A later successful no-op run without a new preview, or
   an expired preview with a validated saved result, uses the saved file instead.
   Complete displayed component arrays remain available while a replacement

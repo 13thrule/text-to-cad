@@ -80,11 +80,7 @@ async function configureScene(page, setting) {
   if (!setting.render) {
     return;
   }
-  await page.getByRole("tab", { name: "Render", exact: true }).click();
-  const enabled = page.getByRole("switch", { name: "Enabled", exact: true });
-  if (!(await enabled.isChecked())) {
-    await enabled.click();
-  }
+  await page.getByLabel("Render mode", { exact: true }).click();
   if (setting.studio) {
     await page.getByRole("combobox", { name: "Studio", exact: true }).click();
     await page.getByRole("option", { name: setting.studio, exact: true }).click();

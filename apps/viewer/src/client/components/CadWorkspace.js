@@ -56,6 +56,7 @@ import { useCadAssets } from "./workbench/hooks/useCadAssets";
 import { useEditingPreview } from "./workbench/hooks/useEditingPreview.js";
 import { useViewportQualityStatus } from "./workbench/hooks/useViewportQualityStatus.js";
 import { previewGeometryChanged } from "@/workbench/editingPreview.js";
+import { resolveFileStatus } from "@/workbench/fileStatus.js";
 import {
   resolveDesktopPanelWidths,
   useCadWorkspaceLayout
@@ -1109,17 +1110,15 @@ export default function CadWorkspace({
   const manifestEntries = Array.isArray(manifestEntriesProp) ? manifestEntriesProp : [];
   const catalogEntries = manifestEntries;
   const explicitFileParam = readCadParam();
-  const [followEdits, setFollowEdits] = useState(() => typeof window !== "undefined" &&
-    new URL(window.location.href).searchParams.get("mode") === "editing");
-  const handleFollowEditsChange = useCallback(() => {
-    setFollowEdits(current => {
-      const next = !current;
-      const url = new URL(window.location.href);
-      if (next) url.searchParams.set("mode", "editing");
-      else url.searchParams.delete("mode");
-      window.history.replaceState(null, "", url);
-      return next;
-    });
+  const [followEdits, setFollowEdits] = useState(() => typeof window === "undefined" ||
+    new URL(window.location.href).searchParams.get("mode") !== "saved");
+  const handleFollowEditsChange = useCallback((enabled) => {
+    const next = enabled === true;
+    const url = new URL(window.location.href);
+    if (next) url.searchParams.delete("mode");
+    else url.searchParams.set("mode", "saved");
+    window.history.replaceState(null, "", url);
+    setFollowEdits(next);
   }, []);
   // Session state is namespaced per origin, and an origin (host + port) is one viewer
   // serving one root. This used to be keyed on the directory in the URL path, back when
@@ -3296,28 +3295,39 @@ export default function CadWorkspace({
     () => renderedFileSheetSectionIds(selectedFileSheetKind, fileSheetSectionOptions),
     [fileSheetSectionOptions, selectedFileSheetKind]
   );
-  const defaultSelectedFileSheetOpenSectionIds = useMemo(
-    () => defaultOpenFileSheetSectionIds(selectedFileSheetKind, fileSheetSectionOptions),
+  const renderedCadFileSheetSectionIds = useMemo(
+    () => renderedFileSheetSectionIds(selectedFileSheetKind, { ...fileSheetSectionOptions, renderMode: false }),
     [fileSheetSectionOptions, selectedFileSheetKind]
   );
-  const effectiveFileSheetOpenSectionIds = useMemo(() => (
+  const defaultCadFileSheetOpenSectionIds = useMemo(
+    () => defaultOpenFileSheetSectionIds(selectedFileSheetKind, { ...fileSheetSectionOptions, renderMode: false }),
+    [fileSheetSectionOptions, selectedFileSheetKind]
+  );
+  const effectiveCadFileSheetOpenSectionIds = useMemo(() => (
     normalizeFileSheetOpenSectionIds(
       Array.isArray(fileSheetOpenSectionIds)
         ? fileSheetOpenSectionIds
-        : defaultSelectedFileSheetOpenSectionIds,
-      renderedSelectedFileSheetSectionIds
+        : defaultCadFileSheetOpenSectionIds,
+      renderedCadFileSheetSectionIds
     )
   ), [
-    defaultSelectedFileSheetOpenSectionIds,
+    defaultCadFileSheetOpenSectionIds,
     fileSheetOpenSectionIds,
-    renderedSelectedFileSheetSectionIds
+    renderedCadFileSheetSectionIds
   ]);
+  const effectiveFileSheetOpenSectionIds = useMemo(() => renderSession.enabled
+    ? normalizeFileSheetOpenSectionIds(renderSession.openSectionIds, renderedSelectedFileSheetSectionIds)
+    : effectiveCadFileSheetOpenSectionIds,
+  [renderSession.enabled, renderSession.openSectionIds, renderedSelectedFileSheetSectionIds, effectiveCadFileSheetOpenSectionIds]);
 
   const handleFileSheetOpenSectionIdsChange = useCallback((nextSectionIds) => {
-    setFileSheetOpenSectionIds(
-      normalizeFileSheetOpenSectionIds(nextSectionIds, renderedSelectedFileSheetSectionIds)
-    );
-  }, [renderedSelectedFileSheetSectionIds]);
+    const normalized = normalizeFileSheetOpenSectionIds(nextSectionIds, renderedSelectedFileSheetSectionIds);
+    if (renderSession.enabled) {
+      setRenderSession((current) => createRenderSessionState({ ...current, openSectionIds: normalized }));
+    } else {
+      setFileSheetOpenSectionIds(normalized);
+    }
+  }, [renderSession.enabled, renderedSelectedFileSheetSectionIds]);
 
   const openFileSheetSection = useCallback((sectionId, { openSheet = true } = {}) => {
     const normalizedSectionId = String(sectionId || "").trim();
@@ -3354,13 +3364,13 @@ export default function CadWorkspace({
     }
     const normalizedSectionIds = normalizeFileSheetOpenSectionIds(
       fileSheetOpenSectionIds,
-      renderedSelectedFileSheetSectionIds
+      renderedCadFileSheetSectionIds
     );
     if (orderedStringListEqual(normalizedSectionIds, fileSheetOpenSectionIds)) {
       return;
     }
     setFileSheetOpenSectionIds(normalizedSectionIds);
-  }, [fileSheetOpenSectionIds, renderedSelectedFileSheetSectionIds]);
+  }, [fileSheetOpenSectionIds, renderedCadFileSheetSectionIds]);
 
   const buildActiveTabSnapshot = useCallback(() => {
     return cloneTabSnapshot({
@@ -3369,7 +3379,7 @@ export default function CadWorkspace({
       selectedPartIds,
       inspectedAssemblyNodeId: "",
       expandedStepTreeNodeIds,
-      fileSheetOpenSectionIds: effectiveFileSheetOpenSectionIds,
+      fileSheetOpenSectionIds: effectiveCadFileSheetOpenSectionIds,
       hiddenPartIds,
       camera: activePerspectiveRef.current,
       drawingTool,
@@ -3383,7 +3393,7 @@ export default function CadWorkspace({
     drawingRedoStack,
     drawingStrokes,
     drawingUndoStack,
-    effectiveFileSheetOpenSectionIds,
+    effectiveCadFileSheetOpenSectionIds,
     expandedStepTreeNodeIds,
     hiddenPartIds,
     referenceQuery,
@@ -4908,6 +4918,10 @@ export default function CadWorkspace({
       };
     }
 
+    if (renderSession.enabled) {
+      return null;
+    }
+
     if (effectiveRenderFormat === RENDER_FORMAT.STEP && referenceSelectionStatus === REFERENCE_STATUS.LOADING) {
       return {
         loading: true,
@@ -4942,6 +4956,7 @@ export default function CadWorkspace({
     referenceLoadStage,
     referenceSelectionPending,
     referenceSelectionStatus,
+    renderSession.enabled,
     selectedEntry,
     selectedEntryHasDxf,
     selectedEntryHasMesh,
@@ -4956,6 +4971,19 @@ export default function CadWorkspace({
     urdfViewerLoading,
     viewerLoadingLabel
   ]);
+  const fileStatus = resolveFileStatus({
+    hasFile: Boolean(selectedEntry || explicitFileParam),
+    error: viewerAlert || catalogError || (missingFileRef
+      ? { title: "File unavailable", message: "The selected file could not be found." }
+      : null) || (selectedEntry?.annotationError && !selectedEntry.editingPreview
+      ? { severity: "warning", title: "Annotations unavailable", message: selectedEntry.annotationError }
+      : null),
+    activity: filenameLoadActivity || (effectiveViewerLoading ? { loading: true, title: viewerLoadingLabel } : null),
+    editingState: followEdits && editingAvailable ? editingPreview.state : null,
+    showingPreview: Boolean(editingPreview.entry),
+    qualityStatus: viewportQualityStatus,
+    hasGeometry: Boolean(selectedMeshData || selectedEntryIsDrawingDocument)
+  });
   const selectedWholeTopologyReferencePartIds = useMemo(() => (
     uniqueStringList(
       selectedReferenceIds.flatMap((referenceId) => renderPartIdsForWholeTopologyReference(referenceId))
@@ -7128,6 +7156,7 @@ export default function CadWorkspace({
         activeProjection: resolvedScene.camera.projection
       });
       setRenderSession(next);
+      setTabToolsOpen(true);
       applyActiveCamera(resolveSceneSettings({
         appearance: colorSchemePreference,
         prefersDark: systemPrefersDark,
@@ -7159,7 +7188,8 @@ export default function CadWorkspace({
     colorSchemePreference,
     renderSession,
     resolvedScene.camera.projection,
-    systemPrefersDark
+    systemPrefersDark,
+    setTabToolsOpen
   ]);
 
   const handleRenderStudioChange = useCallback((studio) => {
@@ -7451,17 +7481,15 @@ export default function CadWorkspace({
           explodeMeshData: selectedMeshData || null
         })
       : null,
-    buildRenderSettingsTab({
-      enabled: renderSession.enabled,
+    renderSession.enabled ? buildRenderSettingsTab({
       scene: resolvedScene,
-      onEnabledChange: handleRenderEnabledChange,
       onStudioChange: handleRenderStudioChange,
       onQualityChange: handleRenderQualityChange,
       onPayloadValueChange: handleRenderPayloadValueChange,
       onReset: handleRenderReset,
       onCopyPayload: handleRenderPayloadCopy,
       onApplyPayload: handleRenderPayloadPaste
-    })
+    }) : null
   ].filter(Boolean);
 
   return (
@@ -7612,9 +7640,9 @@ export default function CadWorkspace({
           editingAvailable={editingAvailable}
           followEdits={followEdits}
           onFollowEditsChange={handleFollowEditsChange}
-          editingStatus={editingPreview.label}
-          qualityStatus={viewportQualityStatus}
-          annotationError={selectedEntry?.editingPreview ? "" : selectedEntry?.annotationError || ""}
+          fileStatus={fileStatus}
+          renderMode={renderSession.enabled}
+          onRenderModeChange={handleRenderEnabledChange}
           sidebarLabelForEntry={sidebarLabelForEntry}
           directoryTree={allEntriesTree}
           selectedKey={selectedKey}
@@ -7627,7 +7655,6 @@ export default function CadWorkspace({
           activeStepArtifactGenerationFile={activeStepArtifactGenerationFiles}
               loadingFiles={viewerLoadingFiles}
           stepArtifactGenerationAvailable={stepArtifactGenerationAvailable}
-          filenameLoadActivity={filenameLoadActivity}
           selectedStepSourceStatus={selectedStepSourceStatus}
           canCopyFileAssetPaths={filePathCopyAvailable}
           onRevealInExplorerView={handleRevealEntryInExplorerView}
@@ -7636,6 +7663,7 @@ export default function CadWorkspace({
           fileSheetOpen={fileSheetOpen}
           onToggleFileSheet={handleToggleFileSheet}
           colorSchemePreference={colorSchemePreference}
+          resolvedColorSchemeMode={resolvedColorSchemeMode}
           onColorSchemePreferenceChange={handleColorSchemePreferenceChange}
         />
 
