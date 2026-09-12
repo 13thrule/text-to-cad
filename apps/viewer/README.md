@@ -62,8 +62,9 @@ part colors, clipping, and exploded view. **Shaded with edges** shows shaded
 surfaces with CAD edges; **Shaded** shows those surfaces without edges. Grid and
 origin axes remain world references.
 
-The navbar switches between **CAD** and **Render**. CAD shows only inspection
-tabs and restores their saved split, order, and active selection unchanged.
+The navbar's **Viewing mode** icon menu switches between **Inspect** and
+**Render**, showing the active mode's cube or aperture icon. Inspect shows only
+CAD inspection tabs and restores their saved split, order, and active selection unchanged.
 Render enters an isolated photographic view with **Studio** first and active;
 **Animation** follows when the model provides clips. The Render tabs start in
 one row on each entry. Dragging and splitting them is temporary and never

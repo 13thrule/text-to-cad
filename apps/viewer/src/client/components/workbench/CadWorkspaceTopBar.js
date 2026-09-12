@@ -1,5 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import {
+  Aperture,
+  Box,
   Check,
   CircleAlert,
   CircleCheck,
@@ -33,7 +35,6 @@ import {
   BreadcrumbSeparator
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1080,6 +1081,8 @@ export default function CadWorkspaceTopBar({
     : `Expand ${fileSheetLabel(fileSheetKind)}`;
   const appearanceLabel = "Appearance";
   const AppearanceIcon = resolvedColorSchemeMode === "dark" ? Moon : Sun;
+  const viewingModeLabel = renderMode ? "Render" : "Inspect";
+  const ViewingModeIcon = renderMode ? Aperture : Box;
 
   return (
     <header
@@ -1222,14 +1225,36 @@ export default function CadWorkspaceTopBar({
 
           </div>
           {selectedEntry && typeof onRenderModeChange === "function" ? (
-            <ToggleGroup type="single" value={renderMode ? "render" : "cad"}
-              onValueChange={(value) => { if (value) onRenderModeChange(value === "render"); }}
-              aria-label="Viewing mode" className="gap-0.5 rounded-md border border-border bg-muted/40 p-0.5">
-              <ToggleGroupItem value="cad" aria-label="CAD mode"
-                className="h-6 rounded px-2 text-xs data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm">CAD</ToggleGroupItem>
-              <ToggleGroupItem value="render" aria-label="Render mode"
-                className="h-6 rounded px-2 text-xs data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm">Render</ToggleGroupItem>
-            </ToggleGroup>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Viewing mode: ${viewingModeLabel}`}
+                  title={`Viewing mode: ${viewingModeLabel}`}
+                  className={topBarIconButtonClasses}
+                >
+                  <ViewingModeIcon className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuLabel className="text-xs">Viewing mode</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={renderMode ? "render" : "inspect"}
+                  onValueChange={(value) => onRenderModeChange(value === "render")}
+                >
+                  <DropdownMenuRadioItem value="inspect" className="text-xs">
+                    <Box className="size-3.5" strokeWidth={2} aria-hidden="true" />
+                    Inspect
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="render" className="text-xs">
+                    <Aperture className="size-3.5" strokeWidth={2} aria-hidden="true" />
+                    Render
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : null}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -282,11 +282,12 @@ a fixed color pair (e.g. the switch track), it is defined once in
 `FileSheet.js` with its dark variant beside it.
 
 App appearance is global. CAD inspection state and photographic Render state
-are separate per-model session data. The navbar enters Render. Its file sheet
+are separate per-model session data. The navbar's Viewing mode icon menu offers
+Inspect and Render. The Render file sheet
 starts with Studio active in a single row, followed by authored Animation when
 available. Display, selection, visibility, clipping, exploded view,
 measurement, drawing, and pose controls remain hidden and their CAD values are
-restored unchanged when the user returns to CAD.
+restored unchanged when the user returns to Inspect.
 
 The top Setup section contains Studio, Quality, inline Copy/Paste, and Reset.
 Camera contains Lens and Exposure; Lighting contains Rotation,
