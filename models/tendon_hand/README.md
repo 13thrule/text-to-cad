@@ -172,6 +172,15 @@ frames, and actuator transforms, then writes the ignored
 ./.venv/bin/python models/tendon_hand/validation/write_showcase_presentation.py
 ```
 
+The runtime preserves identical interpolation endpoints exactly, so a held
+pose reuses the viewer's existing tendon paths and display buffers. Moving
+endpoints retain the original linear interpolation. The focused runtime check
+needs no generated assets or CAD dependencies:
+
+```sh
+node --test models/tendon_hand/validation/showcase_runtime.test.mjs
+```
+
 Export the five GLBs expected by `website/index.html`. The animation request
 keeps the source clip name, bakes deforming tendons as morph targets, and drops
 parts hidden at the first frame. Adjust `fps`, `seconds`, mesh tolerances, or
