@@ -1224,6 +1224,38 @@ export default function CadWorkspaceTopBar({
           ) : null}
 
           </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={appearanceLabel}
+                title={appearanceLabel}
+                className={topBarIconButtonClasses}
+              >
+                <AppearanceIcon className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
+                <span className="sr-only">{appearanceLabel}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-36">
+              <DropdownMenuRadioGroup
+                value={colorSchemePreference}
+                onValueChange={(value) => onColorSchemePreferenceChange?.(value)}
+              >
+                {COLOR_SCHEMES.map((option) => {
+                  const OptionIcon = option.id === "light" ? Sun : option.id === "dark" ? Moon : Monitor;
+                  return (
+                    <DropdownMenuRadioItem key={option.id} value={option.id} className="text-xs">
+                      <OptionIcon className="size-3.5" strokeWidth={2} aria-hidden="true" />
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  );
+                })}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           {selectedEntry && typeof onRenderModeChange === "function" ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1256,37 +1288,6 @@ export default function CadWorkspaceTopBar({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label={appearanceLabel}
-                title={appearanceLabel}
-                className={topBarIconButtonClasses}
-              >
-                <AppearanceIcon className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
-                <span className="sr-only">{appearanceLabel}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-36">
-              <DropdownMenuRadioGroup
-                value={colorSchemePreference}
-                onValueChange={(value) => onColorSchemePreferenceChange?.(value)}
-              >
-                {COLOR_SCHEMES.map((option) => {
-                  const OptionIcon = option.id === "light" ? Sun : option.id === "dark" ? Moon : Monitor;
-                  return (
-                    <DropdownMenuRadioItem key={option.id} value={option.id} className="text-xs">
-                      <OptionIcon className="size-3.5" strokeWidth={2} aria-hidden="true" />
-                      {option.label}
-                    </DropdownMenuRadioItem>
-                  );
-                })}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
 
           {showFileSheetToggle ? (
             <Button
