@@ -39,8 +39,7 @@ CAD inspection defaults. A Render envelope has this closed sparse shape:
 
 ```js
 {
-  studio: "default",
-  appearance: "system",
+  studio: "studio-light",
   quality: "high",
   settings: { materials, background, floor, environment, lighting },
   camera: { preset, projection, position, target, up, direction, zoom, orthographicHalfHeight },
@@ -59,18 +58,32 @@ overrides while Render is active.
 orthographic camera. It may remain in a perspective camera payload so switching
 back restores the prior orthographic scale.
 
-Studio ids are `default`, `studio-light`, `studio-dark`, `blue`, `pink`,
-`clay-sunrise`, and `terminal`. Appearance is `system`, `light`, or `dark`.
+Studio ids are exactly `studio-light` and `studio-dark`. Omitting `studio`
+follows the resolver's global appearance while keeping the normalized Render
+payload sparse; `resolved.render.studio` reports the effective id for UI.
+`render.appearance` and the former default/colorful studio ids are rejected
+with migration guidance.
 Quality is `interactive`, `standard`, or `high` and does not select a studio.
 Render defaults to perspective, `shaded`, edges and guides off, authored
 materials, studio lighting, and high quality. Normal CAD defaults to
 orthographic `shaded_edges`, Original part colors, and interactive quality;
-the snapshot adapter turns normal CAD guides off for deterministic stills.
+it keeps authored albedo and opacity while applying matte workbench PBR
+channels, and the snapshot adapter turns normal CAD guides off for deterministic
+stills.
+High uses the bounded finest mesh rung, a 0.25px viewport target, 4096px
+directional shadows, a 512px procedural environment, and 2x snapshot capture.
+Those values are derived from the quality id and do not expand the public JSON.
 
 `resolveDisplayMaterialSettings(materials, partColor)` applies the display-owned
 Original, Single color, or Color by part palette to material settings. Render
 studio PBR values remain fallbacks for authored part materials unless the sparse
 Render settings explicitly contain that PBR channel.
+
+The two built-in studios use the same neutral material fallbacks, ACES exposure,
+key/fill/rim rig, and procedural `studio-softbox` PMREM environment. Only their
+backdrop and floor colors differ. The environment resource owns its PMREM render
+target and must be disposed through `disposeEnvironmentResource()`; viewport
+clients can reuse it by `environmentResourceIdentity()`.
 
 ### `common/source.js`
 

@@ -1,5 +1,6 @@
 import { resolveThemeFillColor } from "../themeSettings.js";
 import { syncRecordBaseEmissiveColor } from "../../common/surfaceMaterialState.js";
+import { applyColorGrading } from "../../common/colorGrading.js";
 import {
   CAD_DISPLAY_MODE,
   displayModeIsWireframe,
@@ -87,19 +88,7 @@ export function shapeSourceColor(THREE, sourceColor, materialSettings = {}, { ap
     }
   }
 
-  const saturation = clamp(Number(materialSettings.saturation) || 1, 0, 2.5);
-  if (Math.abs(saturation - 1) > 1e-4) {
-    const hsl = {};
-    shaped.getHSL(hsl);
-    shaped.setHSL(hsl.h, clamp(hsl.s * saturation, 0, 1), hsl.l);
-  }
-
-  const contrast = clamp(Number(materialSettings.contrast) || 1, 0, 2.5);
-  const brightness = clamp(Number(materialSettings.brightness) || 1, 0, 2);
-  shaped.r = clamp(((shaped.r - 0.5) * contrast + 0.5) * brightness, 0, 1);
-  shaped.g = clamp(((shaped.g - 0.5) * contrast + 0.5) * brightness, 0, 1);
-  shaped.b = clamp(((shaped.b - 0.5) * contrast + 0.5) * brightness, 0, 1);
-  return shaped;
+  return applyColorGrading(shaped, materialSettings);
 }
 
 export function shapeSourceColorBuffer(THREE, colors, materialSettings = {}) {

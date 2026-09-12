@@ -265,6 +265,7 @@ export default function CadRenderPane({
   projection = CAMERA_PROJECTION.ORTHOGRAPHIC,
   themeSettings,
   materialOverrides = null,
+  receiveShadows = false,
   quality = null,
   previewMode,
   viewportFrameInsets,
@@ -513,6 +514,7 @@ export default function CadRenderPane({
         recomputeNormals={false}
         themeSettings={themeSettings}
         materialOverrides={materialOverrides}
+        receiveShadows={receiveShadows}
         quality={quality}
         displaySettings={displaySettingsActive ? displaySettings : null}
         previewMode={previewMode}

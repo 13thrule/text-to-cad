@@ -28,10 +28,10 @@ unrelated CAD Viewer sessions, so it should only hold global preferences.
 
 Current intended use:
 
-- `cad-viewer:theme`: the active theme id (`system`, a built-in preset id, or
-  `custom`) plus the single custom settings blob, if the user has edited one.
-  Presets are read-only and are never stored — only named. The key is absent
-  while the theme is `system` with no custom slot.
+- `cad-viewer:color-scheme`: a same-origin mirror of the global System / Light /
+  Dark app appearance. The host-scoped `cad-viewer-appearance` cookie is the
+  canonical cross-port value; the mirror supports storage events and acts as a
+  fallback when cookies are blocked.
 - `cad-viewer:tutorial-tips:v1`: ids of the one-shot tutorial tips the user has
   dismissed. A tip is recorded only when its close button is pressed — clicking
   away, Escape, and reloads all leave it unrecorded, so it comes back on the next
@@ -66,10 +66,6 @@ Current `cad-viewer:directory-session:v1` fields:
 - `fileSheetOpen`: app-wide file sheet open/closed state.
 - `fileSheetWidthPx`: app-wide custom file sheet width, stored only when it
   differs from the default.
-- `theme`: a directory-level theme override for the current tab, in the same
-  `{themeId, custom}` shape as the global key. The global theme itself belongs
-  to `localStorage`.
-
 Do not put selected-file state, model controls, drawing state, or
 generated-asset decisions in directory session state. Those belong in per-file
 session state.
@@ -100,6 +96,10 @@ Existing slice intent:
 - `stepModule`: STEP module enablement, parameter values, and animation state.
 - `urdf`: joint values and motion-planning controls.
 - `largeFile`: large-file decisions such as selectable topology opt-in.
+- `display`: normal CAD display controls for the model.
+- `render`: Render enablement, sparse studio customizations, quality, and the
+  separate CAD/Render camera state. An omitted studio follows global app
+  appearance; an explicit `studio-light` or `studio-dark` pins the studio.
 
 When adding another large-file control, reuse the `largeFile` slice instead of
 adding a separate session storage key.

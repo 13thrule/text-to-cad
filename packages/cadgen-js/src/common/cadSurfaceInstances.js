@@ -213,8 +213,8 @@ export function buildCadSurfaceInstanceSets(THREE, records, modelGroup) {
       configureInstanceMaterial(material);
       const object = new THREE.InstancedMesh(group[0].geometry, material, group.length);
       object.name = "CadSurfaceInstances";
-      object.castShadow = true;
-      object.receiveShadow = false;
+      object.castShadow = group[0].mesh.castShadow === true;
+      object.receiveShadow = group[0].mesh.receiveShadow === true;
       object.renderOrder = Number(group[0].mesh.renderOrder) || 0;
       object.userData.partIds = group.map((record) => record.partId);
       object.userData.faceIdsByInstance = group.map((record) => record.mesh.userData.faceIds || null);
@@ -322,6 +322,8 @@ export function reconcileCadSurfaceInstanceSets(THREE, records, modelGroup, sets
     }
     set.groupPassKey = activePass;
     set.object.renderOrder = Number(active[0].mesh.renderOrder) || 0;
+    set.object.castShadow = active[0].mesh.castShadow === true;
+    set.object.receiveShadow = active[0].mesh.receiveShadow === true;
     const activeSet = new Set(active);
     for (const record of set.records) {
       assigned.add(record);
@@ -360,6 +362,8 @@ export function syncCadSurfaceInstanceRecord(record) {
   const { set, slot } = instance;
   if (!set.activeSlots[slot]) return;
   if (instance.slot === 0) {
+    set.object.castShadow = record.mesh.castShadow === true;
+    set.object.receiveShadow = record.mesh.receiveShadow === true;
     const nextMaterialKey = materialSyncKey(record.material);
     if (nextMaterialKey !== set.materialKey) {
       set.object.material.copy(record.material);

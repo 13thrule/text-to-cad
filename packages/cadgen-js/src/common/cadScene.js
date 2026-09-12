@@ -1,5 +1,6 @@
 import { applyRecordTubeDeformation } from "./tubeDeformation.js";
 import { syncRecordBaseEmissiveColor } from "./surfaceMaterialState.js";
+import { applyColorGrading } from "./colorGrading.js";
 import {
   normalizeThemeSettings,
   resolveThemeFillColor
@@ -286,19 +287,7 @@ function shapeSourceColor(THREE, sourceColor, materialSettings = {}, { applyTint
     }
   }
 
-  const saturation = clamp(Number(materialSettings.saturation) || 1, 0, 2.5);
-  if (Math.abs(saturation - 1) > 1e-4) {
-    const hsl = {};
-    shaped.getHSL(hsl);
-    shaped.setHSL(hsl.h, clamp(hsl.s * saturation, 0, 1), hsl.l);
-  }
-
-  const contrast = clamp(Number(materialSettings.contrast) || 1, 0, 2.5);
-  const brightness = clamp(Number(materialSettings.brightness) || 1, 0, 2);
-  shaped.r = clamp(((shaped.r - 0.5) * contrast + 0.5) * brightness, 0, 1);
-  shaped.g = clamp(((shaped.g - 0.5) * contrast + 0.5) * brightness, 0, 1);
-  shaped.b = clamp(((shaped.b - 0.5) * contrast + 0.5) * brightness, 0, 1);
-  return shaped;
+  return applyColorGrading(shaped, materialSettings);
 }
 
 function shapeSourceColorBuffer(THREE, colors, materialSettings = {}) {
@@ -2340,7 +2329,25 @@ function setRuntimeTheme(runtime, settings) {
   };
   runtime.materialSettings = settings.materialSettings;
   runtime.materialOverrides = settings.materialOverrides;
+  runtime.receiveShadows = settings.receiveShadows === true;
   applyEdgeRenderingToRuntime(runtime, settings.edgeRendering);
+}
+
+// Render mode opts into model-to-model shadows. Keep normal CAD surfaces on
+// their cheaper historical path, and keep translucent inspection/source parts
+// out of the shadow pass: an alpha-blended MeshPhysicalMaterial cannot cast or
+// receive a physically meaningful solid silhouette without an authored alpha
+// map. The key light's scale-aware normal bias handles the opaque receivers.
+function syncRecordShadowPolicy(record, receiveShadows) {
+  const material = record?.material;
+  const mesh = record?.mesh;
+  if (!mesh || !material) {
+    return;
+  }
+  const opaque = material.transparent !== true && Number(material.opacity) >= 0.999;
+  const lit = material.isMeshStandardMaterial === true || material.isMeshPhysicalMaterial === true;
+  mesh.receiveShadow = receiveShadows === true && opaque && lit;
+  mesh.castShadow = receiveShadows === true ? opaque && lit : true;
 }
 
 function meshDataFromSource(source) {
@@ -2466,6 +2473,9 @@ export function buildModel(THREE, source, settings = {}) {
   // transforms and clipping agree with the ordinary picking proxies.
   const syncSurfaceInstances = () => {
     if (disposed) return;
+    for (const record of runtime.displayRecords) {
+      syncRecordShadowPolicy(record, runtime.receiveShadows);
+    }
     if (surfaceInstancingStateEligible(currentSettings)) {
       runtime.cadSurfaceInstanceSets = reconcileCadSurfaceInstanceSets(
         THREE, runtime.displayRecords, modelGroup, runtime.cadSurfaceInstanceSets

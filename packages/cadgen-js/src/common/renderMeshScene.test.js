@@ -344,6 +344,13 @@ test("the still frame rides the effects-pass channel the viewer and docs hero us
     modelOptionsForRenderJob(renderJobContext(twoPartMeshData(), {}), {}).callbacks.animation,
     null
   );
+  assert.equal(options.receiveShadows, false, "normal CAD snapshots keep the inspection shadow policy");
+  const renderJob = { render: {}, outputs: [{ path: "render.png" }] };
+  assert.equal(
+    modelOptionsForRenderJob(renderJobContext(twoPartMeshData(), renderJob), renderJob).receiveShadows,
+    true,
+    "Render snapshots enable opaque model receivers"
+  );
 });
 
 test("a snapshot frame at time t is the clip evaluated at t, on the rendered records", () => {

@@ -79,7 +79,7 @@ import {
   displayModeIsWireframe,
   normalizeDisplaySettings
 } from "cadgen-js/lib/displaySettings";
-import { resolveSceneSettings } from "cadgen-js/common/sceneSettings.js";
+import { RENDER_STUDIO, resolveSceneSettings } from "cadgen-js/common/sceneSettings.js";
 import {
   annotatePerspectiveSnapshot,
   clonePerspectiveSnapshot
@@ -178,18 +178,17 @@ import {
   writeFileSessionState
 } from "@/workbench/fileSessionState";
 import {
-  DEFAULT_RENDER_PAYLOAD,
   createRenderSessionState,
   parseRenderSettingsText,
   renderCameraSeed,
   renderCameraSnapshot,
   renderPayloadForCopy,
   renderSessionForPayloadApply,
+  renderSessionForReset,
   renderVisualPayload,
   renderVisualSettingsKey,
   resolveRenderSessionQuality,
   resolveRenderCameraSnapshot,
-  replaceRenderAppearance,
   replaceRenderPreset,
   setRenderSetting
 } from "@/workbench/renderSessionState.js";
@@ -1210,46 +1209,44 @@ export default function CadWorkspace({
   const drawingGeometryCacheRef = useRef(new Map());
   const [drawingGeometry, setDrawingGeometry] = useState(null);
   const renderVisualKey = renderVisualSettingsKey(renderSession.payload);
+  const pinnedRenderAppearance = renderSession.enabled
+    ? renderSession.payload.studio === RENDER_STUDIO.DARK
+      ? "dark"
+      : renderSession.payload.studio === RENDER_STUDIO.LIGHT
+        ? "light"
+        : null
+    : null;
+  const renderVisualAppearance = pinnedRenderAppearance || colorSchemePreference;
+  const renderVisualPrefersDark = pinnedRenderAppearance ? false : systemPrefersDark;
   const resolvedVisualScene = useMemo(() => resolveSceneSettings({
-    appearance: colorSchemePreference,
-    prefersDark: systemPrefersDark,
+    appearance: renderVisualAppearance,
+    prefersDark: renderVisualPrefersDark,
     render: renderSession.enabled ? renderVisualPayload(renderSession.payload) : null,
     display: renderSession.enabled ? null : displaySettings
   }), [
-    colorSchemePreference,
     displaySettings,
     renderSession.enabled,
+    renderVisualAppearance,
     renderVisualKey,
-    systemPrefersDark
+    renderVisualPrefersDark
   ]);
   const resolvedCamera = useMemo(() => resolveSceneSettings({
-    appearance: colorSchemePreference,
-    prefersDark: systemPrefersDark,
     render: renderSession.enabled ? {
-      studio: renderSession.payload.studio,
-      appearance: renderSession.payload.appearance,
+      ...(renderSession.payload.studio ? { studio: renderSession.payload.studio } : {}),
       quality: renderSession.payload.quality,
       ...(renderSession.payload.camera ? { camera: renderSession.payload.camera } : {})
     } : null,
     camera: renderSession.enabled ? null : { projection: renderSession.cadProjection }
   }).camera, [
-    colorSchemePreference,
     renderSession.cadProjection,
     renderSession.enabled,
-    renderSession.payload.appearance,
     renderSession.payload.camera,
     renderSession.payload.quality,
-    renderSession.payload.studio,
-    systemPrefersDark
+    renderSession.payload.studio
   ]);
-  const resolvedQuality = useMemo(() => resolveRenderSessionQuality(renderSession, {
-    appearance: colorSchemePreference,
-    prefersDark: systemPrefersDark
-  }), [
-    colorSchemePreference,
+  const resolvedQuality = useMemo(() => resolveRenderSessionQuality(renderSession), [
     renderSession.enabled,
-    renderSession.payload.quality,
-    systemPrefersDark
+    renderSession.payload.quality
   ]);
   const resolvedScene = useMemo(() => ({
     ...resolvedVisualScene,
@@ -7139,13 +7136,6 @@ export default function CadWorkspace({
     }));
   }, []);
 
-  const handleRenderAppearanceChange = useCallback((appearance) => {
-    setRenderSession((current) => createRenderSessionState({
-      ...current,
-      payload: replaceRenderAppearance(current.payload, appearance)
-    }));
-  }, []);
-
   const handleRenderQualityChange = useCallback((quality) => {
     setRenderSession((current) => createRenderSessionState({
       ...current,
@@ -7185,12 +7175,11 @@ export default function CadWorkspace({
 
   const handleRenderReset = useCallback(() => {
     const camera = renderCameraSnapshot(activePerspectiveRef.current);
-    const payload = {
-      ...DEFAULT_RENDER_PAYLOAD,
-      ...(camera ? { camera: renderCameraSeed(camera) } : {})
-    };
-    const next = createRenderSessionState({ ...renderSession, enabled: true, payload });
+    const next = renderSessionForReset(renderSession, { activeCamera: camera });
     setRenderSession(next);
+    if (!next.enabled) {
+      return;
+    }
     applyActiveCamera(resolveSceneSettings({
       appearance: colorSchemePreference,
       prefersDark: systemPrefersDark,
@@ -7429,7 +7418,6 @@ export default function CadWorkspace({
       scene: resolvedScene,
       onEnabledChange: handleRenderEnabledChange,
       onStudioChange: handleRenderStudioChange,
-      onAppearanceChange: handleRenderAppearanceChange,
       onQualityChange: handleRenderQualityChange,
       onSettingsValueChange: handleRenderSettingChange,
       onReset: handleRenderReset,
@@ -7487,6 +7475,7 @@ export default function CadWorkspace({
           projection={resolvedScene.camera.projection}
           themeSettings={resolvedThemeSettings}
           materialOverrides={resolvedScene.render.materialOverrides}
+          receiveShadows={resolvedScene.render.enabled}
           quality={resolvedScene.quality}
           displaySettings={renderDisplaySettings}
           previewMode={previewMode}

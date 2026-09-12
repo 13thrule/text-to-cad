@@ -662,7 +662,7 @@ export function FileSheetSegmentedControl({ value, onChange, options, ariaLabel,
 // The standard select: an inline row, trigger on the control axis. `stacked`
 // gives the block-row treatment — label above, full width — and is reserved for
 // a surface's primary control, the first row that reframes everything under it
-// (Theme > Preset, Display > Mode, Joints > Group state). Nothing else.
+// (Render > Studio, Display > Mode, Joints > Group state). Nothing else.
 // Pass triggerContent to replace the plain SelectValue (e.g. a swatch + label).
 export function FileSheetSelectRow({
   label,

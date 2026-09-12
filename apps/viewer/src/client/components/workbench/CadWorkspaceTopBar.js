@@ -4,10 +4,12 @@ import {
   Circle,
   CircleAlert,
   CircleCheck,
-  Contrast,
   Copy,
   Folder,
   LoaderCircle,
+  Monitor,
+  Moon,
+  Sun,
   SlidersHorizontal
 } from "lucide-react";
 import EntryIcon from "./EntryIcon";
@@ -1082,6 +1084,11 @@ export default function CadWorkspaceTopBar({
     ? `Collapse ${fileSheetLabel(fileSheetKind)}`
     : `Expand ${fileSheetLabel(fileSheetKind)}`;
   const appearanceLabel = "Appearance";
+  const AppearanceIcon = colorSchemePreference === "light"
+    ? Sun
+    : colorSchemePreference === "dark"
+      ? Moon
+      : Monitor;
 
   return (
     <header
@@ -1237,7 +1244,7 @@ export default function CadWorkspaceTopBar({
                 title={appearanceLabel}
                 className={topBarIconButtonClasses}
               >
-                <Contrast className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
+                <AppearanceIcon className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
                 <span className="sr-only">{appearanceLabel}</span>
               </Button>
             </DropdownMenuTrigger>
@@ -1247,11 +1254,15 @@ export default function CadWorkspaceTopBar({
                 value={colorSchemePreference}
                 onValueChange={(value) => onColorSchemePreferenceChange?.(value)}
               >
-                {COLOR_SCHEMES.map((option) => (
-                  <DropdownMenuRadioItem key={option.id} value={option.id} className="text-xs">
-                    {option.label}
-                  </DropdownMenuRadioItem>
-                ))}
+                {COLOR_SCHEMES.map((option) => {
+                  const OptionIcon = option.id === "light" ? Sun : option.id === "dark" ? Moon : Monitor;
+                  return (
+                    <DropdownMenuRadioItem key={option.id} value={option.id} className="text-xs">
+                      <OptionIcon className="size-3.5" strokeWidth={2} aria-hidden="true" />
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  );
+                })}
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>

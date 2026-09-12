@@ -25,6 +25,7 @@ from cadgen.snapshot_core import (  # noqa: E402
     DISPLAY_OPTION_KEYS,
     DISPLAY_PART_COLOR_KEYS,
     PART_COLOR_MODES,
+    RENDER_ENVIRONMENT_IDS,
     RENDER_LIGHT_KEYS,
     RENDER_SETTING_BLOCK_KEYS,
     RENDER_STUDIO_IDS,
@@ -33,11 +34,13 @@ from cadgen.snapshot_core import (  # noqa: E402
     SUPPORTED_RENDER_SETTINGS_KEYS,
     SnapshotError,
     validate_camera_option,
+    validate_render_option,
 )
 
 SCENE = repo_path("packages/cadgen-js/src/common/sceneSettings.js")
 CAMERA = repo_path("packages/cadgen-js/src/common/camera.js")
 DISPLAY = repo_path("packages/cadgen-js/src/common/displaySettings.js")
+THEME = repo_path("packages/cadgen-js/src/common/themeSettings.js")
 
 
 def exported_strings(path, export: str) -> set[str]:
@@ -58,6 +61,17 @@ def frozen_enum_values(path, export: str, next_export: str) -> set[str]:
     return set(re.findall(r':\s*"([^"]+)"', source[start:end]))
 
 
+def frozen_object_array_ids(path, export: str) -> set[str]:
+    source = path.read_text(encoding="utf-8")
+    match = re.search(
+        rf"export const {re.escape(export)}\s*=\s*Object\.freeze\(\[(.*?)\]\);",
+        source,
+        re.S,
+    )
+    assert match, f"{path.name} no longer exports {export} as a frozen array"
+    return set(re.findall(r'\bid:\s*"([^"]+)"', match.group(1)))
+
+
 class SharedSceneContractParityTests(unittest.TestCase):
     def test_render_envelope_keys_match(self):
         self.assertEqual(exported_strings(SCENE, "RENDER_PAYLOAD_KEYS"), set(SUPPORTED_RENDER_KEYS))
@@ -72,6 +86,60 @@ class SharedSceneContractParityTests(unittest.TestCase):
         self.assertEqual(
             frozen_enum_values(SCENE, "RENDER_STUDIO", "RENDER_STUDIO_PRESETS"),
             set(RENDER_STUDIO_IDS),
+        )
+
+    def test_sparse_render_and_retired_studios_match_shared_js(self):
+        retired = [
+            {"studio": "default"},
+            {"studio": "blue"},
+            {"studio": "pink"},
+            {"studio": "colorful"},
+            {"studio": "clay-sunrise"},
+            {"studio": "terminal"},
+            {"appearance": "dark"},
+        ]
+        script = f"""
+import fs from "node:fs";
+import {{ normalizeRenderPayload, resolveSceneSettings }} from {json.dumps(SCENE.as_uri())};
+const retired = JSON.parse(fs.readFileSync(0, "utf8"));
+const sparse = normalizeRenderPayload({{}});
+const failures = retired.map((render) => {{
+  try {{ normalizeRenderPayload(render); return false; }}
+  catch {{ return true; }}
+}});
+console.log(JSON.stringify({{
+  sparseHasStudio: Object.prototype.hasOwnProperty.call(sparse, "studio"),
+  effectiveStudio: resolveSceneSettings({{ render: {{}} }}).render.studio,
+  failures
+}}));
+"""
+        completed = subprocess.run(
+            ["node", "--input-type=module", "-e", script],
+            input=json.dumps(retired),
+            text=True,
+            capture_output=True,
+            check=True,
+            cwd=repo_path(),
+        )
+        shared = json.loads(completed.stdout)
+        self.assertFalse(shared["sparseHasStudio"])
+        self.assertEqual("studio-light", shared["effectiveStudio"])
+        self.assertEqual({}, validate_render_option({}, source_label="parity test"))
+        python_failures = []
+        for render in retired:
+            try:
+                validate_render_option(render, source_label="parity test")
+            except SnapshotError:
+                python_failures.append(True)
+            else:
+                python_failures.append(False)
+        self.assertEqual(shared["failures"], python_failures)
+        self.assertEqual([True] * len(retired), python_failures)
+
+    def test_environment_preset_ids_match(self):
+        self.assertEqual(
+            frozen_object_array_ids(THEME, "ENVIRONMENT_PRESETS"),
+            set(RENDER_ENVIRONMENT_IDS),
         )
 
     def test_scene_quality_ids_match(self):

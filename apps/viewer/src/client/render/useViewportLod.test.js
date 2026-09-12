@@ -75,7 +75,7 @@ test("high definition tightens screen error through the existing tessellation la
   const standard = viewportLodSampleForQuality(sample, "standard");
   const high = viewportLodSampleForQuality(sample, { id: "high" });
   assert.equal(standard.viewportHeightPx, 600);
-  assert.equal(high.viewportHeightPx, 1200);
+  assert.equal(high.viewportHeightPx, 2400);
   const component = { diagonal: 100, cameraDistance: 100 };
   assert.equal(settledLevel({ ...component, ...standard }, 1), 1);
   assert.equal(settledLevel({ ...component, ...high }, 1), 2);

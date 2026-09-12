@@ -168,19 +168,29 @@ tessellation v4 keys, headers and mesh-index records ↔ `cadgen/store/meshes.py
 `common/sceneSettings.js` is the public scene-policy boundary shared by the
 Viewer and snapshot runtime. `resolveSceneSettings()` applies base CAD defaults,
 then an optional sparse Render envelope, then explicit camera/display overrides.
-The Render envelope is `{studio, appearance, quality, settings, camera, display}`.
+The Render envelope is `{studio, quality, settings, camera, display}`. Its
+optional studio is `studio-light` or `studio-dark`; omission follows the
+resolved global appearance and remains omitted in the normalized payload.
+The resolved scene exposes the effective studio for UI display. Render uses a
+built-in procedural softbox PMREM for shape-revealing PBR reflections without
+depending on a remote image. The light and dark studios share material,
+environment, lighting, and tone-mapping policy; their backdrop and floor colors
+differ.
 Camera owns projection; display owns mode, clipping, exploded view, edge style,
 world-origin guides, and part colors. Studio settings own materials, background,
 floor, environment, and lighting. Quality is independent from the studio preset:
 interactive and standard retain the canonical snapshot mesh rung, while high
-uses the bounded L2 rung and 2x snapshot render scale. Explicit
+uses the bounded L3 rung, a 0.25px viewport target, 4096px shadows, a 512px
+procedural environment, and 2x snapshot render scale. Explicit
 `quality.tessellation` and `output.renderScale` remain authoritative.
 
 Canonical display modes are `shaded`, `shaded_edges`, `transparent`,
 `hidden_edges`, `hidden_lines_removed`, `unshaded`, and `wireframe`. Retired
 `rendered` and `solid` values fail with their replacements. Render material
 settings are fallbacks for authored PBR channels; only sparse explicit PBR edits
-become material overrides. `resolveDisplayMaterialSettings()` applies the shared
+become material overrides. Normal CAD keeps authored albedo and opacity but
+applies the matte workbench PBR channels because its inspection scene has no
+reflection environment. `resolveDisplayMaterialSettings()` applies the shared
 Original, Single color, and Color by part policy without app state.
 
 Browser mesh-cache reads start with a bounded metadata probe. The client admits

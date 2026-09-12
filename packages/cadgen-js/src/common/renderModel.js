@@ -96,7 +96,7 @@ export function renderModel(THREE, model, options = {}) {
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.shadowMap.enabled = options.shadows !== false;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = options.scene || new THREE.Scene();
   applyBackground(THREE, renderer, scene, theme, { alpha });

@@ -59,6 +59,11 @@ import {
 } from "cadgen-js/lib/displaySettings";
 import { resolveDisplayMaterialSettings } from "cadgen-js/common/sceneSettings.js";
 import {
+  createEnvironmentResource,
+  disposeEnvironmentResource,
+  environmentResourceIdentity
+} from "cadgen-js/common/environmentMap.js";
+import {
   clampSceneModelRadius,
   defaultSceneGridRadius,
   getLightingScopeRadius,
@@ -636,10 +641,18 @@ function syncRuntimeScaledLighting(runtime, lightingSettings = {}, radius, scene
   }
 }
 
-function syncRuntimeScaledLightingAndShadow(THREE, runtime, lightingSettings = {}, radius, bounds, sceneScaleMode = VIEWER_SCENE_SCALE.CAD) {
+function syncRuntimeScaledLightingAndShadow(
+  THREE,
+  runtime,
+  lightingSettings = {},
+  radius,
+  bounds,
+  sceneScaleMode = VIEWER_SCENE_SCALE.CAD,
+  shadowMapSize = 2048
+) {
   syncRuntimeScaledLighting(runtime, lightingSettings, radius, sceneScaleMode);
   if (THREE && bounds && runtime?.keyLight?.shadow?.camera) {
-    applyRuntimeModelBounds(THREE, runtime, bounds, sceneScaleMode);
+    applyRuntimeModelBounds(THREE, runtime, bounds, sceneScaleMode, { shadowMapSize });
   }
 }
 
@@ -1659,6 +1672,7 @@ const CadViewer = forwardRef(function CadViewer({
   theme = BASE_VIEWER_THEME,
   themeSettings = null,
   materialOverrides = null,
+  receiveShadows = false,
   quality = null,
   floorModeOverride = "",
   previewMode = false,
@@ -1953,6 +1967,14 @@ const CadViewer = forwardRef(function CadViewer({
   // authored coordinates. Normalization enforces the same rule; this guard
   // keeps the invariant local for raw settings.
   const floorFollowsModel = floorSettings.enabled === true && floorSettings.followModel !== false;
+  const renderEnvironmentMapSize = Number(quality?.environmentMapSize) > 0
+    ? Number(quality.environmentMapSize)
+    : 256;
+  const renderShadowMapSize = receiveShadows && Number(quality?.shadowMapSize) > 0
+    ? Number(quality.shadowMapSize)
+    : 2048;
+  const renderShadowMapSizeRef = useRef(renderShadowMapSize);
+  renderShadowMapSizeRef.current = renderShadowMapSize;
   const updateActiveGridHelper = useCallback((
     runtime,
     activeViewerTheme,
@@ -2603,7 +2625,9 @@ const CadViewer = forwardRef(function CadViewer({
       }
       : null;
     if (bounds && runtime?.THREE) {
-      applyRuntimeModelBounds(runtime.THREE, runtime, bounds, sceneScaleModeRef.current);
+      applyRuntimeModelBounds(runtime.THREE, runtime, bounds, sceneScaleModeRef.current, {
+        shadowMapSize: renderShadowMapSizeRef.current
+      });
       runtime.hasVisibleModel = true;
       resetZoomAndPan({ animate: false });
     }
@@ -3412,6 +3436,34 @@ const CadViewer = forwardRef(function CadViewer({
 
   useEffect(() => {
     const runtime = runtimeRef.current;
+    const shadow = runtime?.keyLight?.shadow;
+    if (!runtime?.THREE || !shadow?.mapSize) {
+      return;
+    }
+    const previousSize = Number(runtime.shadowMapSize);
+    if (Math.abs(previousSize - renderShadowMapSize) < 1) {
+      return;
+    }
+    const previousMap = shadow.map;
+    shadow.map = null;
+    previousMap?.dispose?.();
+    shadow.mapSize.set(renderShadowMapSize, renderShadowMapSize);
+    runtime.shadowMapSize = renderShadowMapSize;
+    if (runtime.modelBounds) {
+      applyRuntimeModelBounds(
+        runtime.THREE,
+        runtime,
+        runtime.modelBounds,
+        normalizedSceneScaleMode,
+        { shadowMapSize: renderShadowMapSize }
+      );
+    }
+    runtime.invalidateShadows?.();
+    runtime.requestRender?.();
+  }, [normalizedSceneScaleMode, renderShadowMapSize, viewerReadyTick]);
+
+  useEffect(() => {
+    const runtime = runtimeRef.current;
     if (!runtime) {
       return;
     }
@@ -3481,7 +3533,8 @@ const CadViewer = forwardRef(function CadViewer({
       normalizedThemeSettings.lighting,
       runtime.modelRadius ?? runtime.gridRadius ?? defaultGridRadius,
       runtime.modelBounds,
-      normalizedSceneScaleMode
+      normalizedSceneScaleMode,
+      renderShadowMapSizeRef.current
     );
     updateSpotLightTarget(runtime);
 
@@ -3489,17 +3542,13 @@ const CadViewer = forwardRef(function CadViewer({
     runtime.keyLight.castShadow = runtime.keyLight.visible && runtime.softwareRendering !== true;
     runtime.spotLight.castShadow = false;
 
-    const materialSettings = {
-      ...normalizedMaterialSettings,
-      envMapIntensity: normalizedMaterialSettings.envMapIntensity * (
-        normalizedThemeSettings.environment.enabled ? normalizedThemeSettings.environment.intensity : 0
-      )
-    };
+    const materialSettings = { ...normalizedMaterialSettings };
     if (runtime.cadScene) {
       runtime.cadScene.update({
         theme: normalizedThemeSettings,
         materialSettings,
-        materialOverrides
+        materialOverrides,
+        receiveShadows
       });
       runtime.displayRecords = runtime.cadScene.displayRecords;
     } else {
@@ -3550,6 +3599,7 @@ const CadViewer = forwardRef(function CadViewer({
     normalizedThemeSettings,
     normalizedSceneScaleMode,
     resolvedFloorMode,
+    receiveShadows,
     floorFollowsModel,
     viewerReadyTick,
     viewerTheme,
@@ -3564,14 +3614,17 @@ const CadViewer = forwardRef(function CadViewer({
 
     let cancelled = false;
     const environmentSettings = normalizedThemeSettings.environment;
-    const clearEnvironmentTexture = () => {
+    runtime.scene.environmentIntensity = environmentSettings.enabled
+      ? environmentSettings.intensity
+      : 0;
+    const clearEnvironmentResource = () => {
       runtime.scene.environment = null;
-      disposeTexture(runtime.environmentTexture);
-      runtime.environmentTexture = null;
-      runtime.environmentTextureUrl = "";
+      disposeEnvironmentResource(runtime.environmentResource);
+      runtime.environmentResource = null;
+      runtime.environmentResourceIdentity = "";
     };
     const applyBackgroundFallback = () => {
-      clearEnvironmentTexture();
+      clearEnvironmentResource();
       applyActiveSceneBackground(runtime, viewerTheme, normalizedThemeSettings.background);
       runtime.requestRender();
     };
@@ -3583,40 +3636,38 @@ const CadViewer = forwardRef(function CadViewer({
         return;
       }
 
-      const preset = getEnvironmentPresetById(environmentSettings.presetId);
-      const textureUrl = String(preset?.url || "").trim();
-      if (!textureUrl) {
+      const resourceIdentity = environmentResourceIdentity(environmentSettings, {
+        size: renderEnvironmentMapSize
+      });
+      if (!resourceIdentity) {
         viewerAlertChangeRef.current?.(null);
         applyBackgroundFallback();
         return;
       }
 
-      if (!runtime.environmentTexture || runtime.environmentTextureUrl !== textureUrl) {
-        const textureLoader = new runtime.THREE.TextureLoader();
-        if (typeof textureLoader.setCrossOrigin === "function") {
-          textureLoader.setCrossOrigin("anonymous");
-        }
-        const nextTexture = await textureLoader.loadAsync(textureUrl);
+      if (!runtime.environmentResource || runtime.environmentResourceIdentity !== resourceIdentity) {
+        const nextResource = await createEnvironmentResource(runtime.renderer, environmentSettings, {
+          size: renderEnvironmentMapSize
+        });
         if (cancelled) {
-          nextTexture.dispose?.();
+          disposeEnvironmentResource(nextResource);
           return;
         }
-        nextTexture.mapping = runtime.THREE.EquirectangularReflectionMapping;
-        nextTexture.colorSpace = runtime.THREE.SRGBColorSpace;
-        nextTexture.needsUpdate = true;
-        disposeTexture(runtime.environmentTexture);
-        runtime.environmentTexture = nextTexture;
-        runtime.environmentTextureUrl = textureUrl;
+        const previousResource = runtime.environmentResource;
+        runtime.scene.environment = null;
+        runtime.environmentResource = nextResource;
+        runtime.environmentResourceIdentity = resourceIdentity;
+        disposeEnvironmentResource(previousResource);
       }
 
-      runtime.scene.environment = runtime.environmentTexture;
+      runtime.scene.environment = runtime.environmentResource.texture;
       viewerAlertChangeRef.current?.(null);
 
       if (runtime.scene.environmentRotation?.set) {
         runtime.scene.environmentRotation.set(0, environmentSettings.rotationY, 0);
       }
       if (environmentSettings.useAsBackground) {
-        runtime.scene.background = runtime.environmentTexture;
+        runtime.scene.background = runtime.environmentResource.texture;
         if (runtime.scene.backgroundRotation?.set) {
           runtime.scene.backgroundRotation.set(0, environmentSettings.rotationY, 0);
         }
@@ -3634,16 +3685,22 @@ const CadViewer = forwardRef(function CadViewer({
           summary: "Environment unavailable",
           title: "Environment preset could not be loaded",
           message: `Failed to load ${String(getEnvironmentPresetById(environmentSettings.presetId)?.label || "the selected environment preset")}.`,
-          resolution: "The viewer fell back to the current background settings. Check the network connection or choose another preset."
+          resolution: "The viewer fell back to the current background settings. Reload the viewer or choose another preset."
         });
-        console.error("Failed to apply environment texture", error);
+        console.error("Failed to apply environment resource", error);
       }
     });
 
     return () => {
       cancelled = true;
     };
-  }, [viewerReadyTick, viewerTheme, normalizedThemeSettings.background, normalizedThemeSettings.environment]);
+  }, [
+    renderEnvironmentMapSize,
+    viewerReadyTick,
+    viewerTheme,
+    normalizedThemeSettings.background,
+    normalizedThemeSettings.environment
+  ]);
 
   useEffect(() => {
     const runtime = runtimeRef.current;
@@ -3735,12 +3792,7 @@ const CadViewer = forwardRef(function CadViewer({
       pickableParts,
       pickMode
     });
-    const materialSettings = {
-      ...normalizedMaterialSettings,
-      envMapIntensity: normalizedMaterialSettings.envMapIntensity * (
-        normalizedThemeSettings.environment.enabled ? normalizedThemeSettings.environment.intensity : 0
-      )
-    };
+    const materialSettings = { ...normalizedMaterialSettings };
     const modelStepParameters = stepParameterRuntime?.definition
       ? {
           ...stepParameterRuntime,
@@ -3808,7 +3860,8 @@ const CadViewer = forwardRef(function CadViewer({
             message: warning?.message || "The CAD scene renderer reported a warning."
           });
         }
-      }
+      },
+      receiveShadows
     };
     const reuseScene = !!runtime.cadScene &&
       runtime.hasVisibleModel &&
@@ -3958,14 +4011,17 @@ const CadViewer = forwardRef(function CadViewer({
       });
     runtime.modelFloorZBase = Number(previousTransform.floorZ);
     runtime.modelFloorZBelowModel = Number(previousTransform.floorZBelowModel);
-    const { radius } = applyRuntimeModelBounds(THREE, runtime, displayBounds, normalizedSceneScaleMode);
+    const { radius } = applyRuntimeModelBounds(THREE, runtime, displayBounds, normalizedSceneScaleMode, {
+      shadowMapSize: renderShadowMapSizeRef.current
+    });
     syncRuntimeScaledLightingAndShadow(
       THREE,
       runtime,
       normalizedThemeSettings.lighting,
       radius,
       displayBounds,
-      normalizedSceneScaleMode
+      normalizedSceneScaleMode,
+      renderShadowMapSizeRef.current
     );
     updateActiveGridHelper(
       runtime,
@@ -4205,6 +4261,7 @@ const CadViewer = forwardRef(function CadViewer({
     materialPartPolicyKey,
     normalizedSceneScaleMode,
     resolvedFloorMode,
+    receiveShadows,
     floorFollowsModel,
     viewerTheme,
     displayEdgeSettings,
@@ -4257,14 +4314,17 @@ const CadViewer = forwardRef(function CadViewer({
       return;
     }
 
-    const { radius } = applyRuntimeModelBounds(runtime.THREE, runtime, meshData.bounds, normalizedSceneScaleMode);
+    const { radius } = applyRuntimeModelBounds(runtime.THREE, runtime, meshData.bounds, normalizedSceneScaleMode, {
+      shadowMapSize: renderShadowMapSizeRef.current
+    });
     syncRuntimeScaledLightingAndShadow(
       runtime.THREE,
       runtime,
       normalizedThemeSettings.lighting,
       radius,
       meshData.bounds,
-      normalizedSceneScaleMode
+      normalizedSceneScaleMode,
+      renderShadowMapSizeRef.current
     );
     const cachedFloorZ = floorFollowsModel
       ? modelTransformRef.current.floorZBelowModel

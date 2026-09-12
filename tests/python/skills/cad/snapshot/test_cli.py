@@ -70,7 +70,7 @@ def write_package(step_path, *, entry_kind="part", source_kind="step", kinematic
                 "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1],
             }
         ],
-    }, surf=b"component-surf")
+    })
     pkg_dir = result_view_dir(step_path)
     if kinematics:
         # Kinematics (source-derived) rides the MODEL-SIDE sidecar, never
@@ -245,6 +245,7 @@ class SnapshotCliTests(unittest.TestCase):
         text = cad_snapshot_entry.build_parser().format_help()
         self.assertIn("orthographicHalfHeight preserves an orthographic", text)
         self.assertIn("view's scale", text)
+        self.assertIn("studio-light, studio-dark", text)
         for flag in self.NON_FLAGS:
             if flag.startswith("--"):
                 with self.subTest(flag=flag):
@@ -393,7 +394,6 @@ class SnapshotCliTests(unittest.TestCase):
                 json.dumps(
                     {
                         "studio": "studio-light",
-                        "appearance": "light",
                         "settings": {
                             "materials": {"roughness": 0.5},
                             "background": {"solidColor": "#ffffff"},
@@ -408,6 +408,30 @@ class SnapshotCliTests(unittest.TestCase):
             ]
         )
         self.assertEqual(job["render"]["settings"]["materials"]["roughness"], 0.5)
+
+    def test_empty_render_envelope_stays_sparse_through_generated_cli(self) -> None:
+        job = job_from_argv([
+            "parts/STEP/cylindrical_cap.step", "tmp/cap.png", "--render", "{}",
+        ])
+        self.assertEqual(job["render"], {})
+
+    def test_retired_render_values_teach_the_two_studio_contract(self) -> None:
+        with self.assertRaisesRegex(SnapshotError, "omit studio to follow appearance"):
+            job_from_argv([
+                "parts/STEP/cylindrical_cap.step", "tmp/cap.png", "--render", "default",
+            ])
+        for studio in ("blue", "pink", "colorful", "clay-sunrise", "terminal"):
+            with self.subTest(studio=studio), self.assertRaisesRegex(
+                SnapshotError, r"studio-light.*studio-dark.*customize render\.settings"
+            ):
+                job_from_argv([
+                    "parts/STEP/cylindrical_cap.step", "tmp/cap.png", "--render", studio,
+                ])
+        with self.assertRaisesRegex(SnapshotError, r"render\.appearance was removed"):
+            job_from_argv([
+                "parts/STEP/cylindrical_cap.step", "tmp/cap.png",
+                "--render", '{"appearance":"dark"}',
+            ])
 
     def test_retired_theme_flag_names_render(self) -> None:
         errors = io.StringIO()
@@ -1212,7 +1236,7 @@ class SnapshotCliTests(unittest.TestCase):
             root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
             job = {
                 "input": "models/widget.glb",
-                "render": {"studio": "default", "display": {"mode": "hidden_edges"}},
+                "render": {"studio": "studio-light", "display": {"mode": "hidden_edges"}},
                 "outputs": [{"path": "tmp/iso.png"}],
             }
             with self.assertRaisesRegex(SnapshotError, "requires STEP CAD edges"):
@@ -1866,7 +1890,7 @@ class RenderOptionResolutionTests(unittest.TestCase):
             models.mkdir()
             body = {
                 "_comment": "copied from Render debug",
-                "studio": "studio-dark", "appearance": "dark", "quality": "high",
+                "studio": "studio-dark", "quality": "high",
                 "settings": {"materials": {"roughness": 0.56}},
                 "camera": {"direction": [1, -1, 0.8]},
                 "display": {"mode": "shaded"},
@@ -1882,6 +1906,16 @@ class RenderOptionResolutionTests(unittest.TestCase):
         self.assertEqual(job["render"], {"studio": "studio-light"})
         self.assertNotIn("camera", job)
         self.assertNotIn("display", job)
+
+    def test_empty_render_envelope_stays_sparse_for_light_cli_fallback(self):
+        job = self._job_for(Path.cwd(), {})
+        self.assertEqual(job["render"], {})
+
+    def test_retired_studio_and_appearance_name_replacements(self):
+        with self.assertRaisesRegex(SnapshotError, "omit studio to follow appearance"):
+            self._job_for(Path.cwd(), "default")
+        with self.assertRaisesRegex(SnapshotError, r"render\.appearance was removed"):
+            self._job_for(Path.cwd(), {"appearance": "dark"})
 
     def test_missing_render_file_raises(self):
         with self.assertRaisesRegex(snapshot_main.SnapshotError, "does not exist"):

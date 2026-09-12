@@ -177,7 +177,7 @@ def step_snapshot_verb(door: str):
         mode: view (default), section, or list.
         camera: a preset, an "azimuth:elevation" pair, or camera JSON;
             orthographicHalfHeight preserves an orthographic view's scale.
-        render: a studio id, Render-envelope JSON, or a JSON file path.
+        render: studio-light, studio-dark, Render-envelope JSON, or a JSON file path.
         display: a display mode name, display-settings JSON, or a file path.
         kinematics: pose values — a declared preset name or {dof: value}
             JSON, validated against the model's kinematics declaration.
@@ -248,7 +248,7 @@ def mesh_snapshot_verb(door: str):
         mode: view (default) or list.
         camera: a preset, an "azimuth:elevation" pair, or camera JSON;
             orthographicHalfHeight preserves an orthographic view's scale.
-        render: a studio id, Render-envelope JSON, or a JSON file path.
+        render: studio-light, studio-dark, Render-envelope JSON, or a JSON file path.
         display: display settings supported by this input kind.
         width: output width in pixels, overriding the size profile.
         height: output height in pixels, overriding the size profile.
@@ -306,7 +306,7 @@ def robot_snapshot_verb(door: str):
             named stay at the rest pose.
         camera: a preset, an "azimuth:elevation" pair, or camera JSON;
             orthographicHalfHeight preserves an orthographic view's scale.
-        render: a studio id, Render-envelope JSON, or a JSON file path.
+        render: studio-light, studio-dark, Render-envelope JSON, or a JSON file path.
         display: display settings supported by this robot input.
         width: output width in pixels, overriding the size profile.
         height: output height in pixels, overriding the size profile.
@@ -367,7 +367,7 @@ def polymorphic_snapshot_verb():
         mode: view (default), section (STEP only), or list.
         camera: a preset, an "azimuth:elevation" pair, or camera JSON;
             orthographicHalfHeight preserves an orthographic view's scale.
-        render: a studio id, Render-envelope JSON, or a JSON file path.
+        render: studio-light, studio-dark, Render-envelope JSON, or a JSON file path.
         display: shared display settings; CAD-edge and exploded modes require
             STEP topology.
         kinematics: pose values for a STEP model's kinematics — a preset

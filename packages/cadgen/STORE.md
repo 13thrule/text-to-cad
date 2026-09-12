@@ -232,9 +232,12 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   geometry while retaining their own finishes. Appearance-sensitive exports
   include the normalized appearance digest in their variant, including absence.
 
-  Model records and document mappings use payload schema4; prior schemas are
-  misses, with no directory or document-byte-key salts. Trees use only geometry
-  schema1; there is no optional old-tree decoder. Document indexes may carry an
+  Model records use payload schema5; schema4 records are misses so a source
+  model regenerates STEP output written before distinct occurrence colours were
+  preserved. Document mappings remain payload schema4: saved bytes stay
+  authoritative and are reparsed without guessing colours that the document
+  does not contain. There are no directory or document-byte-key salts. Trees
+  use only geometry schema1; there is no optional old-tree decoder. Document indexes may carry an
   optional exact loaded `surfaceProducer` hint outside the tree. A same-tree
   rewrite preserves a valid hint and external mesh ledger; a tree replacement
   drops both unless an attested producer is supplied. A reader selects tree and

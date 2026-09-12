@@ -355,8 +355,6 @@ test("display and Render setup survive ordinary geometry revisions", () => {
         enabled: true,
         cadProjection: "orthographic",
         payload: {
-          studio: "default",
-          appearance: "system",
           quality: "standard",
           settings: { materials: { roughness: 0.32 } }
         }
@@ -393,8 +391,6 @@ test("A to B to A restores distinct CAD and Render cameras", () => {
           cadCamera,
           cadProjection: cadCamera.projection,
           payload: {
-            studio: "default",
-            appearance: "system",
             quality: "high",
             camera: renderCamera
           }

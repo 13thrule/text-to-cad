@@ -68,6 +68,9 @@ import {
 import {
   resolveSceneSettings
 } from "./sceneSettings.js";
+import {
+  disposeEnvironmentResource
+} from "./environmentMap.js";
 
 const DEFAULT_RENDER_SCALE = 1;
 const RENDER_SCENE_SCALE_SETTINGS = Object.freeze({
@@ -133,12 +136,12 @@ function colorTextureFromBackground(background, width, height) {
   return sharedColorTextureFromBackground(background, width, height);
 }
 
-async function applyEnvironment(scene, themeSettings, warnings) {
-  return applySharedEnvironment(scene, themeSettings, warnings);
+async function applyEnvironment(scene, themeSettings, warnings, renderer, environmentMapSize) {
+  return applySharedEnvironment(scene, themeSettings, warnings, { renderer, environmentMapSize });
 }
 
-function applyLighting(scene, themeSettings, bounds, sceneScale) {
-  return applySharedLighting(scene, themeSettings, { bounds, sceneScale });
+function applyLighting(scene, themeSettings, bounds, sceneScale, shadowMapSize) {
+  return applySharedLighting(scene, themeSettings, { bounds, sceneScale, shadowMapSize });
 }
 
 function mergeBoundsList(boundsList) {
@@ -907,6 +910,7 @@ export function modelOptionsForRenderJob(context, job = {}) {
         ? context.edgeSettings
         : { ...context.edgeSettings, enabled: false },
     materialOverrides: context.sceneSettings.render.materialOverrides,
+    receiveShadows: context.sceneSettings.render.enabled,
     displayMode: context.displayMode,
     applyDisplayModeEdgePolicy: !context.topologyDisplayEdgesVisible,
     scale: context.sceneScale,
@@ -953,6 +957,8 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
   const firstSize = outputSize(context.outputs[0] || {}, job);
   const renderer = configureRenderer(firstSize.width, firstSize.height, job, context.theme, context.quality);
   const scene = new THREE.Scene();
+  let disposed = false;
+  let environmentResource = null;
   let backgroundTexture = null;
   if (normalizeBoolean(job.output?.transparent, false) || context.theme.background?.type === "transparent") {
     scene.background = null;
@@ -961,8 +967,29 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
     backgroundTexture = colorTextureFromBackground(context.theme.background || {}, firstSize.width, firstSize.height);
     scene.background = backgroundTexture;
   }
-  const ready = applyEnvironment(scene, context.theme, context.warnings);
-  applyLighting(scene, context.theme, model.bounds || context.bounds, context.sceneScale);
+  const ready = applyEnvironment(
+    scene,
+    context.theme,
+    context.warnings,
+    renderer,
+    context.quality.environmentMapSize
+  ).then((resource) => {
+    if (disposed) {
+      if (scene.environment === resource?.texture) scene.environment = null;
+      if (scene.background === resource?.texture) scene.background = null;
+      disposeEnvironmentResource(resource);
+      return null;
+    }
+    environmentResource = resource;
+    return resource;
+  });
+  applyLighting(
+    scene,
+    context.theme,
+    model.bounds || context.bounds,
+    context.sceneScale,
+    context.quality.shadowMapSize
+  );
   Object.assign(model.runtime, {
     Line2,
     LineGeometry,
@@ -986,7 +1013,6 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
   );
   const orthographicCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.001, 10000);
   const perspectiveCamera = new THREE.PerspectiveCamera(48, firstSize.width / Math.max(firstSize.height, 1), 0.1, 50000);
-  let disposed = false;
   const viewport = {
     THREE: _THREE || THREE,
     model,
@@ -1002,6 +1028,10 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
       disposed = true;
       model.dispose?.();
       scene.remove?.(model.root);
+      if (scene.environment === environmentResource?.texture) scene.environment = null;
+      if (scene.background === environmentResource?.texture) scene.background = null;
+      disposeEnvironmentResource(environmentResource);
+      environmentResource = null;
       disposeSnapshotSceneResources(scene, model.root, [backgroundTexture]);
       backgroundTexture = null;
       renderer.dispose?.();

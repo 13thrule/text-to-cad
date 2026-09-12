@@ -8,7 +8,7 @@ serves ONE directory, fixed at start; the page is always the bare origin and
 
 **PURPOSE** — the application: all UI, workflow, and session state for
 reviewing CAD artifacts (catalog, tabs, selection, pose, animation,
-measurements, themes).
+measurements, Display controls, and Render settings).
 
 **MAY DEPEND ON** — `cadgen-js` (the shared CAD render/runtime package at
 `packages/cadgen-js`, imported by the `cadgen-js` specifier) and its own npm
@@ -64,18 +64,20 @@ Grid and origin axes are world references, independent of the studio floor.
 
 **Render** is the last inspector tab by default. Its enable switch applies a
 studio setup; changing inspector tabs does not disable it. The default studio
-follows app appearance, while explicit Bright and Dark studios retain their
-own setup. Lighting, environment, physical floor, materials, background, and
-exposure remain customizable. The existing toolbar owns image capture.
+follows app appearance without storing an override. Choosing **Light studio**
+or **Dark studio** pins that studio for the model session. Lighting,
+environment, physical floor, materials, background, and exposure remain
+customizable. The existing toolbar owns image capture.
 
 Quality is independent of the studio. Normal CAD uses the Interactive policy;
 Render defaults to High, with Standard and Interactive available. These policies
 share the same renderer, tessellation ladder, cache entries, and memory budget.
-High tightens the visible geometry's screen-error target and increases the idle
-pixel-ratio cap. It refines the view without rebuilding the exact CAD geometry
-or the WebGL scene. The status indicator reports High detail only after that
-view's target settles, and reports when memory limits prevent extra detail.
-Snapshots use the same policy: High selects the existing L2 STEP tessellation
+High requests a 0.25-pixel screen-error target, 4096-pixel shadow maps and a
+512-pixel softbox environment, and increases the idle pixel-ratio cap. It refines
+the view within the available tessellation ladder without rebuilding exact CAD
+geometry or the WebGL scene. The status indicator reports High detail after the
+available refinement settles, and reports when memory limits prevent extra detail.
+Snapshots use the same policy: High selects the existing finest L3 STEP tessellation
 and 2× capture scale unless explicit tessellation or output scale overrides it.
 
 Normal CAD settings and Render settings are separate per-model session state.
@@ -84,19 +86,20 @@ model's custom overrides. Disabling restores the CAD view; reenabling restores
 the customized Render view. Display controls show the effective values and
 edit the active view. These settings use sessionStorage with other per-model
 ephemeral state; they are not written beside models, into the geometry cache,
-or into global theme preferences. A normal geometry rebuild preserves the
+or into global app appearance. A normal geometry rebuild preserves the
 render setup. Closing the browser tab ends its session.
 
-The collapsed **Debug** section at the bottom of Render provides Copy/Paste
-Settings. Its JSON uses the same render contract as `cadgen step snapshot --render`;
-invalid settings fail before replacing the current setup. Keeping a JSON file
-is optional and manual. CLI snapshots default to a deterministic light CAD
-view; supplying `--render` opts into studio settings, and explicit camera or
-display options override the studio's defaults. Both clients resolve scene
-settings through the shared cadgen-js implementation. **Follow app** remains
-adaptive in copied settings; the CLI resolves it against its light default.
-Choose an explicit Light/Dark appearance or studio when the copied setup needs
-the same backdrop in both clients.
+The top **Render** section also owns Reset and a collapsed **Debug** control for
+Copy/Paste Settings. Its JSON uses the same render contract as
+`cadgen step snapshot --render`; invalid settings fail before replacing the
+current setup. Debug and Reset stay available while Render is off, so a saved
+setup can be copied or applied directly from the CAD view. Keeping a JSON file
+is optional and manual. CLI snapshots
+default to a deterministic light CAD view; supplying `--render` opts into
+studio settings, and explicit camera or display options override the studio's
+defaults. Both clients resolve scene settings through the shared cadgen-js
+implementation. A copied payload without `studio` stays adaptive; choose an
+explicit Light studio or Dark studio when the copied setup needs a fixed look.
 
 ## Launching
 

@@ -47,7 +47,6 @@ class RenderKeySchemaTest(unittest.TestCase):
     def test_every_supported_render_key_is_accepted(self):
         values = {
             "studio": "studio-light",
-            "appearance": "light",
             "quality": "high",
             "settings": {"materials": {"roughness": 0.5}},
             "camera": {"projection": "perspective", "orthographicHalfHeight": 42.5},
@@ -59,17 +58,38 @@ class RenderKeySchemaTest(unittest.TestCase):
 
     def test_scene_presets_are_closed_and_old_names_are_not_aliases(self):
         self.assertEqual(
-            {"default", "studio-light", "studio-dark", "blue", "pink", "clay-sunrise", "terminal"},
+            {"studio-light", "studio-dark"},
             set(RENDER_STUDIO_IDS),
         )
-        for retired in ("cinematic", "vibrant", "snapshot", "workbench-light"):
-            with self.assertRaisesRegex(SnapshotError, "unknown render studio"):
+        self.assertEqual({}, normalize(render={})["render"])
+        replacements = {
+            "default": "omit studio to follow appearance",
+            "cinematic": "studio-dark",
+            "vibrant": "studio-light",
+            "blue": "customize render.settings",
+            "pink": "customize render.settings",
+            "colorful": "customize render.settings",
+            "clay-sunrise": "customize render.settings",
+            "terminal": "customize render.settings",
+            "snapshot": "expected one of",
+            "workbench-light": "expected one of",
+        }
+        for retired, replacement in replacements.items():
+            with self.subTest(studio=retired), self.assertRaisesRegex(
+                SnapshotError, re.escape(replacement)
+            ):
                 normalize(render={"studio": retired})
+
+    def test_render_appearance_is_removed_with_an_actionable_replacement(self):
+        with self.assertRaisesRegex(
+            SnapshotError,
+            r"render\.appearance was removed; omit studio to follow appearance",
+        ):
+            normalize(render={"appearance": "dark"})
 
     def test_render_scene_values_are_strict_and_sparse_payload_is_preserved(self):
         render = {
             "studio": "studio-dark",
-            "appearance": "dark",
             "quality": "high",
             "settings": {
                 "materials": {"roughness": 0.35, "overrideSourceColors": False},
@@ -77,6 +97,16 @@ class RenderKeySchemaTest(unittest.TestCase):
             },
         }
         self.assertEqual(render, normalize(render=render)["render"])
+        self.assertEqual(
+            {"studio": "studio-light", "quality": "high"},
+            normalize(render={"studio": " STUDIO-LIGHT ", "quality": " HIGH "})["render"],
+        )
+        self.assertEqual(
+            {"settings": {"environment": {"presetId": "studio-softbox"}}},
+            normalize(render={
+                "settings": {"environment": {"presetId": "studio-softbox"}},
+            })["render"],
+        )
         self.assertEqual({"interactive", "standard", "high"}, set(SCENE_QUALITY_IDS))
 
         invalid_settings = (

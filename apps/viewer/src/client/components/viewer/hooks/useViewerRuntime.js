@@ -12,6 +12,7 @@ import {
 import {
   screenSpaceLineDeviceResolution
 } from "cadgen-js/common/renderEdges";
+import { disposeEnvironmentResource } from "cadgen-js/common/environmentMap.js";
 import {
   resolveInteractionPixelRatioCap
 } from "cadgen-js/lib/viewer/renderQuality";
@@ -176,7 +177,7 @@ export function useViewerRuntime({
       renderer.toneMappingExposure = getViewerThemeValue(viewerTheme, "toneMappingExposure", DEFAULT_LIGHTING.toneMappingExposure);
       renderer.localClippingEnabled = true;
       renderer.shadowMap.enabled = !softwareRendering;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
       // Shadow maps are re-rendered only when the scene changes (see
       // interactionState.shadowsDirty); camera-only frames reuse the last map.
       renderer.shadowMap.autoUpdate = false;
@@ -813,8 +814,9 @@ export function useViewerRuntime({
         pointLight,
         axesHelper,
         sceneBackgroundTexture: null,
-        environmentTexture: null,
-        environmentTextureUrl: "",
+        environmentResource: null,
+        environmentResourceIdentity: "",
+        shadowMapSize: 2048,
         gridConfig: null,
         gridHelper: null,
         floorMode,
@@ -914,7 +916,11 @@ export function useViewerRuntime({
         disposeSceneObject(runtime.gridHelper);
         disposeSceneObject(runtime.axesHelper);
         disposeTexture(runtime.sceneBackgroundTexture);
-        disposeTexture(runtime.environmentTexture);
+        disposeEnvironmentResource(runtime.environmentResource);
+        runtime.keyLight?.shadow?.map?.dispose?.();
+        if (runtime.keyLight?.shadow) {
+          runtime.keyLight.shadow.map = null;
+        }
         runtime.renderer.dispose();
         if (container.contains(runtime.renderer.domElement)) {
           container.removeChild(runtime.renderer.domElement);

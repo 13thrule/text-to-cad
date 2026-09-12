@@ -11,7 +11,7 @@ camera/display settings are separate sessionStorage state.
 The viewer and snapshot CLI resolve the same sparse Render envelope through
 cadgen-js. `--render` replaces `--theme`; explicit camera/display arguments win.
 Normal snapshots use light CAD settings. Copy/Paste Settings transfers the
-Render envelope, including orthographic framing. The adaptive appearance
+Render envelope, including orthographic framing. The adaptive studio
 follows the app in the viewer and the deterministic light default in the CLI.
 
 Quality is a policy over the existing renderer and tessellation ladder:
@@ -61,10 +61,10 @@ five-segment polygon, so visible facets there are part of the source geometry.
 Example reproduction after compiling the fixture into the local store:
 
 ```bash
-cadgen snapshot models/examples/STEP/mounting_plate.step /tmp/plate-cad.png \
+cadgen snapshot models/examples/STEP/mounting_plate.step models/tmp/plate-cad.png \
   --width 800 --height 600 --json
-cadgen snapshot models/examples/STEP/mounting_plate.step /tmp/plate-render.png \
-  --width 800 --height 600 --render default --json
+cadgen snapshot models/examples/STEP/mounting_plate.step models/tmp/plate-render.png \
+  --width 800 --height 600 --render '{}' --json
 ```
 
 ## Integration review

@@ -121,8 +121,9 @@ thing in a packet). Robots are authored in metres and are framed on the robot sc
 automatically.
 
 A normal snapshot uses deterministic light CAD lighting and hides grid and axis guides.
-Pass `--render default` (or another studio id, exported Render JSON, or a file path)
-for the shared Render scene. `--camera` and `--display` override its camera and
+Pass `--render studio-light` or `--render studio-dark` (or exported Render JSON or a file path)
+for the shared Render scene. An envelope with no `studio` follows app appearance in the viewer
+and resolves Light in the CLI. `--camera` and `--display` override its camera and
 format-neutral display choices. Robot link meshes have no CAD-edge or exploded assembly
 topology, so those display combinations are rejected clearly. `--theme` was retired.
 

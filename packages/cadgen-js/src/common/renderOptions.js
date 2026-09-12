@@ -32,6 +32,10 @@ import {
   getStageFloorSize
 } from "../lib/viewer/stageTheme.js";
 import {
+  createEnvironmentResource,
+  disposeEnvironmentResource
+} from "./environmentMap.js";
+import {
   clampSceneModelRadius,
   getLightingScopeRadius,
   getProportionalLightingScopeRadius,
@@ -249,34 +253,41 @@ export function colorTextureFromBackground(background, width, height) {
   return texture;
 }
 
-export async function applyEnvironment(scene, themeSettings, warnings = []) {
+export async function applyEnvironment(scene, themeSettings, warnings = [], {
+  renderer = null,
+  environmentMapSize = 256
+} = {}) {
   const environment = themeSettings.environment || {};
   if (!environment.enabled) {
     scene.environment = null;
-    return;
+    scene.environmentIntensity = 0;
+    return null;
   }
-  const preset = getEnvironmentPresetById(environment.presetId);
-  const textureUrl = String(preset?.url || "").trim();
-  if (!textureUrl) {
-    return;
-  }
+  let resource = null;
   try {
-    const loader = new THREE.TextureLoader();
-    if (typeof loader.setCrossOrigin === "function") {
-      loader.setCrossOrigin("anonymous");
+    resource = await createEnvironmentResource(renderer, environment, {
+      size: environmentMapSize
+    });
+    if (!resource) {
+      scene.environment = null;
+      return null;
     }
-    const texture = await loader.loadAsync(textureUrl);
-    texture.mapping = THREE.EquirectangularReflectionMapping;
-    texture.colorSpace = THREE.SRGBColorSpace;
-    scene.environment = texture;
+    scene.environment = resource.texture;
+    scene.environmentIntensity = Math.max(toFiniteNumber(environment.intensity, 1), 0);
     if (scene.environmentRotation?.set) {
       scene.environmentRotation.set(0, toFiniteNumber(environment.rotationY), 0);
     }
     if (environment.useAsBackground) {
-      scene.background = texture;
+      scene.background = resource.texture;
     }
+    return resource;
   } catch {
+    disposeEnvironmentResource(resource);
+    scene.environment = null;
+    scene.environmentIntensity = 0;
+    const preset = getEnvironmentPresetById(environment.presetId);
     warnings.push(`Environment preset unavailable: ${preset?.label || environment.presetId || "default"}`);
+    return null;
   }
 }
 
@@ -337,7 +348,8 @@ export function applyLighting(scene, themeSettings, {
   if (bounds && directional.shadow?.camera) {
     const shadow = getShadowCameraSettings(sceneScale, {
       radius,
-      keyLightDistance: directional.position.length()
+      keyLightDistance: directional.position.length(),
+      shadowMapSize
     });
     directional.shadow.mapSize.set(shadowMapSize, shadowMapSize);
     directional.shadow.bias = -0.00025;
@@ -679,7 +691,7 @@ export function configurePngRenderer(width, height, job, themeSettings, {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = Math.max(toFiniteNumber(themeSettings.lighting?.toneMappingExposure, 1), 0.05);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.setPixelRatio(clamp(toFiniteNumber(job.output?.renderScale, defaultRenderScale), 1, 3));
   renderer.setSize(width, height, false);
   document.body.innerHTML = "";

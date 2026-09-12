@@ -83,6 +83,19 @@ test("source color helpers read, shape, and buffer source colors consistently", 
   assert.equal(shapeSourceColorBuffer(THREE, invalid, {}), invalid);
 });
 
+test("source color shaping preserves explicit zero-valued controls", () => {
+  const source = new THREE.Color(0.2, 0.4, 0.6);
+  const black = shapeSourceColor(THREE, source, { brightness: 0 });
+  assertColorNear(black, [0, 0, 0], "zero brightness");
+
+  const neutralContrast = shapeSourceColor(THREE, source, { contrast: 0 });
+  assertColorNear(neutralContrast, [0.5, 0.5, 0.5], "zero contrast");
+
+  const desaturated = shapeSourceColor(THREE, source, { saturation: 0 });
+  assertNear(desaturated.r, desaturated.g, "zero saturation red/green");
+  assertNear(desaturated.g, desaturated.b, "zero saturation green/blue");
+});
+
 test("surface material source-color gates match mesh and part metadata", () => {
   const meshData = {
     has_source_colors: true,

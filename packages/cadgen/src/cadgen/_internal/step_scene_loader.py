@@ -220,8 +220,12 @@ def _color_from_shape(color_tool: Any, shape: object) -> ColorRGBA | None:
 def _face_color_map_from_label(shape_tool: Any, color_tool: Any, label: object) -> dict[int, ColorRGBA]:
     face_colors: dict[int, ColorRGBA] = {}
 
-    def collect(colored_label: object) -> None:
-        label_color = _color_from_label(color_tool, colored_label)
+    def collect(colored_label: object, *, include_label: bool = True) -> None:
+        # A whole-part definition color is already carried as the occurrence's
+        # color. Baking it into every face would make otherwise identical
+        # geometry use a different component content hash for each instance
+        # color. Only sub-shape labels are intrinsic face-color overrides.
+        label_color = _color_from_label(color_tool, colored_label) if include_label else None
         if label_color is not None:
             try:
                 shape = shape_tool.GetShape_s(colored_label)
@@ -237,7 +241,7 @@ def _face_color_map_from_label(shape_tool: Any, color_tool: Any, label: object) 
             collect(iterator.Value())
             iterator.Next()
 
-    collect(label)
+    collect(label, include_label=False)
     return face_colors
 
 
@@ -525,4 +529,3 @@ def _relative_path_from_directory(path: Path, base_dir: Path) -> str:
 
 def _step_hash(step_path: Path) -> str:
     return step_file_hash(step_path)
-

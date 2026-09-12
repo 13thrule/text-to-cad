@@ -129,13 +129,11 @@ Recorded so they are not mistaken for bugs, and so the next person knows the cos
 - **Select is inert for DXF.** It keeps the button for a uniform toolbar shape; it has no
   pickable topology.
 
-## Theme conformance
+## Scene conformance
 
-Every theme field reaches the mesh renderer (STEP/STL/3MF/GLB/DXF) and changes the
-picture. `common/themeSettings.js` is the single schema: it used to be duplicated across
-two packages, and a field added to one and not the other was silently dropped for that
-renderer at normalization time — that is how `lighting.fill` and `lighting.rim` came to be
-ignored. One copy, one normalization, and that failure mode is gone.
+CAD appearance and Render studio fields reach the mesh renderer
+(STEP/STL/3MF/GLB/DXF) and change the picture. Shared cadgen-js scene settings are
+the single public schema; internal stage normalization remains shared as well.
 
 ### Conformance harness
 
@@ -143,11 +141,11 @@ ignored. One copy, one normalization, and that failure mode is gone.
 node scripts/e2e-theme-conformance.mjs --dir <abs-models-root> [--out <dir>] [--baseline <file>]
 ```
 
-Loads one mesh scene under all eight presets and asserts **surface response** — the
-model's own pixels must actually differ across themes. A renderer that ignores the theme
-still starts up and still draws while rendering all eight identically, which is exactly
-what happened while `lighting.fill` and `lighting.rim` were being dropped at
-normalization.
+Loads one mesh scene through the real global Appearance menu and Render controls.
+It checks CAD light/dark, adaptive Render, and pinned Light/Dark studios, then
+asserts **surface response**: the model's pixels must actually differ across the
+settings. A renderer that drops lighting fields still starts and draws while
+rendering every pass identically.
 
 `scripts/theme-conformance-baseline.json` records the measured means so a change of
 look is visible in a diff rather than only in a pass/fail.

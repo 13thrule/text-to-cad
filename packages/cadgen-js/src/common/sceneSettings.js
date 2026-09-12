@@ -25,23 +25,13 @@ export const SCENE_APPEARANCE = Object.freeze({
 });
 
 export const RENDER_STUDIO = Object.freeze({
-  DEFAULT: "default",
   LIGHT: "studio-light",
-  DARK: "studio-dark",
-  BLUE: "blue",
-  PINK: "pink",
-  CLAY_SUNRISE: "clay-sunrise",
-  TERMINAL: "terminal"
+  DARK: "studio-dark"
 });
 
 export const RENDER_STUDIO_PRESETS = Object.freeze([
-  Object.freeze({ id: RENDER_STUDIO.DEFAULT, label: "Studio" }),
-  Object.freeze({ id: RENDER_STUDIO.LIGHT, label: "Bright studio" }),
+  Object.freeze({ id: RENDER_STUDIO.LIGHT, label: "Light studio" }),
   Object.freeze({ id: RENDER_STUDIO.DARK, label: "Dark studio" }),
-  Object.freeze({ id: RENDER_STUDIO.BLUE, label: "Blue" }),
-  Object.freeze({ id: RENDER_STUDIO.PINK, label: "Magenta" }),
-  Object.freeze({ id: RENDER_STUDIO.CLAY_SUNRISE, label: "Clay" }),
-  Object.freeze({ id: RENDER_STUDIO.TERMINAL, label: "Terminal" })
 ]);
 
 export const SCENE_QUALITY = Object.freeze({
@@ -58,7 +48,9 @@ export const SCENE_QUALITY_PRESETS = Object.freeze([
     minimumLodLevel: 1,
     idlePixelRatioCap: 1.5,
     snapshotLodLevel: 1,
-    renderScale: 1
+    renderScale: 1,
+    shadowMapSize: 2048,
+    environmentMapSize: 256
   }),
   Object.freeze({
     id: SCENE_QUALITY.STANDARD,
@@ -67,22 +59,25 @@ export const SCENE_QUALITY_PRESETS = Object.freeze([
     minimumLodLevel: 1,
     idlePixelRatioCap: 2,
     snapshotLodLevel: 1,
-    renderScale: 1
+    renderScale: 1,
+    shadowMapSize: 2048,
+    environmentMapSize: 256
   }),
   Object.freeze({
     id: SCENE_QUALITY.HIGH,
     label: "High",
-    targetPixelError: 0.5,
+    targetPixelError: 0.25,
     minimumLodLevel: 1,
     idlePixelRatioCap: 2,
-    snapshotLodLevel: 2,
-    renderScale: 2
+    snapshotLodLevel: 3,
+    renderScale: 2,
+    shadowMapSize: 4096,
+    environmentMapSize: 512
   })
 ]);
 
 export const RENDER_PAYLOAD_KEYS = Object.freeze([
   "studio",
-  "appearance",
   "quality",
   "settings",
   "camera",
@@ -99,13 +94,122 @@ export const RENDER_SETTINGS_KEYS = Object.freeze([
 
 const RENDER_STUDIO_IDS = new Set(RENDER_STUDIO_PRESETS.map((preset) => preset.id));
 const SCENE_QUALITY_BY_ID = new Map(SCENE_QUALITY_PRESETS.map((preset) => [preset.id, preset]));
-const RENDER_STUDIO_THEME_IDS = Object.freeze({
-  [RENDER_STUDIO.LIGHT]: "vibrant",
-  [RENDER_STUDIO.DARK]: "cinematic",
-  [RENDER_STUDIO.BLUE]: "blue",
-  [RENDER_STUDIO.PINK]: "pink",
-  [RENDER_STUDIO.CLAY_SUNRISE]: "clay-sunrise",
-  [RENDER_STUDIO.TERMINAL]: "terminal"
+const STUDIO_MATERIAL_SETTINGS = Object.freeze({
+  defaultColor: "#b9bdc3",
+  fillColors: Object.freeze(["#b9bdc3"]),
+  cycleColors: false,
+  overrideSourceColors: false,
+  tintMode: "blend",
+  tintStrength: 0,
+  saturation: 1,
+  contrast: 1,
+  brightness: 1,
+  roughness: 0.36,
+  metalness: 0.03,
+  clearcoat: 0.2,
+  clearcoatRoughness: 0.26,
+  opacity: 1,
+  envMapIntensity: 1.05,
+  emissiveIntensity: 0
+});
+
+const STUDIO_ENVIRONMENT_SETTINGS = Object.freeze({
+  enabled: true,
+  presetId: "studio-softbox",
+  intensity: 0.25,
+  rotationY: -0.35,
+  useAsBackground: false
+});
+
+const STUDIO_LIGHTING_SETTINGS = Object.freeze({
+  toneMappingExposure: 0.8,
+  directional: Object.freeze({
+    enabled: true,
+    color: "#fffaf2",
+    intensity: 2.8,
+    position: Object.freeze({ x: -190, y: 240, z: 300 })
+  }),
+  fill: Object.freeze({
+    enabled: true,
+    color: "#e8eef7",
+    intensity: 0.08,
+    position: Object.freeze({ x: 120, y: 80, z: 210 })
+  }),
+  rim: Object.freeze({
+    enabled: true,
+    color: "#f3f7ff",
+    intensity: 0.3,
+    position: Object.freeze({ x: -320, y: 260, z: 160 })
+  }),
+  spot: Object.freeze({
+    enabled: false,
+    color: "#ffffff",
+    intensity: 0,
+    angle: 0.7,
+    distance: 0,
+    position: Object.freeze({ x: 190, y: 210, z: 170 })
+  }),
+  point: Object.freeze({
+    enabled: false,
+    color: "#ffffff",
+    intensity: 0,
+    distance: 0,
+    position: Object.freeze({ x: -240, y: 110, z: -210 })
+  }),
+  ambient: Object.freeze({
+    enabled: true,
+    color: "#ffffff",
+    intensity: 0.02
+  }),
+  hemisphere: Object.freeze({
+    enabled: true,
+    skyColor: "#eef2f7",
+    groundColor: "#5f5d59",
+    intensity: 0.05
+  })
+});
+
+const STUDIO_FLOOR_SETTINGS = Object.freeze({
+  mode: "stage",
+  enabled: true,
+  followModel: true,
+  roughness: 0.72,
+  reflectivity: 0.1,
+  shadowOpacity: 0.4,
+  horizonBlend: 0.38
+});
+
+const RENDER_STUDIO_SETTINGS = Object.freeze({
+  [RENDER_STUDIO.LIGHT]: Object.freeze({
+    materials: STUDIO_MATERIAL_SETTINGS,
+    background: Object.freeze({
+      type: "radial",
+      solidColor: "#e8e9e8",
+      linearStart: "#f7f7f5",
+      linearEnd: "#d8dadd",
+      linearAngle: 135,
+      radialInner: "#f7f7f5",
+      radialOuter: "#d8dadd"
+    }),
+    floor: Object.freeze({ ...STUDIO_FLOOR_SETTINGS, color: "#d4d5d3" }),
+    environment: STUDIO_ENVIRONMENT_SETTINGS,
+    lighting: STUDIO_LIGHTING_SETTINGS
+  }),
+  [RENDER_STUDIO.DARK]: Object.freeze({
+    materials: STUDIO_MATERIAL_SETTINGS,
+    background: Object.freeze({
+      type: "radial",
+      solidColor: "#101113",
+      linearStart: "#181a1d",
+      linearEnd: "#070809",
+      linearAngle: 135,
+      radialInner: "#181a1d",
+      radialOuter: "#070809"
+    }),
+    floor: Object.freeze({ ...STUDIO_FLOOR_SETTINGS, color: "#111214" }),
+    environment: STUDIO_ENVIRONMENT_SETTINGS,
+    lighting: STUDIO_LIGHTING_SETTINGS
+  })
 });
 
 const STUDIO_SETTING_BLOCK_KEYS = Object.freeze({
@@ -404,13 +508,21 @@ export function normalizeSceneAppearance(value = SCENE_APPEARANCE.SYSTEM, {
   throw new Error("appearance must be 'system', 'light', or 'dark'");
 }
 
-export function normalizeRenderStudioId(value = RENDER_STUDIO.DEFAULT) {
-  const normalized = String(value ?? RENDER_STUDIO.DEFAULT).trim().toLowerCase();
+export function normalizeRenderStudioId(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "default") {
+    throw new Error("Render studio 'default' was removed; omit studio to follow appearance.");
+  }
   if (normalized === "cinematic") {
     throw new Error("Render studio 'cinematic' was removed; use 'studio-dark'.");
   }
   if (normalized === "vibrant") {
     throw new Error("Render studio 'vibrant' was removed; use 'studio-light'.");
+  }
+  if (["colorful", "blue", "pink", "clay", "clay-sunrise", "terminal"].includes(normalized)) {
+    throw new Error(
+      `Render studio '${normalized}' was removed; use 'studio-light' or 'studio-dark' and customize render.settings.`
+    );
   }
   if (!RENDER_STUDIO_IDS.has(normalized)) {
     throw new Error(`Unknown render studio '${value}'. Expected one of: ${[...RENDER_STUDIO_IDS].join(", ")}`);
@@ -436,14 +548,17 @@ export function normalizeRenderPayload(render) {
   if (!isPlainObject(render)) {
     throw new Error("render must be an object");
   }
+  if (Object.prototype.hasOwnProperty.call(render, "appearance")) {
+    throw new Error(
+      "render.appearance was removed; omit studio to follow appearance, or use 'studio-light' or 'studio-dark' to pin it."
+    );
+  }
   validateKeys(render, RENDER_PAYLOAD_KEYS, "render");
-  const studio = normalizeRenderStudioId(render.studio);
-  const appearance = render.appearance == null
-    ? SCENE_APPEARANCE.SYSTEM
-    : String(render.appearance).trim().toLowerCase();
-  normalizeSceneAppearance(appearance);
   const quality = normalizeSceneQuality(render.quality, { fallback: SCENE_QUALITY.HIGH });
-  const result = { studio, appearance, quality };
+  const result = { quality };
+  if (Object.prototype.hasOwnProperty.call(render, "studio")) {
+    result.studio = normalizeRenderStudioId(render.studio);
+  }
   if (Object.prototype.hasOwnProperty.call(render, "settings")) {
     validateRenderSettings(render.settings);
     result.settings = cloneValue(render.settings);
@@ -464,7 +579,7 @@ export function normalizeRenderPayload(render) {
 }
 
 function resolvedStudioId(studio, appearance) {
-  if (studio !== RENDER_STUDIO.DEFAULT) {
+  if (studio != null) {
     return studio;
   }
   return appearance === SCENE_APPEARANCE.DARK
@@ -474,7 +589,7 @@ function resolvedStudioId(studio, appearance) {
 
 function studioSettings(studio, appearance) {
   const concreteStudio = resolvedStudioId(studio, appearance);
-  const settings = cloneThemePresetSettings(RENDER_STUDIO_THEME_IDS[concreteStudio]);
+  const settings = cloneValue(RENDER_STUDIO_SETTINGS[concreteStudio]);
   return normalizeThemeSettings(settings);
 }
 
@@ -620,7 +735,10 @@ export function resolveSceneSettings({
         enabled: false,
         studio: null,
         settings,
-        materialOverrides: {},
+        // CAD is an inspection view with no reflection environment. Keep the
+        // authored albedo and opacity, but use the workbench's matte PBR
+        // channels so authored metals do not collapse to near-black.
+        materialOverrides: explicitMaterialOverrides(settings),
         payload: null
       },
       quality: resolveSceneQuality(quality, { fallback: SCENE_QUALITY.INTERACTIVE }),
@@ -630,22 +748,20 @@ export function resolveSceneSettings({
   }
 
   const payload = normalizeRenderPayload(render);
-  const renderAppearance = normalizeSceneAppearance(payload.appearance, {
-    prefersDark: baseAppearance === SCENE_APPEARANCE.DARK
-  });
+  const effectiveStudio = resolvedStudioId(payload.studio, baseAppearance);
   const resolvedDisplay = resolveDisplay(
     DEFAULT_RENDER_DISPLAY_SETTINGS,
     payload.display,
     display
   );
-  const presetSettings = publicRenderSettings(studioSettings(payload.studio, renderAppearance));
+  const presetSettings = publicRenderSettings(studioSettings(effectiveStudio, baseAppearance));
   const mergedSettings = publicRenderSettings(mergeSettings(presetSettings, payload.settings));
   const settings = applyPartColor(mergedSettings, resolvedDisplay.partColor);
   return {
-    appearance: renderAppearance,
+    appearance: baseAppearance,
     render: {
       enabled: true,
-      studio: payload.studio,
+      studio: effectiveStudio,
       settings,
       materialOverrides: explicitMaterialOverrides(payload.settings),
       payload

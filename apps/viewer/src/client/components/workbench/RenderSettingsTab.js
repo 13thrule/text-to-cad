@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { ChevronRight, ClipboardPaste, Copy, RotateCcw } from "lucide-react";
 import {
-  RENDER_STUDIO_PRESETS,
-  SCENE_APPEARANCE,
+  RENDER_STUDIO,
   SCENE_QUALITY_PRESETS
 } from "cadgen-js/common/sceneSettings.js";
 import { ENVIRONMENT_PRESETS } from "cadgen-js/lib/themeSettings";
@@ -28,10 +27,9 @@ import {
   parseFileSheetNumberInput
 } from "./FileSheet";
 
-const APPEARANCE_OPTIONS = Object.freeze([
-  { value: SCENE_APPEARANCE.SYSTEM, label: "Follow app" },
-  { value: SCENE_APPEARANCE.LIGHT, label: "Light" },
-  { value: SCENE_APPEARANCE.DARK, label: "Dark" }
+const STUDIO_OPTIONS = Object.freeze([
+  { value: RENDER_STUDIO.LIGHT, label: "Light studio" },
+  { value: RENDER_STUDIO.DARK, label: "Dark studio" }
 ]);
 
 const BACKGROUND_OPTIONS = Object.freeze([
@@ -139,18 +137,22 @@ function DebugSettings({ payload, onCopyPayload, onApplyPayload }) {
   };
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      <FileSheetSubsection
-        title="Debug"
-        trailing={(
-          <CollapsibleTrigger asChild>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={open ? "Collapse Debug" : "Expand Debug"}>
-              <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} aria-hidden="true" />
-            </Button>
-          </CollapsibleTrigger>
-        )}
-      >
-        <CollapsibleContent className="space-y-3">
+    <Collapsible open={open} onOpenChange={setOpen} className="space-y-3">
+      <FileSheetButtonRow columns={1}>
+        <CollapsibleTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(FILE_SHEET_COMPACT_BUTTON_CLASSES, "justify-between")}
+            aria-label={open ? "Collapse Debug" : "Expand Debug"}
+          >
+            Debug
+            <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} aria-hidden="true" />
+          </Button>
+        </CollapsibleTrigger>
+      </FileSheetButtonRow>
+      <CollapsibleContent className="space-y-3">
           <FileSheetButtonRow columns={2}>
             <Button
               type="button"
@@ -201,8 +203,7 @@ function DebugSettings({ payload, onCopyPayload, onApplyPayload }) {
             </div>
           ) : null}
           {status ? <FileSheetStatusText tone={status.includes("applied") || status.includes("copied") ? "muted" : "error"}>{status}</FileSheetStatusText> : null}
-        </CollapsibleContent>
-      </FileSheetSubsection>
+      </CollapsibleContent>
     </Collapsible>
   );
 }
@@ -212,7 +213,6 @@ function RenderSettingsContent({
   scene,
   onEnabledChange,
   onStudioChange,
-  onAppearanceChange,
   onQualityChange,
   onSettingsValueChange,
   onReset,
@@ -222,13 +222,14 @@ function RenderSettingsContent({
   const [activeLight, setActiveLight] = useState("directional");
   const payload = scene.render.payload;
   const settings = scene.render.settings;
+  const effectiveStudioLabel = STUDIO_OPTIONS.find(({ value }) => value === scene.render.studio)?.label || "Light studio";
   const selectedLight = settings.lighting[activeLight] || { enabled: false, position: { x: 0, y: 0, z: 0 } };
   const setValue = (path, value) => onSettingsValueChange?.(path, value);
 
   return (
     <div className="py-2" data-cad-render-settings-section="true">
       <FileSheetSubsection
-        title="Preview"
+        title="Render"
         trailing={(
           <FileSheetToggleRow
             label="Enabled"
@@ -243,11 +244,11 @@ function RenderSettingsContent({
             <FileSheetSelectRow
               stacked
               label="Studio"
-              value={payload.studio}
+              value={payload.studio || ""}
               onValueChange={onStudioChange}
-              options={RENDER_STUDIO_PRESETS.map((preset) => ({ value: preset.id, label: preset.label }))}
+              options={STUDIO_OPTIONS}
+              triggerContent={<span className="truncate">{effectiveStudioLabel}</span>}
             />
-            <FileSheetSelectRow label="Appearance" value={payload.appearance} onValueChange={onAppearanceChange} options={APPEARANCE_OPTIONS} />
             <FileSheetSelectRow
               label="Quality"
               value={payload.quality}
@@ -256,6 +257,13 @@ function RenderSettingsContent({
             />
           </>
         ) : null}
+        <DebugSettings payload={payload} onCopyPayload={onCopyPayload} onApplyPayload={onApplyPayload} />
+        <FileSheetButtonRow columns={1}>
+          <Button type="button" variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} onClick={onReset}>
+            <RotateCcw className="size-3.5" aria-hidden="true" />
+            Reset
+          </Button>
+        </FileSheetButtonRow>
       </FileSheetSubsection>
 
       {enabled ? (
@@ -366,17 +374,8 @@ function RenderSettingsContent({
             ) : null}
           </FileSheetSubsection>
 
-          <FileSheetSubsection title="Reset">
-            <FileSheetButtonRow columns={1}>
-              <Button type="button" variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} onClick={onReset}>
-                <RotateCcw className="size-3.5" aria-hidden="true" />
-                Reset
-              </Button>
-            </FileSheetButtonRow>
-          </FileSheetSubsection>
         </>
       ) : null}
-      <DebugSettings payload={payload} onCopyPayload={onCopyPayload} onApplyPayload={onApplyPayload} />
     </div>
   );
 }

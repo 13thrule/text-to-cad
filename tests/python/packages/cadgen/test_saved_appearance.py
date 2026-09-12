@@ -181,21 +181,21 @@ class SavedAppearanceTest(unittest.TestCase):
             write_source_sidecar(invalid, {"appearance": {"occurrences": {"o1": {"opacity": False}}}})
         self.assertFalse(source_sidecar_path(invalid).exists())
 
-    def test_record_and_document_indexes_hard_cut_over_to_schema_four(self) -> None:
+    def test_model_records_cut_over_to_five_while_documents_remain_four(self) -> None:
         current_tree = "c" * 64
         model = self.root / "model.step"
         model.write_bytes(b"model")
         write_entry(
             "model",
             model_key(model),
-            {"kind": "record", "schemaVersion": 3, "tree": "legacy-tree", "outputs": {}},
+            {"kind": "record", "schemaVersion": 4, "tree": "legacy-tree", "outputs": {}},
         )
         self.assertIsNone(read_record(model))
 
         write_record(model, {"tree": current_tree, "outputs": {}})
         current_record = read_record(model)
         self.assertEqual(RECORD_SCHEMA_VERSION, current_record["schemaVersion"])
-        self.assertEqual(4, current_record["schemaVersion"])
+        self.assertEqual(5, current_record["schemaVersion"])
         self.assertEqual(current_tree, current_record["tree"])
 
         document_hash = "d" * 64

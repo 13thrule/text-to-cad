@@ -48,9 +48,7 @@ SNAPSHOT_RENDER_URL = f"{SNAPSHOT_ORIGIN}/render.html"
 SNAPSHOT_ROUTE_GLOB = f"{SNAPSHOT_ORIGIN}/**"
 # A normal snapshot leaves ``render`` absent. The shared resolver then uses its
 # deterministic light CAD setup; an explicit render envelope opts into a studio.
-RENDER_STUDIO_IDS = frozenset(
-    {"default", "studio-light", "studio-dark", "blue", "pink", "clay-sunrise", "terminal"}
-)
+RENDER_STUDIO_IDS = frozenset({"studio-light", "studio-dark"})
 SCENE_QUALITY_IDS = frozenset({"interactive", "standard", "high"})
 DEFAULT_TIMEOUT_SECONDS = 300
 # Tearing a video sequence down is one dispose call over objects already in
@@ -99,7 +97,7 @@ SUPPORTED_JOB_KEYS = frozenset(
     }
 )
 SUPPORTED_RENDER_KEYS = frozenset(
-    {"studio", "appearance", "quality", "settings", "camera", "display"}
+    {"studio", "quality", "settings", "camera", "display"}
 )
 SUPPORTED_RENDER_SETTINGS_KEYS = frozenset(
     {"materials", "background", "floor", "environment", "lighting"}
@@ -191,7 +189,14 @@ RENDER_LIGHT_KEYS = {
     "hemisphere": {"enabled", "skyColor", "groundColor", "intensity"},
 }
 RENDER_ENVIRONMENT_IDS = frozenset(
-    {"studio-hdri-43", "studio-hdri-41", "studio-hdri-12", "studio-hdri-17", "studio-hdri-22", "colorful-1", "colorful-dark-1"}
+    {
+        "studio-softbox",
+        "studio-hdri-43",
+        "studio-hdri-41",
+        "studio-hdri-12",
+        "studio-hdri-17",
+        "studio-hdri-22",
+    }
 )
 SETTINGS_KEY_HOMES = {
     "edges": "display",
@@ -672,23 +677,42 @@ def validate_render_option(value: object, *, source_label: str) -> dict[str, obj
             "sceneScaleMode": "scale",
         }
         hints = [f"render.{key} moved to {moved[key]}" for key in unknown if key in moved]
+        if "appearance" in unknown:
+            hints.append(
+                "render.appearance was removed; omit studio to follow appearance, "
+                "or use 'studio-light' or 'studio-dark' to pin it"
+            )
         detail = f"; {'; '.join(hints)}" if hints else ""
         raise SnapshotError(
             f"render has unknown key(s): {', '.join(unknown)}; "
             f"supported keys: {', '.join(sorted(SUPPORTED_RENDER_KEYS))}{detail} ({source_label})"
         )
-    studio = str(payload.get("studio") or "default").strip().lower()
-    if studio not in RENDER_STUDIO_IDS:
-        raise SnapshotError(
-            f"unknown render studio: {studio or '(missing)'}; "
-            f"supported studios: {', '.join(sorted(RENDER_STUDIO_IDS))}"
-        )
-    appearance = str(payload.get("appearance") or "").strip().lower()
-    if appearance and appearance not in {"system", "light", "dark"}:
-        raise SnapshotError("render appearance must be system, light, or dark")
+    if "studio" in payload:
+        studio = str(payload["studio"] or "").strip().lower()
+        if studio not in RENDER_STUDIO_IDS:
+            if studio == "default":
+                detail = "was removed; omit studio to follow appearance"
+            elif studio == "cinematic":
+                detail = "was removed; use 'studio-dark'"
+            elif studio == "vibrant":
+                detail = "was removed; use 'studio-light'"
+            elif studio in {"blue", "pink", "colorful", "clay", "clay-sunrise", "terminal"}:
+                detail = (
+                    "was removed; use 'studio-light' or 'studio-dark' and customize "
+                    "render.settings"
+                )
+            else:
+                detail = (
+                    "is unknown; expected one of: "
+                    + ", ".join(sorted(RENDER_STUDIO_IDS))
+                )
+            raise SnapshotError(f"Render studio {studio or '(empty)'!r} {detail}")
+        payload["studio"] = studio
     quality = str(payload.get("quality") or "").strip().lower()
     if quality and quality not in SCENE_QUALITY_IDS:
         raise SnapshotError("render quality must be interactive, standard, or high")
+    if "quality" in payload:
+        payload["quality"] = quality
     settings = payload.get("settings")
     if settings is not None:
         if not is_plain_object(settings):

@@ -29,7 +29,7 @@ export const VIEWPORT_QUALITY_COPY = Object.freeze({
   },
   [VIEWPORT_QUALITY_STATE.HIGH]: {
     label: "High detail",
-    title: "The visible model has reached the high-detail target for this view."
+    title: "High-detail geometry is ready for this view."
   },
   [VIEWPORT_QUALITY_STATE.LIMITED]: {
     label: "Reduced detail",

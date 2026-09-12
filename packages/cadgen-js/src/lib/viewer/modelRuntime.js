@@ -78,7 +78,8 @@ export function applyRuntimeModelBounds(THREE, runtime, bounds, sceneScaleMode, 
       : 0;
     const shadowSettings = getShadowCameraSettings(sceneScaleMode, {
       radius,
-      keyLightDistance
+      keyLightDistance,
+      shadowMapSize
     });
     runtime.keyLight.shadow.mapSize.set(shadowMapSize, shadowMapSize);
     runtime.keyLight.shadow.bias = -0.00025;

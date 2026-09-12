@@ -10,6 +10,7 @@ import {
 } from "./themeSettings.js";
 import {
   addFloor,
+  applyEnvironment,
   applyLighting,
   createSharedRenderOptions,
   RENDER_SCENE_SCALE,
@@ -60,6 +61,18 @@ test("shared render options preserve explicit caller-owned values without defaul
   assert.equal(Object.hasOwn(options, "displayMode"), false);
   assert.equal(options.background, false);
   assert.equal(options.renderScale, 0);
+});
+
+test("disabled environments clear both the texture and shared intensity", async () => {
+  const scene = new THREE.Scene();
+  scene.environment = new THREE.Texture();
+  scene.environmentIntensity = 4;
+  const resource = await applyEnvironment(scene, {
+    environment: { enabled: false, intensity: 0.25 }
+  });
+  assert.equal(resource, null);
+  assert.equal(scene.environment, null);
+  assert.equal(scene.environmentIntensity, 0);
 });
 
 test("theme resolution uses saved theme ids or direct theme settings", () => {
@@ -317,7 +330,9 @@ test("display guides render independently from the studio stage floor", () => {
   assert.equal(grid.position.z, 0);
   assert.equal(plane.material.color.getHexString(), "ddeeff");
   assert.equal(plane.material.roughness, 0.36);
-  assert.equal(plane.material.specularIntensity, 0.36);
+  assert.ok(Math.abs(plane.material.reflectivity - 0.42) < 1e-9);
+  assert.equal(plane.material.specularIntensity, 1);
+  assert.equal(plane.material.metalness, 0);
   assert.equal(shadow.receiveShadow, true);
   assert.equal(shadow.material.opacity, 0.25);
 });

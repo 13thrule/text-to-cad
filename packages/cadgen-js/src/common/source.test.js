@@ -124,7 +124,7 @@ test("snapshot quality selects bounded shared tessellation policy", () => {
   assert.deepEqual(tessellationForSnapshotQuality({ render: { quality: "standard" } }), {});
   assert.deepEqual(
     tessellationForSnapshotQuality({ render: { quality: "high" } }),
-    { chordTolerance: 0.0005, angleTolerance: 0.35 }
+    { chordTolerance: 0.00015, angleTolerance: 0.35 }
   );
   assert.deepEqual(
     tessellationForSnapshotQuality({

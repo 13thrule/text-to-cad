@@ -295,6 +295,72 @@ test("buildModel renders solid part records and updates theme without rebuilding
   scene.dispose();
 });
 
+test("Render shadow receivers update in place for opaque meshes and surface instances", () => {
+  const scene = buildModel(THREE, composedPackage(surfComponentMeshData(), 4), {
+    renderPartsIndividually: true,
+    receiveShadows: true
+  });
+  const record = scene.displayRecords[0];
+  const mesh = record.mesh;
+  const geometry = record.geometry;
+  const instanceSet = record.surfaceInstance.set;
+
+  assert.equal(mesh.castShadow, true);
+  assert.equal(mesh.receiveShadow, true);
+  assert.equal(instanceSet.object.castShadow, true);
+  assert.equal(instanceSet.object.receiveShadow, true);
+
+  scene.update({ receiveShadows: false });
+  assert.equal(scene.displayRecords[0], record, "shadow policy does not rebuild the record");
+  assert.equal(record.geometry, geometry, "shadow policy does not rebuild geometry");
+  assert.equal(record.surfaceInstance.set, instanceSet, "shadow policy retains the shared draw");
+  assert.equal(mesh.castShadow, true, "normal CAD preserves its existing casting policy");
+  assert.equal(mesh.receiveShadow, false);
+  assert.equal(instanceSet.object.castShadow, true);
+  assert.equal(instanceSet.object.receiveShadow, false);
+
+  scene.update({ receiveShadows: true });
+  assert.equal(record.surfaceInstance.set, instanceSet);
+  assert.equal(mesh.receiveShadow, true);
+  assert.equal(instanceSet.object.receiveShadow, true);
+  scene.dispose();
+});
+
+test("buildModel honors zero-valued source-color grading without rebuilding records", () => {
+  const theme = cloneThemePresetSettings("workbench-light");
+  const meshData = sampleMeshData();
+  meshData.sourceColor = "#336699";
+  const scene = buildModel(THREE, meshData, {
+    theme,
+    materialSettings: {
+      ...theme.materials,
+      brightness: 0
+    },
+    renderPartsIndividually: true
+  });
+  const record = scene.displayRecords[0];
+  const mesh = record.mesh;
+
+  assert.equal(record.material.color.getHexString(), "000000", "zero brightness makes the source color black");
+
+  scene.update({
+    materialSettings: {
+      ...theme.materials,
+      saturation: 0,
+      contrast: 1,
+      brightness: 1
+    }
+  });
+
+  assert.equal(record.mesh, mesh, "grading remains a mutable material update");
+  assertClose(
+    record.material.color.toArray(),
+    [record.material.color.r, record.material.color.r, record.material.color.r],
+    "zero saturation removes the source hue"
+  );
+  scene.dispose();
+});
+
 test("buildModel keeps source-mesh color buffers immutable across material refreshes", () => {
   const sourceColors = new Float32Array([
     0.2, 0.4, 0.6,
@@ -346,15 +412,33 @@ test("buildModel keeps source-mesh color buffers immutable across material refre
   assert.deepEqual(Array.from(sourceColors), originalColors);
 
   scene.update({
-    theme: {
-      ...theme,
-      materials: {
-        ...theme.materials,
-        brightness: 0.72,
-        saturation: 1.8
-      }
+    materialSettings: {
+      ...theme.materials,
+      brightness: 0
     }
   });
+
+  assert.ok(
+    Array.from(colorAttribute.array).every((channel) => Math.abs(channel) < 1e-6),
+    "zero brightness is applied to the live vertex-color buffer"
+  );
+
+  scene.update({
+    materialSettings: {
+      ...theme.materials,
+      saturation: 0,
+      contrast: 1,
+      brightness: 1
+    }
+  });
+
+  for (let index = 0; index < colorAttribute.array.length; index += 3) {
+    assertClose(
+      Array.from(colorAttribute.array.subarray(index, index + 3)),
+      [colorAttribute.array[index], colorAttribute.array[index], colorAttribute.array[index]],
+      `zero saturation removes vertex ${index / 3}'s hue`
+    );
+  }
 
   assert.deepEqual(Array.from(sourceColors), originalColors);
   assert.deepEqual(Array.from(record.rawColors), originalColors);
@@ -936,15 +1020,21 @@ test("buildModel applies source part opacity from GLB material metadata", () => 
   );
   const scene = buildModel(THREE, meshData, {
     theme: cloneThemePresetSettings("workbench-light"),
-    renderPartsIndividually: true
+    renderPartsIndividually: true,
+    receiveShadows: true
   });
 
   const left = scene.displayRecords.find((record) => record.partId === "left");
+  const right = scene.displayRecords.find((record) => record.partId === "right");
 
   assert.equal(left.baseOpacity, 0.2);
   assert.equal(left.material.opacity, 0.2);
   assert.equal(left.material.transparent, true);
   assert.equal(left.material.depthWrite, false);
+  assert.equal(left.mesh.castShadow, false, "translucent source parts do not cast solid silhouettes in Render");
+  assert.equal(left.mesh.receiveShadow, false, "translucent source parts stay out of the opaque receiver pass");
+  assert.equal(right.mesh.castShadow, true);
+  assert.equal(right.mesh.receiveShadow, true);
   scene.dispose();
 });
 

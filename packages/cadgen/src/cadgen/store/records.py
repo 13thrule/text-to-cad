@@ -52,7 +52,10 @@ from cadgen.store.index import (
 
 RECORD_KIND = "record"
 # Payload cutovers, not directory/name salts. Legacy mappings are misses.
-RECORD_SCHEMA_VERSION = 4
+# Schema 5 invalidates generated-model output ledgers written before the STEP
+# occurrence-colour writer fix. Their next ordinary source run regenerates the
+# document; a saved document with no source remains authoritative as-is.
+RECORD_SCHEMA_VERSION = 5
 DOCUMENT_SCHEMA_VERSION = 4
 
 

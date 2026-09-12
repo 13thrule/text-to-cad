@@ -41,4 +41,11 @@ result trees from canonical trees derived from saved STEP bytes.
 # ``read_step`` disagreed with a cold parse of the same bytes. Every cid moves
 # (the bytes are now the re-parsed BREP), and trees built from build-side
 # shapes must stop resolving.
-CACHE_SCHEMA_VERSION = 19
+# 20: STEP writing preserves different whole-part colours on occurrences that
+# share one native TShape. STEPCAF otherwise merges their definitions and
+# writes only the last colour. Component identities move, and the accompanying
+# model-record schema cutover makes the next ordinary source run regenerate the
+# formerly wrong STEP bytes with the corrected writer. Saved documents remain
+# documents: compiling one reparses its existing bytes and never guesses at
+# source colors that those bytes lost.
+CACHE_SCHEMA_VERSION = 20

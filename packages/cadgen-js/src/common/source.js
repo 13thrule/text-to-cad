@@ -244,7 +244,7 @@ export function tessellationForSnapshotQuality(input = {}) {
     input.render != null ? SCENE_QUALITY.HIGH : SCENE_QUALITY.INTERACTIVE
   );
   const quality = resolveSceneQuality(preset, { fallback: SCENE_QUALITY.INTERACTIVE });
-  // High uses the existing bounded L2 rung. Interactive and Standard retain
+  // High uses the existing bounded finest rung. Interactive and Standard retain
   // the canonical L1 cache request; this changes neither cache identity nor
   // tessellator behavior for ordinary inspection snapshots.
   return quality.snapshotLodLevel > 1

@@ -1,4 +1,5 @@
 export * from "./common/cadScene.js";
+export * from "./common/colorGrading.js";
 export * from "./common/renderModel.js";
 export * from "./common/sceneSettings.js";
 export * from "./common/source.js";

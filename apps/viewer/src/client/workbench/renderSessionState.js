@@ -1,6 +1,4 @@
 import {
-  RENDER_STUDIO,
-  SCENE_APPEARANCE,
   SCENE_QUALITY,
   normalizeRenderPayload,
   resolveSceneSettings
@@ -13,8 +11,6 @@ import {
 import { clonePerspectiveSnapshot } from "cadgen-js/lib/perspective.js";
 
 export const DEFAULT_RENDER_PAYLOAD = Object.freeze({
-  studio: RENDER_STUDIO.DEFAULT,
-  appearance: SCENE_APPEARANCE.SYSTEM,
   quality: SCENE_QUALITY.HIGH
 });
 
@@ -116,10 +112,19 @@ export function replaceRenderPreset(payload, patch = {}) {
   return normalizeRenderPayload(next);
 }
 
-export function replaceRenderAppearance(payload, appearance) {
+export function resetRenderPayload(activeCamera = null) {
+  const camera = renderCameraSnapshot(activeCamera);
   return normalizeRenderPayload({
-    ...normalizeRenderPayload(payload || DEFAULT_RENDER_PAYLOAD),
-    appearance
+    ...DEFAULT_RENDER_PAYLOAD,
+    ...(camera ? { camera: renderCameraSeed(camera) } : {})
+  });
+}
+
+export function renderSessionForReset(session, { activeCamera = null } = {}) {
+  const current = createRenderSessionState(session);
+  return createRenderSessionState({
+    ...current,
+    payload: resetRenderPayload(current.enabled ? activeCamera : null)
   });
 }
 

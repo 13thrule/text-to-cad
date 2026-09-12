@@ -34,8 +34,10 @@ Tab body                    px-0, vertical stack of sections
 - Everyday settings stay visible. Progressive disclosure is allowed only when a
   gate switch turns a whole feature off (Floor, Grid, Environment, a light):
   the switch stays, the dependent rows unmount.
-- Render's Debug section is an explicit exception: keep its Copy/Paste Settings
-  utilities collapsed at the bottom, separate from everyday scene controls.
+- Render's collapsed Debug controls are an explicit exception: keep Copy/Paste
+  Settings in the top Render section before Reset. Debug and Reset remain
+  available while Render is disabled so a saved setup can be copied or applied
+  directly from the CAD view.
 - A gate reaches every row it owns. Whether they unmount (Floor, Grid) or go
   disabled (Kinematics, Animation), the section picks one and applies it to all
   of them: one live control under an off switch reads as a control that still
@@ -191,7 +193,7 @@ glyphs (a DXF bend's `↑`/`↓`). Two words as long as `Orthographic` and
 
 **The stacked exception.** A select is stacked full-width only when it is a
 *primary* control: the first row of its group, whose value reframes everything
-under it. There are exactly four — Theme › `Preset`, Display › `Mode`,
+under it. There are exactly four — Render › `Studio`, Display › `Mode`,
 Joints › `Group state`, and Animation › `Clip`, which reframes the transport
 and the time/speed rows beneath it. Pass `stacked` for those and for nothing
 else; a second stacked select in one group means one of them is not primary.
@@ -284,8 +286,11 @@ App appearance is global. Model CAD views, Render enablement, and studio
 customizations are per-model session state. Render is last in the default tab
 order; entering another tab never changes its enabled state. Display controls
 edit the active CAD or Render view, and enabling/disabling Render restores the
-corresponding camera and display settings. Do not add a second image-export
-action to this tab: image capture stays in the existing viewer toolbar.
+corresponding camera and display settings. An untouched Render studio follows
+global app appearance without storing a studio override; choosing Light studio
+or Dark studio pins that studio for the model session. Do not add a second
+image-export action to this tab: image capture stays in the existing viewer
+toolbar.
 
 ## Checklist for a new settings row
 

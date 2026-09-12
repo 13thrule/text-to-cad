@@ -5,6 +5,7 @@ import {
   RENDER_PAYLOAD_KEYS,
   RENDER_STUDIO_PRESETS,
   SCENE_QUALITY,
+  normalizeRenderPayload,
   resolveDisplayMaterialSettings,
   resolveSceneSettings
 } from "./sceneSettings.js";
@@ -25,12 +26,15 @@ test("normal CAD scenes follow appearance with neutral inspection defaults", () 
   assert.equal(dark.render.settings.background.solidColor, "#333333");
 });
 
-test("default Render studio follows appearance and owns camera/display defaults", () => {
+test("omitted Render studio follows appearance while the normalized payload stays sparse", () => {
   const light = resolveSceneSettings({ appearance: "light", render: {} });
   const dark = resolveSceneSettings({ appearance: "dark", render: {} });
 
   assert.equal(light.render.enabled, true);
-  assert.equal(light.render.studio, "default");
+  assert.equal(light.render.studio, "studio-light");
+  assert.equal(dark.render.studio, "studio-dark");
+  assert.equal(Object.hasOwn(light.render.payload, "studio"), false);
+  assert.equal(Object.hasOwn(normalizeRenderPayload({}), "studio"), false);
   assert.equal(light.render.payload.quality, "high");
   assert.equal(light.camera.projection, "perspective");
   assert.equal(light.display.mode, "shaded");
@@ -38,10 +42,21 @@ test("default Render studio follows appearance and owns camera/display defaults"
   assert.equal(light.display.guides.axis.enabled, false);
   assert.equal(light.render.settings.materials.overrideSourceColors, false);
   assert.equal(light.quality.id, SCENE_QUALITY.HIGH);
-  assert.equal(light.quality.snapshotLodLevel, 2);
+  assert.equal(light.quality.targetPixelError, 0.25);
+  assert.equal(light.quality.snapshotLodLevel, 3);
   assert.equal(light.quality.renderScale, 2);
-  assert.equal(light.render.settings.background.solidColor, "#f2f4f7");
-  assert.equal(dark.render.settings.background.solidColor, "#121317");
+  assert.equal(light.quality.shadowMapSize, 4096);
+  assert.equal(light.quality.environmentMapSize, 512);
+  assert.equal(light.render.settings.background.solidColor, "#e8e9e8");
+  assert.equal(dark.render.settings.background.solidColor, "#101113");
+
+  const pinnedLight = resolveSceneSettings({
+    appearance: "dark",
+    render: { studio: "studio-light" }
+  });
+  assert.equal(pinnedLight.appearance, "dark");
+  assert.equal(pinnedLight.render.studio, "studio-light");
+  assert.equal(pinnedLight.render.payload.studio, "studio-light");
 });
 
 test("explicit camera presets replace lower-priority poses while projection-only overrides preserve them", () => {
@@ -113,13 +128,11 @@ test("scene precedence is base then embedded Render then explicit overrides", ()
   assert.equal(resolved.display.guides.axis.enabled, true);
 });
 
-test("Render exposes public studio names without retired theme labels", () => {
-  assert.deepEqual(RENDER_STUDIO_PRESETS.slice(0, 3).map(({ id, label }) => ({ id, label })), [
-    { id: "default", label: "Studio" },
-    { id: "studio-light", label: "Bright studio" },
+test("Render exposes exactly two studios and teaches retired payloads", () => {
+  assert.deepEqual(RENDER_STUDIO_PRESETS.map(({ id, label }) => ({ id, label })), [
+    { id: "studio-light", label: "Light studio" },
     { id: "studio-dark", label: "Dark studio" }
   ]);
-  assert.equal(RENDER_STUDIO_PRESETS.some(({ id }) => id === "cinematic" || id === "vibrant"), false);
   assert.throws(
     () => resolveSceneSettings({ render: { studio: "cinematic" } }),
     /use 'studio-dark'/
@@ -128,7 +141,44 @@ test("Render exposes public studio names without retired theme labels", () => {
     () => resolveSceneSettings({ render: { studio: "vibrant" } }),
     /use 'studio-light'/
   );
-  assert.deepEqual(RENDER_PAYLOAD_KEYS, ["studio", "appearance", "quality", "settings", "camera", "display"]);
+  assert.throws(
+    () => resolveSceneSettings({ render: { studio: "default" } }),
+    /omit studio to follow appearance/
+  );
+  for (const studio of ["colorful", "blue", "pink", "clay", "clay-sunrise", "terminal"]) {
+    assert.throws(
+      () => resolveSceneSettings({ render: { studio } }),
+      /customize render\.settings/
+    );
+  }
+  assert.throws(
+    () => resolveSceneSettings({ render: { appearance: "dark" } }),
+    /render\.appearance was removed; omit studio to follow appearance/
+  );
+  assert.deepEqual(RENDER_PAYLOAD_KEYS, ["studio", "quality", "settings", "camera", "display"]);
+});
+
+test("light and dark studios share a neutral shape-revealing pipeline", () => {
+  const light = resolveSceneSettings({ render: { studio: "studio-light" } }).render.settings;
+  const dark = resolveSceneSettings({ render: { studio: "studio-dark" } }).render.settings;
+
+  assert.deepEqual(light.materials, dark.materials);
+  assert.deepEqual(light.environment, dark.environment);
+  assert.deepEqual(light.lighting, dark.lighting);
+  assert.deepEqual(
+    { ...light.floor, color: null },
+    { ...dark.floor, color: null }
+  );
+  assert.notEqual(light.background.solidColor, dark.background.solidColor);
+  assert.notEqual(light.floor.color, dark.floor.color);
+  assert.equal(light.materials.metalness, 0.03);
+  assert.equal(light.materials.saturation, 1);
+  assert.equal(light.materials.contrast, 1);
+  assert.equal(light.materials.brightness, 1);
+  assert.equal(light.environment.presetId, "studio-softbox");
+  assert.equal(light.lighting.spot.enabled, false);
+  assert.equal(light.lighting.point.enabled, false);
+  assert.ok(light.lighting.toneMappingExposure < 1);
 });
 
 test("sparse PBR edits override authored channels while studio values remain fallbacks", () => {
@@ -142,12 +192,26 @@ test("sparse PBR edits override authored channels while studio values remain fal
   });
 
   assert.deepEqual(defaults.render.materialOverrides, {});
-  assert.equal(defaults.render.settings.materials.roughness, 0.3);
+  assert.equal(defaults.render.settings.materials.roughness, 0.36);
   assert.deepEqual(customized.render.materialOverrides, { roughness: 0.08, metalness: 0.92 });
   assert.equal(customized.render.settings.materials.roughness, 0.08);
   assert.deepEqual(customized.render.payload.settings, {
     materials: { roughness: 0.08, metalness: 0.92 }
   });
+});
+
+test("normal CAD uses matte inspection PBR while preserving authored color channels", () => {
+  const scene = resolveSceneSettings({ appearance: "light" });
+
+  assert.equal(scene.render.enabled, false);
+  assert.deepEqual(scene.render.materialOverrides, {
+    roughness: scene.render.settings.materials.roughness,
+    metalness: scene.render.settings.materials.metalness,
+    clearcoat: scene.render.settings.materials.clearcoat,
+    clearcoatRoughness: scene.render.settings.materials.clearcoatRoughness
+  });
+  assert.equal(scene.render.settings.materials.overrideSourceColors, false);
+  assert.equal(Object.hasOwn(scene.render.materialOverrides, "opacity"), false);
 });
 
 test("part color policy is display-owned and preserves the editable palette", () => {

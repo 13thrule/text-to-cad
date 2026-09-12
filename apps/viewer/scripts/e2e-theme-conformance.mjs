@@ -1,19 +1,15 @@
 #!/usr/bin/env node
-// Does a theme actually reach the pixels?
+// Do CAD appearance and Render studios actually reach the pixels?
 //
-// The viewer has ONE theme and one renderer behind it: the mesh path (three.js materials
-// and lights). A theme owns both the shared stage and the model's own surface, and the
-// capability table in viewer/docs/render-types.md declares what each render type honours.
+// CAD appearance and Render studios share one mesh renderer. This drives the current
+// navbar and Render-tab controls, then records the background and model surface.
 //
-// So this asserts: SURFACE RESPONSE, recorded — the model's own pixels must CHANGE when
-// the theme changes. A renderer that ignores a theme still starts up and still draws,
-// while looking identical in all eight themes, which is precisely the failure this exists
-// to catch: `lighting.fill` and `lighting.rim` were once dropped at normalization and
-// every theme rendered with the same rig.
+// It asserts that the model pixels change across those real settings. A renderer that
+// ignores lighting can still start and draw while every pass looks identical.
 //
 // Usage:
-//   node viewer/scripts/e2e-theme-conformance.mjs --dir <models-root> [--url http://127.0.0.1:3245]
-//                                                 [--out <dir>] [--baseline <file>]
+//   node scripts/e2e-theme-conformance.mjs --dir <models-root> [--url http://127.0.0.1:3245]
+//                                          [--out <dir>] [--baseline <file>]
 //
 // Requires a viewer already serving <models-root> (npm run start) and
 // playwright available. Exits non-zero on a parity failure or an unresponsive surface.
@@ -24,31 +20,21 @@ import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
 
-// Every shipped preset. The custom slot is deliberately excluded: it is whatever the user
-// last edited, so it is not a fixture.
-const THEME_IDS = [
-  "workbench-light",
-  "workbench-dark",
-  "cinematic",
-  "vibrant",
-  "blue",
-  "pink",
-  "clay-sunrise",
-  "terminal"
+const SCENE_SETTINGS = [
+  { id: "cad-light", appearance: "Light", render: false },
+  { id: "cad-dark", appearance: "Dark", render: false },
+  { id: "render-adaptive-light", appearance: "Light", render: true },
+  { id: "render-adaptive-dark", appearance: "Dark", render: true },
+  { id: "render-light-pinned", appearance: "Dark", render: true, studio: "Light studio" },
+  { id: "render-dark-pinned", appearance: "Light", render: true, studio: "Dark studio" }
 ];
 
 // One scene per RENDERER, not per format. The mesh fixture is an STL because it loads with
-// no build step, so a theme sweep does not spend eight package rebuilds proving a point
+// no build step, so the scene sweep does not spend package rebuilds proving a point
 // about lighting.
 const SCENES = [
   { renderer: "mesh", file: "fun/miniature_spiral_staircase_highres.stl" }
 ];
-
-const THEME_STORAGE_KEY = "cad-viewer:theme";
-// Must match THEME_STORAGE_VERSION in viewer/src/client/workbench/persistence.js. A stale
-// version is ignored on read, which would silently run all eight passes on the default
-// theme and report perfect parity.
-const THEME_STORAGE_VERSION = 12;
 
 const VIEWPORT = { width: 1440, height: 900 };
 // Top-left of the viewport: stage backdrop under every fixture, clear of the toolbar, the
@@ -87,6 +73,23 @@ function rgbDistance(a, b) {
   return Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
 }
 
+async function configureScene(page, setting) {
+  await page.getByRole("button", { name: "Appearance", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: setting.appearance, exact: true }).click();
+  if (!setting.render) {
+    return;
+  }
+  await page.getByRole("tab", { name: "Render", exact: true }).click();
+  const enabled = page.getByRole("switch", { name: "Enabled", exact: true });
+  if (!(await enabled.isChecked())) {
+    await enabled.click();
+  }
+  if (setting.studio) {
+    await page.getByRole("combobox", { name: "Studio", exact: true }).click();
+    await page.getByRole("option", { name: setting.studio, exact: true }).click();
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.dir) {
@@ -110,13 +113,9 @@ async function main() {
   const results = [];
 
   for (const scene of SCENES) {
-    for (const themeId of THEME_IDS) {
-      // A fresh context per pass: the theme is read from localStorage at boot, so it has to
-      // be seeded before the first paint rather than toggled afterwards.
+    for (const setting of SCENE_SETTINGS) {
+      // Fresh context per pass keeps model session state independent.
       const context = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
-      await context.addInitScript(([key, version, id]) => {
-        window.localStorage.setItem(key, JSON.stringify({ version, themeId: id, custom: null }));
-      }, [THEME_STORAGE_KEY, THEME_STORAGE_VERSION, themeId]);
       const page = await context.newPage();
       const errors = [];
       page.on("pageerror", (error) => errors.push(String(error).slice(0, 160)));
@@ -124,30 +123,38 @@ async function main() {
       // The viewer under test must already be serving modelsRoot (its launch cwd).
       const url = `${args.url}?file=${encodeURIComponent(scene.file)}`;
       await page.goto(url, { waitUntil: "domcontentloaded" });
+      await page.getByRole("tab", { name: "Render", exact: true }).waitFor({ timeout: 30000 });
+      await configureScene(page, setting);
       await page.waitForTimeout(9000);
 
-      const activeThemeId = await page.evaluate((key) => {
-        try {
-          return JSON.parse(window.localStorage.getItem(key) || "{}").themeId || "";
-        } catch {
-          return "";
-        }
-      }, THEME_STORAGE_KEY);
+      const activeAppearance = await page.evaluate(() => (
+        document.documentElement.classList.contains("dark") ? "Dark" : "Light"
+      ));
+      const renderEnabled = setting.render
+        ? await page.getByRole("switch", { name: "Enabled", exact: true }).isChecked()
+        : false;
+      const activeStudio = setting.render
+        ? String(await page.getByRole("combobox", { name: "Studio", exact: true }).textContent() || "").trim()
+        : "";
 
       const backgroundPng = PNG.sync.read(await page.screenshot({ clip: BACKGROUND_CLIP }));
       const surfacePng = PNG.sync.read(await page.screenshot({ clip: SURFACE_CLIP }));
       if (args.out) {
         fs.mkdirSync(args.out, { recursive: true });
         fs.writeFileSync(
-          path.join(args.out, `${scene.renderer}-${themeId}.png`),
+          path.join(args.out, `${scene.renderer}-${setting.id}.png`),
           await page.screenshot({ clip: SURFACE_CLIP })
         );
       }
 
       results.push({
         renderer: scene.renderer,
-        themeId,
-        activeThemeId,
+        settingId: setting.id,
+        expectedAppearance: setting.appearance,
+        activeAppearance,
+        expectedStudio: setting.studio || "",
+        activeStudio,
+        renderEnabled,
         background: meanRgb(backgroundPng).map((value) => Number(value.toFixed(2))),
         surface: meanRgb(surfacePng).map((value) => Number(value.toFixed(2))),
         errors: errors.slice(0, 2)
@@ -160,16 +167,22 @@ async function main() {
 
   const failures = [];
   for (const result of results) {
-    if (result.activeThemeId && result.activeThemeId !== result.themeId) {
-      failures.push(`${result.renderer}/${result.themeId}: viewer ran theme ${result.activeThemeId}`);
+    if (result.activeAppearance !== result.expectedAppearance) {
+      failures.push(`${result.renderer}/${result.settingId}: viewer used ${result.activeAppearance} appearance`);
+    }
+    if (result.settingId.includes("render") && !result.renderEnabled) {
+      failures.push(`${result.renderer}/${result.settingId}: Render did not remain enabled`);
+    }
+    if (result.expectedStudio && !result.activeStudio.includes(result.expectedStudio)) {
+      failures.push(`${result.renderer}/${result.settingId}: expected ${result.expectedStudio}, saw ${result.activeStudio}`);
     }
     for (const error of result.errors) {
-      failures.push(`${result.renderer}/${result.themeId}: page error ${error}`);
+      failures.push(`${result.renderer}/${result.settingId}: page error ${error}`);
     }
   }
 
-  // Surface response: each renderer must actually look different across themes.
-  console.log("surface response across themes (must not be flat):");
+  // Surface response: each renderer must actually look different across settings.
+  console.log("surface response across CAD/Render settings (must not be flat):");
   for (const scene of SCENES) {
     const passes = results.filter((result) => result.renderer === scene.renderer);
     let spread = 0;
@@ -177,9 +190,14 @@ async function main() {
       for (const b of passes) spread = Math.max(spread, rgbDistance(a.surface, b.surface));
     }
     const ok = spread > 4;
-    if (!ok) failures.push(`${scene.renderer}: surface is identical across all themes (spread ${spread.toFixed(1)}/255)`);
+    if (!ok) failures.push(`${scene.renderer}: surface is identical across all settings (spread ${spread.toFixed(1)}/255)`);
     console.log(`  ${ok ? "ok  " : "FAIL"} ${scene.renderer.padEnd(9)} spread=${spread.toFixed(1)}/255`);
-    for (const pass of passes) console.log(`         ${pass.themeId.padEnd(16)} ${pass.surface}`);
+    for (const pass of passes) console.log(`         ${pass.settingId.padEnd(24)} ${pass.surface}`);
+
+    const lightStudio = passes.find((pass) => pass.settingId === "render-light-pinned");
+    const darkStudio = passes.find((pass) => pass.settingId === "render-dark-pinned");
+    const studioSpread = lightStudio && darkStudio ? rgbDistance(lightStudio.surface, darkStudio.surface) : 0;
+    if (studioSpread <= 4) failures.push(`${scene.renderer}: Light studio and Dark studio are visually identical`);
   }
 
   if (args.baseline) {
@@ -192,7 +210,7 @@ async function main() {
     console.log("\nfailures:");
     for (const failure of failures) console.log(`  ${failure}`);
   } else {
-    console.log("\nevery theme reaches the surface");
+    console.log("\nevery CAD/Render setting reaches the surface");
   }
   process.exit(failures.length ? 1 : 0);
 }
