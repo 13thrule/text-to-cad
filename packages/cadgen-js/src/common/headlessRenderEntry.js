@@ -24,17 +24,13 @@ import {
   setTessellationCacheProvider
 } from "../lib/surf/tessellationCache.js";
 
-// Coarse per-stage wall times for the last view-mode job, attached to its
-// result so the driver can print where a slow snapshot actually went (load =
-// fetch + tessellate/cache-hit + meshData; build = scene composition; render
-// = GL draw; capture = readback + encode).
-const headlessStageTimings = {};
-
-async function capturePreparedSource(source, job) {
+// Each call owns its measurements. Capture reports camera fitting, draw
+// submission and image encoding separately; viewport construction is not a draw.
+async function capturePreparedSource(source, job, stageTimings) {
   const buildStarted = performance.now();
   const context = renderJobContext(source.meshData, job);
   const model = buildModel(THREE, source, modelOptionsForRenderJob(context, job));
-  headlessStageTimings.buildModelMs = Math.round(performance.now() - buildStarted);
+  stageTimings.buildModelMs = Math.round(performance.now() - buildStarted);
   if (context.mode === "list" || context.mode === "section") {
     try {
       return await captureModel({ model, context }, { job });
@@ -42,15 +38,15 @@ async function capturePreparedSource(source, job) {
       model.dispose();
     }
   }
-  const renderStarted = performance.now();
+  const viewportStarted = performance.now();
   const viewport = renderModel(THREE, model, { job, context });
-  headlessStageTimings.renderMs = Math.round(performance.now() - renderStarted);
+  stageTimings.prepareViewportMs = Math.round(performance.now() - viewportStarted);
   try {
     const captureStarted = performance.now();
-    const captured = await captureModel(viewport, { job });
-    headlessStageTimings.captureMs = Math.round(performance.now() - captureStarted);
+    const captured = await captureModel(viewport, { job, stageTimings });
+    stageTimings.captureMs = Math.round(performance.now() - captureStarted);
     if (captured && typeof captured === "object" && !Array.isArray(captured)) {
-      captured.stageTimings = { ...headlessStageTimings };
+      captured.stageTimings = stageTimings;
     }
     return captured;
   } finally {
@@ -94,9 +90,11 @@ async function loadStepAnimation(job, source) {
 // away; a video pays for it once and keeps it (see prepareHeadlessRenderSequence).
 async function prepareRenderJob(job) {
   const loadStarted = performance.now();
-  const source = await loadSource(job);
+  const stageTimings = {};
+  const source = await loadSource(job, { stageTimings });
+  stageTimings.loadSourceMs = Math.round(performance.now() - loadStarted);
+  const prepareStarted = performance.now();
   const stepAnimation = await loadStepAnimation(job, source);
-  headlessStageTimings.loadSourceMs = Math.round(performance.now() - loadStarted);
   const stepParameterSource = source.stepParameterSource;
   // `job.kinematics` is the JOB PACKET's pose input (a preset name or {dof: value}); the
   // `stepParameters` set below is the shared buildModel/renderMeshScene SETTINGS key,
@@ -112,9 +110,10 @@ async function prepareRenderJob(job) {
   if (stepParameterSource && explicitParams && String(job.mode || "view").toLowerCase() !== "view") {
     throw new Error("kinematics values support only view mode; set display.mode for display-style changes");
   }
-  return {
+  const prepared = {
     source,
     stepAnimation,
+    stageTimings,
     renderJob: stepParameterSource
       ? {
           ...renderJob,
@@ -122,11 +121,13 @@ async function prepareRenderJob(job) {
         }
       : renderJob
   };
+  stageTimings.preparePoseMs = Math.round(performance.now() - prepareStarted);
+  return prepared;
 }
 
 export async function runHeadlessRenderJob(job) {
-  const { source, renderJob } = await prepareRenderJob(job);
-  return capturePreparedSource(source, renderJob);
+  const { source, renderJob, stageTimings } = await prepareRenderJob(job);
+  return capturePreparedSource(source, renderJob, stageTimings);
 }
 
 // --- video: prepare once, then move only the clock -------------------------

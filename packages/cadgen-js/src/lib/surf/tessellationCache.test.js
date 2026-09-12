@@ -12,6 +12,7 @@ import {
   encodeTessellationCacheBatch,
   float64Hex,
   getCachedEntryBytes,
+  probeCachedTessellationEntries,
   getCachedComponentEntries,
   isTessellationCacheProbeMissError,
   resolvedTessellationIdentity,
@@ -342,4 +343,28 @@ test("HTTP provider probes metadata before an exact bounded object read", async 
   });
   assert.equal(await provider.getProbed(probed, { maxBytes: row.byteLength }), null,
     "an observed body larger than admission is rejected before adoption");
+});
+
+
+test("bounded probes retain other chunks when one metadata response is unavailable", async (t) => {
+  const inputs = Array.from({ length: 513 }, (_, n) => createHash("sha256").update(`input-${n}`).digest("hex"));
+  const rows = new Map(inputs.map((surfaceInput) => {
+    const entry = encodedEntry({ surfaceInput });
+    const facts = tessellationPayloadFacts(entry);
+    return [facts.tessellationInput, validateTessellationProbeRow({ schemaVersion: 1,
+      object: createHash("sha256").update(entry).digest("hex"), ...facts })];
+  }));
+  const calls = [];
+  setTessellationCacheProvider({ async getProbed() { return null; }, async probeMany(keys) {
+    calls.push(keys.length);
+    if (calls.length === 2) return null;
+    return keys.map((key) => rows.get(key));
+  } });
+  t.after(() => setTessellationCacheProvider(null));
+  const hits = await probeCachedTessellationEntries(inputs, Q);
+  assert.deepEqual(calls, [256, 256, 1]);
+  assert.equal(hits.size, 257);
+  assert.ok(hits.has(inputs[0]));
+  assert.ok(hits.has(inputs[512]));
+  assert.equal(hits.has(inputs[256]), false);
 });

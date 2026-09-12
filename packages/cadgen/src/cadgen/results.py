@@ -239,7 +239,7 @@ class SnapshotResult:
     """The outcome of one snapshot run.
 
     The renderer answers with a browser payload — base64 image bytes, viewport
-    internals, per-stage timings — and none of that is a caller's business: the
+    internals, per-stage timings — the normal result omits that payload: the
     files are already on disk by the time this exists, so what a caller needs is
     WHICH paths were written. ``--json`` is this dataclass, so the library call
     and the CLI report the same thing (design/format-doors.md).
@@ -256,8 +256,8 @@ class SnapshotResult:
     #: frame budget). ``ok`` stays true.
     warnings: tuple[str, ...] = ()
     timings: SnapshotTimings = field(default_factory=SnapshotTimings)
-    #: ``--debug`` only: how each job's artifact resolved (cache hit, source,
-    #: timing), one entry per job that reported any. Empty otherwise.
+    #: ``--debug`` only: artifact resolution and measured browser stages,
+    #: one attributed entry per job that reported any. Empty otherwise.
     debug: tuple[dict, ...] = ()
 
     def human_lines(self) -> list[str]:

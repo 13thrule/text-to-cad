@@ -14,6 +14,9 @@ snapshots, the warm daemon and its build pool, and the CAD Viewer
 (`cadgen viewer`: a local HTTP server over the built client, one directory per
 instance).
 
+Snapshot `--debug --json` reports artifact resolution and measured browser
+stages; see [snapshot diagnostics](SNAPSHOTS.md) for timing boundaries.
+
 **MAY DEPEND ON** — the Python ecosystem it declares (OCP/build123d lazily,
 never at namespace-import time) and the *built outputs* of `cadgen-js`.
 Never app code, never `cadgen-js` source at runtime.

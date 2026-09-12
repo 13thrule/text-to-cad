@@ -602,15 +602,20 @@ export async function probeCachedTessellationEntries(surfaceInputs, options = {}
   const provider = cacheProvider;
   if (!provider || !Array.isArray(surfaceInputs) || !surfaceInputs.length
     || !tessellationOptionsCacheable(options)) return hits;
-  const keys = surfaceInputs.map((surfaceInput) => tessellationCacheKey(surfaceInput, options));
-  const rows = await provider.probeMany(keys, { signal });
-  if (!Array.isArray(rows) || rows.length !== keys.length) return hits;
-  for (let index = 0; index < keys.length; index += 1) {
-    const row = validateTessellationProbeRow(rows[index], {
-      tessellationInput: keys[index],
-      surfaceInput: surfaceInputs[index],
-    });
-    if (row) hits.set(surfaceInputs[index], row);
+  // The HTTP provider refuses oversized metadata requests. Split here so
+  // assembly size never silently converts a complete warm cache into misses.
+  for (let start = 0; start < surfaceInputs.length; start += TESS_PROBE_MAX_KEYS) {
+    const inputs = surfaceInputs.slice(start, start + TESS_PROBE_MAX_KEYS);
+    const keys = inputs.map((surfaceInput) => tessellationCacheKey(surfaceInput, options));
+    const rows = await provider.probeMany(keys, { signal });
+    if (!Array.isArray(rows) || rows.length !== keys.length) continue;
+    for (let index = 0; index < keys.length; index += 1) {
+      const row = validateTessellationProbeRow(rows[index], {
+        tessellationInput: keys[index],
+        surfaceInput: inputs[index],
+      });
+      if (row) hits.set(inputs[index], row);
+    }
   }
   return hits;
 }

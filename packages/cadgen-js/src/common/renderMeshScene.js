@@ -1204,7 +1204,13 @@ export async function captureModel(viewport, captureOptions = {}) {
     };
   }
 
+  const stageTimings = captureOptions.stageTimings;
+  const readyStarted = performance.now();
   await viewport.ready;
+  if (stageTimings) {
+    stageTimings.waitViewportMs = Math.round(performance.now() - readyStarted);
+    stageTimings.outputs = [];
+  }
   const sceneBuildMs = performance.now() - viewport.sceneBuildStarted;
   const padding = framePadding(job);
   const parametersForOutput = (output) => (
@@ -1213,6 +1219,8 @@ export async function captureModel(viewport, captureOptions = {}) {
   const renderedOutputs = [];
   const renderStarted = performance.now();
   for (const output of outputs) {
+    const outputTimings = stageTimings ? { path: String(output.path || "") } : null;
+    let stageStarted = performance.now();
     const parameters = parametersForOutput(output);
     const { width, height } = outputSize(output, job);
     viewport.renderer.setSize(width, height, false);
@@ -1241,6 +1249,8 @@ export async function captureModel(viewport, captureOptions = {}) {
       lineResolution.width,
       lineResolution.height
     );
+    if (outputTimings) outputTimings.updateModelMs = Math.round(performance.now() - stageStarted);
+    stageStarted = performance.now();
     const cameraSpec = resolveOutputCameraSpec(context, output.camera || null);
     const outputProjection = resolveOutputCameraProjection(context, cameraSpec);
     const usePerspectiveCamera = outputProjection === CAMERA_PROJECTION.PERSPECTIVE;
@@ -1265,16 +1275,29 @@ export async function captureModel(viewport, captureOptions = {}) {
       viewport.scene.updateMatrixWorld(true);
       applyTightOrthographicFrame(renderCamera, viewport.model.displayRecords, width, height, padding, cameraView?.zoom);
     }
+    if (outputTimings) outputTimings.frameCameraMs = Math.round(performance.now() - stageStarted);
     if (viewport.studioRuntime) {
+      stageStarted = performance.now();
       fitCameraDepthToBounds(renderCamera, outputBounds);
       applyPhotographicStudio(THREE, viewport.studioRuntime, viewport.studioConfiguration, {
         bounds: outputBounds,
         sceneScale,
         shadowMapSize: context.quality.shadowMapSize
       });
+      if (outputTimings) outputTimings.prepareStudioMs = Math.round(performance.now() - stageStarted);
     }
+    stageStarted = performance.now();
     viewport.renderer.render(viewport.scene, renderCamera);
+    if (outputTimings) outputTimings.drawSubmitMs = Math.round(performance.now() - stageStarted);
+    // WebGL submission can return before GPU completion. PNG readback may
+    // wait for that work, so this is image readback/encoding, not pure CPU PNG.
+    stageStarted = performance.now();
     const viewLabel = String(output.viewLabel || output.label || resolvedCamera.name || "").toUpperCase();
+    const dataUrl = rendererDataUrlWithOptionalLabel(viewport.renderer, viewLabel, job);
+    if (outputTimings) {
+      outputTimings.encodeImageMs = Math.round(performance.now() - stageStarted);
+      stageTimings.outputs.push(outputTimings);
+    }
     renderedOutputs.push({
       path: String(output.path || ""),
       camera: resolvedCamera.name,
@@ -1283,7 +1306,7 @@ export async function captureModel(viewport, captureOptions = {}) {
       width,
       height,
       mimeType: "image/png",
-      dataUrl: rendererDataUrlWithOptionalLabel(viewport.renderer, viewLabel, job)
+      dataUrl
     });
   }
   const renderMs = performance.now() - renderStarted;

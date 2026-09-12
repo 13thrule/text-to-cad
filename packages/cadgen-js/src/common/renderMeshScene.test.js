@@ -7,6 +7,7 @@ import {
   buildModel
 } from "./cadScene.js";
 import {
+  captureModel,
   disposeSnapshotSceneResources,
   modelOptionsForRenderJob,
   projectedVisibleGeometryFrame,
@@ -451,4 +452,49 @@ test("photographic scene requests reject explicitly supplied CAD controls", () =
     assert.throws(() => renderJobContext(twoPartMeshData(), { render: {}, [key]: null }),
       new RegExp(`render cannot be combined.*${key}`));
   }
+});
+
+test("capture diagnostics separate readiness, pose, tight framing, draw submission and PNG readback", async (t) => {
+  let clock = 0;
+  t.mock.method(performance, "now", () => clock);
+  const job = {
+    mode: "view", kind: "stl", output: { tightFrame: true },
+    outputs: [{ path: "first.png", width: 64, height: 64, camera: "iso" },
+      { path: "second.png", width: 64, height: 64, camera: "front" }]
+  };
+  const meshData = twoPartMeshData();
+  const context = renderJobContext(meshData, job);
+  const model = buildModel(THREE, { kind: "stl", meshData }, modelOptionsForRenderJob(context, job));
+  t.after(() => model.dispose());
+  const update = model.update.bind(model);
+  t.mock.method(model, "update", (...args) => { clock += 5; return update(...args); });
+  const scene = new THREE.Scene();
+  scene.add(model.root);
+  const updateMatrices = scene.updateMatrixWorld.bind(scene);
+  t.mock.method(scene, "updateMatrixWorld", (...args) => { clock += 7; return updateMatrices(...args); });
+  const stages = {};
+  const viewport = {
+    scene, model, context, sceneBuildStarted: 0,
+    ready: Promise.resolve().then(() => { clock += 3; }),
+    orthographicCamera: new THREE.OrthographicCamera(),
+    perspectiveCamera: new THREE.PerspectiveCamera(),
+    renderer: {
+      setSize() { clock += 2; },
+      getPixelRatio() { return 1; },
+      render() { clock += 11; },
+      domElement: { toDataURL() { clock += 13; return "data:image/png;base64,AAAA"; } }
+    }
+  };
+  const result = await captureModel(viewport, { job, stageTimings: stages });
+  assert.equal(stages.waitViewportMs, 3);
+  assert.deepEqual(stages.outputs, job.outputs.map(({ path }) => ({
+    path, updateModelMs: 7, frameCameraMs: 7, drawSubmitMs: 11, encodeImageMs: 13
+  })));
+  assert.equal(result.outputs.length, 2);
+  assert.ok(result.outputs.every((output) => output.dataUrl === "data:image/png;base64,AAAA"));
+  assert.ok(stages.outputs.every((output) => !("prepareStudioMs" in output)), "no studio means no invented studio measurement");
+
+  const listStages = {};
+  await captureModel({ model, context: { ...context, mode: "list" } }, { job, stageTimings: listStages });
+  assert.deepEqual(listStages, {}, "a list does not report image stages");
 });

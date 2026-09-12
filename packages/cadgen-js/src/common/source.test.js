@@ -15,6 +15,8 @@ import {
 import { renderAssetSourceScope } from "../lib/renderAssetSourceScope.js";
 import {
   setTessellationCacheProvider, tessellationPayloadFacts, validateTessellationProbeRow,
+  createHttpTessellationCacheProvider, encodeTessellationCacheBatch, encodeComponentTessellation,
+  tessellationCacheKey,
 } from "../lib/surf/tessellationCache.js";
 
 function memoryTessellationProvider(requested = []) {
@@ -151,7 +153,13 @@ test("macro tessellation changes the rendered surface and uses its own cache ent
       ] } } },
     componentUrls: { roller: "/macro-fixture/roller.surf" }
   } };
-  const coarse = await loadSource(base);
+  const coldStages = {};
+  const coarse = await loadSource(base, { stageTimings: coldStages });
+  assert.equal(coldStages.sourceLoad.cacheHitCount, 0);
+  assert.equal(coldStages.sourceLoad.cacheMissCount, 1);
+  for (const stage of ["surfaceReadMs", "tessellateMs", "cacheWriteMs", "meshBuildMs"]) {
+    assert.ok(coldStages.sourceLoad[stage] >= 0, stage);
+  }
   const fineJob = { ...base, quality: { tessellation: { chordTolerance: .0001, angleTolerance: .025 } } };
   const fine = await loadSource(fineJob);
   assert.ok(fine.meshData.indices.length > coarse.meshData.indices.length);
@@ -160,6 +168,72 @@ test("macro tessellation changes the rendered surface and uses its own cache ent
   const warm = await loadSource(fineJob);
   assert.equal(fetches, beforeWarm, "fine cache hit must not fetch or retessellate the source");
   assert.equal(warm.meshData.indices.length, fine.meshData.indices.length);
+});
+
+test("warm packages split probes and small bodies at the host's 256-entry bound", async (t) => {
+  const component = {
+    positions: new Float32Array([0, 0, 0, 2, 0, 0, 0, 3, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    faceOrds: new Float32Array([1, 1, 1]),
+    indices: new Uint32Array([0, 1, 2]), sideOrds: new Uint32Array([1, 2, 3]),
+    faceRanges: [{ ord: 1, indexStart: 0, indexCount: 3 }], edges: [],
+    bounds: { min: [0, 0, 0], max: [2, 3, 0] }, scale: Math.sqrt(13),
+  };
+  const surfaceObject = "a".repeat(64);
+  const components = {}, componentUrls = {}, rows = {}, bodies = {};
+  const occurrences = [];
+  for (let n = 0; n < 513; n += 1) {
+    const cid = `c${n}`, surfaceInput = createHash("sha256").update(cid).digest("hex");
+    const key = tessellationCacheKey(surfaceInput);
+    const body = encodeComponentTessellation(component, {
+      surfaceInput, surfaceObject, partColor: null, edgeClasses: [],
+    });
+    const object = createHash("sha256").update(body).digest("hex");
+    rows[key] = validateTessellationProbeRow({ schemaVersion: 1, object, ...tessellationPayloadFacts(body) });
+    assert.ok(rows[key]);
+    bodies[key] = body;
+    components[cid] = { surfaceInput, surfaceObject };
+    componentUrls[cid] = `/never-fetch/${cid}.surf`;
+    occurrences.push({ id: `o${n}`, component: cid });
+  }
+  const probes = [], batches = [];
+  const oldFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = oldFetch; setTessellationCacheProvider(null); });
+  globalThis.fetch = async (url, options) => {
+    const body = JSON.parse(options.body);
+    if (String(url).endsWith("/probe")) {
+      probes.push(body.tessellationInputs.length);
+      assert.ok(body.tessellationInputs.length <= 256);
+      return new Response(JSON.stringify({ entries: Object.fromEntries(
+        body.tessellationInputs.map((key) => [key, rows[key]]),
+      ) }));
+    }
+    assert.ok(String(url).endsWith("/batch"), "a warm package never fetches SURF");
+    batches.push(body.entries.length);
+    assert.ok(body.entries.length <= 256);
+    const payload = encodeTessellationCacheBatch(body.entries.map((entry) => bodies[entry.tessellationInput]));
+    return new Response(payload, { headers: { "content-length": String(payload.byteLength) } });
+  };
+  setTessellationCacheProvider(createHttpTessellationCacheProvider({ origin: "http://cache.test" }));
+  const stageTimings = {};
+  const source = await loadSource({ kind: "step", package: {
+    descriptor: { components, occurrences, assembly: { root: { id: "root", nodeType: "assembly",
+      children: occurrences.map(({ id }) => ({ id, nodeType: "part", children: [] })) } } }, componentUrls,
+  } }, { stageTimings });
+  assert.deepEqual(probes, [256, 256, 1]);
+  assert.deepEqual(batches, [256, 256, 1]);
+  assert.equal(source.meshData.parts.length, 513);
+  for (const part of source.meshData.parts) {
+    assert.deepEqual(part.sourceMesh.vertices, component.positions);
+    assert.deepEqual(part.sourceMesh.normals, component.normals);
+    assert.deepEqual(part.sourceMesh.indices, component.indices);
+  }
+  assert.equal(stageTimings.sourceLoad.cacheHitCount, 513);
+  assert.equal(stageTimings.sourceLoad.cacheMissCount, 0);
+  assert.equal(stageTimings.sourceLoad.cacheBatchCount, batches.length);
+  assert.equal(stageTimings.sourceLoad.tessellateMs, undefined);
+  assert.equal(stageTimings.sourceLoad.surfaceReadMs, undefined);
+  assert.ok(stageTimings.sourceLoad.cacheReadMs >= 0);
 });
 
 test("snapshot package appearance composes through the shared source resolver", async (t) => {

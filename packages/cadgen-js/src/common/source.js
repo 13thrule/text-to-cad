@@ -14,6 +14,7 @@ import {
 } from "./sceneSettings.js";
 import {
   TESS_BATCH_MAX_BYTES,
+  TESS_PROBE_MAX_KEYS,
   decodeComponentTessellation,
   getCachedEntryBytes,
   getCachedEntryBytesMany,
@@ -253,7 +254,10 @@ export function tessellationForSnapshotQuality(input = {}) {
     : {};
 }
 
-async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = null) {
+async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = null, diagnostics = null) {
+  const measure = (name, started) => {
+    if (diagnostics) diagnostics[name] = (diagnostics[name] || 0) + performance.now() - started;
+  };
   const storedDescriptor = isObject(packageInfo.descriptor) ? packageInfo.descriptor : null;
   if (!storedDescriptor) {
     throw new Error("Assembly render job is missing its tree (assembly.json)");
@@ -264,7 +268,10 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
   const componentMeshDataByCid = {};
   const cids = Object.keys(components);
   const inputs = cids.map((cid) => String(components[cid]?.surfaceInput || ""));
+  if (diagnostics) diagnostics.componentCount = cids.length;
+  const probeStarted = performance.now();
   const probes = await probeCachedTessellationEntries(inputs, tessellation);
+  measure("probeMs", probeStarted);
   const misses = [];
 
   // Probe metadata is tiny. Full bodies are fetched only in admitted TESB
@@ -290,14 +297,18 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
       continue;
     }
     const entryBytes = 4 + ((probe.byteLength + 3) & ~3);
-    if (group.length && framedBytes + entryBytes > TESS_BATCH_MAX_BYTES) flush();
+    if (group.length >= TESS_PROBE_MAX_KEYS
+      || (group.length && framedBytes + entryBytes > TESS_BATCH_MAX_BYTES)) flush();
     group.push({ cid, surfaceInput, surfaceObject, probe });
     framedBytes += entryBytes;
     if (framedBytes >= TESS_BATCH_MAX_BYTES || entryBytes + 12 > TESS_BATCH_MAX_BYTES) flush();
   }
   flush();
 
+  if (diagnostics) diagnostics.cacheBatchCount = groups.length;
+  let cacheHits = 0;
   for (const entries of groups) {
+    const readStarted = performance.now();
     let bodies;
     if (entries.length === 1 && entries[0].probe.byteLength + 16 > TESS_BATCH_MAX_BYTES) {
       const entry = entries[0];
@@ -309,7 +320,9 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
       );
       bodies = await getCachedEntryBytesMany(entries.map((entry) => entry.probe), { maxBytes });
     }
+    measure("cacheReadMs", readStarted);
     for (let index = 0; index < entries.length; index += 1) {
+      const decodeStarted = performance.now();
       const entry = entries[index];
       const decoded = decodeComponentTessellation(bodies?.[index], {
         surfaceInput: entry.surfaceInput,
@@ -318,13 +331,17 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
         tessellation,
       });
       const surrogateIndex = decoded ? surfIndexFromCacheEntry(decoded) : null;
+      measure("cacheDecodeMs", decodeStarted);
       if (!decoded || !surrogateIndex) {
         misses.push(entry.cid);
         continue;
       }
+      cacheHits += 1;
+      const meshStarted = performance.now();
       componentMeshDataByCid[entry.cid] = buildMeshDataFromSurf(surrogateIndex, null, {
         component: decoded.component,
       });
+      measure("meshBuildMs", meshStarted);
     }
   }
   // Misses load through a small pool: tessellation is CPU-bound and
@@ -333,6 +350,10 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
   // the dominant cost on a 563-component model. The pool overlaps the network
   // waits with the CPU work; 6 matches the browser's per-host connection
   // budget.
+  if (diagnostics) {
+    diagnostics.cacheHitCount = cacheHits;
+    diagnostics.cacheMissCount = misses.length;
+  }
   const loadComponent = async (cid) => {
     const descriptorComponent = components[cid];
     const surfaceInput = String(descriptorComponent?.surfaceInput || "");
@@ -344,10 +365,18 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
     // Exact-surface artifact (design/surface-rendering.md): the resolved URL
     // points at the component GLB; its .surf sibling shares the stem.
     const surfUrl = url.replace(/\.glb(?=$|[?#])/, ".surf");
+    const readStarted = performance.now();
     const { index, floats } = parseSurf(await fetchComponentGlbBuffer(surfUrl, cid));
+    measure("surfaceReadMs", readStarted);
+    const tessellateStarted = performance.now();
     const component = tessellateComponent(index, floats, tessellation);
+    measure("tessellateMs", tessellateStarted);
+    const writeStarted = performance.now();
     await writeBackComponentEntry(surfaceInput, surfaceObject, tessellation, component, index);
+    measure("cacheWriteMs", writeStarted);
+    const meshStarted = performance.now();
     componentMeshDataByCid[cid] = buildMeshDataFromSurf(index, floats, { component });
+    measure("meshBuildMs", meshStarted);
   };
   const POOL = 6;
   let next = 0;
@@ -360,7 +389,10 @@ async function loadPackageMeshData(packageInfo, tessellation = {}, appearance = 
       }
     }),
   );
-  return buildComposedPackageMeshData(descriptor, componentMeshDataByCid);
+  const composeStarted = performance.now();
+  const meshData = buildComposedPackageMeshData(descriptor, componentMeshDataByCid);
+  measure("composeMs", composeStarted);
+  return meshData;
 }
 
 async function loadMeshDataFromUrl(url, kind) {
@@ -539,7 +571,9 @@ export async function loadSource(input, options = {}) {
     isObject(resolved.package) ? resolved.package : null
   );
   if (!meshData && packageInfo) {
-    meshData = await loadPackageMeshData(packageInfo, tessellation, sourceSidecar?.appearance);
+    const diagnostics = options.stageTimings ? {} : null;
+    meshData = await loadPackageMeshData(packageInfo, tessellation, sourceSidecar?.appearance, diagnostics);
+    if (diagnostics) options.stageTimings.sourceLoad = diagnostics;
     const packageSelectorRuntime = photographicRender ? null : inputObject.selectorRuntime || options.selectorRuntime || null;
     return {
       kind: "step",

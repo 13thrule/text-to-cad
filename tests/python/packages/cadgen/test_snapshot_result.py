@@ -16,6 +16,7 @@ from __future__ import annotations
 import io
 import json
 import unittest
+from unittest import mock
 from dataclasses import fields
 from pathlib import Path
 
@@ -253,6 +254,62 @@ class JsonShape(unittest.TestCase):
             stdout=io.StringIO(),
         )
         self.assertEqual(code, 1)
+
+
+class BrowserDiagnostics(unittest.IsolatedAsyncioTestCase):
+    async def render_packet(self, jobs, results, *, single=True):
+        from cadgen.snapshot_core import render_resolved_job_packet
+
+        renderer = mock.Mock(render=mock.AsyncMock(side_effect=results), close=mock.AsyncMock())
+        packet = {"single": single, "jobs": jobs}
+        rendered = await render_resolved_job_packet(packet, runtime_dir=Path("."), renderer=renderer)
+        renderer.close.assert_awaited_once()
+        return result_payload(snapshot_result(rendered, packet=packet))
+
+    async def test_browser_stages_survive_single_job_typed_json_with_resolution_and_input(self):
+        stages = {
+            "loadSourceMs": 10.5, "preparePoseMs": 0, "buildModelMs": 12,
+            "prepareViewportMs": 9, "waitViewportMs": 3, "captureMs": 60,
+            "sourceLoad": {"probeMs": 2, "cacheReadMs": 6.5, "cacheHitCount": 513, "cacheMissCount": 0},
+            "outputs": [{"path": "/tmp/review.png", "updateModelMs": 4,
+                         "frameCameraMs": 30, "drawSubmitMs": 5, "encodeImageMs": 18}],
+        }
+        job = {"input": "assembly.step", "debug": True, "outputs": [],
+               "resolved": {"debug": {"stepArtifact": {"cache": "hit"}}}}
+        payload = await self.render_packet([job], [{**VIEW_RESULT, "stageTimings": stages}])
+        self.assertEqual(payload["debug"], [{"input": "assembly.step",
+                         "stepArtifact": {"cache": "hit"}, "stageTimings": stages}])
+        self.assertNotIn("dataUrl", json.dumps(payload))
+        stages["outputs"][0]["encodeImageMs"] = 999
+        self.assertEqual(payload["debug"][0]["stageTimings"]["outputs"][0]["encodeImageMs"], 18)
+
+    async def test_mixed_packet_reports_only_requested_diagnostics_and_measured_stages(self):
+        jobs = [{"input": "first.step", "debug": True, "outputs": []},
+                {"input": "second.step", "debug": False, "outputs": []}]
+        raw = {**VIEW_RESULT, "stageTimings": {"loadSourceMs": 3}}
+        payload = await self.render_packet(jobs, [raw, raw], single=False)
+        self.assertEqual(payload["debug"], [{"input": "first.step", "stageTimings": {"loadSourceMs": 3}}])
+
+    async def test_invalid_and_unavailable_timings_do_not_create_diagnostic_placeholders(self):
+        values = [None, [], {}, {"sourceLoad": {"cacheHitCount": True, "componentCount": -1,
+                  "cacheMissCount": 1.2, "cacheBatchCount": 1 << 2000, "cacheReadMs": float("nan")}}, {"outputs": [{"path": "only-a-path"}]},
+                  {"loadSourceMs": True, "captureMs": -1, "buildModelMs": "3",
+                   "waitViewportMs": float("inf"), "prepareViewportMs": float("nan"),
+                   "preparePoseMs": 1 << 2000},
+                  {"dataUrl": "secret image bytes", "outputs": [False, {"drawSubmitMs": -2}]}]
+        for stages in values:
+            with self.subTest(stages=stages):
+                payload = await self.render_packet(
+                    [{"input": "part.step", "debug": True, "outputs": [], "resolved": {"debug": {}}}],
+                    [{**VIEW_RESULT, "stageTimings": stages}],
+                )
+                self.assertEqual(payload["debug"], [])
+        payload = await self.render_packet(
+            [{"input": "part.step", "debug": True, "outputs": [],
+              "resolved": {"debug": {"stepArtifact": {"cache": "hit"}}}}],
+            [{"ok": True, "mode": "list", "parts": []}],
+        )
+        self.assertEqual(payload["debug"], [{"input": "part.step", "stepArtifact": {"cache": "hit"}}])
 
 
 class PublicVerbs(unittest.TestCase):

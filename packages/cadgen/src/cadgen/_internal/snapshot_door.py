@@ -232,7 +232,7 @@ def step_snapshot_verb(door: str):
         size_profile: simple, diagnostic, labeled, assembly, presentation,
             or contact-sheet.
         view_labels: burn the camera/view label into the image.
-        debug: report how each input's artifact resolved.
+        debug: report artifact resolution and measured browser stages.
         """
         return _run(
             kinds,
@@ -291,7 +291,7 @@ def mesh_snapshot_verb(door: str):
         size_profile: simple, diagnostic, labeled, assembly, presentation,
             or contact-sheet.
         view_labels: burn the camera/view label into the image.
-        debug: report how each input's artifact resolved.
+        debug: report artifact resolution and measured browser stages.
         """
         return _run(
             kinds,
@@ -351,7 +351,7 @@ def robot_snapshot_verb(door: str):
         size_profile: simple, diagnostic, labeled, assembly, presentation,
             or contact-sheet.
         view_labels: burn the camera/view label into the image.
-        debug: report how each input's artifact resolved.
+        debug: report artifact resolution and measured browser stages.
         """
         return _run(
             kinds,
@@ -429,7 +429,7 @@ def polymorphic_snapshot_verb():
         size_profile: simple, diagnostic, labeled, assembly, presentation,
             or contact-sheet.
         view_labels: burn the camera/view label into the image.
-        debug: report how each input's artifact resolved.
+        debug: report artifact resolution and measured browser stages.
         """
         return _run(
             ALL_KINDS,

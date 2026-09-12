@@ -1888,6 +1888,57 @@ class BatchSnapshotRenderer:
 
 
 
+def _browser_stage_timings(value: object) -> dict[str, object]:
+    """Keep measured durations, never the browser's image payload or metadata."""
+    if not is_plain_object(value):
+        return {}
+
+    def durations(source: Mapping[str, object], fields: tuple[str, ...]) -> dict[str, object]:
+        measured = {}
+        for name in fields:
+            duration = source.get(name)
+            if type(duration) not in (int, float):
+                continue
+            try:
+                valid = isfinite(duration) and duration >= 0
+            except OverflowError:
+                valid = False
+            if valid:
+                measured[name] = duration
+        return measured
+
+    timings = durations(value, (
+        "loadSourceMs", "preparePoseMs", "buildModelMs", "prepareViewportMs",
+        "waitViewportMs", "captureMs",
+    ))
+    source_load = value.get("sourceLoad")
+    if is_plain_object(source_load):
+        measured = durations(source_load, (
+            "probeMs", "cacheReadMs", "cacheDecodeMs", "meshBuildMs", "surfaceReadMs",
+            "tessellateMs", "cacheWriteMs", "composeMs",
+        ))
+        for name in ("componentCount", "cacheBatchCount", "cacheHitCount", "cacheMissCount"):
+            count = source_load.get(name)
+            if type(count) is int and 0 <= count <= 2**53 - 1:
+                measured[name] = count
+        if measured:
+            timings["sourceLoad"] = measured
+    outputs = []
+    for output in value.get("outputs", []) if isinstance(value.get("outputs"), list) else []:
+        if not is_plain_object(output):
+            continue
+        measured = durations(output, (
+            "updateModelMs", "frameCameraMs", "prepareStudioMs", "drawSubmitMs", "encodeImageMs",
+        ))
+        if measured:
+            if isinstance(output.get("path"), str) and output["path"]:
+                measured = {"path": output["path"], **measured}
+            outputs.append(measured)
+    if outputs:
+        timings["outputs"] = outputs
+    return timings
+
+
 async def render_resolved_job_packet(
     packet: Mapping[str, object],
     *,
@@ -1923,12 +1974,15 @@ async def render_resolved_job_packet(
             else:
                 result = await snapshot_renderer.render(job)
                 report.advance()
-            # The browser result knows nothing about artifact resolution; --debug
-            # diagnostics are attached at resolve time, so merge them into the
-            # emitted result here or they never reach --json output.
+            # Keep resolution and measured browser work together under --debug.
+            # The typed result otherwise intentionally drops browser internals.
             resolved = job.get("resolved") if is_plain_object(job.get("resolved")) else {}
-            debug_info = resolved.get("debug")
-            if is_plain_object(debug_info) and is_plain_object(result):
+            debug_info = dict(resolved["debug"]) if is_plain_object(resolved.get("debug")) else {}
+            if job.get("debug"):
+                stages = _browser_stage_timings(result.get("stageTimings"))
+                if stages:
+                    debug_info["stageTimings"] = stages
+            if debug_info:
                 result = {**result, "debug": debug_info}
             results.append(result if packet["single"] else {"input": job.get("input"), **result})
     finally:
@@ -2092,12 +2146,11 @@ def snapshot_result(
         warnings.extend(str(warning) for warning in (job_result.get("warnings") or []))
         info = job_result.get("debug")
         if is_plain_object(info):
-            # --debug diagnostics are attached at RESOLVE time and merged into the
-            # browser result by the render loop; the input rides alongside so a
-            # multi-job packet's entries stay attributable.
+            # Resolution and browser diagnostics are merged by the render loop;
+            # selected input identity attributes single and multi-job entries.
             entry = dict(info)
-            if job_result.get("input"):
-                entry = {"input": str(job_result["input"]), **entry}
+            if input_text or job_result.get("input"):
+                entry = {"input": input_text or str(job_result["input"]), **entry}
             debug.append(entry)
     return SnapshotResult(
         ok=bool(result.get("ok", True)) and all(job.get("ok") is not False for job in job_results),
