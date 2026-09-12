@@ -128,7 +128,7 @@ def commands(include_video: bool = False) -> list[tuple[str, list[str]]]:
     python = sys.executable
     step_file = ROOT / "STEP/hand_mechanical_candidate_r13.step"
     result = [
-        ("Build R13 once to write the body-frame manifest", [python, str(ROOT / "src/hand_mechanical_candidate_r13.py")]),
+        ("Build R13 once to write the body-frame manifest", [python, str(ROOT / "src/hand_mechanical_candidate_r13.py"), "--force"]),
         ("Regenerate the indexed capstan overlay from those frames", [python, str(ROOT / "src/capstan_index_overlay.py")]),
         ("Rebuild final R13 with the regenerated overlay", [python, str(ROOT / "src/hand_mechanical_candidate_r13.py")]),
         ("Validate every final STEP placement", [cadgen(), "step", "inspect", "validate", str(step_file), "--every-placement"]),

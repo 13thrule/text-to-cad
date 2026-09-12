@@ -90,6 +90,14 @@ receipt binding the installed files to the manifest:
 ./.venv/bin/python models/tendon_hand/rebuild.py check
 ```
 
+`check` is a bootstrap preflight. The checkpoint supplies the initial
+`capstan_index_overlay.step` needed to break the body-frame/overlay dependency;
+stage 2 of the recipe deliberately replaces that file with a freshly generated
+overlay. A post-run `check` therefore rejects the changed file. Before repeating
+the complete recipe, run `import-checkpoint` again to restore and verify the
+bootstrap inputs. The runner forces its first R13 build so the body-frame
+manifest is rewritten even when cadgen already has a current model record.
+
 For another machine, copy that legacy `models/assemblies` directory or a bundle
 with the same layout, then pass its path to `--from`. The importer rejects a
 missing, changed, or incomplete bundle before loading CAD.
@@ -109,8 +117,8 @@ optional MP4 is not needed:
 
 The runner performs these stages in order:
 
-1. verifies the complete checkpoint and its import receipt;
-2. builds R13 once to write its body-frame manifest;
+1. verifies the complete bootstrap checkpoint and its import receipt;
+2. force-builds R13 once to write its body-frame manifest;
 3. regenerates the indexed capstan overlay from those frames;
 4. rebuilds the final R13 STEP with that fresh overlay;
 5. validates every STEP placement;

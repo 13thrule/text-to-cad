@@ -70,6 +70,10 @@ def overlay(bodies,step_path,records,expected_sha=None,replace=False):
     styles=json.loads(style_file.read_text()).get(expected_sha,{}) if style_file.exists() else {}
     native=leaves(read_step(archive));mapping={r['name']:r for r in records}
     assert len(native)==len(mapping)
+    # Some legacy single-solid STEP documents carry only an OCCT entry label.
+    # Their one manifest record is unambiguous and remains digest-bound above.
+    if len(native)==1 and str(native[0].label).startswith('=>[') and native[0].label not in mapping:
+        native[0].label=next(iter(mapping))
     assert {s.label for s in native}==set(mapping)
     existing={b.name:b for b in bodies}
     if replace:assert set(mapping)<=set(existing)
