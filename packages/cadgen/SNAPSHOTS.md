@@ -124,6 +124,62 @@ helper or additional CLI flag is required.
 Each job copies only closed JSON values before its first await, so later caller
 mutation cannot change a queued job's payload or asset authority.
 
+The native document preparation door accepts a value-only `DisplayProduct` or
+captures a saved STEP and its sole companion once, including companion absence.
+Saved imports submit those exact buffers to an explicitly owned document
+dispatcher; they never resolve source or reuse a resident source revision by
+filename. A saved file overwritten after preparation cannot change the packet.
+The internal prepared-input door is implemented; the public STEP CLI cutover and
+native motion/selection support remain separate work.
+
+The resident preparation door requires the exact engine-attested `DisplayProduct`;
+constructing a lookalike dataclass is not a native revision receipt. The saved
+STEP door independently captures its dispatcher response bytes.
+Native still jobs carry a closed manifest binding, complete mesh inventory and
+mesh policy. The manifest is at most 16 MiB, each packed CGMESH asset at most
+128 MiB, and unique mesh assets total at most 256 MiB. Only those hash-named files
+are served by the job's random capability. Reads require regular files and
+bounded lengths, and verify SHA-256; a substituted pipe or symlink cannot become
+a blocking asset stream. The browser independently verifies the manifest and
+mesh membership before scene adoption. These jobs have no package, SURF, old
+artifact-cache or source-module fallback.
+
+One native still job adopts its scene once for all requested cameras. Inspect
+retains CAD edges and revision-scoped picking intervals. Photographic Render
+does not construct those resources; it keeps the same face RGBA and PBR inputs
+and uses the shared camera, studio and image capture pipeline. Its final mesh
+rung is relative chord 0.00015 and angle 0.35 radians; preview and ordinary
+Inspect use 0.0015 and 0.35. Explicit Inspect tessellation overrides must match
+the producer's packet policy. Native selection, poses, kinematics, animation,
+video and non-view modes fail at admission until their consumers are integrated.
+
+Preparation, import, meshing, transfer and rendering consume one monotonic
+deadline established before capture, plus its original 30-second cleanup
+reserve. Native staging has four atomic persistent slots under the captured
+cache root's `runtime/native-snapshot-staging`, each admitting at most 400 MiB:
+272 MiB of input assets and 128 MiB reserved for PNG outputs. This bounds admitted
+payload bytes across independent callers to 1,600 MiB in
+that catalog, excluding filesystem allocation overhead. A slot has a random
+ownership token and is released only after a
+context-owner cleanup or supervisor worker-reclamation receipt. Reaping the
+small transport process alone is insufficient. An interrupted or uncertain
+slot remains occupied after caller exit; PID death and age do not authorize
+deletion. Exhausted admission fails until those consumers can be proven
+reclaimed. This slice provides no speculative stale-slot recovery.
+
+The worker writes numbered private PNGs in that same slot. Final target paths
+stay on the caller. Admission allows at most 256 distinct still targets, each
+dimension within 1..8192 pixels, within the aggregate 128 MiB conservative PNG
+bound. All output membership, PNG framing/checksums, bounded complete image
+decompression and requested dimensions must validate after cleanup acknowledgement
+before any requested target is published through the shared atomic writer.
+All final targets are read back against the verified bytes before success.
+Results and output timing paths are then remapped to those final targets.
+Uncertain cleanup retains private inputs and outputs; a late worker cannot write
+the requested public image. Failed publication rolls back acknowledged writes
+only while their length and SHA-256 still match; an observed replacement is
+preserved. These checks do not lock final paths against concurrent writers.
+
 Video frames use one page for the sequence. Encoding uses the same ffmpeg
 options and atomic output publication, with bounded stderr retention. A timeout
 or cancellation terminates, kills if necessary, and reaps the encoder before

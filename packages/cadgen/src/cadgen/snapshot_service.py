@@ -200,7 +200,7 @@ class SnapshotService:
                     with self._guard:
                         self._poison = self._renderer._shutdown_error
 
-    def _submit(self, packet, runtime_dir, cache_root, encoder, relay):
+    def _submit(self, packet, runtime_dir, cache_root, encoder, relay, cleanup=None):
         size = _packet_size_bound(packet)
         if size > MAX_SERVICE_PACKET_BYTES:
             raise SnapshotError("snapshot service packet exceeds its byte capacity")
@@ -233,6 +233,8 @@ class SnapshotService:
             with self._guard:
                 if self._closing:
                     raise SnapshotError("snapshot service is closing")
+                if cleanup is not None:
+                    cleanup.acknowledged = False
                 self._loop.call_soon_threadsafe(begin, context=Context())
         except BaseException:
             with self._guard:
@@ -252,20 +254,24 @@ class SnapshotService:
             encoder = str(Path(ffmpeg_binary()).resolve())
         return await self._render_captured(packet, runtime_dir, cache_root, encoder, progress, narrate)
 
-    async def render_operation(self, operation, *, progress=None, narrate=None):
+    async def render_operation(self, operation, *, progress=None, narrate=None, cleanup=None):
         """A host-validated transport operation carries every path capability."""
-        from .snapshot_operation import CLEANUP_SECONDS, normalize_operation
+        from .snapshot_operation import CLEANUP_SECONDS, RenderCleanup, normalize_operation
+        if cleanup is not None:
+            if type(cleanup) is not RenderCleanup:
+                raise TypeError("snapshot cleanup requires an internal lifetime proof")
+            cleanup.acknowledged = True  # No input consumer has been admitted yet.
         operation = normalize_operation(operation)
         async with asyncio.timeout_at(operation["deadline"] - CLEANUP_SECONDS):
             return await self._render_captured(operation["packet"], Path(operation["runtimeRoot"]),
-                                               Path(operation["storeRoot"]), operation["encoder"], progress, narrate)
+                                               Path(operation["storeRoot"]), operation["encoder"], progress, narrate, cleanup)
 
-    async def _render_captured(self, packet, runtime_dir, cache_root, encoder, progress, narrate):
+    async def _render_captured(self, packet, runtime_dir, cache_root, encoder, progress, narrate, cleanup=None):
         relay = _Relay(progress, narrate)
         ticket = None
         wrapped = None
         try:
-            ticket = self._submit(packet, runtime_dir, cache_root, encoder, relay)
+            ticket = self._submit(packet, runtime_dir, cache_root, encoder, relay, cleanup)
             wrapped = asyncio.wrap_future(ticket.receipt)
             done, _pending = await asyncio.wait((wrapped, relay.failure), return_when=asyncio.FIRST_COMPLETED)
             if relay.failure in done:
@@ -283,6 +289,8 @@ class SnapshotService:
             raise
         finally:
             relay.close()
+            if cleanup is not None and ticket is not None and ticket.receipt.done() and not self.poisoned:
+                cleanup.acknowledged = True
 
     async def _close_owned(self):
         with self._guard:

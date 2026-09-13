@@ -588,6 +588,25 @@ class SchemaTests(unittest.TestCase):
 
 
 class RemoteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_uncertain_transport_cleanup_preserves_caller_cancellation_and_unacknowledged_proof(self):
+        from cadgen.snapshot_operation import RenderCleanup
+        entered = asyncio.Event()
+        async def transport(payload, cancel, relay, *, cleanup):
+            cleanup.acknowledged = False
+            entered.set()
+            await cancel.wait()
+            raise SnapshotError("transport reaped; render cleanup unknown")
+        proof = RenderCleanup()
+        with patch("cadgen.daemon.client.compute_version_token", return_value="token"), \
+             patch("cadgen.daemon.snapshot_transport.transport_request", transport):
+            task = asyncio.create_task(snapshot.RemoteSnapshotService().render_operation(operation(), cleanup=proof))
+            await entered.wait()
+            task.cancel("original cancellation")
+            with self.assertRaisesRegex(asyncio.CancelledError, "original cancellation") as error:
+                await task
+        self.assertFalse(proof.acknowledged)
+        self.assertIn("render cleanup unknown", error.exception.__notes__[0])
+
     async def test_transport_progress_returns_to_caller_context_and_cancel_awaits_receipt(self):
         caller = threading.get_ident()
         context = ContextVar("snapshot_transport_test", default="empty")
@@ -676,6 +695,8 @@ class FakeProcess:
 class TransportProcessTests(unittest.IsolatedAsyncioTestCase):
     async def test_bounded_transport_child_is_reaped_and_distinguished_from_worker_cleanup(self):
         from cadgen.daemon.snapshot_transport import transport_request
+        from cadgen.snapshot_operation import RenderCleanup
+        proof = RenderCleanup(True)
         op = operation()
         op["deadline"] = time.monotonic() + 1.05
         proc = FakeProcess(hang=True)
@@ -686,16 +707,19 @@ class TransportProcessTests(unittest.IsolatedAsyncioTestCase):
         started = time.monotonic()
         with patch("asyncio.create_subprocess_exec", create):
             with self.assertRaisesRegex(SnapshotError, "transport process reaped; worker/browser cleanup was not confirmed"):
-                await transport_request(request(op), asyncio.Event(), Mock())
+                await transport_request(request(op), asyncio.Event(), Mock(), cleanup=proof)
         self.assertTrue(proc.killed)
+        self.assertFalse(proof.acknowledged)
         self.assertLess(time.monotonic() - started, .5)
 
     async def test_supervisor_receipt_is_preserved_and_no_late_progress_is_accepted(self):
         from cadgen.daemon.snapshot_transport import transport_request
+        from cadgen.snapshot_operation import RenderCleanup
         op = operation()
         receipt = snapshot._receipt(operation_key(op), "ok", result=result_value(SnapshotResult(True)), job=True, worker_used=True)["snapshotReceipt"]
         for late in (False, True):
             with self.subTest(late=late):
+                proof = RenderCleanup()
                 lines = [{"receipt": receipt}]
                 if late:
                     lines.append({"progress": {"method": "detail", "args": ["late"], "kwargs": {}}})
@@ -705,6 +729,7 @@ class TransportProcessTests(unittest.IsolatedAsyncioTestCase):
                 with patch("asyncio.create_subprocess_exec", create):
                     if late:
                         with self.assertRaisesRegex(SnapshotError, "after its completion receipt"):
-                            await transport_request(request(op), asyncio.Event(), Mock())
+                            await transport_request(request(op), asyncio.Event(), Mock(), cleanup=proof)
                     else:
-                        self.assertTrue((await transport_request(request(op), asyncio.Event(), Mock())).ok)
+                        self.assertTrue((await transport_request(request(op), asyncio.Event(), Mock(), cleanup=proof)).ok)
+                self.assertTrue(proof.acknowledged)

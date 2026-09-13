@@ -489,8 +489,6 @@ def _run_remote(payload, cancel, relay):
 class RemoteSnapshotService:
     """Explicit CLI adapter; creates no local browser and executes no source remotely."""
     async def render(self, packet, *, runtime_dir, progress=None, narrate=None):
-        from cadgen.daemon.client import compute_version_token
-        from cadgen.snapshot_service import _Relay
         from cadgen.store.paths import store_root
         from cadgen.snapshot_video import ffmpeg_binary
         from pathlib import Path
@@ -499,27 +497,42 @@ class RemoteSnapshotService:
         packet = resolved_packet(packet)
         encoder = str(Path(ffmpeg_binary()).resolve()) if any(job.get("video") is not None for job in packet["jobs"]) else None
         operation = capture_operation(packet, runtime_dir=runtime_dir, cache_root=store_root(), encoder=encoder)
+        return await self.render_operation(operation, progress=progress, narrate=narrate)
+
+    async def render_operation(self, operation, *, progress=None, narrate=None, cleanup=None):
+        from cadgen.daemon.client import compute_version_token
+        from cadgen.snapshot_operation import RenderCleanup
+        from cadgen.snapshot_service import _Relay
+        if cleanup is not None:
+            if type(cleanup) is not RenderCleanup:
+                raise TypeError("snapshot cleanup requires an internal lifetime proof")
+            cleanup.acknowledged = True  # No transport has been admitted yet.
+        operation = normalize_operation(operation)
         payload = {"tool": "snapshot-render", "argv": [], "snapshot": operation,
                    "request": operation_key(operation), "token": compute_version_token()}
         relay = _Relay(progress, narrate)
         cancel = asyncio.Event()
         from cadgen.daemon.snapshot_transport import transport_request
-        future = asyncio.create_task(transport_request(payload, cancel, relay), context=Context())
+        transfer = (transport_request(payload, cancel, relay) if cleanup is None else
+                    transport_request(payload, cancel, relay, cleanup=cleanup))
+        future = asyncio.create_task(transfer, context=Context())
         try:
             done, _pending = await asyncio.wait((future, relay.failure), return_when=asyncio.FIRST_COMPLETED)
             if relay.failure in done:
                 relay.failure.result()
             return future.result()
-        except BaseException:
+        except BaseException as error:
             cancel.set()
-            if future.done():
-                with suppress(_RenderCancelled, asyncio.CancelledError):
+            try:
+                if future.done():
                     future.result()
-            else:
-                try:
+                else:
                     await _finish_snapshot_cleanup(future)
-                except (_RenderCancelled, asyncio.CancelledError):
-                    pass
+            except (_RenderCancelled, asyncio.CancelledError):
+                pass
+            except BaseException as cleanup_error:
+                if cleanup_error is not error:
+                    error.add_note(f"Snapshot transport cleanup failed: {cleanup_error}")
             raise
         finally:
             relay.close()

@@ -84,6 +84,10 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.service._thread.is_alive())
 
     async def test_active_cancellation_waits_for_cleanup_receipt_and_releases_reservation(self):
+        from cadgen.assets import runtime_root
+        from cadgen.snapshot_operation import capture_operation, RenderCleanup
+        proof = RenderCleanup()
+        operation = capture_operation(packet(), runtime_dir=runtime_root() / "browser", cache_root=store_root())
         started = threading.Event()
         cleanup_started = threading.Event()
         released = threading.Event()
@@ -96,11 +100,12 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
                 while not released.is_set():
                     await asyncio.sleep(.001)
         with patch("cadgen.snapshot_service.render_snapshot", render):
-            task = asyncio.create_task(self.service.render(packet(), runtime_dir=Path(".")))
+            task = asyncio.create_task(self.service.render_operation(operation, cleanup=proof))
             await asyncio.to_thread(started.wait, 2)
             task.cancel()
             await asyncio.to_thread(cleanup_started.wait, 2)
             self.assertFalse(task.done())
+            self.assertFalse(proof.acknowledged)
             self.assertEqual(1, len(self.service._tickets))
             task.cancel()
             released.set()
@@ -108,6 +113,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
                 await task
         self.assertEqual(0, self.service._reserved_bytes)
         self.assertFalse(self.service._tickets)
+        self.assertTrue(proof.acknowledged)
 
     async def test_queued_cancellation_and_capacity_are_bounded_without_starting_another_owner(self):
         entered, release = threading.Event(), threading.Event()
@@ -188,13 +194,18 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual("next", await self.service.render(packet(), runtime_dir=Path(".")))
 
     async def test_poisoned_owner_never_launches_replacement_and_shutdown_failure_is_loud(self):
+        from cadgen.assets import runtime_root
+        from cadgen.snapshot_operation import capture_operation, RenderCleanup
+        proof = RenderCleanup()
+        operation = capture_operation(packet(), runtime_dir=runtime_root() / "browser", cache_root=store_root())
         async def render(value, *, renderer, **kwargs):
             renderer._shutdown_error = RuntimeError("unacknowledged")
             raise SnapshotError("failed cleanup")
         with patch("cadgen.snapshot_service.render_snapshot", render):
             with self.assertRaisesRegex(SnapshotError, "failed cleanup"):
-                await self.service.render(packet(), runtime_dir=Path("."))
+                await self.service.render_operation(operation, cleanup=proof)
         self.assertTrue(self.service.poisoned)
+        self.assertFalse(proof.acknowledged)
         with self.assertRaises(SnapshotError):
             await self.service.render(packet(), runtime_dir=Path("."))
         self.assertEqual(1, len(FakeOwner.instances))

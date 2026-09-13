@@ -42,7 +42,7 @@ async def _reap(proc, deadline):
         return False
 
 
-async def transport_request(payload, cancel, relay):
+async def transport_request(payload, cancel, relay, *, cleanup=None):
     """Only a supervisor receipt proves render cleanup; transport reap is distinct."""
     from cadgen.daemon.snapshot import read_receipt
 
@@ -60,6 +60,8 @@ async def transport_request(payload, cancel, relay):
     reaped = False
     try:
         async with asyncio.timeout_at(transport_deadline):
+            if cleanup is not None:
+                cleanup.acknowledged = False
             proc = await asyncio.create_subprocess_exec(
                 sys.executable, "-P", "-m", "cadgen.daemon.snapshot_transport",
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
@@ -85,6 +87,8 @@ async def transport_request(payload, cancel, relay):
                 frame = _capture_snapshot_job(json.loads(raw))
                 if set(frame) == {"receipt"}:
                     receipt = read_receipt(operation, frame["receipt"], as_value=True)
+                    if cleanup is not None:
+                        cleanup.acknowledged = True
                     if await proc.stdout.read(1):
                         raise SnapshotError("snapshot transport emitted data after its completion receipt")
                     break
@@ -115,9 +119,9 @@ async def transport_request(payload, cancel, relay):
             with suppress(BaseException):
                 await control
         if proc is not None and not reaped:
-            cleanup = asyncio.create_task(_reap(proc, deadline))
-            await _finish_snapshot_cleanup(cleanup)
-            reaped = cleanup.result()
+            reclamation = asyncio.create_task(_reap(proc, deadline))
+            await _finish_snapshot_cleanup(reclamation)
+            reaped = reclamation.result()
         if stderr is not None:
             if not stderr.done():
                 stderr.cancel()

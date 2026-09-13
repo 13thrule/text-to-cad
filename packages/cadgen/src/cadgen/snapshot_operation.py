@@ -1,7 +1,7 @@
 """Closed render operations shared by hosts, without daemon or source execution."""
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import hashlib
 import json
 from math import isfinite
@@ -11,11 +11,22 @@ import time
 from .assets import runtime_root
 from .results import SnapshotFile, SnapshotResult, SnapshotTimings
 from .snapshot_core import DEFAULT_TIMEOUT_SECONDS, SnapshotError, _capture_snapshot_job
+from .snapshot_document_input import native_job_descriptor
 
 MAX_PACKET_BYTES = 64 * 1024 * 1024
 MAX_FRAME_BYTES = MAX_PACKET_BYTES + 64 * 1024
 CLEANUP_SECONDS = 30.0
 MAX_OPERATION_SECONDS = 24 * 60 * 60
+
+
+@dataclass
+class RenderCleanup:
+    """Caller-owned lifetime proof; never serialized into a render request.
+
+    A staged input can be retired after acknowledged job/owner cleanup or a
+    supervisor-confirmed worker reap. Reaping its transport child is insufficient.
+    """
+    acknowledged: bool = False
 
 
 def packet_size_bound(packet):
@@ -52,6 +63,10 @@ def resolved_packet(value):
     for job in packet["jobs"]:
         if type(job) is not dict or type(job.get("resolved")) is not dict:
             raise SnapshotError("snapshot service accepts fully resolved jobs only")
+        try:
+            native_job_descriptor(job)
+        except ValueError as exc:
+            raise SnapshotError(str(exc)) from exc
         root = job["resolved"].get("rootPath")
         if root is not None:
             absolute_path(root, "render root")

@@ -34,6 +34,9 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 from cadgen.coordination import PHASE_RENDER, resolve as resolve_progress
 from cadgen.results import SnapshotFile, SnapshotResult, SnapshotTimings
 from cadgen._internal.atomic_replace import replace_atomic, write_bytes_atomic
+from cadgen.snapshot_document_input import (
+    DOCUMENT_ASSET_PREFIX, asset_inventory, document_descriptor, native_job_descriptor, read_asset,
+)
 
 
 # `localhost` is a potentially trustworthy origin under the Secure Contexts
@@ -1317,7 +1320,7 @@ class SnapshotAssetServer:
     this server, because the CDP transport cannot carry these payloads.
     """
 
-    def __init__(self, root_path: Path | None) -> None:
+    def __init__(self, root_path: Path | None, *, document=None) -> None:
         import http.server
         import secrets
         import socket
@@ -1327,8 +1330,12 @@ class SnapshotAssetServer:
         server = self
         root = None if root_path is None else Path(root_path).resolve()
         cache_root = store_root().resolve()
-        with _bind_store_root(cache_root):
-            packages_root = _store_packages_root().resolve()
+        native_assets = None if document is None else asset_inventory(document_descriptor(document))
+        packages_root = None
+        if native_assets is None:
+            with _bind_store_root(cache_root):
+                packages_root = _store_packages_root().resolve()
+        self.native_only = native_assets is not None
         capability = "/" + secrets.token_urlsafe(24)
         self._closed = threading.Event()
         self._connections = set()
@@ -1403,6 +1410,17 @@ class SnapshotAssetServer:
                 if parsed is None:
                     return
                 pathname = parsed.path
+                if native_assets is not None:
+                    if not pathname.startswith(DOCUMENT_ASSET_PREFIX) or parsed.query:
+                        self._send(404)
+                        return
+                    try:
+                        body = read_asset(root, native_assets, pathname[len(DOCUMENT_ASSET_PREFIX):])
+                    except (OSError, ValueError):
+                        self._send(404, b"missing or changed native snapshot asset")
+                        return
+                    self._send(200, body)
+                    return
                 if pathname.startswith(TESS_CACHE_ROUTE_PREFIX):
                     query = parse_qs(parsed.query)
                     from cadgen.viewer.tess_cache import parse_tess_cache_admission
@@ -1454,6 +1472,10 @@ class SnapshotAssetServer:
                 if parsed is None:
                     return
                 pathname = parsed.path
+                if native_assets is not None:
+                    self.close_connection = True
+                    self._send(405)
+                    return
                 if not pathname.startswith(TESS_CACHE_ROUTE_PREFIX):
                     self._send(404, b"not found", "text/plain; charset=utf-8")
                     return
@@ -1742,6 +1764,10 @@ class BatchSnapshotRenderer:
     @asynccontextmanager
     async def _job(self, job):
         self._bind_loop()
+        try:
+            document = native_job_descriptor(job)
+        except ValueError as exc:
+            raise SnapshotError(str(exc)) from exc
         resolved = job.get("resolved") if is_plain_object(job.get("resolved")) else {}
         root_value = resolved.get("rootPath")
         root_path = Path(str(root_value)).resolve() if root_value else None
@@ -1757,7 +1783,8 @@ class BatchSnapshotRenderer:
             try:
                 try:
                     with _bind_store_root(cache_root):
-                        self.asset_server = SnapshotAssetServer(root_path)
+                        self.asset_server = (SnapshotAssetServer(root_path) if document is None
+                                             else SnapshotAssetServer(root_path, document=document))
                 except OSError as exc:
                     raise SnapshotError(
                         "CAD snapshot needs a loopback HTTP server on 127.0.0.1 for its mesh "
@@ -1821,9 +1848,13 @@ class BatchSnapshotRenderer:
         bulk = (
             parsed.path.startswith(RENDER_ASSET_ROUTE_PREFIX)
             or parsed.path.startswith(STORE_ASSET_ROUTE_PREFIX)
+            or parsed.path.startswith(DOCUMENT_ASSET_PREFIX)
         )
         if request.method != "GET":
             await route.fulfill(status=405, content_type="text/plain; charset=utf-8", body="method not allowed")
+            return
+        if getattr(asset_server, "native_only", False) is True and parsed.path.startswith((RENDER_ASSET_ROUTE_PREFIX, STORE_ASSET_ROUTE_PREFIX, TESS_CACHE_ROUTE_PREFIX)):
+            await route.fulfill(status=404, body="outside native snapshot capability")
             return
         if bulk and f"{parsed.scheme}://{parsed.netloc}" == SNAPSHOT_ORIGIN:
             # These asset URLs are page-relative (the job names files, not

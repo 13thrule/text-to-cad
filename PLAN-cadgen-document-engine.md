@@ -177,6 +177,14 @@ Exit: deterministic recomputation sets, source revision ordering, failure rollba
 
 Owner: frontend agent, gpt-6-astra / xhigh. Operator adapters: gpt-5.6-sol / high after the interface is frozen.
 
+Ordered-selection milestone implemented, 13 September 2026: exact stock
+subshape iteration, indexing and slicing preserve traversal order, wrapper
+identity and parent aliases. Circle/ellipse edge queries return fresh values
+without native copies; custom callbacks or changed providers enter ordinary
+private execution. The independent 60-test frontend gate passes. This adds
+coverage needed by the real 118-part iris; it does not by itself improve that
+assembly's full request while later modifiers still force private replay.
+
 - Route the common algebra and builder APIs through the operator registry. Trace numeric/topology queries and builder state explicitly.
 - Reconcile edited source, helper changes, inserted/reordered loops, changed branches, defaults and external data. Debug provenance is separate from evaluation identity.
 - Preserve child-model declarations and output obligations even when geometry is reused or a returned value is discarded.
@@ -307,7 +315,7 @@ overhead is measured separately; browser reuse does not remove every per-command
 process or import cost.
 
 Native still-consumption milestone implemented, 13 September 2026: an internal
-caller-owned preparation door stages exact `DisplayProduct` manifest/CGMESH
+caller-owned preparation door stages engine-attested `DisplayProduct` manifest/CGMESH
 bytes, or captures saved STEP plus its companion once and imports those buffers
 through `DocumentDispatcher`. It submits a closed native input to the shared
 renderer with no old package/SURF/source fallback. Inspect retains edges and
@@ -319,10 +327,17 @@ and complete motion/format acceptance gate remain open.
 One deadline starts before saved import/preparation. Hash verification, complete
 asset membership, regular-file admission and private job capabilities bind
 browser reads. Four atomic staging slots per captured cache root each admit at
-most 272 MiB; an exited caller does not free a slot. Context/worker cleanup proof
+most 400 MiB including a 128 MiB PNG output reserve; an exited caller does not free
+a slot. Context/worker cleanup proof
 releases its token-bound slot, while uncertain cleanup retains it and eventually
 refuses new admission. Tests include independent short-lived callers exhausting
 that persistent capacity, FIFO substitutions and preserved cancellation errors.
+Workers receive only private output paths. The caller verifies the complete PNG
+set and exact dimensions after cleanup acknowledgement, then atomically publishes,
+reads back final bytes and remaps result paths. Failed publication rolls back
+only acknowledged writes whose length/digest still match; these receipts do not
+lock paths against concurrent writers. Unknown-cleanup delayed writes remain
+private; invalid second-camera output cannot publish a partial verified set.
 The real native smoke renders five jobs/six PNGs through one Chromium launch;
 two cameras fetch one manifest and two unique meshes once. Saved-file overwrite
 between preparation calls preserves each captured digest and scene. Requested
