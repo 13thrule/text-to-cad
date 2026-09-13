@@ -23,6 +23,7 @@ import {
   framePadding,
   inferRenderSceneScale,
   outputSize,
+  rendererDataUrlWithOptionalLabel,
   resolveRenderView,
   resolveThemeJobConfig,
   resolveThemeSettings
@@ -365,6 +366,64 @@ test("output sizing and padding helpers preserve snapshot fallback semantics", (
   assert.equal(framePadding({ output: { padding: -0.02 } }), 0);
   assert.equal(framePadding({ output: { paddingPercent: 0.25 } }), 0.15);
   assert.equal(framePadding({ output: { paddingPercent: 0.13 } }), 0.13);
+});
+
+test("supersampled PNG capture resamples the complete drawing buffer to the requested output pixels", (t) => {
+  const originalDocument = globalThis.document;
+  const calls = [];
+  let exportedCanvas = null;
+  globalThis.document = {
+    createElement(tag) {
+      assert.equal(tag, "canvas");
+      const context = {
+        imageSmoothingEnabled: false,
+        imageSmoothingQuality: "low",
+        drawImage(...args) {
+          calls.push(args);
+        }
+      };
+      exportedCanvas = {
+        width: 0,
+        height: 0,
+        getContext(kind) {
+          assert.equal(kind, "2d");
+          return context;
+        },
+        toDataURL(type) {
+          assert.equal(type, "image/png");
+          return "data:image/png;base64,resampled";
+        }
+      };
+      return exportedCanvas;
+    }
+  };
+  t.after(() => {
+    if (originalDocument === undefined) {
+      delete globalThis.document;
+    } else {
+      globalThis.document = originalDocument;
+    }
+  });
+
+  const source = {
+    width: 2400,
+    height: 1800,
+    toDataURL() {
+      throw new Error("supersampled buffer must not be exported directly");
+    }
+  };
+  const result = rendererDataUrlWithOptionalLabel({ domElement: source }, "", {}, {
+    width: 1200,
+    height: 900
+  });
+
+  assert.equal(result, "data:image/png;base64,resampled");
+  assert.equal(exportedCanvas.width, 1200);
+  assert.equal(exportedCanvas.height, 900);
+  assert.equal(exportedCanvas.getContext("2d").imageSmoothingEnabled, true);
+  assert.equal(exportedCanvas.getContext("2d").imageSmoothingQuality, "high");
+  assert.deepEqual(calls, [[source, 0, 0, 2400, 1800, 0, 0, 1200, 900]],
+    "the full supersampled frame must cover the full requested output, without crop");
 });
 
 test("inspection grid uses fixed ink and shared Viewer spacing", () => {
