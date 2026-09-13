@@ -162,7 +162,10 @@ structural auxiliary results. Recovery verifies all reachable native subshape
 sharing classes and the allocation-provenance DAG before installing a new owner.
 Auxiliary values are closed, immutable and bounded in their expanded form;
 builder layouts cannot live only in a disposable mesh/derivation cache. Codec
-version 3 is a hard cut, with no earlier-version reader.
+version 4 is a hard cut, with no earlier-version reader. Disjoint allocation
+graphs use compact evaluation provenance. Local ancestry intervals accelerate
+the proof but never enter identity; overlapping intervals use exact traversal,
+so reordered checkpoint reconstruction produces the same keys.
 
 An idle `DocumentService.checkpoint` publishes through the catalog head selected
 when that owner was acquired. A conflict does not authorize overwriting the other

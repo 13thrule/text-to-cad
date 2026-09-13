@@ -3,6 +3,7 @@
 import { decodeDocumentMesh } from "./documentMesh.js";
 import { buildCadEdgeLines } from "./cadEdgeData.js";
 import { buildComposedPackageMeshData } from "../assembly/meshData.js";
+import { bindDocumentPicking } from "./documentPicking.js";
 
 const adopted = new WeakMap();
 const HASH = /^[a-f0-9]{64}$/;
@@ -99,7 +100,7 @@ function validateManifest(input) {
       || [...PBR].some((k) => effective.pbr?.[k] !== node.appearance.pbr?.[k])) fail("node/occurrence disagreement");
     if (typeof row.prototype !== "string" || !Object.hasOwn(prototypes, row.prototype)) fail("prototype unavailable");
     used.add(row.prototype);
-    return { id: idFor(p), prototype: row.prototype, transform: world, label: row.label, appearance: effective };
+    return { id: idFor(p), path: p, prototype: row.prototype, transform: world, label: row.label, appearance: effective };
   });
   if ([...nodes.values()].filter(({ node }) => node.nodeType === "part").length !== seen.size
     || used.size !== Object.keys(prototypes).length) fail("incomplete geometry membership");
@@ -116,15 +117,23 @@ function sourceMesh(mesh) {
     ordinal, visibilityClass: kind === "smooth" ? "tangent" : kind === "seam" ? "seam" : "feature",
     polyline: mesh.edgePositions.subarray(start * 3, (start + count) * 3),
   }));
-  const lines = buildCadEdgeLines(edges);
-  return {
+  const lines = buildCadEdgeLines(edges, { retainOrdinals: true });
+  const source = {
     vertices: mesh.positions, normals: mesh.normals, indices: mesh.indices,
     colors: new Float32Array(0), edge_indices: new Uint32Array(0),
     cadEdgePositions: lines.positions, cadEdgeIndices: lines.indices, cadEdgeClassRanges: lines.classRanges,
-    bounds, origin, documentFaceRanges: mesh.header.faces, documentEdgeRanges: mesh.header.edges,
+    bounds, origin,
     parts: [{ id: "prototype", primitiveIndex: 0, vertexOffset: 0, vertexCount: mesh.positions.length / 3,
       triangleOffset: 0, triangleCount: mesh.indices.length / 3, bounds }],
   };
+  Object.defineProperties(source, {
+    documentFaceRanges: { enumerable: true,
+      value: Object.freeze(mesh.header.faces.map((row) => Object.freeze([...row]))) },
+    documentEdgeRanges: { enumerable: true,
+      value: Object.freeze(mesh.header.edges.map((row) => Object.freeze([...row]))) },
+    documentEdgePickRanges: { get: () => lines.edgeRanges },
+  });
+  return source;
 }
 
 function translatedOrigin(transform, origin) {
@@ -188,6 +197,7 @@ export async function adoptDocumentScene(input, fetchMesh, { previous = null, si
   const compatiblePrevious = prior?.owner === manifest.owner ? previous : null;
   const scene = buildComposedPackageMeshData(descriptor, meshes, { previous: compatiblePrevious });
   scene.documentRevision = Object.freeze({ owner: manifest.owner, revision: manifest.revision });
+  bindDocumentPicking(scene, manifest, meshes);
   // Native face/edge ordinals only resolve under this exact document revision.
   // A future correspondence resolver may explicitly remap an old selection.
   adopted.set(scene, { owner: manifest.owner, revision: manifest.revision, meshes,

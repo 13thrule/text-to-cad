@@ -16,7 +16,7 @@ from types import MappingProxyType
 from typing import Any
 
 from .core import (Document, GeometryHandle, Revision, RevisionState,
-                   _Allocation, _Prototype, _freeze_auxiliary)
+                   _Prototype, _freeze_auxiliary)
 from .identities import EvaluationIdentity, EvaluationKey, LogicalIdentity, allocation_provenance, normalize
 from .native import SubelementRef, TopologyHistory, TopologyRelation, topology_map
 from .resources import ResourceAdmission, ResourceRequest
@@ -24,8 +24,8 @@ from .roots import AssemblyGroup, GeometryLeaf, root_handles, validate_root
 from .storage import Catalog, ExportReceipt, Stage
 
 
-CHECKPOINT_VERSION = 3
-EVALUATION_SEMANTICS = "cadgen-document-evaluation-v3.closed-constructor-v1.auxiliary-v1"
+CHECKPOINT_VERSION = 4
+EVALUATION_SEMANTICS = "cadgen-document-evaluation-v3.closed-constructor-v1.auxiliary-v1.disjoint-dags-v1"
 _MAGIC = "cadgen.document.native-checkpoint"
 _MANIFEST_ROLE = "document-manifest"
 _NATIVE_ROLE = "document-native"
@@ -867,21 +867,26 @@ class CheckpointCodec:
             expected = prototype_rows[handle.prototype_id][0].key.inputs
             if tuple(item.evaluation_id for item in inputs) != expected:
                 raise CheckpointCorrupt("allocation dependencies disagree with evaluation key")
-            document._allocations[allocation_id] = _Allocation(handle, inputs)
         visiting: set[str] = set()
         visited: set[str] = set()
-        def validate_allocation_graph(allocation_id: str) -> None:
-            if allocation_id in visited:
-                return
-            if allocation_id in visiting:
-                raise CheckpointCorrupt("allocation dependency graph contains a cycle")
-            visiting.add(allocation_id)
-            for dependency in allocation_inputs[allocation_id]:
-                validate_allocation_graph(dependency)
-            visiting.remove(allocation_id)
-            visited.add(allocation_id)
-        for allocation_id in allocation_inputs:
-            validate_allocation_graph(allocation_id)
+        for root_id in allocation_inputs:
+            pending = [(root_id, False)]
+            while pending:
+                allocation_id, finish = pending.pop()
+                if finish:
+                    visiting.remove(allocation_id)
+                    visited.add(allocation_id)
+                    document._register_allocation(handles[allocation_id], tuple(
+                        handles[value] for value in allocation_inputs[allocation_id]))
+                    continue
+                if allocation_id in visited:
+                    continue
+                if allocation_id in visiting:
+                    raise CheckpointCorrupt("allocation dependency graph contains a cycle")
+                visiting.add(allocation_id)
+                pending.append((allocation_id, True))
+                pending.extend((dependency, False)
+                               for dependency in reversed(allocation_inputs[allocation_id]))
         representatives = {}
         for handle in handles.values():
             allocation = document._allocations[handle.allocation_id]

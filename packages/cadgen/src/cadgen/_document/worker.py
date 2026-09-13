@@ -44,6 +44,10 @@ class WorkerTimeout(TimeoutError):
     pass
 
 
+class WorkerCancelled(WorkerError):
+    pass
+
+
 def _duration(value, name, maximum, *, allow_zero=False):
     if type(value) not in (int, float):
         raise ValueError(f"{name} must be a finite number of seconds")
@@ -351,12 +355,15 @@ def _serve(connection, control, root, max_documents):
 class DocumentWorker:
     """One serial parent client; a terminated owner is never silently retried."""
 
-    def __init__(self, root: Path, *, max_documents=8, startup_timeout=30):
+    def __init__(self, root: Path, *, max_documents=8, startup_timeout=30,
+                 cancellation=None):
         if (type(max_documents) is not int or isinstance(max_documents, bool)
                 or not 1 <= max_documents <= MAX_LEASES):
             raise ValueError(f"max_documents must be within {MAX_LEASES}")
         startup_timeout = _duration(startup_timeout, "startup timeout",
                                     MAX_STARTUP_SECONDS)
+        if cancellation is not None and type(cancellation) is not threading.Event:
+            raise TypeError("worker cancellation requires a threading Event")
         self._thread = threading.get_ident()
         self._next = 0
         self._closed = False
@@ -372,7 +379,7 @@ class DocumentWorker:
             child_control.close()
             value, payloads = wire.receive(
                 self.connection,
-                before_read=lambda: self._wait(started + startup_timeout))
+                before_read=lambda: self._wait(started + startup_timeout, cancellation))
             if (payloads or type(value) is not dict or set(value) != {"ready", "pid"}
                     or type(value["ready"]) is not int or value["ready"] != wire.PROTOCOL
                     or type(value["pid"]) is not int or value["pid"] != self.process.pid):
@@ -391,8 +398,10 @@ class DocumentWorker:
         if self._closed:
             raise WorkerError("document worker is closed")
 
-    def _wait(self, deadline):
+    def _wait(self, deadline, cancellation=None):
         while True:
+            if cancellation is not None and cancellation.is_set():
+                raise WorkerCancelled("document request was cancelled")
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 raise WorkerTimeout("document request exceeded its time limit")
@@ -421,18 +430,27 @@ class DocumentWorker:
                     or len(error["traceback"]) > 32768):
                 raise WorkerError("document owner returned an invalid failure")
 
-    def request(self, operation, *, payloads=(), timeout=60, cancellation_grace=2, **parameters):
+    def request(self, operation, *, payloads=(), timeout=60, cancellation_grace=2,
+                cancellation=None, context=None, **parameters):
         self._check()
         if type(operation) is not str or operation not in _OPERATIONS:
             raise ValueError(f"unknown document operation: {operation!r}")
         timeout = _duration(timeout, "document request timeout", 300)
         cancellation_grace = _duration(cancellation_grace, "cancellation grace",
                                        MAX_GRACE_SECONDS, allow_zero=True)
+        if cancellation is not None and type(cancellation) is not threading.Event:
+            raise TypeError("worker cancellation requires a threading Event")
+        if cancellation is not None and cancellation.is_set():
+            raise WorkerCancelled("document request was cancelled before execution")
+        context = ({"cwd": os.getcwd(), "environment": dict(os.environ)}
+                   if context is None else wire._value(context))
+        if type(context) is not dict or set(context) != {"cwd", "environment"}:
+            raise ValueError("document request context requires cwd and environment")
         if self._next >= MAX_REQUEST_ID:
             raise WorkerError("document request identity space is exhausted")
         self._next += 1
         request = {**parameters, "id": self._next, "operation": operation,
-                   "cwd": os.getcwd(), "environment": dict(os.environ)}
+                   **context}
         deadline = time.monotonic() + timeout
         try:
             wire.send(self.connection, request, payloads)
@@ -443,8 +461,10 @@ class DocumentWorker:
             raise WorkerError("document owner connection failed") from None
         try:
             response, buffers = wire.receive(
-                self.connection, before_read=lambda: self._wait(deadline))
-        except WorkerTimeout:
+                self.connection, before_read=lambda: (
+                    self._wait(deadline) if cancellation is None
+                    else self._wait(deadline, cancellation)))
+        except (WorkerTimeout, WorkerCancelled):
             # Give supported native/Python boundaries a short cancellation
             # interval, then always destroy this owner. A late successful
             # response may already contain a newly-created revision lease.
@@ -469,7 +489,7 @@ class DocumentWorker:
             except BaseException:
                 pass
             self.close(force=True)
-            if isinstance(error.__cause__, WorkerTimeout):
+            if isinstance(error.__cause__, (WorkerTimeout, WorkerCancelled)):
                 raise error.__cause__
             raise WorkerError("document owner payload stream failed") from None
         except WorkerError:

@@ -132,6 +132,25 @@ class CheckpointTests(unittest.TestCase):
         self.assertTrue(self.codec.commit(staged, expected_head=expected))
         return staged.revision_id
 
+    def test_deep_allocation_chain_recovers_without_python_recursion(self):
+        document = Document("deep", runtime=self.runtime)
+        passthrough = OperatorSpec("test.deep.passthrough", "1", Mutation.READ_ONLY)
+        with document.begin("deep-source") as tx:
+            handle = box(tx)
+            for _ in range(1100):
+                handle = tx.evaluate(passthrough, (), (handle,),
+                                     lambda shapes, arena: NativeResult(shapes[0]))
+            tx.bind_root(GeometryLeaf("root", handle), unrepresented_metadata=())
+            revision = tx.commit()
+        self.publish(document, revision)
+        recovered = self.codec.recover(document.document_id).document
+        self.assertEqual(1101, len(recovered._allocations))
+        for allocation in recovered._allocations.values():
+            for parent in allocation.inputs:
+                parent_bounds = recovered._allocations[parent.allocation_id].ancestry_interval
+                self.assertLess(parent_bounds[1], allocation.ancestry_interval[1])
+                self.assertLessEqual(allocation.ancestry_interval[0], parent_bounds[0])
+
     def test_roundtrip_preserves_revision_root_history_allocations_and_warm_reuse(self):
         source, revision, first, second, face = self.revision()
         catalog_revision = self.publish(source, revision)

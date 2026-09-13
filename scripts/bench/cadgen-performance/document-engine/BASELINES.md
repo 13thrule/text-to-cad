@@ -187,6 +187,35 @@ source-tree SHA-256
 The first v1 attempt stopped before a usable sample because the sandbox denied
 the worker's private Unix socket; its incomplete journals are diagnostic only.
 
+## Full-request boundary awaiting measurement
+
+The in-process series above remains valid evidence for
+`in-process-run-model-argv-with-first-call-engine-setup-v2`. It is now an
+obsolete development comparison for the direct document worker: it excludes
+the new worker process bridge and enters retained cadgen through the legacy
+runner. The raw reports, medians, and checksums remain unchanged. Their
+versioned boundary must never be automatically combined with the new series.
+
+The replacement harness boundary is
+`captured-entry-to-attested-step-full-request-v1`. It compares the current
+direct `DocumentWorker` request with a benchmark-only frozen adapter. The old
+runtime has no captured-input API, so that adapter writes the exact accepted
+entry bytes immediately before invoking the old runner. This changes the old
+path-only door semantics and is recorded in every baseline report. Its write
+cost remains inside the full-request headline and is exposed separately.
+Both the frozen baseline and the exact candidate HEAD are extracted as
+code-only runtime archives before dispatch; the common source-hidden readback
+uses that candidate archive too. A later checkout edit cannot change either
+runtime during the series.
+
+No observation exists for this boundary yet. A functional one-cold/two-warm
+smoke and the bounded five-cold/ten-warm series require a newly reserved serial
+window after both runtime trees are frozen. A report becomes comparable only
+after every row completes the required STEP, attests the actual destination
+bytes, passes the common source-hidden saved-byte geometry oracle, and matches
+the exact captured entry digest across engines. Resident display and saved STEP
+reopen remain separate diagnostics with no ratio between them.
+
 ## FreeCAD probe qualification
 
 On 2026-09-13, a sandboxed `FreeCADCmd --version` probe aborted with exit 134

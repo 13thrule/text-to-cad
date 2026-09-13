@@ -7,13 +7,14 @@ import multiprocessing
 import os
 from pathlib import Path
 import signal
+import threading
 import time
 import unittest
 from unittest.mock import patch
 
 from cadgen._document import wire
 from cadgen._document.sources import CapturedInput
-from cadgen._document.worker import DocumentWorker, WorkerError, WorkerTimeout
+from cadgen._document.worker import DocumentWorker, WorkerCancelled, WorkerError, WorkerTimeout
 from tests.python.support.paths import REPO_ROOT
 from tests.python.support.tmp_root import generated_cad_directory
 
@@ -314,6 +315,51 @@ class WorkerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 worker.request("unknown")
             self.assertTrue(worker.process.is_alive())
+
+    def test_request_uses_explicit_captured_context_and_pre_cancel_preserves_owner(self):
+        context_path = self.source_path.with_suffix(".context")
+        source = b"""from cadgen import step, build123d as bd
+from pathlib import Path
+import os
+Path(__file__).with_suffix('.context').write_text(os.environ['CADGEN_CONTEXT_TEST'] + '|' + os.getcwd())
+@step(out='assembly24.step')
+def model():
+    return bd.Box(2, 3, 4)
+"""
+        captured = CapturedInput(self.source_path, source, hashlib.sha256(source).hexdigest())
+        context = {"cwd": str(self.directory), "environment": {
+            **os.environ, "CADGEN_CONTEXT_TEST": "captured-value"}}
+        with DocumentWorker(self.catalog, startup_timeout=60) as worker:
+            event = threading.Event()
+            event.set()
+            with self.assertRaises(WorkerCancelled):
+                worker.generate(captured, cancellation=event)
+            self.assertTrue(worker.process.is_alive())
+            result, _ = self._result(worker.generate(captured, context=context))
+            self.assertEqual("captured-value|" + str(self.directory), context_path.read_text())
+            self._result(worker.release(result["revision"]))
+
+    def test_active_external_cancellation_stops_owner_without_source_retry(self):
+        self.source_path.write_bytes(HANG_SOURCE)
+        captured = CapturedInput.read(self.source_path)
+        marker = self.source_path.with_suffix(".started")
+        event = threading.Event()
+        with DocumentWorker(self.catalog, startup_timeout=60) as worker:
+            def cancel_after_source_starts():
+                deadline = time.monotonic() + 4
+                while not marker.exists() and time.monotonic() < deadline:
+                    time.sleep(.01)
+                event.set()
+            thread = threading.Thread(target=cancel_after_source_starts)
+            thread.start()
+            try:
+                with self.assertRaises(WorkerCancelled):
+                    worker.generate(captured, timeout=6, cancellation=event, cancellation_grace=.05)
+            finally:
+                thread.join(5)
+            self.assertTrue(worker._closed)
+            self.assertFalse(worker.process.is_alive())
+        self.assertEqual("run\n", marker.read_text())
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ function lineClassForEdge(edge) {
 // class in CAD_EDGE_LINE_CLASSES order so a class is a contiguous point range
 // and a contiguous segment range (`classRanges`). Per segment this is 8 bytes
 // plus ~14 bytes of shared points — about 1.5 bytes per surface triangle.
-export function buildCadEdgeLines(edges) {
+export function buildCadEdgeLines(edges, { retainOrdinals = false } = {}) {
   const byClass = new Map(CAD_EDGE_LINE_CLASSES.map((classId) => [classId, []]));
   let pointTotal = 0;
   let segmentTotal = 0;
@@ -26,7 +26,7 @@ export function buildCadEdgeLines(edges) {
     if (!classId || !(polyline instanceof Float32Array) || polyline.length < 6) {
       continue;
     }
-    byClass.get(classId).push(polyline);
+    byClass.get(classId).push(retainOrdinals ? { polyline, ordinal: edge.ordinal } : polyline);
     pointTotal += polyline.length / 3;
     segmentTotal += polyline.length / 3 - 1;
   }
@@ -38,7 +38,8 @@ export function buildCadEdgeLines(edges) {
   for (const classId of CAD_EDGE_LINE_CLASSES) {
     const pointStart = pointCursor;
     const segmentStart = segmentCursor;
-    for (const polyline of byClass.get(classId)) {
+    for (const item of byClass.get(classId)) {
+      const polyline = retainOrdinals ? item.polyline : item;
       positions.set(polyline, pointCursor * 3);
       const pointCount = polyline.length / 3;
       for (let point = 0; point + 1 < pointCount; point += 1) {
@@ -58,6 +59,29 @@ export function buildCadEdgeLines(edges) {
       });
     }
   }
-  return { positions, indices, classRanges };
+  const result = { positions, indices, classRanges };
+  if (retainOrdinals) {
+    // Keep exact native ordinals through class grouping. Render allocates no
+    // picking index. The first edge pick builds one interval per drawn edge,
+    // shared by every occurrence of this geometry, never one entry per segment.
+    let cached = null;
+    Object.defineProperty(result, "edgeRanges", { get() {
+      if (cached) return cached;
+      const ranges = [];
+      let start = 0;
+      for (const classId of CAD_EDGE_LINE_CLASSES) {
+        for (const { polyline, ordinal } of byClass.get(classId)) {
+          if (!Number.isSafeInteger(ordinal) || ordinal < 0) {
+            throw new Error("CAD edge picking requires exact nonnegative ordinals");
+          }
+          const count = polyline.length / 3 - 1;
+          ranges.push(Object.freeze({ ordinal, segmentStart: start, segmentCount: count }));
+          start += count;
+        }
+      }
+      cached = Object.freeze(ranges);
+      return cached;
+    } });
+  }
+  return result;
 }
-

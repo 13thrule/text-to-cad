@@ -127,8 +127,74 @@ PYTHONPATH=packages/cadgen/src "$CAD_PYTHON" \
   --comparison-report scripts/bench/cadgen-performance/document-engine/results/paired-comparison.json
 ```
 
+That `paired` mode remains valid evidence for its versioned in-process
+development boundary. It is obsolete as a comparison for the direct document
+worker because it excludes the new process bridge and enters both engines
+through `run_model_argv`.
+
+`full-paired` is the durable complete-request comparison. The controller
+accepts one exact entry buffer for each single-file fixture. Current cadgen
+sends it through `DocumentWorker`; frozen cadgen has no captured-input door, so
+the benchmark-only adapter materializes those accepted bytes immediately before
+calling the frozen runner. This changes the old path-only input semantics and
+is neither a compatibility layer nor a product API. The adapter write is inside
+the headline and is also reported as `adapterWriteMs`; no stage is silently
+subtracted to manufacture a kernel comparison.
+
+The versioned boundary is
+`captured-entry-to-attested-step-full-request-v1`. Cold begins before launching
+the adapter process and includes adapter/bootstrap setup. Warm begins before
+engine input delivery inside a persistent adapter after one unmeasured prime.
+`acceptedBufferReadHashMs` records the transport-buffer read and digest: it is
+inside the cold boundary and outside the warm boundary. Both boundaries end
+only after source execution or preserved legacy freshness behavior, native
+work, the required STEP publication, and a hash/size check of the actual
+destination bytes. Current rows include the document-worker IPC. Archive copy,
+resident display, release/shutdown, independent readback, oracle work, report
+writing, and controller chronology remain outside this boundary.
+
+The source-capture statement is deliberately narrow: only the exact entry is
+captured before dispatch. Helpers and managed data are captured when actually
+consumed by `SourceSession`; these fixtures have neither, and the report does
+not claim an atomic project snapshot. After each session, one common current
+runtime reads the archived actual STEP bytes with the source hidden and checks
+labels, validity, volume, area, bounds, and topology. That independent
+saved-byte readback is distinct from the in-request destination receipt. A
+candidate-only pinned resident display is recorded after all generation samples
+as a separate diagnostic. The comparison never divides resident-display time
+by saved-reopen time.
+
+Do not start even a `1` cold / `2` warm functional smoke until both runtime
+trees are frozen and the native worker is released for the run. The complete
+bounded matrix remains five cold and ten warm samples:
+
+```sh
+PYTHONPATH=packages/cadgen/src "$CAD_PYTHON" \
+  scripts/bench/cadgen-performance/document-engine/harness.py full-paired \
+  --baseline-revision 5c4a212cae32e834fa4d805ae778ab5ee6cd71a2 \
+  --cold-samples 5 --warm-samples 10 \
+  --cold-timeout 60 --warm-timeout 120 \
+  --scratch models/tmp/performance-document-full-paired \
+  --baseline-report scripts/bench/cadgen-performance/document-engine/results/full-paired-legacy.json \
+  --candidate-report scripts/bench/cadgen-performance/document-engine/results/full-paired-current.json \
+  --comparison-report scripts/bench/cadgen-performance/document-engine/results/full-paired-comparison.json
+```
+
+Reports and raw JSONL journals record the actual alternating order. Each cold
+sample is a pair of fresh adapters. Each warm pair alternates first engine by a
+whole persistent scenario block; it does not claim sample-by-sample
+interleaving. Comparison ratios require this exact boundary identifier, the
+same required-STEP contract, identical accepted entry digests, stable runtime
+trees, byte-attested outputs, complete independent saved-file oracles, and a
+timing-qualified environment. The harness reports medians and observed ranges,
+never p95.
+
 The runtime archive contains only `packages/cadgen/src` from the named commit
-and lives under `/private/tmp`. Fixture work, STEP output and private stores live
+and lives under `/private/tmp`. `full-paired` archives current HEAD there too;
+both engines and the common readback use those immutable archives, so later
+working-tree edits cannot alter an active series. The report records the exact
+candidate HEAD used and whether the checkout HEAD moved afterward. Fixture
+work, STEP output and private stores live
 under the requested `models/tmp` directory. The harness kills only daemon PIDs
 returned by its private socket and verifies their cleanup.
 
@@ -157,3 +223,52 @@ in a complete cadgen harness report.
 The FreeCAD geometry edit rebuilds the complete plate factory and assigns it to
 the retained occurrences. It is labeled as a whole-factory architecture
 reference and does not claim feature-level dirty-hole recomputation.
+
+## Native mesh quality comparison
+
+`mesh_compare.py` is a bounded comparison harness for the candidate retained
+document mesher. It feeds independent ownership copies of one native shape to
+`cadgen._document.meshing` and to the former SURF plus cadgen-js tessellator.
+The latter is a comparison oracle only; the harness does not install it as a
+fallback or expose it to model authors.
+
+Run the correctness and quality set with the CAD Python. Generated CGMESH,
+SURF, TESS, and JSON files stay under `models/tmp`:
+
+```sh
+CAD_PYTHON="${CAD_PYTHON:-$(command -v python3)}"
+PYTHONPATH=packages/cadgen/src "$CAD_PYTHON" \
+  scripts/bench/cadgen-performance/document-engine/mesh_compare.py \
+  --scratch models/tmp/document-engine-mesh-compare
+```
+
+The six bounded cases are a drilled and filleted plate, a translated cylinder,
+sphere, torus, trimmed fillet/cut solid, and a modest curved boolean solid.
+Each report checks exact native validity, volume, area and bounds; complete
+face and nondegenerate-edge coverage; sampled triangle-centroid distance to
+the corresponding trimmed native face; sampled display-edge distance; mesh
+volume and face areas; normal/winding agreement; coordinate-welded closure;
+and axis support extents as limited silhouette evidence. It records raw
+triangle counts but never treats equal counts or equal numeric tolerances as a
+quality proof. Centroid sampling is not a global Hausdorff bound, and axis
+support does not compare full occluding contours; these limits are repeated in
+the report. A completed report exits nonzero when either pipeline fails a
+quality gate; that result is a finding, while exceptions indicate a harness or
+fixture failure.
+
+Without `--serial-window`, every stage time is labeled
+`diagnostic-concurrent-functional-only`. Node process and module setup is a
+separate cold boundary; decode, tessellation and packing are per-request warm
+stages in one persistent worker. Python CAD imports are also separate, while
+Python interpreter launch is explicitly excluded. Use `--serial-window` only
+inside an externally reserved native-compute window; setting it is an
+attestation by the operator, not automatic host-idleness detection.
+
+## Installed dependency closure observation
+
+`dependencies.py` counts installed logical files in the selected Python
+dependency closure. It does not measure downloads, compressed packages, or a
+minimal headless installation. On this host, the build123d closure occupied
+449,070,691 bytes and had no missing packages. FreeCAD.app occupied
+2,675,673,689 bytes. The raw `models/tmp/document-dependencies/report.json`
+file remains a machine-local diagnostic and is not a frozen benchmark report.

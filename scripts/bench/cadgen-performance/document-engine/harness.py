@@ -40,6 +40,9 @@ GEOMETRY_LINE = "HOLE_RADIUS = 3.0  # BENCH_GEOMETRY"
 PLACEMENT_LINE = "PLACEMENT_Z = 0.0  # BENCH_PLACEMENT"
 TRACE_SCHEMA = 1
 INPROCESS_BOUNDARY_WITH_SETUP = "in-process-run-model-argv-with-first-call-engine-setup-v2"
+FULL_REQUEST_BOUNDARY = "captured-entry-to-attested-step-full-request-v1"
+FULL_OUTPUT_CONTRACT = "one-required-step-actual-byte-receipt-v1"
+FULL_ADAPTER = Path(__file__).resolve().with_name("full_request_adapter.py")
 
 
 def sha256_bytes(payload: bytes) -> str:
@@ -1022,6 +1025,452 @@ def paired_plan(models: list[str], scenarios: list[str], cold_samples: int
     return units
 
 
+def full_request_session(*, python: Path, engine_package: Path, readback_package: Path,
+                         engine: str, model: str, scenario: str, samples: int,
+                         root: Path, timeout: float, journal: Path, cold: bool = False,
+                         cold_index: int = 0) -> dict[str, Any]:
+    """Run one full captured-entry session through an attested STEP response."""
+    root.mkdir(parents=True, exist_ok=False)
+    original_path = FIXTURES / f"{model}.py"
+    original = original_path.read_text(encoding="utf-8")
+    if "@memo" in original or original.count("@step") != 1:
+        raise AssertionError(f"invalid full-request fixture: {original_path}")
+    source = root / original_path.name
+    output = root / OUTPUTS[model]
+    source_trace = root / "source-trace.jsonl"
+    accepted = root / "accepted-inputs"
+    accepted.mkdir()
+    requests: list[dict[str, Any]] = []
+
+    def add_request(*, label: str, sample: int | None, measured: bool,
+                    geometry: float, placement: float, name: str) -> None:
+        payload = source_variant(original, geometry=geometry, placement=placement).encode("utf-8")
+        # A transport buffer is not an importable source path. The logical
+        # model path is absent (current) or hidden (legacy) during readback.
+        capture = accepted / f"{name}.buffer"
+        capture.write_bytes(payload)
+        requests.append({
+            "label": label, "sample": sample, "measured": measured,
+            "geometryValue": geometry, "placementValue": placement,
+            "input": str(capture), "digest": sha256_bytes(payload), "bytes": len(payload),
+            "archive": str(root / "oracles" / f"{name}.step"),
+        })
+
+    if cold:
+        add_request(label=f"{model}/cold/{cold_index}", sample=cold_index, measured=True,
+                    geometry=3.0, placement=0.0, name=f"cold-{cold_index}")
+    else:
+        add_request(label=f"{model}/{scenario}/prime", sample=None, measured=False,
+                    geometry=3.0, placement=0.0, name="prime")
+        for sample in range(samples):
+            geometry = 3.0 + 0.05 * (sample + 1) if scenario == "local_geometry" else 3.0
+            placement = 0.5 + 0.25 * sample if scenario == "placement" else 0.0
+            add_request(label=f"{model}/{scenario}/{sample}", sample=sample, measured=True,
+                        geometry=geometry, placement=placement, name=f"sample-{sample}")
+
+    worker_report = root / "full-adapter-report.json"
+    plan = {
+        "engine": engine, "model": model, "scenario": scenario, "cold": cold,
+        "source": str(source), "output": str(output), "sourceTrace": str(source_trace),
+        "ownerRoot": str(root / "document-owner"), "workerReport": str(worker_report),
+        "journal": str(journal), "requests": requests,
+        "startupTimeout": min(60.0, timeout), "requestTimeout": min(60.0, timeout),
+        "cancellationGrace": 2.0,
+    }
+    plan_path = root / "full-request-plan.json"
+    write_json(plan_path, plan)
+    env = os.environ.copy()
+    env.update({
+        "PYTHONPATH": str(engine_package), "PYTHONDONTWRITEBYTECODE": "1",
+        "CADGEN_DAEMON": "0", "CADGEN_CACHE_DIR": str(root / "legacy-store"),
+        "CADGEN_DOCUMENT_BENCH_SOURCE_TRACE": str(source_trace),
+    })
+    # Frozen legacy receives its production defaults. The direct document
+    # worker has no dependency on these removed controls; clearing inherited
+    # values keeps author-visible input equal across both adapters.
+    for name in ("CADGEN_OP_MEMO", "CADGEN_OP_MEMO_DISK", "CADGEN_MEMO_CACHE",
+                 "CADGEN_DETERMINISM"):
+        env.pop(name, None)
+    env["CADGEN_FULL_REQUEST_STARTED_NS"] = str(time.perf_counter_ns())
+    completed = subprocess.run(
+        [str(python), str(FULL_ADAPTER), "--plan", str(plan_path)],
+        cwd=REPO, env=env, text=True, capture_output=True, timeout=timeout, check=False,
+    )
+    if completed.returncode or not worker_report.is_file():
+        raise RuntimeError(
+            f"full-request {engine} adapter failed ({completed.returncode}):\n"
+            f"{completed.stdout[-1000:]}\n{completed.stderr[-3000:]}"
+        )
+    adapter = json.loads(worker_report.read_text(encoding="utf-8"))
+    rows = [row for row in adapter["rows"] if row["measured"]]
+    prime_row = next((row for row in adapter["rows"] if not row["measured"]), None)
+    expected_rows = 1 if cold else samples
+    if len(rows) != expected_rows:
+        raise RuntimeError("full-request adapter returned the wrong measured sample count")
+
+    oracle_rows = ([] if prime_row is None else [prime_row]) + rows
+    oracle_inputs = [
+        (Path(row["oracleStep"]), root / "independent-readback" / f"item-{index}")
+        for index, row in enumerate(oracle_rows)
+    ]
+    hidden = None
+    if source.exists():
+        hidden = source.with_suffix(".source-hidden")
+        os.replace(source, hidden)
+    readback_started = time.perf_counter()
+    try:
+        descriptions = oracle_batch(python, readback_package, oracle_inputs)
+    finally:
+        saved_readback_ms = (time.perf_counter() - readback_started) * 1000.0
+        if hidden is not None:
+            os.replace(hidden, source)
+    if prime_row is None:
+        prime = descriptions[0]
+        if prime["occurrences"] != EXPECTED_OCCURRENCES[model] or not prime["valid"]:
+            raise AssertionError(f"full-request {engine} {model}/cold failed saved-byte oracle")
+        rows[0]["oracle"] = prime
+    else:
+        prime = descriptions[0]
+        prime_row["oracle"] = prime
+        for row, description in zip(rows, descriptions[1:]):
+            row["oracle"] = description
+            validate_oracle(model, scenario, prime, row)
+    for row in rows:
+        append_jsonl(journal, {
+            "kind": f"full-{engine}-oracle", "model": model, "scenario": scenario,
+            "label": row["label"], "stepSha256": row["stepSha256"],
+            "oracle": row["oracle"],
+        })
+    return {
+        "model": model, "scenario": scenario, "rows": rows, "prime": prime_row,
+        "primeOracle": prime, "residentDisplay": adapter["residentDisplay"],
+        "cleanup": adapter["cleanup"], "effectiveControls": adapter["effectiveControls"],
+        "resolvedLegacyCacheDefaults": adapter["resolvedLegacyCacheDefaults"],
+        "inputCapture": {
+            "scope": "exact-entry-buffer-only",
+            "qualification": (
+                "the entry was captured before adapter dispatch; any helper or managed-data inputs "
+                "would be captured only when consumed and this single-file fixture consumed none"
+            ),
+            "requests": [{"path": value["input"], "digest": value["digest"],
+                          "bytes": value["bytes"]} for value in requests],
+        },
+        "independentSavedByteReadback": {
+            "outsideFullRequestTiming": True, "sourceHidden": True,
+            "commonRuntime": str(readback_package), "items": len(oracle_inputs),
+            "batchMs": saved_readback_ms,
+            "qualification": (
+                "one common actual-saved-byte parser validates geometry after the request; batch time "
+                "includes its subprocess setup and is reported separately, never subtracted or ratioed"
+            ),
+        },
+        "workerProcessExited": adapter["cleanup"]["ownerExitedAfterSession"],
+    }
+
+
+def full_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    values = [row["fullRequestMs"] for row in rows]
+    result = {
+        "samples": len(values), "medianMs": statistics.median(values),
+        "observedMinMs": min(values), "observedMaxMs": max(values),
+        "p95": None,
+        "qualification": "median and observed range only; this sample count does not establish p95",
+    }
+    stages = {}
+    for field in ("acceptedBufferReadHashMs", "engineSetupMs", "adapterWriteMs", "engineRequestMs",
+                  "actualByteVerificationMs", "ownerRequestMs", "sourceGeometryMs"):
+        values = [row[field] for row in rows if row.get(field) is not None]
+        stages[field.removesuffix("Ms") + "MedianMs"] = (
+            statistics.median(values) if values else None
+        )
+    result["stages"] = stages
+    result["geometryCounters"] = [row.get("geometryCounters") for row in rows]
+    result["productCounters"] = [row.get("productCounters") for row in rows]
+    return result
+
+
+def full_request_report(*, engine: str, python: Path, package: Path,
+                        started_revision: str, runtime_archive: dict[str, Any] | None,
+                        runtime_before: dict[str, Any], runtime_after: dict[str, Any],
+                        models: list[str], scenarios: list[str], sessions: list[dict[str, Any]],
+                        cold_samples: int, warm_samples: int, environment_note: str,
+                        chronology: list[dict[str, Any]], cold_timeout: float,
+                        warm_timeout: float) -> dict[str, Any]:
+    if runtime_before["treeSha256"] != runtime_after["treeSha256"]:
+        raise RuntimeError(f"{engine} runtime source tree changed during full-request benchmark")
+    summaries = {
+        model: {
+            scenario: full_summary([
+                row for session in sessions if session["model"] == model
+                and session["scenario"] == scenario for row in session["rows"]
+            ])
+            for scenario in ("cold", "unchanged", "local_geometry", "placement")
+            if any(session["model"] == model and session["scenario"] == scenario
+                   for session in sessions)
+        } for model in models
+    }
+    retained = engine == "retained"
+    complete = cold_samples == 5 and warm_samples == 10
+    return {
+        "schema": 1, "outcome": "passed",
+        "qualification": (f"{engine}-full-request-bounded-series" if complete
+                          else f"{engine}-full-request-functional-smoke"),
+        "percentileEvidence": False,
+        "engine": ("current-direct-document-worker" if retained
+                   else "frozen-legacy-benchmark-materialization-adapter"),
+        "timingBoundaryKind": FULL_REQUEST_BOUNDARY,
+        "fullRequestOutputContract": FULL_OUTPUT_CONTRACT,
+        "environmentNote": environment_note,
+        "startedFromRevision": started_revision,
+        "runtime": runtime_metadata(python, package),
+        "runtimeSourceBefore": runtime_before, "runtimeSourceAfter": runtime_after,
+        "runtimeSourceStable": True, "runtimeArchive": runtime_archive,
+        "benchmarkAdapter": {"path": str(FULL_ADAPTER.relative_to(REPO)),
+                             "sha256": sha256(FULL_ADAPTER)},
+        "inputDelivery": ({
+            "kind": "captured-entry-worker-payload",
+            "qualification": "current worker executes the exact entry bytes accepted before dispatch",
+        } if retained else {
+            "kind": "benchmark-adapter-materialized-entry",
+            "qualification": (
+                "the adapter writes the exact accepted entry bytes immediately before the frozen old "
+                "runner; this changes the old path-only door semantics and is not a compatibility API"
+            ),
+        }),
+        "samplePlan": {
+            "coldPerFixture": cold_samples, "warmPerFixtureScenario": warm_samples,
+            "models": models, "scenarios": scenarios, "serial": True, "paired": True,
+            "pairingUnit": "one cold sample or one complete warm scenario adapter",
+            "alternatingFirstEngine": True,
+            "coldAdapterTimeoutSeconds": cold_timeout,
+            "warmAdapterTimeoutSeconds": warm_timeout,
+            "coldProcessAndEngineSetupInsideBoundary": True,
+            "warmPrimeUnmeasured": True,
+            "singleFileExactEntryCapture": True,
+        },
+        "fixtureSources": {name: {
+            "sha256": sha256(FIXTURES / f"{name}.py"),
+            "path": str((FIXTURES / f"{name}.py").relative_to(REPO)),
+        } for name in OUTPUTS},
+        "timingBoundary": (
+            "fullRequestMs begins before a cold adapter process launch or, for warm rows, immediately "
+            "before input delivery inside a primed persistent adapter. It ends only after source and "
+            "native work, the one required STEP publication, and an actual destination byte/hash check. "
+            "Cold includes adapter bootstrap and engine setup. Frozen legacy's adapter materialization "
+            "is included and also exposed as adapterWriteMs; candidate includes DocumentWorker IPC. "
+            "Archive copying, resident display, lease release/shutdown, independent saved-byte readback, "
+            "geometry oracle, report writing and controller chronology are excluded."
+        ),
+        "stageQualification": (
+            "acceptedBufferReadHashMs is inside cold fullRequestMs because cold starts before adapter "
+            "launch, and outside warm fullRequestMs because warm starts after that exact buffer is read. "
+            "adapterWriteMs is separately reported and remains inside fullRequestMs. engineRequestMs is "
+            "an engine-door interval, not a kernel-only measurement. No stage is subtracted to create a "
+            "synthetic headline, and no resident-display/saved-reopen ratio is produced."
+        ),
+        "inputQualification": (
+            "only the exact single-file entry buffer is captured before dispatch. SourceSession records "
+            "helpers or managed data when actually consumed; this fixture has none and the report makes "
+            "no atomic whole-project snapshot claim."
+        ),
+        "savedByteQualification": (
+            "requestVerification checks the actual destination bytes before fullRequestMs ends. A second, "
+            "common current-runtime parser reads archived actual bytes with source hidden after timing; "
+            "that independent geometry oracle and its batch time are separate from request verification."
+        ),
+        "counterQualification": (
+            "candidate evaluation/product counters are literal internal observations. Frozen legacy has "
+            "no equivalent counters. Aggregates do not establish zero modeling or end-to-end zero remesh."
+        ),
+        "legacyCacheQualification": (
+            "frozen legacy installs its trusted operation witness and runs with production-default "
+            "operation, disk, and whole-call caches enabled; every session reports resolved defaults"
+            if not retained else
+            "the direct document worker does not invoke the removed legacy memo/store pipeline"
+        ),
+        "historicalBoundaryRelationship": (
+            "the prior in-process paired series remains valid evidence for its own obsolete development "
+            "bridge boundary; its distinct versioned identifier makes it timing-incomparable here"
+        ),
+        "actualChronologicalOrder": chronology,
+        "executionOrderQualification": (
+            "controller timestamps establish order only; elapsedControllerMs includes excluded oracle and "
+            "session cleanup work and is not timing evidence"
+        ),
+        "sessions": sessions, "summary": summaries,
+    }
+
+
+def full_request_dispatch(*, series_id: str, dispatch_ordinal: int,
+                          unit: dict[str, Any], position: int, engine: str,
+                          python: Path, engine_package: Path, readback_package: Path,
+                          root: Path, journal: Path, samples: int,
+                          timeout: float) -> tuple[dict[str, Any], dict[str, Any]]:
+    cold = unit["scenario"] == "cold"
+    dispatch = {
+        "seriesId": series_id, "dispatchOrdinal": dispatch_ordinal,
+        "pairOrdinal": unit["pairOrdinal"], "positionInPair": position,
+        "firstEngine": unit["engineOrder"][0], "engine": engine,
+        "model": unit["model"], "scenario": unit["scenario"],
+        "coldIndex": unit["coldIndex"], "startedAt": time.time(),
+    }
+    append_jsonl(journal, {"kind": "full-paired-dispatch-start", **dispatch})
+    started = time.perf_counter()
+    try:
+        session = full_request_session(
+            python=python, engine_package=engine_package,
+            readback_package=readback_package, engine=engine,
+            model=unit["model"], scenario=unit["scenario"],
+            samples=1 if cold else samples, root=root, timeout=timeout,
+            journal=journal, cold=cold, cold_index=unit["coldIndex"] or 0,
+        )
+    except BaseException as error:
+        append_jsonl(journal, {"kind": "full-paired-dispatch-failed", **dispatch,
+                               "error": str(error), "finishedAt": time.time()})
+        raise
+    labels = ([] if session["prime"] is None else [session["prime"]["label"]])
+    labels.extend(row["label"] for row in session["rows"])
+    entry = {
+        **dispatch, "finishedAt": time.time(),
+        "elapsedControllerMs": (time.perf_counter() - started) * 1000.0,
+        "adapterExecutionOrder": labels,
+        "workerProcessExited": session["workerProcessExited"],
+    }
+    session["pairedDispatchOrdinal"] = dispatch_ordinal
+    session["pairedPairOrdinal"] = unit["pairOrdinal"]
+    append_jsonl(journal, {"kind": "full-paired-dispatch-complete", **entry})
+    return session, entry
+
+
+def command_full_paired(args: argparse.Namespace) -> None:
+    """Compare frozen and current full requests at one captured-entry boundary."""
+    python = Path(os.path.abspath(args.python))
+    if not python.is_file():
+        raise FileNotFoundError(f"CAD Python not found: {python}")
+    if not FULL_ADAPTER.is_file():
+        raise FileNotFoundError(f"full-request adapter not found: {FULL_ADAPTER}")
+    scratch = require_under(Path(args.scratch), REPO / "models", "scratch")
+    reports = {
+        "legacy": Path(args.baseline_report).resolve(),
+        "retained": Path(args.candidate_report).resolve(),
+    }
+    comparison = Path(args.comparison_report).resolve()
+    journals = {engine: report.with_suffix(report.suffix + ".samples.jsonl")
+                for engine, report in reports.items()}
+    if any(path.exists() for path in (scratch, comparison, *reports.values(), *journals.values())):
+        raise FileExistsError("full-paired scratch, reports, comparison, and journals must be new paths")
+    models = args.models.split(",") if args.models else list(OUTPUTS)
+    scenarios = args.scenarios.split(",") if args.scenarios else [
+        "cold", "unchanged", "local_geometry", "placement",
+    ]
+    if (set(models) - OUTPUTS.keys()
+            or set(scenarios) - {"cold", "unchanged", "local_geometry", "placement"}):
+        raise ValueError("unknown full-paired model or scenario")
+    scratch.mkdir(parents=True)
+    baseline_revision = resolve_revision(args.baseline_revision)
+    candidate_revision = resolve_revision("HEAD")
+    series_id = f"full-paired-{time.time_ns()}"
+    for engine, journal in journals.items():
+        append_jsonl(journal, {
+            "kind": f"full-{engine}-paired-run-start", "schema": 1,
+            "seriesId": series_id, "timingBoundaryKind": FULL_REQUEST_BOUNDARY,
+            "coldSamples": args.cold_samples, "warmSamples": args.warm_samples,
+            "environmentNote": args.environment_note,
+            "qualification": "incomplete-until-final-report", "startedAt": time.time(),
+        })
+    chronology: list[dict[str, Any]] = []
+    sessions: dict[str, list[dict[str, Any]]] = {"legacy": [], "retained": []}
+    adapter_digest = sha256(FULL_ADAPTER)
+    try:
+        with tempfile.TemporaryDirectory(
+                prefix=f"cadgen-document-full-paired-{baseline_revision[:10]}-",
+                dir="/private/tmp") as temporary:
+            baseline_archive = Path(temporary) / "baseline-runtime"
+            baseline_archive_record = archive_runtime(baseline_revision, baseline_archive)
+            baseline_package = baseline_archive_record.pop("source")
+            candidate_archive = Path(temporary) / "candidate-runtime"
+            candidate_archive_record = archive_runtime(candidate_revision, candidate_archive)
+            candidate_package = candidate_archive_record.pop("source")
+            packages = {"legacy": baseline_package, "retained": candidate_package}
+            runtime_before = {engine: source_tree_record(package)
+                              for engine, package in packages.items()}
+            for unit in paired_plan(models, scenarios, args.cold_samples):
+                cold = unit["scenario"] == "cold"
+                for position, engine in enumerate(unit["engineOrder"]):
+                    leaf = f"cold-{unit['coldIndex']}" if cold else unit["scenario"]
+                    session, entry = full_request_dispatch(
+                        series_id=series_id, dispatch_ordinal=len(chronology), unit=unit,
+                        position=position, engine=engine, python=python,
+                        engine_package=packages[engine], readback_package=candidate_package,
+                        root=scratch / engine / unit["model"] / leaf,
+                        journal=journals[engine], samples=args.warm_samples,
+                        timeout=args.cold_timeout if cold else args.warm_timeout,
+                    )
+                    sessions[engine].append(session)
+                    chronology.append(entry)
+            runtime_after = {engine: source_tree_record(package)
+                             for engine, package in packages.items()}
+            candidate_head_after = resolve_revision("HEAD")
+            if sha256(FULL_ADAPTER) != adapter_digest:
+                raise RuntimeError("full-request benchmark adapter changed during the series")
+            built = {
+                engine: full_request_report(
+                    engine=engine, python=python, package=packages[engine],
+                    started_revision=(baseline_revision if engine == "legacy"
+                                      else candidate_revision),
+                    runtime_archive=(baseline_archive_record if engine == "legacy"
+                                     else candidate_archive_record),
+                    runtime_before=runtime_before[engine], runtime_after=runtime_after[engine],
+                    models=models, scenarios=scenarios, sessions=sessions[engine],
+                    cold_samples=args.cold_samples, warm_samples=args.warm_samples,
+                    environment_note=args.environment_note, chronology=chronology,
+                    cold_timeout=args.cold_timeout, warm_timeout=args.warm_timeout,
+                ) for engine in ("legacy", "retained")
+            }
+            for engine, report_value in built.items():
+                report_value["pairedSeriesId"] = series_id
+                report_value["rawSampleJournal"] = str(journals[engine])
+                report_value["candidateHeadAtArchive"] = candidate_revision
+                report_value["candidateHeadAfterSeries"] = candidate_head_after
+                report_value["candidateHeadMovedAfterArchive"] = (
+                    candidate_head_after != candidate_revision
+                )
+                report_value["controllerArgv"] = [sys.executable, str(Path(__file__).resolve()),
+                                                  *sys.argv[1:]]
+                write_json(reports[engine], report_value)
+                append_jsonl(journals[engine], {
+                    "kind": f"full-{engine}-paired-run-complete", "outcome": "passed",
+                    "seriesId": series_id, "report": str(reports[engine]),
+                    "finishedAt": time.time(),
+                })
+        command_compare(argparse.Namespace(
+            baseline=str(reports["legacy"]), candidate=str(reports["retained"]),
+            report=str(comparison),
+        ))
+        compared = json.loads(comparison.read_text(encoding="utf-8"))
+        compared["pairedSeriesId"] = series_id
+        compared["actualChronologicalOrder"] = chronology
+        compared["displayTimingComparable"] = False
+        compared["displayTimingQualification"] = (
+            "candidate pinned-resident display and common saved-byte readback are separate diagnostics; "
+            "no resident-scene/saved-reopen ratio is defined"
+        )
+        write_json(comparison, compared)
+    except BaseException as error:
+        for engine, journal in journals.items():
+            append_jsonl(journal, {
+                "kind": f"full-{engine}-paired-run-incomplete", "outcome": "incomplete",
+                "seriesId": series_id, "error": str(error), "finishedAt": time.time(),
+            })
+        raise
+    print(json.dumps({
+        "outcome": "passed", "seriesId": series_id,
+        "baselineReport": str(reports["legacy"]),
+        "candidateReport": str(reports["retained"]),
+        "comparisonReport": str(comparison),
+    }, indent=2))
+
+
 def paired_dispatch(*, series_id: str, dispatch_ordinal: int, unit: dict[str, Any],
                     position: int, engine: str, python: Path, package: Path,
                     root: Path, journal: Path, samples: int, timeout: float
@@ -1359,15 +1808,39 @@ def command_compare(args: argparse.Namespace) -> None:
     row_parity = []
     for key in sorted(baseline_rows):
         before, after = baseline_rows[key], candidate_rows[key]
+        if (baseline.get("timingBoundaryKind") == FULL_REQUEST_BOUNDARY
+                and candidate.get("timingBoundaryKind") == FULL_REQUEST_BOUNDARY):
+            if before.get("acceptedEntry", {}).get("digest") != after.get("acceptedEntry", {}).get("digest"):
+                raise AssertionError(f"{'/'.join(map(str, key))}: accepted entry bytes differ")
+            for engine, row in (("baseline", before), ("candidate", after)):
+                verification = row.get("requestVerification", {})
+                if (verification.get("requiredStepPresent") is not True
+                        or verification.get("actualDestinationSha256") != row.get("stepSha256")
+                        or verification.get("actualDestinationBytes") != row.get("stepBytes")):
+                    raise AssertionError(f"{'/'.join(map(str, key))}: {engine} request is not byte-attested")
         assert_oracle_parity(before["oracle"], after["oracle"], "/".join(map(str, key)))
         row_parity.append({
             "model": key[0], "scenario": key[1], "sample": key[2],
             "geometryParity": True,
             "stepBytesIdentical": before["stepSha256"] == after["stepSha256"],
         })
+    full_contract_comparable = True
+    if (baseline.get("timingBoundaryKind") == FULL_REQUEST_BOUNDARY
+            or candidate.get("timingBoundaryKind") == FULL_REQUEST_BOUNDARY):
+        full_contract_comparable = (
+            baseline.get("fullRequestOutputContract") == FULL_OUTPUT_CONTRACT
+            and candidate.get("fullRequestOutputContract") == FULL_OUTPUT_CONTRACT
+            and all(report.get("runtimeSourceStable") is True
+                    for report in (baseline, candidate))
+            and all(session.get("independentSavedByteReadback", {}).get(
+                        "outsideFullRequestTiming") is True
+                    and session.get("independentSavedByteReadback", {}).get("sourceHidden") is True
+                    for report in (baseline, candidate) for session in report.get("sessions", ()))
+        )
     timing_comparable = (
         baseline.get("timingBoundaryKind") == candidate.get("timingBoundaryKind")
         and baseline.get("timingBoundaryKind") is not None
+        and full_contract_comparable
         and all("noncomparable" not in value.get("environmentNote", "").lower()
                 for value in (baseline, candidate))
     )
@@ -1392,9 +1865,18 @@ def command_compare(args: argparse.Namespace) -> None:
         "baseline": {"path": str(baseline_path), "revision": baseline["startedFromRevision"]},
         "candidate": {"path": str(candidate_path), "revision": candidate["startedFromRevision"]},
         "timingComparable": timing_comparable,
+        "fullRequestContractComparable": (full_contract_comparable
+                                           if FULL_REQUEST_BOUNDARY in {
+                                               baseline.get("timingBoundaryKind"),
+                                               candidate.get("timingBoundaryKind")}
+                                           else None),
         "timingBoundaryKind": baseline.get("timingBoundaryKind") if timing_comparable else None,
         "timingQualification": (
-            f"matching {baseline.get('timingBoundaryKind')} boundaries and timing-qualified environments"
+            ("matching full-request boundaries, exact accepted entry bytes, required STEP actual-byte "
+             "receipts, and timing-qualified environments; frozen adapter materialization remains "
+             "inside its headline and is reported separately"
+             if baseline.get("timingBoundaryKind") == FULL_REQUEST_BOUNDARY else
+             f"matching {baseline.get('timingBoundaryKind')} boundaries and timing-qualified environments")
             if timing_comparable else
             "timing ratios withheld: boundary kinds differ or a source report marks timings noncomparable"
         ),
@@ -1520,6 +2002,29 @@ def parser() -> argparse.ArgumentParser:
     paired.add_argument("--candidate-report", required=True)
     paired.add_argument("--comparison-report", required=True)
     paired.set_defaults(function=command_paired)
+    full_paired = commands.add_parser(
+        "full-paired",
+        help="run frozen and current complete captured-entry requests in alternating order",
+    )
+    full_paired.add_argument("--baseline-revision", default=CHECKPOINT)
+    full_paired.add_argument("--python", default=str(DEFAULT_PYTHON))
+    full_paired.add_argument("--cold-samples", type=int, default=5)
+    full_paired.add_argument("--warm-samples", type=int, default=10)
+    full_paired.add_argument("--cold-timeout", type=float, default=60.0)
+    full_paired.add_argument("--warm-timeout", type=float, default=120.0)
+    full_paired.add_argument("--models", help="comma-separated subset: plate,assembly24")
+    full_paired.add_argument(
+        "--scenarios",
+        help="comma-separated subset: cold,unchanged,local_geometry,placement",
+    )
+    full_paired.add_argument(
+        "--environment-note", default="reserved serial full-request native-compute window",
+    )
+    full_paired.add_argument("--scratch", required=True)
+    full_paired.add_argument("--baseline-report", required=True)
+    full_paired.add_argument("--candidate-report", required=True)
+    full_paired.add_argument("--comparison-report", required=True)
+    full_paired.set_defaults(function=command_full_paired)
     compare = commands.add_parser("compare", help="check complete reports for geometry parity")
     compare.add_argument("--baseline", required=True)
     compare.add_argument("--candidate", required=True)
@@ -1541,7 +2046,7 @@ def main() -> None:
             raise SystemExit("--cold-samples must be 1..5")
         if not 1 <= args.warm_samples <= 10:
             raise SystemExit("--warm-samples must be 1..10")
-        if args.command == "paired":
+        if args.command in {"paired", "full-paired"}:
             if not 1 <= args.cold_timeout <= 60:
                 raise SystemExit("--cold-timeout must be 1..60 seconds")
             if not 1 <= args.warm_timeout <= 120:

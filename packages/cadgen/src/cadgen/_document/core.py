@@ -108,7 +108,8 @@ class _Prototype:
 @dataclass(frozen=True)
 class _Allocation:
     handle: GeometryHandle
-    inputs: tuple[GeometryHandle, ...] = ()
+    inputs: tuple[GeometryHandle, ...]
+    ancestry_interval: tuple[int, int]
 
 
 class SupersededRevision(RuntimeError):
@@ -195,6 +196,7 @@ class Document:
         self._entry_heads: dict[str, int] = {}
         self._prototypes: dict[str, _Prototype] = {}
         self._allocations: dict[str, _Allocation] = {}
+        self._next_allocation_rank = 0
         self._revisions: dict[int, Revision] = {}
         self._states: dict[int, RevisionState] = {}
         self._completed_exports: dict[int, set[str]] = {}
@@ -206,6 +208,18 @@ class Document:
     def _assert_owner(self) -> None:
         if get_ident() != self._owner_thread:
             raise RuntimeError("native document work must run in its owning thread")
+
+    def _register_allocation(self, handle, inputs=()) -> None:
+        # Ranks are a local proof accelerator only. They never enter an
+        # evaluation identity or checkpoint, and are rebuilt in dependency
+        # order on recovery. Intervals include every allocation ancestor.
+        if handle.allocation_id in self._allocations:
+            raise ValueError("document allocation identity is already registered")
+        self._next_allocation_rank += 1
+        rank = self._next_allocation_rank
+        lower = min((self._allocations[parent.allocation_id].ancestry_interval[0]
+                     for parent in inputs), default=rank)
+        self._allocations[handle.allocation_id] = _Allocation(handle, inputs, (lower, rank))
 
     @property
     def head(self) -> Revision | None:
@@ -443,7 +457,7 @@ class RevisionTransaction:
     def _allocate(self, prototype: _Prototype, inputs: tuple[GeometryHandle, ...]) -> GeometryHandle:
         handle = GeometryHandle(self.document.owner_id, prototype.handle.evaluation_id,
                                 prototype.handle.prototype_id, self._nonce())
-        self.document._allocations[handle.allocation_id] = _Allocation(handle, inputs)
+        self.document._register_allocation(handle, inputs)
         return handle
 
     def evaluate(self, spec: OperatorSpec, parameters: Any,
@@ -496,7 +510,7 @@ class RevisionTransaction:
             handle, key, retained, result.history, inputs,
             native_inputs if spec.mutation is Mutation.READ_ONLY and not escaped else (),
             auxiliary)
-        self.document._allocations[handle.allocation_id] = _Allocation(handle, inputs)
+        self.document._register_allocation(handle, inputs)
         if escaped:
             self.escape_arena.adopt(handle, result.shape)
         self.stats.computed += 1
@@ -512,7 +526,7 @@ class RevisionTransaction:
         handle = GeometryHandle(self.document.owner_id, key.identity, key.identity.value, self._nonce())
         self.document._prototypes[handle.prototype_id] = _Prototype(
             handle, key, retained, TopologyHistory(reason="opaque native capture"), ())
-        self.document._allocations[handle.allocation_id] = _Allocation(handle)
+        self.document._register_allocation(handle)
         if self.escape_arena.active:
             self.escape_arena.adopt(handle, shape)
         self.stats.computed += 1
