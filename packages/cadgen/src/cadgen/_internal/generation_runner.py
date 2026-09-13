@@ -56,7 +56,7 @@ def package_context(script_path: Path) -> tuple[str | None, Path | None]:
     return ".".join(reversed(parts)), folder
 
 
-def _load_generator_module(script_path: Path, *, source_bytes: bytes | None = None) -> object:
+def _load_generator_module(script_path: Path) -> object:
     resolved_script_path = script_path.resolve()
     package, package_root = package_context(resolved_script_path)
     if package is not None:
@@ -78,8 +78,7 @@ def _load_generator_module(script_path: Path, *, source_bytes: bytes | None = No
     # executes STALE code. Model scripts are small; recompiling each load
     # costs ~ms and makes what runs always be what is on disk.
     try:
-        if source_bytes is None:
-            source_bytes = resolved_script_path.read_bytes()
+        source_bytes = resolved_script_path.read_bytes()
         source_code = compile(
             source_bytes,
             str(resolved_script_path),
@@ -498,13 +497,7 @@ def _run_script_generator_body(
     # worker keeps it across requests. CADGEN_OP_MEMO=0 disables.
     from cadgen._internal import op_memo
 
-    from cadgen._document.service import current_attempt
-
-    document_attempt = current_attempt() if model_format == "step" else None
-    if document_attempt is None:
-        op_memo.install()
-    elif op_memo._installed:
-        raise RuntimeError("retained document execution requires a worker without legacy op-memo patches")
+    op_memo.install()
     # Order-stable shape de-duplication (see determinism.py). Installed in the
     # same breath as the op memo and for the same reason: both exist so that a
     # re-executed model script produces the SAME geometry it produced last time.
@@ -513,15 +506,13 @@ def _run_script_generator_body(
     # generator's first kernel call, not merely before the tree write.
     from cadgen._internal import determinism
 
-    if document_attempt is None:
-        determinism.install()
+    determinism.install()
     # Establish the canonical memo interface. Only the earlier worker
     # bootstrap can enable reuse; a generic embedding may already have run
     # authored initialization and cannot upgrade that untrusted snapshot.
     from cadgen import memoization
 
-    if document_attempt is None:
-        memoization.install()
+    memoization.install()
     generated_scene: LoadedStepScene | None = None
     # Deterministic closure capture (see run_script_generator's docstring): start from a
     # clean first-party module space, then record every first-party file executed while
@@ -540,13 +531,9 @@ def _run_script_generator_body(
         record_first_party_execution() as executed_files,
         record_discovered_inputs() as read_files,
         ExecutionHashes() as executed_hashes,
-        (document_attempt.source_execution() if document_attempt is not None else contextlib.nullcontext()) as frontend,
     ):
         with logger.timed(f"load generator {spec.source_ref}"):
-            if document_attempt is None:
-                module = _load_generator_module(spec.script_path)
-            else:
-                module = _load_generator_module(spec.script_path, source_bytes=document_attempt.source.data)
+            module = _load_generator_module(spec.script_path)
         # `model_format` is the DISPATCH kind ("step"/"dxf" decides which payload
         # contract applies below); the attribute looked up is the decorated entry
         # — the module is imported under a loader name, never __main__, so its
@@ -576,11 +563,6 @@ def _run_script_generator_body(
             building(spec.script_path, entry_name) as frame,
         ):
             raw_payload = generator()
-            if frontend is not None:
-                from cadgen._document.returned import bind_returned_shape
-
-                bind_returned_shape(frontend, raw_payload)
-                raw_payload = frontend.materialize(raw_payload)
 
     source_closure: PythonSourceClosure | None = None
     if model_format == "step":

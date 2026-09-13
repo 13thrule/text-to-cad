@@ -762,32 +762,16 @@ export function drawBurnedInLabel(context, label, width, height, {
   context.restore();
 }
 
-export function rendererDataUrlWithOptionalLabel(renderer, label, job, outputSize = {}) {
-  const source = renderer.domElement;
-  // `setPixelRatio` deliberately makes the WebGL drawing buffer larger than
-  // the requested output for supersampling. The snapshot contract, however,
-  // is expressed in output pixels: encode a high-quality resample rather than
-  // leaking the implementation-sized drawing buffer into the PNG.
-  const width = Math.max(1, Math.floor(toFiniteNumber(outputSize.width, toFiniteNumber(source.width, 1))));
-  const height = Math.max(1, Math.floor(toFiniteNumber(outputSize.height, toFiniteNumber(source.height, 1))));
-  const needsResample = source.width !== width || source.height !== height;
-  if (!needsResample && !shouldBurnInViewLabels(job)) {
+export function rendererDataUrlWithOptionalLabel(renderer, label, job) {
+  if (!shouldBurnInViewLabels(job)) {
     return dataUrlFromRenderer(renderer);
   }
+  const source = renderer.domElement;
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
+  canvas.width = source.width;
+  canvas.height = source.height;
   const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("Unable to prepare snapshot PNG output");
-  }
-  context.imageSmoothingEnabled = true;
-  if ("imageSmoothingQuality" in context) {
-    context.imageSmoothingQuality = "high";
-  }
-  context.drawImage(source, 0, 0, source.width, source.height, 0, 0, width, height);
-  if (shouldBurnInViewLabels(job)) {
-    drawBurnedInLabel(context, label, width, height);
-  }
+  context.drawImage(source, 0, 0);
+  drawBurnedInLabel(context, label, canvas.width, canvas.height);
   return canvas.toDataURL("image/png");
 }

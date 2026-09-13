@@ -186,7 +186,7 @@ function fitCamera(camera, view, bounds, width, height, lockedHalfHeight = null,
   });
 }
 
-export function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, {
+function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, {
   framePoints = null,
   padding = 0.12,
   sceneScale = RENDER_SCENE_SCALE.CAD
@@ -228,8 +228,8 @@ function drawBurnedInLabel(context, label, width, height, {
   });
 }
 
-function rendererDataUrlWithOptionalLabel(renderer, label, job, size) {
-  return sharedRendererDataUrlWithOptionalLabel(renderer, label, job, size);
+function rendererDataUrlWithOptionalLabel(renderer, label, job) {
+  return sharedRendererDataUrlWithOptionalLabel(renderer, label, job);
 }
 
 export function disposeSnapshotSceneResources(scene, modelRoot = null, extraTextures = []) {
@@ -1244,9 +1244,9 @@ export async function captureModel(viewport, captureOptions = {}) {
     const baseOutputBounds = captureOptions.frameBounds || posedBounds;
     const outputBounds = applyViewportExplodedView(viewport, baseOutputBounds);
     syncViewportTopologyDisplayEdges(viewport);
-    // Device pixels: renderScale is the renderer's pixel ratio, so a
-    // supersampled drawing buffer keeps `thickness` in drawing-buffer units
-    // before the final PNG is resampled to this output's requested dimensions.
+    // Device pixels: renderScale is the renderer's pixel ratio, so a PNG at
+    // renderScale 2 has a 2x drawing buffer and `thickness` stays a
+    // drawing-buffer width there exactly as it does on a Retina viewport.
     const lineResolution = screenSpaceLineDeviceResolution(viewport.renderer, width, height);
     syncScreenSpaceLineMaterialResolution(
       viewport.model.runtime.screenSpaceLineMaterials,
@@ -1297,7 +1297,7 @@ export async function captureModel(viewport, captureOptions = {}) {
     // wait for that work, so this is image readback/encoding, not pure CPU PNG.
     stageStarted = performance.now();
     const viewLabel = String(output.viewLabel || output.label || resolvedCamera.name || "").toUpperCase();
-    const dataUrl = rendererDataUrlWithOptionalLabel(viewport.renderer, viewLabel, job, { width, height });
+    const dataUrl = rendererDataUrlWithOptionalLabel(viewport.renderer, viewLabel, job);
     if (outputTimings) {
       outputTimings.encodeImageMs = Math.round(performance.now() - stageStarted);
       stageTimings.outputs.push(outputTimings);

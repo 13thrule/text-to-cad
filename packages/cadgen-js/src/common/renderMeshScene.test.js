@@ -493,7 +493,7 @@ test("capture diagnostics separate readiness, pose, tight framing, draw submissi
       setSize() { clock += 2; },
       getPixelRatio() { return 1; },
       render() { clock += 11; },
-      domElement: { width: 64, height: 64, toDataURL() { clock += 13; return "data:image/png;base64,AAAA"; } }
+      domElement: { toDataURL() { clock += 13; return "data:image/png;base64,AAAA"; } }
     }
   };
   const result = await captureModel(viewport, { job, stageTimings: stages });

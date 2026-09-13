@@ -15,18 +15,7 @@ snapshots, the warm daemon and its build pool, and the CAD Viewer
 instance).
 
 Snapshot `--debug --json` reports artifact resolution and measured browser
-stages. Snapshot commands reuse Chromium through an explicitly owned daemon
-worker, with a fresh context and captured asset capabilities for each job.
-Ordinary library calls own and close their renderer. See
-[snapshot diagnostics and lifecycle](SNAPSHOTS.md) for timing and ownership
-boundaries.
-
-An internal prepared native snapshot door now consumes engine-attested display
-manifests and packed meshes through that shared renderer. It binds saved STEP
-imports to captured file/companion bytes and retains bounded staging until
-renderer cleanup is acknowledged. Private PNGs are verified before publication,
-and final targets are read back before success. Native still Render and Inspect are covered;
-public STEP snapshot cutover and native motion/selection remain separate work.
+stages; see [snapshot diagnostics](SNAPSHOTS.md) for timing boundaries.
 
 **MAY DEPEND ON** — the Python ecosystem it declares (OCP/build123d lazily,
 never at namespace-import time) and the *built outputs* of `cadgen-js`.

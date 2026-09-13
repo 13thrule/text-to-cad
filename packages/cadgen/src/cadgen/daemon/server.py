@@ -126,8 +126,7 @@ def _read_request(conn: transport.Channel) -> dict | None:
     half-close for; there is no partial-read buffering left to do.
     """
     try:
-        # Bound allocation before JSON parsing, including resolved render packets.
-        raw = conn.recv(REQUEST_READ_TIMEOUT_SECONDS, max_bytes=64 * 1024 * 1024 + 65536)
+        raw = conn.recv(REQUEST_READ_TIMEOUT_SECONDS)
     except (OSError, EOFError):
         return None
     if not raw:
@@ -317,12 +316,6 @@ def _handle_request(conn: transport.Channel, request: dict) -> None:
         return
 
     tool = request.get("tool")
-    if tool == "snapshot-render":
-        from cadgen.daemon.snapshot import serve_render
-
-        serve_render(conn, request, pool=_POOL, jobs=_JOBS)
-        _REQUESTS_SERVED[0] += 1
-        return
     argv = request.get("argv")
     is_artifact = tool == "artifact"
 
@@ -515,16 +508,8 @@ def _serve_connection(conn, request) -> None:
         _log("unhandled error serving a job:\n" + traceback.format_exc())
     finally:
         _INFLIGHT.discard(threading.current_thread())
-        retained = False
-        if request.get("tool") == "snapshot-render":
-            from cadgen.daemon.snapshot import retains_connection
-
-            retained = retains_connection(conn)
-        # An unjoined native read/write retains its descriptor. Closing it here
-        # could reuse that number underneath the old I/O thread.
-        if not retained:
-            with contextlib.suppress(OSError):
-                conn.close()
+        with contextlib.suppress(OSError):
+            conn.close()
 
 
 def _drain_inflight(reason: str) -> None:

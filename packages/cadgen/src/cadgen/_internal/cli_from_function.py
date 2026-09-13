@@ -430,9 +430,4 @@ def generated_main(
     *,
     prog: str,
 ) -> int:
-    if target[1] == "snapshot":
-        from cadgen.daemon.snapshot import cli_snapshot_service
-
-        with cli_snapshot_service():
-            return run_cli(_verb(target), argv, prog=prog)
     return run_cli(_verb(target), argv, prog=prog)

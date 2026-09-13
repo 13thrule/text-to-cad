@@ -92,25 +92,6 @@ snapshot renderer and the node builders in `bin/`).
   the shared surface material. Reflection intensity belongs to the shared pass
   key. A distinct nonblack emissive channel, or emission over vertex colours,
   uses the ordinary material so the instance colour cannot tint that channel.
-  Vertex-color grading belongs to an immutable appearance-specific geometry.
-  Equal live styles share that geometry; different styles cannot rewrite each
-  other's attributes. Their CPU position arrays may be shared, but independent
-  Three BufferAttributes own independent GPU uploads. The last owner releases
-  the styled cache entry, except an explicit `releaseGpu:false` handoff.
-  The native document scene path keeps per-face RGBA separate from geometry
-  identity and exact picking intervals. Sparse face styles use the occurrence's
-  base color on the other faces. With no authored base, a mask preserves the
-  absence of color until the display runtime resolves its current fill policy;
-  adding a face color cannot recolor other faces or bake a theme into geometry.
-  Color alpha and PBR opacity multiply once,
-  consistently for flat and vertex-colored occurrences.
-  Static native exports share `documentManifest` validation and the packed mesh
-  decoder directly. Their pure encoder consumes no package directory, SURF
-  asset, old store or Three scene. GLB retains indexed mesh instances and exact
-  linear RGBA; 3MF carries standard color/metallic display resources with explicit
-  quantization and unsupported-field facts. STL is appearance-free and rejects
-  triangles lost to world-float32 rounding. Export bytes use canonical structural
-  paths and authored labels rather than scene-owner or allocation identifiers.
 - **Worker isolation**: each tessellation worker runs one request at a time;
   excess requests wait on the client. Aborting synchronous work replaces only
   its worker, preserving other callers. A failed worker request reports an
@@ -229,10 +210,7 @@ perspective camera defaults to a 50 mm focal length. Quality is independent from
 the existing standard scene policy and `final` maps to high. High uses the
 bounded L3 rung, a 0.25px viewport target, 4096px shadows, a 512px procedural
 environment, and 2x snapshot render scale. Explicit
-`output.renderScale` remains authoritative for the internal drawing buffer.
-PNG and video-frame output keeps the requested pixel dimensions: supersampled
-frames are downsampled in full before encoding, with labels drawn afterward.
-`quality.tessellation` is a
+`output.renderScale` remains authoritative. `quality.tessellation` is a
 normal-CAD-only technical override; Render derives its bounded mesh rung only
 from `render.quality`. Snapshot job validation rejects a Render envelope combined
 with explicit top-level `camera`, `display`, `selection`, `kinematics`,

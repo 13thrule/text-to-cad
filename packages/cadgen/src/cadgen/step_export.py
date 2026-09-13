@@ -892,7 +892,6 @@ def write_xcaf_doc_step_file(
     label: str | None = None,
     originating_system: str = "cadgen",
     logger: object | None = None,
-    _transfer_observer: Any = None,
 ) -> str:
     from build123d.exporters3d import (
         APIHeaderSection_MakeHeader,
@@ -997,11 +996,6 @@ def write_xcaf_doc_step_file(
 
     final_path = output_path
     output_path = output_path.with_name(f".{output_path.name}{temp_suffix()}")
-    # Trusted retained-document adapters may capture transfer entity identities
-    # while the writer is alive. Model ordering is now final for geometry: the
-    # remaining file canonicalizer only permutes the closed presentation tail.
-    if _transfer_observer is not None:
-        _transfer_observer(writer.Writer())
     with (logger.timed(f"write STEP file {final_path.name}") if logger is not None else nullcontext()):
         if writer.Write(os.fspath(output_path)) != IFSelect_ReturnStatus.IFSelect_RetDone:
             raise RuntimeError(f"Failed to write STEP file: {final_path}")

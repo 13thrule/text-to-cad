@@ -26,7 +26,6 @@
  * { primitives: [ { positions: Float32Array,   // non-indexed, 9 floats per triangle
  *                   normals?: Float32Array,    // same length; derived per-face when absent
  *                   color?: "#rrggbb",         // becomes a per-primitive material
- *                   linearColor?: [r,g,b,a],   // exact linear RGBA; alpha multiplies opacity once
  *                   opacity?: number,          // < 1 makes that material BLEND
  *                   material?: {               // the authored PBR FINISH, if any
  *                     roughness?, metalness?,  //   -> pbrMetallicRoughness factors
@@ -48,10 +47,6 @@
  * else -- one glTF node per CAD OCCURRENCE, so an animation channel has something to
  * target -- gives its primitives a shared `node` key and they become the primitives of
  * one mesh instead.
- * Export callers may instead supply `options.sceneNodes`: a parent-before-child
- * array of `{ key, parent?, mesh?, matrix, name?, extras? }`. `mesh` references a
- * primitive group key, so repeated nodes reuse one mesh. Matrices are glTF
- * column-major values. This static graph is exclusive with animation/TRS options.
  *
  * ## Animation
  *
@@ -246,14 +241,10 @@ function finishChannel(finish, key) {
   return Number.isFinite(value) ? clamp01(value) : null;
 }
 
-function materialFor(color, name, opacity = null, finish = null, linearColor = null) {
+function materialFor(color, name, opacity = null, finish = null) {
   // sRGB in, LINEAR out: baseColorFactor is a linear quantity per the glTF spec, and the
   // authored hex is sRGB. Without the conversion every generated GLB renders too bright.
-  if (linearColor !== null && (!Array.isArray(linearColor) || linearColor.length !== 4
-    || !linearColor.every((v) => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1))) {
-    throw new Error("writeGlb: linearColor requires finite unit RGBA");
-  }
-  const rgb = linearColor === null ? hexToRgb01(color).map(clamp01).map(srgbToLinear) : linearColor.slice(0, 3);
+  const rgb = hexToRgb01(color).map(clamp01).map(srgbToLinear);
   // Alpha is NOT an sRGB quantity, so it rides through unconverted. A material below
   // fully opaque also needs alphaMode: importers ignore baseColorFactor[3] in the
   // default OPAQUE mode, which would render a half-faded part solid.
@@ -261,9 +252,9 @@ function materialFor(color, name, opacity = null, finish = null, linearColor = n
   // An explicit `opacity` (a caller's own override -- an animation clip's faded
   // occurrence) wins over the material's authored one; with neither, opaque.
   const authoredAlpha = finishChannel(finish, "opacity");
-  const alpha = (opacity === null || opacity === undefined
+  const alpha = opacity === null || opacity === undefined
     ? (authoredAlpha === null ? 1 : authoredAlpha)
-    : clamp01(opacity)) * (linearColor === null ? 1 : linearColor[3]);
+    : clamp01(opacity);
   // The authored FINISH, when the caller has one. Metalness especially is not a
   // decoration: a metal has no diffuse lobe, so exporting a brushed-aluminium part at
   // the plastic default (0.02) inverts its shading and is why an exported file used to
@@ -288,10 +279,10 @@ function materialFor(color, name, opacity = null, finish = null, linearColor = n
   // A clearcoat of 0 IS the glTF default, so an authored zero is written by leaving the
   // extension off -- the file then says the same thing in fewer bytes and never lands in
   // extensionsUsed for a coat nobody asked for.
-  if (linearColor !== null ? clearcoat !== null || clearcoatRoughness !== null : clearcoat !== null && clearcoat > 0) {
+  if (clearcoat !== null && clearcoat > 0) {
     material.extensions = {
       KHR_materials_clearcoat: {
-        clearcoatFactor: clearcoat ?? 0,
+        clearcoatFactor: clearcoat,
         ...(clearcoatRoughness === null ? {} : { clearcoatRoughnessFactor: clearcoatRoughness }),
       },
     };
@@ -425,7 +416,6 @@ export function writeGlb(mesh, options = {}) {
     upAxis = "y",
     animations = null,
     nodeTransforms = null,
-    sceneNodes = null,
   } = options;
 
   // WHICH SPACE the caller's positions are in, declared rather than guessed. glTF's
@@ -458,15 +448,11 @@ export function writeGlb(mesh, options = {}) {
   // The render preset writes each node's scale/translation to dequantize its ONE
   // primitive, so a node it did not create is a node whose geometry would land in the
   // wrong place. Refuse rather than emit an artifact that renders scrambled.
-  if (render && (animations || nodeTransforms || sceneNodes)) {
+  if (render && (animations || nodeTransforms)) {
     throw new Error(
       "writeGlb: preset 'render' spends every node transform on dequantization, so it "
       + "carries no animation or node TRS — use preset 'export' for an animated file"
     );
-  }
-  if (sceneNodes !== null && (animations || nodeTransforms || !Array.isArray(sceneNodes)
-    || !sceneNodes.length || sceneNodes.length > 100_000)) {
-    throw new Error("writeGlb: an explicit static scene requires bounded nodes and no animation overrides");
   }
 
   const inputs = Array.isArray(mesh?.primitives) && mesh.primitives.length
@@ -484,7 +470,6 @@ export function writeGlb(mesh, options = {}) {
   // primitive layout expressed as the degenerate case of grouping rather than as a
   // second code path.
   const groups = new Map();
-  const sharedViews = new WeakMap();
   let byteOffset = 0;
 
   /** Append `bytes` to the BIN chunk at a 4-byte aligned offset; return that offset. */
@@ -502,21 +487,12 @@ export function writeGlb(mesh, options = {}) {
 
   /** A plain, uncompressed bufferView. */
   const pushView = (bytes, target) => {
-    // Exact shared attribute storage, never a geometric weld or value guess.
-    // Static scene variants can bind different materials to the same buffers.
-    const key = `${bytes.byteOffset}:${bytes.byteLength}:${target ?? ""}`;
-    let previous = sharedViews.get(bytes.buffer);
-    if (sceneNodes !== null && previous?.has(key)) return previous.get(key);
     const offset = appendBytes(bytes);
     const view = { buffer: 0, byteOffset: offset, byteLength: bytes.length };
     if (target) {
       view.target = target;
     }
     bufferViews.push(view);
-    if (sceneNodes !== null) {
-      if (!previous) sharedViews.set(bytes.buffer, (previous = new Map()));
-      previous.set(key, bufferViews.length - 1);
-    }
     return bufferViews.length - 1;
   };
 
@@ -791,8 +767,7 @@ export function writeGlb(mesh, options = {}) {
         input?.opacity ?? null,
         // The finish is independent of where the colour came from: a per-vertex-coloured
         // primitive whitens its baseColorFactor and keeps its authored metal.
-        input?.material ?? null,
-        input?.linearColor ?? null
+        input?.material ?? null
       )
     );
     const primitive = {
@@ -903,30 +878,6 @@ export function writeGlb(mesh, options = {}) {
     nodes.push(node);
   }
 
-  let sceneRoots = nodes.map((_, index) => index);
-  if (sceneNodes !== null) {
-    const meshByKey = new Map([...groups.keys()].map((key, index) => [key, index]));
-    const seen = new Map();
-    nodes.length = 0;
-    sceneRoots = [];
-    for (const input of sceneNodes) {
-      if (!input || typeof input.key !== "string" || !input.key || seen.has(input.key)
-        || (input.mesh !== undefined && !meshByKey.has(input.mesh))
-        || (input.parent !== undefined && !seen.has(input.parent))
-        || !Array.isArray(input.matrix) || input.matrix.length !== 16 || !input.matrix.every(Number.isFinite)) {
-        throw new Error("writeGlb: invalid explicit scene node");
-      }
-      const node = { name: input.name ?? name, matrix: [...input.matrix],
-        ...(input.mesh === undefined ? {} : { mesh: meshByKey.get(input.mesh) }),
-        ...(input.extras === undefined ? {} : { extras: input.extras }) };
-      const index = nodes.length;
-      if (input.parent === undefined) sceneRoots.push(index);
-      else (nodes[seen.get(input.parent)].children ??= []).push(index);
-      seen.set(input.key, index);
-      nodes.push(node);
-    }
-  }
-
   const gltfAnimations = buildAnimations(animations, {
     nodeIndexByKey,
     targetCountByKey,
@@ -950,7 +901,7 @@ export function writeGlb(mesh, options = {}) {
   const gltf = {
     asset: { version: "2.0", generator: "cadgen-js writeGlb" },
     scene: 0,
-    scenes: [{ nodes: sceneRoots }],
+    scenes: [{ nodes: nodes.map((_, index) => index) }],
     nodes,
     meshes,
     materials,

@@ -456,13 +456,13 @@ class VideoRender(unittest.TestCase):
         }
         encoded = {}
 
-        async def fake_encode(frames_dir, **kwargs):
+        def fake_encode(frames_dir, **kwargs):
             encoded["frames"] = sorted(p.name for p in Path(frames_dir).iterdir())
             encoded.update(kwargs)
 
         with unittest.mock.patch("cadgen.snapshot_video.encode_video", fake_encode):
             result = asyncio.run(
-                renderer._render_video(
+                renderer.render_video(
                     job, narrate=snapshot_narrator(_logger_for(stream))
                 )
             )

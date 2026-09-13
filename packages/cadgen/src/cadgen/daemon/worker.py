@@ -166,12 +166,10 @@ def _warm_imports() -> None:
             _tool_main(tool)
 
 
-def _run(request: dict, *, snapshot_service=None) -> int:
+def _run(request: dict) -> int:
     tool = request.get("tool")
     if tool == "artifact":
         return _run_artifact(request)
-    if tool == "snapshot-render":
-        return _run_snapshot(request, snapshot_service)
     argv = [str(a) for a in request.get("argv") or []]
     cwd = request.get("cwd")
     prog = str(request.get("prog") or "") or None
@@ -191,10 +189,8 @@ def _run(request: dict, *, snapshot_service=None) -> int:
         sys.argv = [prog or f"cadgen {tool}", *argv]
         main = _tool_main(tool)
         from cadgen.daemon.artifacts import worker_context
-        from cadgen.snapshot_service import bind_snapshot_service
 
-        with worker_context(request.get("store_root")), bind_snapshot_service(snapshot_service), \
-             contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with worker_context(request.get("store_root")), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             # Pass the caller's name where the parser takes one, so a command reports the
             # same usage warm as cold.
             if prog and "prog" in inspect.signature(main).parameters:
@@ -244,46 +240,6 @@ def _run_artifact(request: dict) -> int:
         return 1
 
 
-def _run_snapshot(request, service):
-    """Render a closed operation: no parser, source import, chdir or kernel work."""
-    import asyncio
-    from cadgen.snapshot_operation import normalize_operation, operation_key, progress_value, result_value
-
-    operation = normalize_operation(request.get("snapshot"))
-    key = operation_key(operation)
-    if request.get("argv") != [] or request.get("request") != key or service is None:
-        raise ValueError("invalid snapshot worker request")
-
-    class Progress:
-        def send(self, method, *args, **kwargs):
-            _emit({"snapshotProgress": {"request": key, **progress_value(method, args, kwargs)}})
-
-        def phase(self, *args, **kwargs):
-            self.send("phase", *args, **kwargs)
-
-        def detail(self, *args, **kwargs):
-            self.send("detail", *args, **kwargs)
-
-        def advance(self, *args, **kwargs):
-            self.send("advance", *args, **kwargs)
-
-        def narrate(self, message):
-            self.send("narrate", message)
-
-    progress = Progress()
-    try:
-        with contextlib.redirect_stdout(_FrameWriter("stdout")), contextlib.redirect_stderr(_FrameWriter("stderr")):
-            result = asyncio.run(service.render_operation(operation, progress=progress, narrate=progress.narrate))
-        outcome = {"request": key, "result": result_value(result), "error": None, "clean": True}
-        status = 0
-    except BaseException as exc:
-        outcome = {"request": key, "result": None, "error": (str(exc) or type(exc).__name__)[:8192],
-                   "clean": not service.poisoned}
-        status = int(exc.code or 1) if isinstance(exc, SystemExit) and isinstance(exc.code, int) else 1
-    _emit({"snapshotOutcome": outcome})
-    return status
-
-
 def serve() -> int:
     os.environ["CADGEN_DAEMON_CHILD"] = "1"
     # This process's stdout is not a console, it is the pool's FRAME CHANNEL, so
@@ -304,64 +260,23 @@ def serve() -> int:
     executors.set_event_sink(lambda event: _emit({"event": event}))
     _warm_imports()
     _emit({"ready": os.getpid()})
-    from cadgen.snapshot_service import SnapshotService
-    import signal
-    import threading
-
-    snapshots = SnapshotService()
-    snapshots_closed = False
-    snapshot_request = None
-    stopping = False
-    previous_sigterm = None
-    def close_snapshots():
-        nonlocal snapshots_closed
-        if not snapshots_closed:
-            snapshots.close()
-            snapshots_closed = True
-            if snapshot_request is not None:
-                _emit({"snapshotShutdown": {"request": snapshot_request, "closed": True}})
-
-    def terminate(signum, _frame):
-        nonlocal stopping
-        stopping = True
-        raise SystemExit(128 + signum)
-    if threading.current_thread() is threading.main_thread():
-        previous_sigterm = signal.signal(signal.SIGTERM, terminate)
-    try:
-        for line in sys.stdin:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                request = json.loads(line)
-            except ValueError:
-                _emit({"exit": 1, "error": "malformed request"})
-                continue
-            kind = request.get("kind")
-            if kind == "ping":
-                _emit({"pong": os.getpid()})
-            elif kind == "shutdown":
-                return 0
-            else:
-                # Render operations carry captured capabilities. Ambient worker
-                # environment belongs to ordinary build requests only.
-                if request.get("tool") != "snapshot-render":
-                    snapshot_request = None
-                    _apply_request_env(request)
-                else:
-                    snapshot_request = request.get("request")
-                status = _run(request, snapshot_service=snapshots)
-                if stopping or snapshots.poisoned:
-                    close_snapshots()
-                    _emit({"exit": status or 1, "pid": os.getpid()})
-                    return status or 1
-                _emit({"exit": status, "pid": os.getpid()})
-    finally:
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
         try:
-            close_snapshots()
-        finally:
-            if previous_sigterm is not None:
-                signal.signal(signal.SIGTERM, previous_sigterm)
+            request = json.loads(line)
+        except ValueError:
+            _emit({"exit": 1, "error": "malformed request"})
+            continue
+        kind = request.get("kind")
+        if kind == "ping":
+            _emit({"pong": os.getpid()})
+        elif kind == "shutdown":
+            return 0
+        else:
+            _apply_request_env(request)
+            _emit({"exit": _run(request), "pid": os.getpid()})
     return 0
 
 

@@ -1,40 +1,8 @@
 # Cadgen document engine: execution plan
 
-Status: paused, 13 September 2026, after the larger-model comparison failed the performance goal and the user explicitly permitted pausing an unproductive design. This is not a completed rewrite. The rollback checkpoint is commit `5c4a212cae32e834fa4d805ae778ab5ee6cd71a2`, pushed and verified on `origin/codex/tendon-hand-performance` before implementation. The resident core is pushed in `7195802f8`; source capture, nested STEP publication, scheduler and catalog foundations now extend it. P1's end-to-end performance and resident-viewer gates remain open. These foundations do not complete P2–P11. The replacement has not become the public default; deleting the old runtime and public @memo remains contingent on a future successful cutover.
-
-The larger-model performance gate currently fails. The frozen 118-occurrence iris series at `408e7c8b9` passes all 24 independent saved-file geometry checks, but old/replacement medians are 19.407/26.005 s cold, 0.076/6.224 s unchanged, 6.144/9.784 s for a mounting-hole edit and 7.310/9.725 s for placement. Subsequent provider fixes reduce internal unchanged diagnostics to roughly 3.35–3.54 s; completion diagnostics have also been narrowed. Those use different timing boundaries and do not replace the paired results. [The iris report](scripts/bench/cadgen-performance/document-engine/IRIS-20260913.md) records samples, limitations and the remaining replay/export costs. A new complete-request comparison is required before extending the small-fixture wins to larger assemblies or accepting public cutover.
-
-At pause, the last reviewed runtime checkpoint is `65aba1212` (code also present in `f61c43c15`), committed and pushed. All agents have stopped; no new native benchmark is running. The unfinished narrow-selection experiment is excluded from the checkout and preserved in local stash `492fcc4f6cfd16e3d43282df9e9aaf4475447df3`, named `Paused document engine: unvalidated narrow selection proof 2026-09-13`, plus `/tmp/cadgen-document-selection-paused-20260913.patch`. It changes only `frontend.py`, `provider_proof.py` and `selection.py`. It is not approved: the final projection proof fails to establish eligibility, warm-session constructor translation is unresolved, one existing selection assertion needs semantic review, and constructor/hierarchy/native mutation regressions remain unwritten. Do not treat it as a tested optimization or apply it automatically on resume.
-
-A restart should begin with one bounded end-to-end experiment that removes a substantial cost, rather than extending operator coverage. Two research candidates are syntax-proven read-only topology-filter regions (fresh results, no author cache decorator) and an explicit emitted-entity export-verification contract that defers native import to saved-file consumers. Neither is implemented or proven. The latter cannot infer imported geometry, current XCAF-indexed sidecar paths or native face correspondence from source; those guarantees require separate design and validation. Existing saved-file independence, publication receipts and the lossy-STEP oracle must survive either approach.
+Status: proposed replacement architecture and implementation plan, 13 September 2026. This document does not report implemented functionality or measured future speedups. The existing runtime, including @memo, remains in place until the replacement passes its cutover gates.
 
 This plan supersedes the architectural restrictions of the earlier performance plan for future work. Historical measurements remain evidence, not acceptance of this design. The user authorizes replacing the store, daemon internals and decorator-backed caching, removing @memo, and keeping the existing @step authoring interface. No old store or runtime compatibility is required.
-
-The hard cut is an implementation requirement, reaffirmed on 13 September: no compatibility aliases, old-schema readers, cache converters, migration messages, dual backend selection, or automatic retry through the retired engine. Reset incompatible derived storage and replace worker/client protocols together. Preserve durable source and exchange files. Unsupported Python/native operations execute privately within the new engine; they do not call the old cache backend. Rollback means checking out the pushed checkpoint, not maintaining another execution path in the final product.
-
-Implementation evidence so far:
-
-- The internal retained core, bounded build123d frontend, pinned consumers and STEP integration have passing ownership, mutation, source replay and independent saved-byte readback tests. They are not yet the default execution path. The obsolete prototype occurrence channel has been deleted; the returned root is the sole scene authority.
-- The four-hole filleted plate and 24-occurrence assembly produce valid STEP files. Manual viewer review confirms component/face selection and geometric facts, complete Inspect/Render display, and successful shared snapshot output. This uses the existing downstream file/display pipeline; it does not establish the planned resident viewer-delta path.
-- A snapshot defect discovered during that review is fixed and pushed separately in `acb22f94e`: supersampling now preserves the requested output image dimensions. Shared JS tests (1,084), viewer tests (619), bundle freshness and an actual 1200×900 Final Render output passed.
-- Corrected paired measurements at `7195802f8` include both engines' first-call setup. They still fail the performance gate: unchanged plate 8.525→40.468 ms, unchanged 24-part assembly 14.033→209.599 ms, and assembly placement 100.505→373.095 ms. These measure the temporary bridge, before the direct publisher below; the cold ratios from the earlier unequal-setup run are withdrawn. Full boundaries, sample counts and FreeCAD qualifications live in `scripts/bench/cadgen-performance/document-engine/BASELINES.md`.
-- `DocumentService.generate` now executes captured source directly into the new STEP publisher. Child bodies execute normally, produce their required files synchronously, and return their authored wrappers without a STEP/BREP round trip. Child snapshots retain their exact native roots and completed saves through parent failure. A separate actual-byte importer never consults source geometry or the old scene store.
-- Source sessions preserve Python package/module/namespace resolution, execute captured buffers, retain exact function provenance through reloads, and clean up only their own modules/declarations. The scheduler uses immutable requests, exact FIFO tickets and ordered same-path save receipts; it is currently process-local. Incompatible disposable catalog state resets rather than converting. Native checkpoint recovery and cross-process service integration remain separate work.
-- The native publisher reuses unchanged encoded STEP products, preserves hierarchy/placement/ordinary colors, and verifies independently read saved bytes. It currently rejects unrepresented per-face/material metadata, kinematics and mesh declarations before claiming a complete build. These are temporary coverage gaps to close, not compatibility fallbacks.
-- A nine-part planetary fixture builds all ten declared STEP files through the new program. A single diagnostic measured about 1.7 seconds unchanged: most builder operations still execute privately. This is unresolved performance work, not a baseline comparison. Closed stock constructors now reuse independently of unrelated native escapes; complete builder-effect capture remains the main frontend gap.
-- The old `activate()` bridge remains only for frozen-boundary development comparisons. The direct program and publishers never invoke it. Native meshing and packed transfer are being tested against exact geometry before viewer integration; saved-file display checks do not establish resident update performance.
-- Native checkpoint version 4 restores evaluation/allocation provenance, shared subshape ownership, topology history and structural result values. Compact disjoint-input keys avoid repeatedly encoding independent history chains; exact traversal preserves shared ancestry. Service restart tests prove ordinary Python replay, retained geometry reuse, missing-output recreation, corruption rebuild and compare-and-swap conflicts. Saved STEP owners are keyed by captured bytes and remain independent of source documents.
-- The native packed mesher passes six bounded geometry fixtures for sampled surface error, face/edge coverage and orientation. It removes exactly zero-area float32 triangles with closure checks, including spherical poles and trimmed curved faces. The previous JavaScript producer has independent orientation/degeneracy failures in two fixtures; equal numeric tessellation settings are not a quality match. Serial comparative timing remains pending.
-- Manual Chromium review of the direct packed path shows all 24 colored plate occurrences in Inspect, light Render and dark Render with no page errors or renderer warnings. This uses the shared snapshot renderer in an isolated harness, not the public viewer's resident edit path. The full shared JavaScript suite (1,095 tests) and viewer client suite (619 tests) pass with the new decoder/scene primitives.
-- A frozen full-request smoke at `834a0818b` verifies captured source, real worker startup, exact saved bytes and cleanup across both engines. At one cold/two warm samples it is functional evidence, not the final timing gate. Unchanged source remains slower (roughly 31–33 ms versus 9–11 ms); profiling identifies repeated stock-provider discovery as its main cost. Full boundaries and results remain in the same baseline report.
-- The resident process bridge and bounded thread-safe dispatcher pass source/save/display/query/restart and concurrent lease tests. Deadlines now cover blocked uploads and incomplete response frames, with no source retry after uncertain execution. This closes specific transfer/dispatch gaps, not the remaining public daemon, viewer or resource-accounting gates.
-- Stock-provider discovery now has a bounded process cache with callable and descriptor checks, including source-overridable fields and installed interceptors. The integrated review caught and fixed a descriptor-restoration mismatch that disabled sketch reuse after prior sessions. Polygon construction, initial sketch addition, pending faces and single-face extrusion retain their full native/wrapper effects; unsupported settings still execute privately. This checkpoint requires a new matched full-request timing run before claiming an improvement.
-- Returned and imported appearance now carries strict RGBA, fieldwise PBR, material tags, prototype-scoped face recipes and native physical materials. Exact copier history maps authored face ordinals to owned geometry. Native STEP readback preserves tested face colors and material fields, and rejects a translator's dropped density-type field. Generic source-to-saved face correspondence and durable PBR publication remain incomplete; a palette check is not a naming proof.
-- The frozen `801057d1b` full-request matrix passes all 140 measured request/readback checks (five cold and ten per warm scenario per fixture). Plate/Assembly24 geometry edits improve 79.248→59.603 ms and 120.888→74.020 ms; placement edits improve 57.818→40.348 ms and 95.312→45.697 ms. Cold medians remain about 2.64 seconds. Unchanged calls still regress to 20.143/22.500 ms from 9.297/11.221 ms. Provider setup remains the largest profiled warm cost. These bounded results do not close the public cutover, large-assembly or FreeCAD parity gates.
-- The next integrated slice passes 408 document tests. Warm sessions defer unused builder/sketch auditors after pre-author canonical discovery; actual use still validates the retained proof. Sole `.step.json` annotations bind PBR/material tags to exact STEP bytes and independently parsed occurrence paths. STEP and companion publication keep truthful partial-effect receipts and refuse drift; unchanged exact outputs skip temporary file writes. Generic colored-face translation proof and broader retained assembly placement remain open.
-- A bounded resident browser harness now verifies captured-source generation, unchanged/geometry/placement edits, packed asset transfer, shared scene updates and exact native face queries. Placement and unchanged assembly edits send no meshes and reuse geometry for all 24 occurrences. Hole edits send one shared mesh; face area and world height track the new revision. Both fixtures display in light/dark Render, with CAD edges and picking omitted on that path. This is internal integration evidence; the public viewer and its detail policy are not cut over.
-- The next native integration passes 422 document tests. Supported assembly moves/copies retain prototypes with independent wrapper trees and intrinsic appearance; exact copier history separates their private escapes. Styled STEP export verifies complete writer-entity-to-saved-face correspondence, including singleton reader/writer transfer results. Meshing now preserves source face/edge order and orientation through its private copy; reordered and shared reversed geometry have explicit regressions. Warm setup reuses canonical hierarchy inventories, avoids redundant import-table scans and captures installed dependency versions before authored code. The new STEP-plus-companion benchmark boundary has a passing functional smoke; the full unchanged-request performance gate remains open.
-- The ten-sample unchanged series at `aa601ff15` passes all 40 measured output/readback checks: plate 9.164→12.032 ms and Assembly24 11.776→13.510 ms under the common STEP-plus-companion boundary. The remaining regression is about 2–3 ms, with zero new native geometry, copies, STEP writes or parses. Review then caught and fixed chained absolute leaf placement and a query-view logical identity collision; 118 focused frontend/program/display tests pass, including one reused mesh across changing absolute placements. Public cutover and persistent derived-mesh recovery remain in progress.
 
 ## 1. Outcome and scope
 
@@ -183,36 +151,6 @@ Exit: deterministic recomputation sets, source revision ordering, failure rollba
 
 Owner: frontend agent, gpt-6-astra / xhigh. Operator adapters: gpt-5.6-sol / high after the interface is frozen.
 
-Ordered-selection milestone implemented, 13 September 2026: exact stock
-subshape iteration, indexing and slicing preserve traversal order, wrapper
-identity and parent aliases. Circle/ellipse edge queries return fresh values
-without native copies; custom callbacks or changed providers enter ordinary
-private execution. The independent 60-test frontend gate passes. This adds
-coverage needed by the real 118-part iris; it does not by itself improve that
-assembly's full request while later modifiers still force private replay.
-
-Sequential-sketch milestone implemented, 13 September 2026: repeated Polygon
-additions, multi-face pending transfer and extrusion preserve stock builder
-state and native aliases. Partial or changed-provider calls cannot publish a
-precomputed result. The independent 54-test builder/sketch gate passes. The
-real iris now reaches its first chamfer without escaping; its remaining
-private replay is still a performance regression, so this coverage milestone
-does not satisfy the full-request performance exit gate.
-
-Edge-list modifiers and RegularPolygon construction now have bounded retained
-adapters. Selected edges must belong to the exact current parent allocation;
-regular profiles use the stock constructor's actual point loop. Independent
-review found and fixed a constructor callback that could bind its unrelated
-face to the returned profile. Regression tests cover that callback and ordinary
-geometry, errors, provider changes and replay. Frozen revision `408e7c8b9`
-now executes the complete 118-occurrence iris without a native escape. Two
-internal diagnostic replays took 5.978 and 5.989 seconds despite zero geometry
-recomputations and 28,196 reused operations. Profiling attributes most replay
-time to live provider checks, rather than evaluation-key construction. These
-are internal diagnostics, not complete-request ratios. The repeated matched
-STEP-build/edit benchmark and a callback-safe provider-check optimization are
-in progress; the large-assembly performance gate remains open.
-
 - Route the common algebra and builder APIs through the operator registry. Trace numeric/topology queries and builder state explicitly.
 - Reconcile edited source, helper changes, inserted/reordered loops, changed branches, defaults and external data. Debug provenance is separate from evaluation identity.
 - Preserve child-model declarations and output obligations even when geometry is reused or a returned value is discarded.
@@ -225,16 +163,6 @@ Exit: all chosen plate/gear/curved/imported/assembly fixtures run without @memo.
 
 Owner: persistence agent, gpt-5.6-sol / high. Reviewer: gpt-6-astra / high.
 
-Native mesh recovery milestone implemented, 13 September 2026: checkpoint
-version 5 optionally carries a bounded cache of already-produced mesh packets.
-Recovery proves each packet's native topology binding, producer, runtime and
-quality before reuse. Missing or corrupt optional bytes leave the required
-native checkpoint usable. A real worker restart reuses the same-quality mesh;
-a quality change emits a new asset. The focused 59-test gate includes live
-producer mutation, corruption, packet limits, storage integrity and restart.
-This closes a bounded persistence path, not public fast-reopen integration or
-the packed-versus-individual storage benchmark and disk-pressure gates below.
-
 - Build the transactional catalog, payload storage, checkpoint loader, leases, corruption handling, version reset and bounded reclamation.
 - Capture source/input revisions and export bindings atomically with their metadata. Verify payload integrity at trust boundaries, not through repeated whole-assembly serialization.
 - Persist hot prototype geometry, compact topology maps and frequently requested display assets in bulk. Benchmark individual blobs against packed segments before choosing thresholds.
@@ -245,17 +173,6 @@ Exit: clean restart, cold load, corrupt/truncated storage, interrupted commit, s
 ### P5 — Assemblies, imported STEP and exports
 
 Owner: import/export agent, gpt-5.6-sol / high. Native translation reviewer: gpt-6-astra / xhigh.
-
-Static native mesh producers implemented, 13 September 2026: one immutable
-display product feeds STL, indexed GLB and indexed 3MF without the old surface
-store or a Three.js scene. GLB retains repeated geometry, hierarchy, linear
-colors and PBR; 3MF reports its narrower color/material capabilities; STL
-explicitly checks world-coordinate rounding. Export ownership has bounded
-transport, cancellation and child reaping, exact product reuse and verified
-publication receipts. Root review passes 58 native mesh/display/STEP tests,
-1,117 shared JavaScript tests and 619 viewer tests. Source mesh declarations,
-grouped scheduler publication and animation export remain separate integration
-gates; this is not the public all-format cutover.
 
 - Import STEP once into a resident assembly with reusable prototypes and compact occurrence tables. Retain hierarchy, units, labels, colors and intrinsic materials.
 - Apply assembly changes by reference, including nested subassemblies, repeated parts, appearance overrides and mirrors. Only changed ancestors require composition work.
@@ -320,59 +237,6 @@ For 3MF, the first scope is Core 1.2 plus color-group and 2D-texture visualizati
 
 Owner: snapshot agent, gpt-5.6-sol / high. Isolation/pixel comparison: gpt-5.6-terra / high.
 
-Lifecycle milestone implemented, 13 September 2026: the existing daemon worker
-explicitly owns a warm Chromium service, while artifact preparation stays on the
-caller thread. Only closed resolved packets and captured capabilities cross the
-transport. Each job gets a fresh context/page; cancellation, upload, response
-backpressure and teardown share one absolute deadline. Failed native I/O joins
-retain their charged handles and poison admission instead of allowing another
-launch. Snapshot/video cleanup and async encoder termination have focused tests.
-The final combined snapshot/CLI/lifecycle gate passes 337 tests, and 37 daemon
-routing/artifact integration tests pass. Two actual snapshot CLI commands reuse
-one Chromium owner and produce identical PNG bytes; active cancellation leaves
-all six observed worker/driver/browser PIDs absent immediately after CLI return,
-and the following request succeeds. Protocol tests establish cleanup before the
-completion receipt. Worker EOF acknowledges browser closure and joins its service
-thread. These are bounded correctness checks, not a p95 performance result.
-
-This milestone retains the current artifact-resolution door and shared browser
-renderer. The document engine's revision-bound native snapshot cutover, native
-GLB clip/video parity, broad format isolation, shared resource accounting and the
-full warm performance gate remain open. The transport helper's process startup
-overhead is measured separately; browser reuse does not remove every per-command
-process or import cost.
-
-Native still-consumption milestone implemented, 13 September 2026: an internal
-caller-owned preparation door stages engine-attested `DisplayProduct` manifest/CGMESH
-bytes, or captures saved STEP plus its companion once and imports those buffers
-through `DocumentDispatcher`. It submits a closed native input to the shared
-renderer with no old package/SURF/source fallback. Inspect retains edges and
-revision-scoped picking; photographic Render omits both while preserving face
-RGBA/PBR and the shared output pipeline. Native motion, selector requests and
-non-view modes fail explicitly in this slice. The public STEP snapshot cutover
-and complete motion/format acceptance gate remain open.
-
-One deadline starts before saved import/preparation. Hash verification, complete
-asset membership, regular-file admission and private job capabilities bind
-browser reads. Four atomic staging slots per captured cache root each admit at
-most 400 MiB including a 128 MiB PNG output reserve; an exited caller does not free
-a slot. Context/worker cleanup proof
-releases its token-bound slot, while uncertain cleanup retains it and eventually
-refuses new admission. Tests include independent short-lived callers exhausting
-that persistent capacity, FIFO substitutions and preserved cancellation errors.
-Workers receive only private output paths. The caller verifies the complete PNG
-set and exact dimensions after cleanup acknowledgement, then atomically publishes,
-reads back final bytes and remaps result paths. Failed publication rolls back
-only acknowledged writes whose length/digest still match; these receipts do not
-lock paths against concurrent writers. Unknown-cleanup delayed writes remain
-private; invalid second-camera output cannot publish a partial verified set.
-The real native smoke renders five jobs/six PNGs through one Chromium launch;
-two cameras fetch one manifest and two unique meshes once. Saved-file overwrite
-between preparation calls preserves each captured digest and scene. Requested
-240×160 and 160×240 dimensions, light/dark Render, released contexts/pages, zero
-remaining staging slots and joined service shutdown pass. This is correctness
-evidence, not the full P9 latency or cross-format gate.
-
 - Reuse a bounded Chromium/render-worker pool across CLI calls, not only within one snapshot packet. Retain reusable modules and immutable decoded assets.
 - Start with browser-process reuse and a fresh context/page per job. Add page or decoded-asset reuse only after its stronger lifecycle proof passes. Never share mutable Three scenes, GLB graphs, mixers, textures or render targets between jobs.
 - Give each job a pinned document revision, camera, output resolution, rendering policy and animation time. Reset all mutable scene, lighting, selection and animation state between jobs; discard a context when teardown cannot be proven.
@@ -386,27 +250,6 @@ Exit: warm repeated commands avoid process/import overhead; results match fresh-
 ### P10 — Cold generation, scheduling and resource control
 
 Owner: runtime/resource agent, gpt-5.6-sol / high. Independent lifecycle reviewer: gpt-6-astra / high.
-
-Bounded native-mesh retention implemented, 13 September 2026: a document keeps
-at most four quality variants per prototype and 256 MiB of owned mesh-packet
-bytes, evicting least recently used packets. Existing immutable display products
-remain valid after eviction. Checkpoint admission uses the verified optional
-payload size instead of reserving a maximum-size mesh cache for every document;
-native-only checkpoints require no derived-mesh budget. The root integration
-gate passes 102 frontend, builder, mesh, checkpoint and storage tests. These
-limits cover owned packet bytes, not process RSS, caller-owned display products,
-or the broader scheduling and memory gates below.
-
-The [larger-workload comparison](scripts/bench/cadgen-performance/document-engine/IRIS-20260913.md)
-at frozen `408e7c8b9` passes all 24 measured saved-file checks and fails the
-performance gate. The 118-occurrence iris measures old/replacement medians of
-19.407/26.005 s cold, 0.076/6.224 s unchanged, 6.144/9.784 s for a mounting-hole
-edit and 7.310/9.725 s for placement. Each scenario has three samples with
-observed ranges and explicit desktop-interference qualifications. Unchanged
-and placement calls now reuse all 28,196 operations, yet provider-check replay
-dominates their source time. A callback-safe check optimization is in review;
-required STEP product completion is another separately visible cost. This
-real-source fixture remains opt-in as `iris118` in the full-request harness.
 
 - Profile Python capture, kernel work, import, export, meshes and browser startup separately. Prewarming may improve an interactive request but must not be presented as an empty-process cold improvement.
 - Remove duplicate frontend work, combine suitable kernel operations, batch IPC and persist useful checkpoints. Optimize expensive modeling algorithms where the corpus reveals them; a feature graph cannot skip genuinely new geometry.

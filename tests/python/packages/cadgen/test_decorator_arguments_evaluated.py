@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 
 from tests.python.support.paths import REPO_ROOT, add_repo_path
-from tests.python.support.tmp_root import generated_cad_directory
+from tests.python.support.tmp_root import temporary_directory
 
 add_repo_path("packages/cadgen/src")
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
 class DecoratorArgumentsAreEvaluated(unittest.TestCase):
     def setUp(self) -> None:
-        self._tmp = generated_cad_directory(prefix="cadgen-decorator-args-")
+        self._tmp = temporary_directory(prefix="cadgen-decorator-args-")
         self.root = Path(self._tmp.name)
         self.src = self.root / "src"
         (self.src / "lib").mkdir(parents=True)

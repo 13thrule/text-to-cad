@@ -24,10 +24,10 @@ drift a test should catch without a video card.
 from __future__ import annotations
 
 import contextlib
-from contextvars import ContextVar
 import math
 import os
 import shutil
+import subprocess
 from pathlib import Path
 
 from cadgen._internal.atomic_replace import replace_atomic, temp_suffix
@@ -92,16 +92,6 @@ GIF_QUALITY_SETTINGS = {
 }
 
 GIF_PALETTE_NAME = "palette.png"
-_ENCODER: ContextVar[str | None] = ContextVar("cadgen_snapshot_encoder", default=None)
-
-
-@contextlib.contextmanager
-def _bind_video_encoder(binary):
-    token = _ENCODER.set(binary)
-    try:
-        yield
-    finally:
-        _ENCODER.reset(token)
 
 
 def normalize_video_request(value: object, *, where: str) -> dict[str, object]:
@@ -245,9 +235,6 @@ def ffmpeg_binary() -> str:
     job whose first steps can take minutes, and discovering there is no encoder
     at the end of that is the one failure this check exists to prevent.
     """
-    bound = _ENCODER.get()
-    if bound is not None:
-        return bound
     override = str(os.environ.get("CADGEN_FFMPEG") or "").strip()
     if override:
         resolved = shutil.which(override) or (override if Path(override).is_file() else "")
@@ -327,11 +314,7 @@ def ffmpeg_video_commands(
     ]
 
 
-VIDEO_ENCODER_STOP_SECONDS = 5
-VIDEO_STDERR_BYTES = 65536
-
-
-async def encode_video(
+def encode_video(
     frames_dir: Path,
     *,
     output_path: Path,
@@ -341,56 +324,41 @@ async def encode_video(
     loop: bool,
     binary: str | None = None,
 ) -> None:
-    """Encode frames atomically with cancellation and bounded process teardown."""
-    import asyncio
-    from cadgen.snapshot_core import _finish_snapshot_cleanup
+    """Encode the frames in ``frames_dir`` to ``output_path``, atomically.
 
+    ffmpeg writes to a temp name in the TARGET's own directory and the finished
+    file is renamed over it, the same temp-plus-rename contract every still
+    goes through (write_output_payload). A rename across filesystems is not
+    atomic, which is why the temp cannot live beside the frames: an encode that
+    dies half way must leave nothing at the name the caller is about to read.
+    """
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     staged = target.with_name(f"{target.name}{temp_suffix()}")
     commands = ffmpeg_video_commands(
-        binary or ffmpeg_binary(), frames_dir=Path(frames_dir), output_path=staged,
-        fps=fps, container=container, quality=quality, loop=loop,
+        binary or ffmpeg_binary(),
+        frames_dir=Path(frames_dir),
+        output_path=staged,
+        fps=fps,
+        container=container,
+        quality=quality,
+        loop=loop,
     )
     try:
         for command in commands:
-            process = await asyncio.create_subprocess_exec(
-                *command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
-            )
-            tail = bytearray()
-            async def read_stderr():
-                while chunk := await process.stderr.read(8192):
-                    tail.extend(chunk)
-                    del tail[:-VIDEO_STDERR_BYTES]
-            reader = asyncio.create_task(read_stderr())
-            async def reap():
-                if process.returncode is None:
-                    with contextlib.suppress(ProcessLookupError):
-                        process.terminate()
-                    try:
-                        await asyncio.wait_for(process.wait(), VIDEO_ENCODER_STOP_SECONDS)
-                    except asyncio.TimeoutError:
-                        with contextlib.suppress(ProcessLookupError):
-                            process.kill()
-                        await asyncio.wait_for(process.wait(), VIDEO_ENCODER_STOP_SECONDS)
-                try:
-                    await asyncio.wait_for(reader, VIDEO_ENCODER_STOP_SECONDS)
-                except asyncio.TimeoutError:
-                    reader.cancel()
-                    with contextlib.suppress(asyncio.CancelledError):
-                        await reader
-            try:
-                await process.wait()
-                await asyncio.wait_for(asyncio.shield(reader), VIDEO_ENCODER_STOP_SECONDS)
-            finally:
-                await _finish_snapshot_cleanup(reap())
-            if process.returncode != 0:
-                detail = "\n".join(tail.decode(errors="replace").strip().splitlines()[-8:])
+            completed = subprocess.run(command, capture_output=True, text=True, check=False)
+            if completed.returncode != 0:
+                # ffmpeg says what it could not do on stderr and says it LAST; the
+                # head is banner and stream description nobody needs.
+                detail = "\n".join((completed.stderr or "").strip().splitlines()[-8:])
                 raise SnapshotError(
-                    f"ffmpeg could not encode the {container} (exit {process.returncode}): "
+                    f"ffmpeg could not encode the {container} (exit {completed.returncode}): "
                     f"{detail or 'no error output'}"
                 )
         replace_atomic(staged, target)
     finally:
+        # Suppressed for the reason write_bytes_atomic suppresses it: on Windows
+        # the handle that blocks a rename blocks the delete too, and letting that
+        # escape here would mask the failure the caller needs to see.
         with contextlib.suppress(OSError):
             staged.unlink(missing_ok=True)
