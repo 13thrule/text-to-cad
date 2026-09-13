@@ -374,6 +374,41 @@ Candidate runtime archive: 230 files, tree SHA-256
 Profiles are `models/tmp/performance-document-profile-20260913-v3-plate.json`
 and `models/tmp/performance-document-profile-20260913-v3-assembly24.json`.
 
+## Paired unchanged requests after setup reduction
+
+The next frozen candidate, `aa601ff151247b49794f47ed2a40ea4925c1f5fa`, was
+measured with ten unchanged requests per fixture/engine after an unmeasured
+prime. This uses the same v2 STEP-plus-companion boundary above. All 40 measured
+requests and four primes passed saved-output and independent geometry checks.
+Native and Chromium work was reserved serially; other agents performed source
+review and lightweight fake/socket tests. The first engine alternated by fixture.
+
+| Fixture | Baseline median (range), ms | Candidate median (range), ms | Candidate / baseline |
+| --- | ---: | ---: | ---: |
+| Plate | 9.164 (8.292–11.102) | 12.032 (11.348–13.550) | 1.313× |
+| Assembly24 | 11.776 (10.642–13.057) | 13.510 (13.014–14.498) | 1.147× |
+
+Both fixtures reuse all 14 evaluations and their encoded STEP product, with
+zero native copies, new geometry computations, STEP parses or file writes.
+They still replay ordinary Python, answer two native queries, verify existing
+STEP bytes and attest companion absence. The candidate remains slower for this
+unchanged-request workload; the remaining gap is about 2–3 ms. These ten-sample
+medians/ranges do not establish p95, public CLI latency or browser presentation.
+
+Reports and SHA-256:
+
+- `models/tmp/performance-document-unchanged-paired-20260913-v4-baseline.json`:
+  `977245a3eb177f27d85b91570a32048741004894ac3f49b10e1fc1f6198a995d`
+- `models/tmp/performance-document-unchanged-paired-20260913-v4-candidate.json`:
+  `6f89483414e867a1158e4b91a4beb4a398278b250c35b8d5669012835499a293`
+- `models/tmp/performance-document-unchanged-paired-20260913-v4-comparison.json`:
+  `61ec7d1a9e00c5e50568086286578d93b9d5af761f236df77992f410985796f2`
+
+Candidate runtime archive: 231 files, tree SHA-256
+`017af4019433c62c804333ddbb6c62a8de298f3fc3f66cd522353fd500bf0661`.
+The actual four-session ledger records all adapter exits and is preserved in
+every report under series `full-paired-1789322841766039000`.
+
 ## FreeCAD probe qualification
 
 On 2026-09-13, a sandboxed `FreeCADCmd --version` probe aborted with exit 134

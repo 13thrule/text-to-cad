@@ -1084,7 +1084,7 @@ class FrontendSession:
             return NativeResult(moved_native)
         state.geometry_view = self.transaction.evaluate(
             OperatorSpec("build123d.rigid_transform", "1", Mutation.READ_ONLY),
-            transform, (state.handle,), compute, logical_id=state.logical_id,
+            transform, (state.handle,), compute, logical_id=state.logical_id + ":geometry-view",
         )
         # A located query/operation consumes a native view, while the authored
         # occurrence still owns its canonical prototype and separate placement.
@@ -1129,11 +1129,16 @@ class FrontendSession:
             return clone
         assert state.handle is not None
         handle, correspondence = self._copy_geometry_handle(
-            state.handle, logical, location=location
+            state.handle, logical, absolute=True
         )
-        return self._copy_managed_wrapper(
+        clone = self._copy_managed_wrapper(
             shape, logical, handle, plan=plan, correspondence=correspondence
         )
+        clone_state = _state(clone)
+        assert clone_state is not None
+        clone_state.location = self._copy_location(_matrix(location))
+        clone_state.transform = _matrix(clone_state.location)
+        return clone
 
     def _record_fallback(self, reason: str) -> None:
         self._fallback_counts[reason] = self._fallback_counts.get(reason, 0) + 1
@@ -1334,9 +1339,8 @@ class FrontendSession:
         return self._managed_wrapper_copy_plan(shape) is not None
 
     def _copy_geometry_handle(self, handle: GeometryHandle, logical: str,
-                              *, location: Any | None = None
+                              *, absolute: bool = False
                               ) -> tuple[GeometryHandle, tuple[int, ...]]:
-        transform = None if location is None else _matrix(location)
         def compute(native_inputs, _arena):
             from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
             copier = BRepBuilderAPI_Copy(native_inputs[0], True, True)
@@ -1352,12 +1356,16 @@ class FrontendSession:
             history = history_from_builder(copier, native_inputs, result)
             if not history.complete:
                 raise ValueError("wrapper copy did not provide complete topology history")
-            if location is not None:
-                result.Location(location.wrapped)
+            if absolute:
+                from OCP.TopLoc import TopLoc_Location
+                # located() replaces the old root location. Keep that neutral
+                # copied prototype reusable and apply the new location only
+                # through the wrapper's occurrence state.
+                result.Location(TopLoc_Location())
             return NativeResult(result, history, correspondence)
         output = self.transaction.evaluate(
-            OperatorSpec("build123d.wrapper-copy", "1", Mutation.READ_ONLY),
-            ("absolute" if location is not None else "tree", transform),
+            OperatorSpec("build123d.wrapper-copy", "2", Mutation.READ_ONLY),
+            ("absolute" if absolute else "tree",),
             (handle,), compute, logical_id=logical,
         )
         prototype = self.transaction.document._get(output)

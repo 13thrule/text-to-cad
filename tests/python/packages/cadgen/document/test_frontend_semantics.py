@@ -170,6 +170,60 @@ class FrontendSemanticsTest(unittest.TestCase):
                     self.assertFalse(hasattr(result, "_cadgen_document_state"))
                     copy.deepcopy(result)
 
+    def test_chained_absolute_locations_replace_prior_placement_and_reuse_mesh(self):
+        from cadgen._document.consumers import RevisionConsumer
+        from cadgen._document.frontend import _state
+        from cadgen._document.meshing import mesh_for_occurrence
+        from cadgen._document.returned import bind_returned_shape
+
+        def model(target, repeated):
+            original = bd.Box(2, 3, 4).moved(bd.Pos(10, 2, 1) * bd.Rot(0, 0, 30))
+            if repeated:
+                original = original.located(bd.Pos(-4, 3, 5)).moved(bd.Pos(2, 0, 0))
+            return original, original.located(target)
+
+        for repeated in (False, True):
+            document = Document(f"located-chain-{repeated}")
+            prototype_ids, packets = [], []
+            for turn, shift in enumerate((20, 35, 20)):
+                target = bd.Pos(shift, 4, 2) * bd.Rot(0, 0, -20)
+                source, expected = model(target, repeated)
+                expected_source = _facts(source)
+                with document.begin() as transaction:
+                    with FrontendSession(transaction) as frontend:
+                        original, result = model(target, repeated)
+                        self.assertFalse(_state(result).private)
+                        bind_returned_shape(frontend, result)
+                        prototype_ids.append(_state(result).handle.prototype_id)
+                        # Changing only absolute placement neither rebuilds
+                        # the copied native prototype nor changes its mesh.
+                        if turn:
+                            self.assertEqual(0, transaction.stats.computed)
+                        result = frontend.materialize(result)
+                        original = frontend.materialize(original)
+                    revision = transaction.commit()
+                self.assertEqual(_facts(expected), _facts(result))
+                self.assertEqual(expected_source, _facts(original))
+                with RevisionConsumer(document, revision.revision_id) as consumer:
+                    packets.append(mesh_for_occurrence(consumer, consumer.occurrences()[0].path))
+                    self.assertEqual(int(turn == 0), consumer.metrics.derivations_computed)
+            self.assertEqual(1, len(set(prototype_ids)))
+            self.assertTrue(all(packet is packets[0] for packet in packets))
+
+    def test_located_then_moved_assembly_child_supports_native_queries(self):
+        document = Document("copied-child-query")
+        def model():
+            return bd.Compound(children=(bd.Pos(7, 2, 0) * bd.Box(2, 3, 4),)).located(bd.Pos(10, 0, 0))
+        expected = model()
+        with document.begin() as transaction:
+            with FrontendSession(transaction) as frontend:
+                copied = model()
+                child = object.__getattribute__(copied, "_NodeMixin__children")[0]
+                self.assertEqual(str(expected.children[0].bounding_box()), str(child.bounding_box()))
+                result = frontend.materialize(copied)
+            transaction.commit()
+        self.assertEqual(_facts(expected), _facts(result))
+
     def test_generator_children_and_obj_are_consumed_once_in_native_fallbacks(self):
         for argument in ("children", "obj"):
             for mixed in (False, True):

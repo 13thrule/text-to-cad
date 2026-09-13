@@ -59,6 +59,9 @@ Their immutable results are keyed by prototype and explicit derivation options.
 A placement-only revision can reuse both its native prototype and its mesh.
 Located queries preserve this separation: their native view does not replace
 the returned occurrence's canonical prototype.
+An absolute `located()` replaces prior occurrence placement and normalizes the
+copied prototype's root location. Different target placements reuse that copy
+and its mesh; native query views have distinct internal logical identities.
 Validated authored assembly trees retain their prototypes across rigid placement
 and later PBR-only edits. The wrapper-copy guard also admits strictly validated
 PBR and face-style dictionaries attached before placing a leaf, with independent
