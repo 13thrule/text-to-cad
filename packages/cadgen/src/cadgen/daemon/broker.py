@@ -395,8 +395,10 @@ class PrivateBroker:
             with contextlib.suppress(OSError):
                 with open(stats, "w", encoding="utf-8") as handle:
                     json.dump(self.broker.snapshot(), handle)
+        # Listener owns the socket unlink, including process-exit finalization.
+        # The accept thread may still be completing its shutdown wakeup; clearing
+        # its unique address here races that owner and makes finalization fail.
         self._server.close()
-        transport.clear_address(self.address)
 
 
 # --- client side ---------------------------------------------------------------------------
