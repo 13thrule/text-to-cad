@@ -1,6 +1,6 @@
 # Cadgen document engine: execution plan
 
-Status: proposed replacement architecture and implementation plan, 13 September 2026. This document does not report implemented functionality or measured future speedups. The existing runtime, including @memo, remains in place until the replacement passes its cutover gates.
+Status: archived, 13 September 2026. The replacement failed the larger-model performance gate and was removed from the working branch. The stable pre-rework runtime at `5c4a212ca` is restored; this plan is historical and is not an active implementation task. See the [rollback validation](scripts/bench/cadgen-performance/ROLLBACK-20260913.md) for the retained fix and recovery references. The existing runtime, including @memo, remains in place.
 
 This plan supersedes the architectural restrictions of the earlier performance plan for future work. Historical measurements remain evidence, not acceptance of this design. The user authorizes replacing the store, daemon internals and decorator-backed caching, removing @memo, and keeping the existing @step authoring interface. No old store or runtime compatibility is required.
 
