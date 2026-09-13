@@ -16,11 +16,15 @@ import copy
 from dataclasses import dataclass
 from dataclasses import replace
 import inspect
+import math
+import sys
 import threading
+from types import FunctionType
 from typing import Any, Iterable, Iterator
 
 from .core import GeometryHandle, Mutation, OperatorSpec, RevisionTransaction
-from .native import NativeResult, history_from_builder
+from .native import NativeResult, copy_shape, history_from_builder
+from .resources import ResourceRequest
 
 
 _ACTIVE: ContextVar["FrontendSession | None"] = ContextVar(
@@ -74,6 +78,29 @@ def _axis_key(axis: Any) -> tuple[float, ...]:
     position = axis.position
     direction = axis.direction
     return (*map(float, position), *map(float, direction))
+
+
+def _stock_function(value: Any, module: str, name: str) -> bool:
+    """Recognize installed provider code, never an author's decorated wrapper."""
+    if isinstance(value, (classmethod, staticmethod)):
+        value = value.__func__
+    provider = sys.modules.get(module)
+    return (type(value) is FunctionType and value.__module__ == module
+            and value.__qualname__ == name and not hasattr(value, "__wrapped__")
+            and provider is not None
+            and value.__code__.co_filename == provider.__file__)
+
+
+def _stock_global(name: str, value: Any) -> bool:
+    if type(value) is FunctionType:
+        module = value.__module__
+        return ((module.startswith("build123d.") or module.split(".")[0] in sys.stdlib_module_names)
+                and _stock_function(value, module, value.__qualname__))
+    if callable(value):
+        module = getattr(value, "__module__", "")
+        return (module.startswith(("build123d.", "OCP."))
+                or module.split(".")[0] in sys.stdlib_module_names)
+    return True
 
 
 class ManagedSelection:
@@ -180,6 +207,7 @@ class FrontendSession:
         self._bd = None
         self._topology = None
         self._fallback_counts: dict[str, int] = {}
+        self._builder_kernel: tuple[str, str] | None = None
 
     @classmethod
     def current(cls) -> "FrontendSession | None":
@@ -268,6 +296,8 @@ class FrontendSession:
         original_volume = inspect.getattr_static(bd.Compound, "volume")
         original_location_mul = inspect.getattr_static(bd.Location, "__mul__")
         original_fillet_function = bd.fillet
+        original_make_box = inspect.getattr_static(bd.Solid, "make_box")
+        original_make_cylinder = inspect.getattr_static(bd.Solid, "make_cylinder")
 
         self._native_originals = {
             "getattribute": original_getattribute,
@@ -311,28 +341,40 @@ class FrontendSession:
 
         def box_init(shape: Any, length: float, width: float, height: float,
                      rotation=(0, 0, 0), align=None, mode=None) -> None:
-            if session._compute_depth or bd.Builder._get_context(log=False) is not None:
+            context = bd.Builder._get_context(log=False)
+            if session._compute_depth or context is not None:
                 kwargs = {"rotation": rotation}
                 if align is not None:
                     kwargs["align"] = align
                 if mode is not None:
                     kwargs["mode"] = mode
-                original_box_init(shape, length, width, height, **kwargs)
-                if not session._compute_depth:
-                    session._capture_private(shape, "opaque-box-builder")
+                session._builder_constructor(
+                    "box", shape, context, original_box_init,
+                    (length, width, height), kwargs,
+                    original_make_box, (length, width, height),
+                )
                 return
             align = (bd.Align.CENTER,) * 3 if align is None else align
             mode = bd.Mode.ADD if mode is None else mode
+            if not session._closed_primitive(
+                    "box", shape, (length, width, height), rotation, align, mode):
+                session._record_fallback("opaque-box-provider-or-parameters")
+                original_box_init(shape, length, width, height,
+                                  rotation=rotation, align=align, mode=mode)
+                session._capture_private(shape, "opaque-box")
+                return
             logical = session._logical("box")
             parameters = (float(length), float(width), float(height),
-                          session._rotation_key(rotation), session._align_key(align), mode)
+                          session._rotation_key(rotation), session._align_key(align), mode,
+                          session._primitive_context_key("box", original_make_box))
             def compute(_inputs, _arena):
                 native = object.__new__(bd.Box)
                 session._inside_compute(original_box_init, native, length, width, height,
                                         rotation=rotation, align=align, mode=mode)
                 return NativeResult(original_wrapped.fget(native))
             handle = session.transaction.evaluate(
-                OperatorSpec("build123d.Box", "1"), parameters, (), compute,
+                OperatorSpec("build123d.Box", "1", Mutation.READ_ONLY,
+                             closed_constructor=True), parameters, (), compute,
                 logical_id=logical,
             )
             session._init_empty(shape, logical, handle)
@@ -340,21 +382,32 @@ class FrontendSession:
 
         def cylinder_init(shape: Any, radius: float, height: float, arc_size: float = 360,
                           rotation=(0, 0, 0), align=None, mode=None) -> None:
-            if session._compute_depth or bd.Builder._get_context(log=False) is not None:
+            context = bd.Builder._get_context(log=False)
+            if session._compute_depth or context is not None:
                 kwargs = {"arc_size": arc_size, "rotation": rotation}
                 if align is not None:
                     kwargs["align"] = align
                 if mode is not None:
                     kwargs["mode"] = mode
-                original_cylinder_init(shape, radius, height, **kwargs)
-                if not session._compute_depth:
-                    session._capture_private(shape, "opaque-cylinder-builder")
+                session._builder_constructor(
+                    "cylinder", shape, context, original_cylinder_init,
+                    (radius, height), kwargs, original_make_cylinder,
+                    (radius, height, arc_size),
+                )
                 return
             align = (bd.Align.CENTER,) * 3 if align is None else align
             mode = bd.Mode.ADD if mode is None else mode
+            if not session._closed_primitive(
+                    "cylinder", shape, (radius, height, arc_size), rotation, align, mode):
+                session._record_fallback("opaque-cylinder-provider-or-parameters")
+                original_cylinder_init(shape, radius, height, arc_size,
+                                       rotation=rotation, align=align, mode=mode)
+                session._capture_private(shape, "opaque-cylinder")
+                return
             logical = session._logical("cylinder")
             parameters = (float(radius), float(height), float(arc_size),
-                          session._rotation_key(rotation), session._align_key(align), mode)
+                          session._rotation_key(rotation), session._align_key(align), mode,
+                          session._primitive_context_key("cylinder", original_make_cylinder))
             def compute(_inputs, _arena):
                 native = object.__new__(bd.Cylinder)
                 session._inside_compute(original_cylinder_init, native, radius, height,
@@ -362,7 +415,8 @@ class FrontendSession:
                                         align=align, mode=mode)
                 return NativeResult(original_wrapped.fget(native))
             handle = session.transaction.evaluate(
-                OperatorSpec("build123d.Cylinder", "1"), parameters, (), compute,
+                OperatorSpec("build123d.Cylinder", "1", Mutation.READ_ONLY,
+                             closed_constructor=True), parameters, (), compute,
                 logical_id=logical,
             )
             session._init_empty(shape, logical, handle)
@@ -541,11 +595,19 @@ class FrontendSession:
             return (session._capture_private(result, "opaque-fillet")
                     if isinstance(result, bd.Shape) else result)
 
+        def make_box(cls, *args, **kwargs):
+            return session._builder_solid("box", cls, original_make_box, args, kwargs)
+
+        def make_cylinder(cls, *args, **kwargs):
+            return session._builder_solid("cylinder", cls, original_make_cylinder, args, kwargs)
+
         self._patch(bd.Shape, "__getattribute__", shape_getattribute)
         self._patch(bd.Shape, "wrapped", property(wrapped_get, wrapped_set, original_wrapped.fdel,
                                                    original_wrapped.__doc__))
         self._patch(bd.Box, "__init__", box_init)
         self._patch(bd.Cylinder, "__init__", cylinder_init)
+        self._patch(bd.Solid, "make_box", classmethod(make_box))
+        self._patch(bd.Solid, "make_cylinder", classmethod(make_cylinder))
         self._patch(bd.Compound, "__init__", compound_init)
         self._patch(bd.Shape, "__add__", add)
         self._patch(bd.Shape, "__sub__", sub)
@@ -568,6 +630,124 @@ class FrontendSession:
         import cadgen.build123d as proxy
         if "fillet" in vars(proxy):
             self._patch(proxy, "fillet", fillet_function)
+        self._prepare_primitive_guards(original_box_init, original_cylinder_init,
+                                       original_make_box, original_make_cylinder)
+
+    def _prepare_primitive_guards(self, box, cylinder, make_box, make_cylinder):
+        """Pin the small stock constructor path, including its native providers.
+
+        The closed contract cannot be inferred from an empty geometry-input
+        list. In particular, a replaced make_* or validation hook can read a
+        mutable native global. Such calls always execute as ordinary Python.
+        """
+        from build123d import objects_part, build_common
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+        from OCP.TopoDS import TopoDS
+        bd = self._bd
+        originals = {(owner, name): value for owner, name, value in self._originals}
+        common = (
+            (objects_part.BasePartObject, "__init__", "build123d.objects_part", "BasePartObject.__init__"),
+            (bd.Solid, "__init__", "build123d.topology.three_d", "Solid.__init__"),
+            (bd.Shape, "__init__", "build123d.topology.shape_core", "Shape.__init__"),
+            (bd.Compound, "__init__", "build123d.topology.composite", "Compound.__init__"),
+            (bd.Shape, "bounding_box", "build123d.topology.shape_core", "Shape.bounding_box"),
+            (bd.Shape, "move", "build123d.topology.shape_core", "Shape.move"),
+            (bd.Shape, "moved", "build123d.topology.shape_core", "Shape.moved"),
+            (bd.BuildPart, "_get_context", "build123d.build_common", "Builder._get_context"),
+            (bd.Location, "__init__", "build123d.geometry", "Location.__init__"),
+            (bd.Rotation, "__init__", "build123d.geometry", "Rotation.__init__"),
+            (bd.Plane, "to_gp_ax2", "build123d.geometry", "Plane.to_gp_ax2"),
+            (bd.BoundBox, "to_align_offset", "build123d.geometry", "BoundBox.to_align_offset"),
+        )
+        common_valid = _stock_function(objects_part.validate_inputs,
+                                       "build123d.build_common", "validate_inputs")
+        common_checks = []
+        global_checks = []
+        for owner, name, module, qualified in common:
+            current = inspect.getattr_static(owner, name)
+            original = originals.get((owner, name), current)
+            common_valid &= _stock_function(original, module, qualified)
+            common_checks.append((owner, name, current))
+            fn = original.__func__ if isinstance(original, classmethod) else original
+            if type(fn) is FunctionType:
+                # Changes made during a model body must invalidate eligibility,
+                # even when the enclosing stock function itself is unchanged.
+                global_checks.extend((fn.__globals__, name, fn.__globals__[name])
+                                     for name in fn.__code__.co_names if name in fn.__globals__)
+        common_valid &= objects_part.Solid is bd.Solid and objects_part.BuildPart is bd.BuildPart
+        common_valid &= objects_part.validate_inputs is build_common.validate_inputs
+        self._primitive_guards = {}
+        for kind, constructor, factory, kernel in (
+                ("box", box, make_box, BRepPrimAPI_MakeBox),
+                ("cylinder", cylinder, make_cylinder, BRepPrimAPI_MakeCylinder)):
+            cls = bd.Box if kind == "box" else bd.Cylinder
+            stock = (_stock_function(constructor, "build123d.objects_part", f"{cls.__name__}.__init__")
+                     and _stock_function(factory, "build123d.topology.three_d", f"Solid.make_{kind}"))
+            kernel_globals = factory.__func__.__globals__ if stock else {}
+            native_name = "BRepPrimAPI_MakeBox" if kind == "box" else "BRepPrimAPI_MakeCylinder"
+            kernel_valid = (stock and type(kernel).__module__ == "pybind11_builtins"
+                            and kernel_globals.get(native_name) is kernel
+                            and kernel_globals.get("TopoDS") is TopoDS
+                            and (kind == "box" or kernel_globals.get("DEG2RAD") == math.pi / 180))
+            native_checks = tuple((owner, name, inspect.getattr_static(owner, name, None))
+                                  for owner, name in ((kernel, "__init__"), (kernel, "Shape"),
+                                                      (TopoDS, "Solid")))
+            kernel_valid &= all(
+                type(value).__name__ in ("instancemethod", "builtin_function_or_method")
+                and getattr(value, "__module__", "").startswith("OCP.")
+                for _, _, value in native_checks)
+            kernel_checks = tuple((kernel_globals, name, kernel_globals.get(name))
+                                  for name in (native_name, "TopoDS", "DEG2RAD"))
+            checks = ((bd.Solid, f"make_{kind}", inspect.getattr_static(bd.Solid, f"make_{kind}")),
+                      (cls, "__init__", inspect.getattr_static(cls, "__init__")))
+            globals_ = list(global_checks)
+            if stock:
+                globals_.extend((constructor.__globals__, name, constructor.__globals__[name])
+                                for name in constructor.__code__.co_names if name in constructor.__globals__)
+            globals_.extend(kernel_checks)
+            valid = common_valid and kernel_valid and all(
+                _stock_global(name, value) for _, name, value in globals_)
+            self._primitive_guards[kind] = (valid, (*checks, *common_checks, *native_checks),
+                                           tuple(globals_), factory)
+
+    def _primitive_provider_matches(self, kind):
+        valid, attributes, values, factory = self._primitive_guards[kind]
+        if not valid:
+            return False
+        defaults = factory.__func__.__defaults__
+        if (not defaults or type(defaults[0]) is not self._bd.Plane
+                or "to_gp_ax2" in vars(defaults[0])):
+            return False
+        return (all(inspect.getattr_static(owner, name) is value for owner, name, value in attributes)
+                and all(namespace.get(name) is value for namespace, name, value in values))
+
+    def _primitive_context_key(self, kind, factory):
+        # Plane.XY is a mutable factory default; numeric runtime globals such
+        # as tolerance must not silently disappear from construction identity.
+        values = self._primitive_guards[kind][2]
+        return (_matrix(factory.__func__.__defaults__[0].location),
+                tuple((namespace.get("__name__"), name, value)
+                      for namespace, name, value in values
+                      if type(value) in (bool, int, float)))
+
+    def _closed_primitive(self, kind, shape, dimensions, rotation, align, mode):
+        bd = self._bd
+        try:
+            bounded = all(type(value) in (int, float) and math.isfinite(value) and value > 0
+                          for value in dimensions)
+            bounded_rotation = (type(rotation) is tuple and len(rotation) == 3
+                                and all(type(value) in (int, float) and math.isfinite(value)
+                                        for value in rotation))
+        except OverflowError:
+            return False
+        return (type(shape) is (bd.Box if kind == "box" else bd.Cylinder)
+                and bounded
+                and (kind != "cylinder" or dimensions[2] <= 360)
+                and bounded_rotation
+                and (type(align) is bd.Align or (type(align) is tuple and len(align) == 3
+                                               and all(type(value) is bd.Align for value in align)))
+                and type(mode) is bd.Mode
+                and self._primitive_provider_matches(kind))
 
     def _inside_compute(self, fn, *args, **kwargs):
         self._compute_depth += 1
@@ -575,6 +755,84 @@ class FrontendSession:
             return fn(*args, **kwargs)
         finally:
             self._compute_depth -= 1
+
+    def _builder_constructor(self, kind, shape, context, original, args, kwargs,
+                             kernel_constructor, dimensions) -> None:
+        """Reuse only the native primitive, replay every builder effect privately.
+
+        Builder lifecycle methods inspect author frames and remain untouched.
+        A complete _add_to_context hit would also have to preserve LAST/NEW,
+        obj_before/to_combine aliases and partial failure effects. This bounded
+        adapter deliberately executes that method and its booleans every time.
+        """
+        if self._compute_depth:
+            original(shape, *args, **kwargs)
+            return
+        bd = self._bd
+        mode = kwargs.get("mode", bd.Mode.ADD)
+        builtin_kernel = self._primitive_provider_matches(kind)
+        try:
+            bounded_dimensions = all(
+                type(value) in (int, float) and math.isfinite(value) and value > 0
+                for value in dimensions
+            )
+        except OverflowError:
+            bounded_dimensions = False
+        eligible = (
+            type(context) is bd.BuildPart
+            and type(shape) is (bd.Box if kind == "box" else bd.Cylinder)
+            and type(mode) is bd.Mode
+            and mode in (bd.Mode.ADD, bd.Mode.SUBTRACT, bd.Mode.REPLACE, bd.Mode.PRIVATE)
+            and builtin_kernel
+            and bounded_dimensions
+            and (kind != "cylinder" or dimensions[2] <= 360)
+        )
+        self._record_fallback("builder-effects-replayed" if eligible else "builder-opaque-constructor")
+        previous = self._builder_kernel
+        self._builder_kernel = (kind, self._logical(f"builder-{kind}-kernel")) if eligible else None
+        try:
+            # Keep author callbacks under the normal frontend boundary. In
+            # particular, do not suppress managed attribute/escape checks while
+            # a customized validation or constructor hook executes.
+            original(shape, *args, **kwargs)
+        finally:
+            self._builder_kernel = previous
+
+    def _builder_solid(self, kind, cls, original, args, kwargs):
+        pending = self._builder_kernel
+        factory = original.__get__(None, cls) if hasattr(original, "__get__") else original
+        if pending is None or pending[0] != kind or cls is not self._bd.Solid:
+            return factory(*args, **kwargs)
+        self._builder_kernel = None  # exactly one kernel call per constructor
+        # Only the exact factory call made by the ordinary Box/Cylinder body is
+        # covered. Forward customized calls without coercion or extra keywords.
+        if (len(args) != (3 if kind == "box" else 2)
+                or set(kwargs) != (set() if kind == "box" else {"angle"})
+                or any(type(value) not in (int, float) for value in args)
+                or (kind == "cylinder" and type(kwargs["angle"]) not in (int, float))
+                or not self._primitive_provider_matches(kind)):
+            return factory(*args, **kwargs)
+        logical = pending[1]
+        angle = kwargs.get("angle")
+        parameters = (tuple(float(value) for value in args),
+                      self._primitive_context_key(kind, original),
+                      None if angle is None else float(angle))
+        def compute(_inputs, _arena):
+            solid = original.__func__(cls, *args, **kwargs)
+            return NativeResult(self._native_originals["wrapped"].fget(solid))
+        handle = self.transaction.evaluate(
+            OperatorSpec(f"build123d.builder.make_{kind}", "1", Mutation.READ_ONLY,
+                         closed_constructor=True),
+            parameters, (), compute, logical_id=logical,
+        )
+        # Do not expose the cached root or activate the transaction-wide escape
+        # arena: this primitive has no input aliases and receives a fresh private
+        # allocation before alignment, placement, cleaning or context insertion.
+        with self.transaction.document.admission.admit(
+                ResourceRequest(), cancellation=self.transaction.cancellation):
+            native = copy_shape(self.transaction._validate_handle(handle).shape)
+        self.transaction.stats.native_copies += 1
+        return cls(self._downcast_native(native))
 
     def _logical(self, kind: str) -> str:
         frame = inspect.currentframe()

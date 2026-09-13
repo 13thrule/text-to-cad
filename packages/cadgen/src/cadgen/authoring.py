@@ -506,6 +506,11 @@ def _decorator(
 
         @functools.wraps(func)
         def model(*args: Any, **kwargs: Any) -> Any:
+            from cadgen._document.program import current_program
+
+            document_program = current_program()
+            if document_program is not None:
+                return document_program.call(model.__cadgen_model__, args, kwargs)
             frame = current_frame()
             if frame is not None:
                 if args or kwargs:

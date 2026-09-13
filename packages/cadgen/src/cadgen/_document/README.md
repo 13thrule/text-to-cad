@@ -1,8 +1,9 @@
-# Retained document prototype
+# Retained document engine foundations
 
-This internal module proves resident native ownership and revision behavior.
-It is not a persistent document format and does not claim a finished replacement
-for every generation or saved-file path.
+This internal module implements resident native ownership, revision behavior,
+captured source execution and direct STEP products. It includes a transactional
+catalog foundation; native checkpoint/service recovery is still being integrated.
+It does not claim a finished replacement for every generation or saved-file path.
 
 `Document.begin()` creates a candidate revision. Trusted frontend adapters call
 `evaluate(OperatorSpec, parameters, input_handles, compute)`. A successful
@@ -103,9 +104,45 @@ integration choice, with no unmeasured speed advantage claimed. The
 [OCCT boolean ownership API](https://occt3d.com/dev/doc/refman/html/class_b_rep_algo_a_p_i___builder_algo.html)
 supplies explicit non-destructive execution for the boolean adapter.
 
-Persistence, crash recovery, permanent topology naming, full source/frontend
-coverage, cross-process transfer, actual memory-budget enforcement and end-to-end
-performance acceptance remain work beyond this resident core.
+## Execution, saves and disposable storage
+
+`DocumentService.generate` captures the entry source once before request
+acceptance. `SourceSession` compiles captured first-party files with ordinary
+module/package/namespace ordering and tracks each function's exact compiled
+buffer through reloads. Source reads are captured as consumed; this is not an
+atomic snapshot of a whole project. Ordinary authored Python always replays.
+Only session-owned modules and model declarations are restored at teardown.
+
+Called model bodies execute in the same native transaction. `publish_result`
+pins their returned roots without replacing the parent's root or detaching
+native aliases. Each call saves its declared outputs before returning, including
+discarded calls. Completed child saves survive parent failure. The coordinator
+records immutable request tickets, child invocations, geometry readiness and
+actual publication order. It serializes process-local output claims; it cannot
+provide filesystem compare-and-swap against arbitrary external writers.
+
+The STEP publisher constructs a private XCAF document directly from a pinned
+root. It retains one native prototype per definition, preserves placements,
+names and ordinary colors, and caches immutable encoded products. Product
+identity reflects serialized inputs; logical/allocation identifiers are not
+file content. Actual saved bytes are independently read and remain distinct
+from source-native geometry. Destination replacement checks the selected prior
+digest, stages privately and verifies final bytes. Per-face appearance, full
+materials, kinematics and all mesh declarations still need producer coverage;
+unsupported declarations do not route to the previous generation engine.
+
+The new catalog uses SQLite/WAL and immutable opaque payloads, with head
+transactions, exact reader leases, receipt records and bounded reclamation.
+Version changes reset only owned disposable data. Crash tests cover both
+reclamation phases and concurrent readers. The catalog imports no kernel and
+contains no previous-store reader. It is a storage primitive, not proof of
+complete process recovery or persisted native alias correctness.
+
+Permanent topology naming, complete builder effects, format fidelity,
+cross-process service integration, actual memory accounting and end-to-end
+performance acceptance remain open. Stock input-free constructors can reuse
+after unrelated native escapes only under an explicit closed-provider contract;
+input-dependent and user-overridden operations remain conservative.
 
 The final cutover resets old derived storage and removes the old execution
 backend. There are no schema readers, cache converters or compatibility aliases

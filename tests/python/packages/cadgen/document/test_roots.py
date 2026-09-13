@@ -16,6 +16,24 @@ def translated(x):
 
 
 class ReturnedRootTests(unittest.TestCase):
+    def test_metadata_coverage_is_explicit_and_invalid_binding_is_atomic(self):
+        document = Document("metadata-coverage")
+        with document.begin() as tx:
+            leaf = GeometryLeaf("part", box(tx))
+            tx.bind_root(leaf)
+            self.assertIsNone(tx.commit().unrepresented_metadata)
+        with document.begin() as tx:
+            tx.bind_root(leaf, unrepresented_metadata=("cad_material",))
+            for invalid in ([], "cad_material", ("",), (1,)):
+                with self.subTest(invalid=invalid), self.assertRaises(TypeError):
+                    tx.bind_root(replace(leaf, label="invalid"), unrepresented_metadata=invalid)
+            revision = tx.commit()
+            self.assertIs(leaf, revision.root)
+            self.assertEqual(("cad_material",), revision.unrepresented_metadata)
+        with document.begin() as tx:
+            tx.bind_root(leaf, unrepresented_metadata=())
+            self.assertEqual((), tx.commit().unrepresented_metadata)
+
     def test_direct_solid_identifies_only_returned_geometry_among_tools(self):
         document = Document("direct-solid")
         with document.begin(required_exports=("part.step",)) as tx:

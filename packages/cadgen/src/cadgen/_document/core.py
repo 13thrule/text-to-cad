@@ -31,12 +31,21 @@ class OperatorSpec:
     version: str = "1"
     mutation: Mutation = Mutation.PRIVATE_INPUTS
     resources: ResourceRequest = field(default_factory=ResourceRequest)
+    # Trusted engine adapters only: all inputs are immutable parameters, the
+    # callback has no effects or external native reads, and its fresh output
+    # has never been exposed to Python. An empty inputs tuple alone proves none
+    # of these properties. Ordinary operators remain conservative after escape.
+    closed_constructor: bool = False
 
     def __post_init__(self) -> None:
         if not self.name or not self.version:
             raise ValueError("an operator requires a name and implementation version")
         if not isinstance(self.mutation, Mutation):
             raise TypeError("operator mutation must be a Mutation member")
+        if type(self.closed_constructor) is not bool:
+            raise TypeError("closed_constructor must be a bool")
+        if self.closed_constructor and self.mutation is not Mutation.READ_ONLY:
+            raise ValueError("a closed constructor must be read-only")
 
 
 @dataclass(frozen=True)
@@ -63,6 +72,15 @@ class Revision:
     required_exports: tuple[str, ...]
     # Authoritative returned geometry; evaluations also include temporary tools.
     root: RootNode | None = None
+    # None means coverage has not been established. An empty tuple attests that
+    # the bound root represents all supported authored metadata. Publishers must
+    # not silently discard fields while the frontend's coverage is incomplete.
+    unrepresented_metadata: tuple[str, ...] | None = None
+    # Snapshot IDs locate immutable results. Save ordering instead follows the
+    # request that executed Python, then publication order within that request.
+    _request_sequence: int = 0
+    _publication_sequence: int = 0
+    _entry_key: str | None = None
 
 
 @dataclass
@@ -142,6 +160,16 @@ def _assert_value_result(value: Any) -> None:
             _assert_value_result(item)
 
 
+def _validate_metadata_coverage(value: tuple[str, ...] | None) -> None:
+    if value is not None and (type(value) is not tuple
+                             or any(type(field) is not str or not field for field in value)):
+        raise TypeError("metadata coverage requires an immutable tuple of nonempty field names or None")
+
+
+def _publication_order(revision: Revision) -> tuple[int, int]:
+    return revision._request_sequence, revision._publication_sequence
+
+
 class Document:
     """A single native owner with immutable revisions and exact reader leases.
 
@@ -159,14 +187,17 @@ class Document:
         self._owner_thread = get_ident()
         self._lock = RLock()
         self._next_revision = 0
+        self._next_request_sequence = 0
+        self._next_publication_sequence = 0
         self._head: int | None = None
+        self._entry_heads: dict[str, int] = {}
         self._prototypes: dict[str, _Prototype] = {}
         self._allocations: dict[str, _Allocation] = {}
         self._revisions: dict[int, Revision] = {}
         self._states: dict[int, RevisionState] = {}
         self._completed_exports: dict[int, set[str]] = {}
         self._pins: dict[int, int] = {}
-        self._output_claims: dict[str, int] = {}
+        self._output_claims: dict[str, tuple[int, int]] = {}
         self._active: dict[int, RevisionTransaction] = {}
         self._derivations: dict[tuple, Any] = {}
 
@@ -178,6 +209,13 @@ class Document:
     def head(self) -> Revision | None:
         with self._lock:
             return self._revisions.get(self._head)
+
+    def entry_head(self, entry_key: str) -> Revision | None:
+        """The accepted result for one declared entry in this native family."""
+        if type(entry_key) is not str or not entry_key:
+            raise ValueError("a family entry requires a nonempty string key")
+        with self._lock:
+            return self._revisions.get(self._entry_heads.get(entry_key))
 
     @property
     def prototype_count(self) -> int:
@@ -191,10 +229,33 @@ class Document:
         self._assert_owner()
         with self._lock:
             self._next_revision += 1
+            self._next_request_sequence += 1
             tx = RevisionTransaction(self, self._next_revision, source_identity,
-                                     tuple(str(path) for path in required_exports))
+                                     tuple(str(path) for path in required_exports),
+                                     self._next_request_sequence)
             self._active[tx.revision_id] = tx
             return tx
+
+    def _accept_result(self, revision: Revision) -> bool:
+        """Install a root or child snapshot under the caller-held owner lock."""
+        self._revisions[revision.revision_id] = revision
+        self._completed_exports[revision.revision_id] = set()
+        entry = revision._entry_key
+        previous_id = self._head if entry is None else self._entry_heads.get(entry)
+        order = _publication_order(revision)
+        stale = previous_id is not None and order < _publication_order(self._revisions[previous_id])
+        self._states[revision.revision_id] = (RevisionState.SUPERSEDED if stale
+                                            else RevisionState.GEOMETRY_READY)
+        if not stale:
+            if entry is None:
+                self._head = revision.revision_id
+            else:
+                self._entry_heads[entry] = revision.revision_id
+            for path in revision.required_exports:
+                # A different entry can already hold a newer request's claim.
+                # Geometry publication must not lower that output-path fence.
+                self._output_claims[path] = max(self._output_claims.get(path, order), order)
+        return stale
 
     def pin(self, revision_id: int | None = None) -> RevisionPin:
         with self._lock:
@@ -235,7 +296,8 @@ class Document:
         with self._lock:
             if path not in pin.revision.required_exports:
                 raise ValueError("export path was not declared by this revision")
-            if self._output_claims.get(path, pin.revision_id) > pin.revision_id:
+            order = _publication_order(pin.revision)
+            if self._output_claims.get(path, order) > order:
                 raise ExportConflict(f"a newer accepted revision owns output {path}")
             with self.admission.admit(ResourceRequest(kind="export")):
                 result = writer()
@@ -265,6 +327,7 @@ class Document:
             retain.update(k for k, count in self._pins.items() if count)
             if self._head is not None:
                 retain.add(self._head)
+            retain.update(self._entry_heads.values())
             # Incomplete explicit exports remain obligations, including superseded ones.
             retain.update(k for k, r in self._revisions.items()
                           if set(r.required_exports) - self._completed_exports[k]
@@ -291,21 +354,29 @@ class Document:
             self._allocations = {k: a for k, a in self._allocations.items()
                                  if k in reachable_allocations}
             self._derivations = {k: v for k, v in self._derivations.items() if k[0] in reachable}
+            products = getattr(self, "_step_products", None)
+            if products is not None:
+                products.prune(self)
+            imports = getattr(self, "_step_imports", None)
+            if imports is not None:
+                imports.prune(self)
             return len(removed_revisions), len(removed_prototypes)
 
 
 class RevisionTransaction:
     def __init__(self, document: Document, revision_id: int, source_identity: str,
-                 required_exports: tuple[str, ...]) -> None:
+                 required_exports: tuple[str, ...], request_sequence: int) -> None:
         self.document = document
         self.revision_id = revision_id
         self.source_identity = source_identity
         self.required_exports = required_exports
+        self._request_sequence = request_sequence
         self.stats = EvaluationStats()
         self.cancellation = Event()
         self._handles: dict[str, GeometryHandle] = {}
         self._features: dict[LogicalIdentity, GeometryHandle] = {}
         self._root: RootNode | None = None
+        self._unrepresented_metadata: tuple[str, ...] | None = None
         self._closed = False
         self._volatile = 0
         self.escape_arena = NativeEscapeArena(
@@ -403,11 +474,14 @@ class RevisionTransaction:
                  *, logical_id=None) -> GeometryHandle:
         self._check()
         inputs = tuple(inputs)
+        if spec.closed_constructor and inputs:
+            raise ValueError("a closed constructor cannot consume geometry handles")
         prototypes = tuple(self._validate_handle(h) for h in inputs)
-        escaped = self.escape_arena.active
+        escaped = self.escape_arena.active and not spec.closed_constructor
         key = EvaluationKey.create(spec.name, spec.version, parameters,
                                    tuple(h.evaluation_id for h in inputs),
-                                   (self.document.runtime, spec.mutation.value),
+                                   (self.document.runtime, spec.mutation.value,
+                                    spec.closed_constructor),
                                    self._nonce() if escaped else "",
                                    alias_provenance=self._input_alias_provenance(inputs))
         prototype_id = key.identity.value
@@ -495,7 +569,8 @@ class RevisionTransaction:
         self.stats.derived_computed += 1
         return result
 
-    def bind_root(self, root: RootNode) -> RootNode:
+    def bind_root(self, root: RootNode, *,
+                  unrepresented_metadata: tuple[str, ...] | None = None) -> RootNode:
         """Bind the exact returned tree without native capture or evaluation.
 
         Local sibling keys must be unique; labels and prototype IDs need not be.
@@ -503,27 +578,57 @@ class RevisionTransaction:
         Evaluation history remains retained separately for subsequent reuse.
         """
         self._check()
+        _validate_metadata_coverage(unrepresented_metadata)
         handles = validate_root(root, self.document._get)
         self._handles.update((handle.allocation_id, handle) for handle in handles)
         self._root = root
+        self._unrepresented_metadata = unrepresented_metadata
         return root
+
+    def publish_result(self, entry_key: str, root: RootNode, *,
+                       source_identity: str, required_exports: tuple[str, ...],
+                       unrepresented_metadata: tuple[str, ...] | None) -> Revision:
+        """Publish one completed child without ending the Python execution.
+
+        The supplied root already describes an immutable native snapshot; the
+        frontend captures private/opaque return values before reaching here.
+        Subsequent authored mutations stay in this transaction's shared escape
+        arena. Entry and export ordering use this request's original sequence,
+        never the later snapshot ID allocated for the completed child.
+        """
+        self._check()
+        if type(entry_key) is not str or not entry_key:
+            raise ValueError("a family entry requires a nonempty string key")
+        if type(source_identity) is not str:
+            raise TypeError("a family result requires a captured source identity string")
+        if (type(required_exports) is not tuple
+                or any(type(path) is not str or not path for path in required_exports)):
+            raise TypeError("family exports require an immutable tuple of nonempty path strings")
+        _validate_metadata_coverage(unrepresented_metadata)
+        handles = validate_root(root, self.document._get)
+        self._handles.update((handle.allocation_id, handle) for handle in handles)
+        with self.document._lock:
+            self.document._next_revision += 1
+            self.document._next_publication_sequence += 1
+            revision = Revision(self.document._next_revision, source_identity,
+                                MappingProxyType({}), handles, required_exports,
+                                root, unrepresented_metadata, self._request_sequence,
+                                self.document._next_publication_sequence, entry_key)
+            stale = self.document._accept_result(revision)
+        if stale:
+            raise SupersededRevision(revision)
+        return revision
 
     def commit(self) -> Revision:
         self._check()
-        revision = Revision(self.revision_id, self.source_identity,
-                            MappingProxyType(dict(self._features)),
-                            tuple(self._handles.values()),
-                            self.required_exports, self._root)
         with self.document._lock:
-            self.document._revisions[self.revision_id] = revision
-            self.document._completed_exports[self.revision_id] = set()
-            stale = self.document._head is not None and self.revision_id < self.document._head
-            self.document._states[self.revision_id] = (RevisionState.SUPERSEDED if stale
-                                                       else RevisionState.GEOMETRY_READY)
-            if not stale:
-                self.document._head = self.revision_id
-                for path in self.required_exports:
-                    self.document._output_claims[path] = self.revision_id
+            self.document._next_publication_sequence += 1
+            revision = Revision(self.revision_id, self.source_identity,
+                                MappingProxyType(dict(self._features)),
+                                tuple(self._handles.values()),
+                                self.required_exports, self._root, self._unrepresented_metadata,
+                                self._request_sequence, self.document._next_publication_sequence)
+            stale = self.document._accept_result(revision)
             self._close()
         if stale:
             raise SupersededRevision(revision)

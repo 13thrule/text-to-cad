@@ -739,6 +739,7 @@ def _generate_step_outputs(
     progress: object | None = None,
 ) -> GeneratedStepResult:
     from cadgen._document.service import current_service
+    from cadgen._document.sources import CapturedInput
 
     service = current_service()
     if service is None or spec.source != "generated":
@@ -755,7 +756,7 @@ def _generate_step_outputs(
     if spec.step_export_path is not None:
         outputs = (*outputs, str(spec.step_export_path))
     outputs = tuple(dict.fromkeys(str(Path(path).expanduser().resolve()) for path in outputs))
-    with service.build(spec.script_path, function, required_exports=outputs):
+    with service.build(CapturedInput.read(spec.script_path), function, required_exports=outputs):
         return _generate_step_outputs_impl(
             spec, entries_by_step_path=entries_by_step_path,
             force=True, logger=logger, progress=progress,

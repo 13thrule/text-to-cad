@@ -70,6 +70,21 @@ class ReturnedTest(unittest.TestCase):
         self.assertEqual("returned", root.label)
         self.assertEqual(1, len(list(walk_root(root))))
 
+    def test_metadata_not_yet_bound_is_reported_instead_of_silently_lost(self):
+        def model():
+            leaf = bd.Box(3, 4, 5)
+            leaf.cad_material = {"roughness": .2}
+            leaf.cad_face_ordinal_colors = {1: (1., 0., 0., 1.)}
+            root = bd.Compound(children=[leaf])
+            root._occurrence_tree = {"name": "authored-instance-hierarchy"}
+            return root
+
+        document, transaction, _, _ = self.run_model(model)
+        self.assertEqual(("_occurrence_tree", "cad_face_ordinal_colors", "cad_material"),
+                         document._revisions[transaction.revision_id].unrepresented_metadata)
+        document, transaction, _, _ = self.run_model(lambda: bd.Box(3, 4, 5))
+        self.assertEqual((), document._revisions[transaction.revision_id].unrepresented_metadata)
+
     def test_flat_placements_and_colors_retain_one_geometry_prototype(self):
         def model():
             source = bd.Box(3, 4, 5)
