@@ -251,6 +251,12 @@ labels, actual native ordinals and saved occurrence paths. Split, merged or
 otherwise ambiguous transfer results fail explicitly; this bounded producer
 does not infer missing correspondence from geometric similarity.
 
+Save completion verifies finite volume and area for each saved definition and
+exact finite bounds for definitions and placed occurrences. Full topology
+inventories and validity diagnostics belong to explicit saved-file queries and
+independent geometry tests. The publisher retains the saved facts needed for
+these finite-geometry, hierarchy, placement and appearance checks.
+
 Intrinsic PBR fields and material tags use the sole `<part>.step.json`
 companion. Its strict versioned schema binds the exact STEP digest and byte
 count, and addresses only independently verified saved hierarchy paths. Those

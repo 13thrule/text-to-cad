@@ -82,16 +82,17 @@ class StepProductTests(unittest.TestCase):
             self.assertAlmostEqual(value, wanted, places=6)
 
     def test_small_plate_readback_is_immutable_and_byte_bound(self):
+        import build123d as bd
         revision, _ = self.revision(primitive=plate, appearance={"color": (.2, .4, .6, 1.)})
-        with self.session(revision) as session:
+        with self.session(revision) as session, \
+             patch("OCP.BRepCheck.BRepCheck_Analyzer", side_effect=AssertionError("completion ran validity diagnostics")), \
+             patch("OCP.TopExp.TopExp.MapShapes_s", side_effect=AssertionError("completion counted topology")):
             product = session.prepare(self.target.name)
             self.assertEqual(hashlib.sha256(product.payload).hexdigest(), product.sha256)
             saved = product.returned_root
             self.assertEqual(saved.name, "part")
-            self.assertEqual((saved.geometry.solids, saved.geometry.faces), (1, 8))
             self.assertAlmostEqual(saved.geometry.volume, 256. - 4. * math.pi, places=6)
             self.assert_bounds(saved.geometry.bounds, (0., 0., 0., 16., 8., 2.))
-            self.assertTrue(saved.geometry.valid)
             self.assertEqual(session.metrics.prototype_copies, 1)
             self.assertEqual(session.metrics.independent_parses, 1)
             self.assertFalse(self.target.exists())
@@ -101,6 +102,47 @@ class StepProductTests(unittest.TestCase):
             self.assertEqual(receipt.sha256, destination_digest(self.target))
             self.assertEqual(receipt.revision_id, revision.revision_id)
             self.assertEqual(self.doc.state(revision.revision_id), RevisionState.EXPORTS_COMPLETE)
+        imported = bd.import_step(str(self.target))
+        self.assertEqual((len(imported.solids()), len(imported.faces())), (1, 8))
+        self.assertTrue(imported.is_valid)
+
+    def test_nonfinite_saved_mass_properties_fail_without_a_product(self):
+        self.target.write_bytes(b"previous output")
+        for field in ("volume", "area"):
+            for value in (math.nan, math.inf, -math.inf):
+                with self.subTest(field=field, value=value):
+                    revision, _ = self.revision()
+                    masses = (value, 1.) if field == "volume" else (1., value)
+                    with self.session(revision) as session, \
+                         patch("OCP.GProp.GProp_GProps.Mass", side_effect=masses):
+                        with self.assertRaisesRegex(ValueError, "nonfinite geometry facts"):
+                            session.prepare(self.target.name)
+                        self.assertEqual(session.metrics.computed, 0)
+                        self.assertEqual(self.doc._step_products.entries, {})
+                    self.assertEqual(self.target.read_bytes(), b"previous output")
+
+    def test_nonfinite_exact_moved_bounds_fail_without_a_product(self):
+        from OCP.Bnd import Bnd_Box
+        revision, _ = self.revision(transform=translation(7., 5., 0.))
+        original = Bnd_Box.Get
+        calls = []
+        def bounds(box):
+            result = original(box)
+            calls.append(result)
+            # The definition's local bounds remain finite. Only the exact
+            # moved geometry query fails; no transformed-box substitute runs.
+            return result if len(calls) == 1 else (*result[:5], math.inf)
+        with self.session(revision) as session:
+            with patch.object(Bnd_Box, "Get", bounds):
+                with self.assertRaisesRegex(ValueError, "nonfinite geometry bounds"):
+                    session.prepare(self.target.name)
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(session.metrics.computed, 0)
+            self.assertEqual(self.doc._step_products.entries, {})
+            self.assertFalse(self.target.exists())
+            # A failed readback cannot poison a later independent attempt.
+            product = session.prepare(self.target.name)
+            self.assert_bounds(product.returned_root.geometry.bounds, (7., 5., 0., 11., 8., 2.))
 
     def test_unchanged_root_reuses_bytes_across_new_allocations(self):
         first, a = self.revision(primitive=plate)

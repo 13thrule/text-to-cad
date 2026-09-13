@@ -33,7 +33,7 @@ from .step_faces import (FaceTransferError, SavedFaceInventory, SavedFaceReader,
 
 
 _WRITER_VERSION = "pinned-root-step-v3"
-_READBACK_VERSION = "stepcaf-metadata-v3"
+_READBACK_VERSION = "stepcaf-metadata-v4-finite-geometry"
 _CODEC_LOCK = RLock()
 _MAX_PRODUCTS = 8
 _MAX_PRODUCT_BYTES = 64 * 1024**2
@@ -57,15 +57,14 @@ class StepOptions:
 
 @dataclass(frozen=True)
 class SavedGeometry:
-    """Facts computed only from the independent parse of the product bytes."""
-    solids: int
-    faces: int
-    edges: int
-    vertices: int
+    """Finite completion facts from the independent parse of product bytes.
+
+    Topology inventories and validity diagnostics belong to explicit saved-file
+    queries. They do not participate in the publisher's translation checks.
+    """
     volume: float
     area: float
     bounds: tuple[float, ...]
-    valid: bool
 
 
 @dataclass(frozen=True)
@@ -882,28 +881,18 @@ def _saved_document_metadata(document, *, face_reader=None):
 
 
 def _geometry_facts(native: Any) -> SavedGeometry:
-    from OCP.BRepCheck import BRepCheck_Analyzer
     from OCP.BRepGProp import BRepGProp
     from OCP.GProp import GProp_GProps
-    from OCP.TopAbs import TopAbs_SOLID, TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX
-    from OCP.TopExp import TopExp
-    from OCP.TopTools import TopTools_IndexedMapOfShape
 
     if native is None or native.IsNull():
         raise ValueError("STEP readback contains a null geometry leaf")
-    counts = []
-    for kind in (TopAbs_SOLID, TopAbs_FACE, TopAbs_EDGE, TopAbs_VERTEX):
-        values = TopTools_IndexedMapOfShape()
-        TopExp.MapShapes_s(native, kind, values)
-        counts.append(values.Extent())
     volume, area = GProp_GProps(), GProp_GProps()
     BRepGProp.VolumeProperties_s(native, volume)
     BRepGProp.SurfaceProperties_s(native, area)
     values = (float(volume.Mass()), float(area.Mass()), *_bounds(native))
     if not all(math.isfinite(value) for value in values):
         raise ValueError("STEP readback contains nonfinite geometry facts")
-    return SavedGeometry(*counts, values[0], values[1], tuple(values[2:]),
-                         bool(BRepCheck_Analyzer(native).IsValid()))
+    return SavedGeometry(values[0], values[1], tuple(values[2:]))
 
 
 def _bounds(native: Any) -> tuple[float, ...]:
