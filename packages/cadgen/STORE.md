@@ -66,7 +66,10 @@ what it depended on. `index/op`, `index/component`, `index/surface` and
 immutable artifact inputs. `index/document` is the document lookup: `sha256(file bytes)` → the
 tree describing those bytes (plus a mesh ledger keyed by format × tolerances
 × pose × appearance — the bare mesh doors read and write it, and a script run notes its
-declared meshes there too, so the two front doors never redo each other's work). Three properties, each enforced by a
+declared meshes there too, so the two front doors never redo each other's work).
+Animated exports capture the render module's text before mesh preparation;
+the animation variant and the Node builder consume that same immutable text.
+Three properties, each enforced by a
 test:
 
 1. **No object references source.** No tree or component carries a path, a
@@ -242,9 +245,11 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   geometry while retaining their own finishes. Appearance-sensitive exports
   include the normalized appearance digest in their variant, including absence.
 
-  Model records use payload schema5; schema4 records are misses so a source
-  model regenerates STEP output written before distinct occurrence colours were
-  preserved. Document mappings remain payload schema4: saved bytes stay
+  Model records use payload schema6. Earlier records are misses: the next
+  source run rebuilds outputs whose input hashes may have been captured after
+  a mid-build edit, as well as outputs predating distinct occurrence colours.
+  This is one source rebuild; existing geometry and surface objects remain reusable.
+  Document mappings remain payload schema4: saved bytes stay
   authoritative and are reparsed without guessing colours that the document
   does not contain. There are no directory or document-byte-key salts. Trees
   use only geometry schema1; there is no optional old-tree decoder. Document indexes may carry an
@@ -384,6 +389,11 @@ Each with the failure it prevents.
   during module loading cannot substitute a later file's identity. Prevents: a file
   edited during a long build being recorded with the bytes that did NOT run,
   which would make a stale result read as current forever.
+  Declared data inputs retain their first declaration-time hash for both STEP
+  and DXF builds; an edit later in the body therefore leaves the result stale.
+  Since `declare_input` returns a path for the author's own reader, the author
+  must keep the file stable between declaration and that read. CAD readers
+  that own their input bytes record the exact consumed digest instead.
 - **Publish order.** Objects first (components, then the complete tree), the
   document-byte mapping, the outputs (`.step` moved into place atomically;
   digest-bound sidecar), output mappings, then the record. STEP export and
@@ -655,7 +665,7 @@ Every build goes through one interface, `cadgen.daemon.executors.submit(model)
   spawn. Spares load build123d/OCP as well as the lazy tool parsers before
   announcing readiness; importing the supervisor never loads the kernel.
   Spares: `CADGEN_DAEMON_SPARES` (default 2). Requests that name no
-  model (`inspect`, `snapshot` on a document) borrow a spare without binding
+  model (`inspect` on a document or an artifact derivation) borrow a spare without binding
   it. Borrowed workers count toward spare capacity while busy, so a stream of
   artifact jobs reuses warm kernels instead of starting a replacement import
   for every request. A subject-less burst may briefly retain already-admitted
@@ -699,10 +709,12 @@ daemon ran in the last 120 s with its state (`submitted` → `queued` →
 declared, parsed statically from the script it names. The ledger is the CAD
 Viewer's only progress source, and it is process state, never a file.
 
-The CLI doors (`cadgen step inspect|snapshot|build`, `stl|3mf|glb build`)
+The CLI doors (`cadgen step inspect|build|compile`, `stl|3mf|glb build`)
 are themselves dispatched through the daemon when one is reachable, so they
 run on warm kernels; the subject-less commands (`store`, `doctor`, `daemon
-status`, the mesh and drawing snapshots) run in-process and never touch it.
+status`, all snapshot orchestration) run in-process. STEP snapshots delegate
+missing document compilation and surface derivation to the artifact build pool;
+their request resolution and browser orchestration never import the CAD kernel.
 
 CPU scheduling and reuse remain independent of memory admission:
 

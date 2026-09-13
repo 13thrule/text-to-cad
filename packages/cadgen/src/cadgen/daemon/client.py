@@ -71,7 +71,7 @@ FORWARDED_ENV_VARS = (
 
 # The client's own ffmpeg, looked up once per process. Resolved HERE rather than
 # in the worker because a PATH lookup only answers for the process that does it:
-# `cadgen step snapshot` always runs in a resident worker whose PATH belongs to
+# a tool dispatched to a resident worker sees the PATH belonging to
 # whatever first spawned the daemon -- an editor, an agent session, a cron run --
 # so an ffmpeg the caller can run was reported as not installed, and installing
 # one after the daemon started never helped. Whenever the caller has one, the

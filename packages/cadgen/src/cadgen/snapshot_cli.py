@@ -144,9 +144,8 @@ from cadgen.snapshot_video import (
 # each kind still has to name its own.
 STEP_SUPPORTED_RENDER_MODES = {"view", "section", "list"}
 
-# Imported lazily by ensure_render_job_step_artifact: only a STEP input needs it, and
-# importing it eagerly would drag OCP into a robot or mesh snapshot that never builds
-# anything. Kept module-level so tests can substitute it.
+# Snapshot artifact resolution stays kernel-free. Kept module-level so callers
+# testing request resolution can substitute the artifact boundary.
 ensure_step_topology_artifact = None
 
 
@@ -534,10 +533,30 @@ def cad_ref_for_step_path(repo_root: Path, step_path: Path) -> str:
 def load_ensure_step_topology_artifact():
     global ensure_step_topology_artifact
     if ensure_step_topology_artifact is None:
-        from cadgen.step_topology_artifact import ensure_step_topology_artifact as imported_ensure
-
-        ensure_step_topology_artifact = imported_ensure
+        ensure_step_topology_artifact = _ensure_snapshot_step_artifact
     return ensure_step_topology_artifact
+
+
+def _ensure_snapshot_step_artifact(target, *, require_selector=False, debug=None):
+    """Resolve saved bytes through the artifact pool, without importing a kernel.
+
+    A snapshot needs the surface view and optional composed selector tables.
+    The legacy topology builder also imports generation and decodes native
+    shapes; compilation and missing surfaces belong to the pool instead.
+    """
+    from cadgen.selector_types import SelectorBundle
+
+    document_hash, tree = document_snapshot(target.step_path)
+    package_dir = view_dir_for(tree, document_hash=document_hash)
+    descriptor = json.loads((package_dir / "assembly.json").read_text(encoding="utf-8"))
+    if debug is not None:
+        debug.update(source="imported", assembly=True, selectorReextracted=False,
+                     composed=bool(require_selector))
+    return StepTopologyArtifact(
+        cad_path=target.cad_path, source_path=target.source_path,
+        step_path=target.step_path, artifact_path=package_dir, manifest=descriptor,
+        selector_bundle=SelectorBundle(manifest=descriptor) if require_selector else None,
+    )
 
 
 

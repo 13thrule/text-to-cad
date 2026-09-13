@@ -583,3 +583,85 @@ class DeclaredDataInputTests(unittest.TestCase):
         with record_discovered_inputs() as recorded:
             declare_input(self.atlas)
         self.assertEqual(recorded, {self.atlas.resolve()})
+
+    def test_edit_after_declared_read_keeps_step_and_drawing_closures_stale(self) -> None:
+        from unittest import mock
+
+        from cadgen import declare_input
+        from cadgen._internal.source_hash import capture_runtime_closure, record_discovered_inputs
+        from cadgen.store.closure import ExecutionHashes, build_closure, current_closure_hash
+        from cadgen.store.gate import stale
+        from cadgen.store.publish import decide
+
+        script = self.project / "plain.py"
+        script.write_text("def model():\n    return None\n", encoding="utf-8")
+        self._write_atlas(30.0)
+        with record_discovered_inputs() as inputs, ExecutionHashes() as hashes:
+            consumed = json.loads(declare_input(self.atlas).read_text(encoding="utf-8"))
+            first_hash = hashes.hashes[str(self.atlas)]
+            self._write_atlas(45.0)
+            declare_input(self.atlas)  # A later declaration cannot erase the first read.
+        self.assertEqual(consumed["width"], 30.0)
+        for path in inputs:
+            hashes.note(path)  # The runner's post-body fallback must not overwrite it.
+
+        step_closure = build_closure(script, executed=hashes.hashes, discovered_inputs=inputs)
+        drawing_closure = capture_runtime_closure(
+            set(sys.modules), script, base=self.project, discovered_inputs=inputs,
+            executed_hashes=hashes.hashes,
+        )
+        for label, digest, files, shas in (
+            ("step", step_closure.hash, step_closure.files, step_closure.shas),
+            ("drawing", drawing_closure.closure_hash, drawing_closure.files, drawing_closure.file_hashes),
+        ):
+            with self.subTest(format=label):
+                self.assertEqual(shas["atlas.json"], first_hash)
+                self.assertNotEqual(digest, current_closure_hash(script, files))
+                record = {"tree": None, "closure": {"hash": digest, "files": files, "shas": shas}}
+                with mock.patch("cadgen.store.gate.read_record", return_value=record):
+                    verdict = stale(script)
+                self.assertTrue(verdict.stale)
+                self.assertIn("atlas.json", verdict.clauses[1]["why"])
+                # An older build cannot replace a current record that a newer
+                # build published while this body was still running.
+                with mock.patch("cadgen.store.publish.stale", return_value=mock.Mock(stale=False)):
+                    decision = decide(script, ran_closure_hash=digest, ran_files=files)
+                self.assertFalse(decision.publish_outputs)
+
+    def test_pre_declaration_hash_records_miss_without_invalidating_saved_artifacts(self) -> None:
+        import hashlib
+        from unittest import mock
+
+        from cadgen.catalog import result_snapshot_for
+        from cadgen.store.closure import build_closure
+        from cadgen.store.gate import stale
+        from cadgen.store.objects import put_object, read_verified_object
+        from cadgen.store.records import note_document_tree, read_record, write_record
+        from tests.python.support.tmp_root import generated_cad_directory
+
+        with generated_cad_directory(prefix="declared-input-admission-") as folder:
+            root = Path(folder)
+            script = root / "model.py"
+            script.write_text("def model():\n    return None\n", encoding="utf-8")
+            data = root / "dimensions.json"
+            data.write_text('{"width":30}', encoding="utf-8")
+            consumed_width = json.loads(data.read_text(encoding="utf-8"))["width"]
+            data.write_text('{"width":45}', encoding="utf-8")
+            # Reproduce the old late-hash record: its closure falsely agrees
+            # with the edited input, although the body consumed width 30.
+            closure = build_closure(script, executed={}, discovered_inputs=[data])
+            document = root / "saved.step"
+            document.write_bytes(f"saved geometry width {consumed_width}".encode())
+            document_hash = hashlib.sha256(document.read_bytes()).hexdigest()
+            with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(root / "store")}):
+                payload = b"immutable saved geometry"
+                tree = put_object(payload)
+                note_document_tree(document_hash, tree)
+                record = {"tree": None, "closure": closure.as_json(), "children": [], "outputs": {}}
+                with mock.patch("cadgen.store.records.RECORD_SCHEMA_VERSION", 5):
+                    write_record(script, record)
+                    self.assertFalse(stale(script).stale, "precondition: the old record falsely passes")
+                self.assertIsNone(read_record(script))
+                self.assertTrue(stale(script).stale)
+                self.assertEqual(result_snapshot_for(document), (document_hash, tree))
+                self.assertEqual(read_verified_object(tree), payload)

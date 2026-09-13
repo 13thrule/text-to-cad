@@ -256,7 +256,8 @@ current working directory. The target is deleted before the render starts and th
 finished image is written atomically, so: reuse one name while iterating (every read
 is provably the render you just ran), name the iterations when you genuinely need to
 compare two. Invalid request combinations fail before touching OUT; after a request is
-accepted, OUT is cleared first so a later failure leaves no stale image. A directory (`tmp/` as OUT) is the
+accepted, OUT is cleared first so a later failure leaves a missing file instead of
+a stale image. A directory (`tmp/` as OUT) is the
 don't-care case and gets a generated timestamped name inside it, printed on the
 `saved snapshot:` line.
 

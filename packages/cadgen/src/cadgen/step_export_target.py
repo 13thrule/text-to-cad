@@ -45,6 +45,7 @@ from cadgen._internal.generation import (
     run_script_generator,
 )
 from cadgen.metadata import normalize_mesh_numeric
+from cadgen._internal.mesh_animation import RenderModuleSnapshot
 from cadgen.step_artifact_cli import _build_entry_spec, _cad_ref_for_step
 from cadgen.step_export import export_build123d_step_file
 from cadgen._internal.step_scene import (
@@ -460,7 +461,7 @@ def _export_mesh_jobs(
     *,
     logger: CliLogger,
     force: bool = False,
-    render_module: Path | None = None,
+    render_module: RenderModuleSnapshot | None = None,
 ) -> "tuple[frozenset[Path], dict[Path, dict]]":
     """Export every requested mesh job from ONE package: the store package
     when the model resolved current, else a one-shot temp package extracted
@@ -810,8 +811,9 @@ def export_cad_target(
     # The clip name and the render module are resolved BEFORE any tessellation:
     # a typo must fail as a clean CLI error naming the clips the model has, not
     # after a minute of meshing. The token it returns is what keeps an edited
-    # `.step.js` from being served out of the ledger (mesh_animation).
-    render_module: Path | None = None
+    # `.step.js` from being served out of the ledger (mesh_animation). Carry the
+    # same captured text to Node so edits during preparation cannot rekey it.
+    render_module: RenderModuleSnapshot | None = None
     animation_request: dict[str, object] | None = None
     animation_key: str | None = None
     if animation is not None:

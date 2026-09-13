@@ -3,6 +3,11 @@
 *-logs/
 
 # Original copies of losslessly archived reports remain available locally.
+/full-review-20260912.json
+/full-review-browser-20260912.json
+/full-review-browser-iris-20260912.json
+/full-review-browser-iris-complete-20260912.json
+/full-review-reproduction-20260912.json
 /cold-compile-cleanup-20260911.json
 /deferred-surf-core-measurement-20260911.json
 /descriptor-bounds-interleaved-20260911.json

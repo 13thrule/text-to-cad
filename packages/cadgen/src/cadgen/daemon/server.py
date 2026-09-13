@@ -74,7 +74,6 @@ _TOOL_IMPORTS = {
     "3mf-build": "cadgen.cli.threemf_build",
     "glb-build": "cadgen.cli.glb_build",
     "inspect": "cadgen.cli.step_inspect.cli",
-    "snapshot": "cadgen.cli.step_snapshot",
 }
 
 from cadgen.daemon import broker as broker_mod  # noqa: E402

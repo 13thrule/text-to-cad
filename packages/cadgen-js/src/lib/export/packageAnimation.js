@@ -423,11 +423,6 @@ export function sampleClipAnimation(descriptor, clip, plan, { drop = [], deform 
           + "so the exported cord has the right shape and motion and a smooth surface"
         );
       }
-      warnings.push(
-        "morph targets carry the tube deformation as per-vertex keyframes; cadgen's own CAD "
-        + "Viewer reads a GLB's geometry and ignores its glTF animation, so play this file in "
-        + "Blender, a three.js viewer or a browser model preview"
-      );
     } else {
       warnings.push(
         `deform: "rest" ships ${summarize(deformedIds)} at rest shape: the clip's tube deformation `

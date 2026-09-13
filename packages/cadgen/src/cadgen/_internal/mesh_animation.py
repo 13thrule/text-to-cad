@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import dataclass
 from pathlib import Path
 
 # The request's closed vocabulary. No camera and no quality: this writes
@@ -235,21 +236,32 @@ def animation_variant_token(request: dict[str, object], render_module_text: str)
     import hashlib
 
     canonical = json.dumps(request, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.sha256()
+    # Earlier entries could bind a pre-meshing token to a later live-file read.
+    # Admit only exports produced from the same captured source as their token.
+    digest = hashlib.sha256(b"cadgen-animation-source-snapshot-v2\0")
     digest.update(canonical.encode("utf-8"))
     digest.update(b"\0")
     digest.update(str(render_module_text).encode("utf-8"))
     return digest.hexdigest()[:32]
 
 
-def resolve_animation(document: Path, request: dict[str, object]) -> tuple[Path, str]:
-    """``(render module path, variant token)`` for an animated export of ``document``.
+@dataclass(frozen=True)
+class RenderModuleSnapshot:
+    """The selected module's immutable source and original diagnostic name."""
+
+    path: Path
+    source: str
+
+
+def resolve_animation(document: Path, request: dict[str, object]) -> tuple[RenderModuleSnapshot, str]:
+    """``(render module snapshot, variant token)`` for an animated export.
 
     The clip NAME is checked HERE against the module the door just read -- a
     typo must fail as a clean CLI error naming the clips the model has, not as a
     stack trace out of the Node builder (which repeats the check, with the
     compiled clips in hand, as the backstop and the authority for a module that
-    builds its clips indirectly).
+    builds its clips indirectly). Both the token and Node execution consume
+    this same source snapshot, even if the author edits the file during meshing.
     """
     from cadgen._internal.render_module import (
         declared_clip_ids,
@@ -276,4 +288,4 @@ def resolve_animation(document: Path, request: dict[str, object]) -> tuple[Path,
                 else "This model declares no animation clips"
             )
         )
-    return module_path, animation_variant_token(request, module_text)
+    return RenderModuleSnapshot(module_path, module_text), animation_variant_token(request, module_text)

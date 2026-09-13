@@ -622,7 +622,10 @@ def _resolve_against_base(relative: str, base: Path) -> Path | None:
     return resolved if resolved.is_file() else None
 
 
-def closure_for_files(script_path: Path, files: object, *, base: Path) -> PythonSourceClosure:
+def closure_for_files(
+    script_path: Path, files: object, *, base: Path,
+    executed_hashes: dict[str, str] | None = None,
+) -> PythonSourceClosure:
     """Build a closure record from the script plus a set of dependency files, recording every path
     RELATIVE TO ``base`` (the model folder). The digest is computed over (relative path, content
     hash) pairs, so it — like the stored ``files`` — is independent of the absolute repository
@@ -634,7 +637,9 @@ def closure_for_files(script_path: Path, files: object, *, base: Path) -> Python
     pairs: list[tuple[str, str]] = []
     for path in paths:
         try:
-            file_hash = _semantic_source_hash(path)
+            file_hash = (executed_hashes or {}).get(str(path))
+            if file_hash is None:
+                file_hash = _semantic_source_hash(path)
         except OSError:
             continue
         pairs.append((_relative_to_base(path, base_dir), file_hash))
@@ -652,6 +657,7 @@ def capture_runtime_closure(
     base: Path,
     executed_files: object = (),
     discovered_inputs: object = (),
+    executed_hashes: dict[str, str] | None = None,
 ) -> PythonSourceClosure:
     """Capture a generator's dependency closure after running it.
 
@@ -664,7 +670,8 @@ def capture_runtime_closure(
     ``discovered_inputs``: the data files the run declared through
     :func:`note_discovered_input`, which is how ``cadgen.read_step`` puts a
     vendor STEP into the closure. Every recorded path is relative to ``base``
-    (the model folder), and a non-``.py`` input is hashed by its bytes.
+    (the model folder), and a non-``.py`` input is hashed by its bytes. Captured
+    execution/declaration hashes take precedence over the files' current bytes.
 
     A file read WITHOUT going through a declaring reader is still not a
     freshness input — nothing observes it — which is exactly why reading one is
@@ -681,7 +688,9 @@ def capture_runtime_closure(
         *executed_files,
         *discovered_inputs,
     ]
-    return closure_for_files(script_path, dependency_files, base=base)
+    return closure_for_files(
+        script_path, dependency_files, base=base, executed_hashes=executed_hashes,
+    )
 
 
 def _recompute_closure_hash(relative_files: object, *, base: Path, hasher) -> str | None:

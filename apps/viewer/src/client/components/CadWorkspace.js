@@ -111,6 +111,7 @@ import {
   hasCapability,
   isArtifactManagedFormat,
   parameterSourceKind,
+  renderCapabilities,
   renderFormatLabel,
   supportsTool,
   viewportContentKind,
@@ -1081,11 +1082,11 @@ function scopedWorkspacePerspective(snapshot, modelKey, entry) {
   if (!normalized) {
     return null;
   }
-  const robot = isRobotRenderFormat(entrySourceFormat(entry));
+  const sceneScaleMode = renderCapabilities(entrySourceFormat(entry)).sceneScale;
   return annotatePerspectiveSnapshot(normalized, {
     modelKey,
-    sceneScaleMode: robot ? "urdf" : "cad",
-    coordinateSystem: robot ? "cad-z-up-robot-framing-v2" : "cad-z-up-v1"
+    sceneScaleMode,
+    coordinateSystem: sceneScaleMode === "urdf" ? "cad-z-up-robot-framing-v2" : "cad-z-up-v1"
   });
 }
 
@@ -3559,7 +3560,7 @@ export default function CadWorkspace({
       : nextRenderSession.cadCamera;
     if (nextRenderSession.enabled && !restoredCamera && meshBounds) {
       restoredCamera = resolveRenderCameraSnapshot(renderCameraSpec, meshBounds, {
-        sceneScale: isRobotRenderFormat(entrySourceFormat(entry)) ? "urdf" : "cad"
+        sceneScale: renderCapabilities(entrySourceFormat(entry)).sceneScale
       });
     } else if (nextRenderSession.enabled && !restoredCamera) {
       pendingRenderCameraRef.current = {

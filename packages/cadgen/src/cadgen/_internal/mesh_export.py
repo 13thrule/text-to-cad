@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cadgen._internal.mesh_animation import RenderModuleSnapshot
+
 MESH_EXPORT_BUILDER = "mesh-export.mjs"
 MESH_EXPORT_RECORD_KIND = "mesh-export"
 
@@ -61,7 +63,7 @@ def run_mesh_exporter(
     name: str,
     default_color: str | None,
     logger: Any,
-    render_module: Path | None = None,
+    render_module: RenderModuleSnapshot | None = None,
     appearance: object = None,
 ) -> dict:
     """STL/3MF/GLB through the ONE tessellation path.
@@ -74,12 +76,14 @@ def run_mesh_exporter(
     deterministic. Tolerances are the tessellator's units — chord RELATIVE to
     each component's bounding diagonal, angular in radians.
 
-    ``render_module`` is the ``.step.js`` beside the DOCUMENT, and is required
-    exactly when a job carries an ``animation``: the builder compiles it through
+    ``render_module`` captures the ``.step.js`` beside the DOCUMENT, and is required
+    exactly when a job carries an ``animation``: the builder compiles its pinned text through
     the same loader the viewer uses and samples the named clip into keyframes.
     Returns the builder's payload, whose per-file ``animation`` block reports
     what was baked and what the sampling could not carry."""
     import subprocess
+    import tempfile
+    from contextlib import ExitStack
 
     from cadgen._internal.node_runtime import cad_node_executable, node_builder_script
 
@@ -112,11 +116,20 @@ def run_mesh_exporter(
             argv += ["--animation", json.dumps(job.animation, sort_keys=True, separators=(",", ":"))]
     if default_color is not None:
         argv += ["--default-color", default_color]
-    if render_module is not None:
-        argv += ["--render-module", str(render_module)]
     label = "+".join(job.fmt for job in jobs)
-    with logger.timed(f"tessellate + write {label}"):
-        proc = subprocess.run(argv, capture_output=True, text=True)
+    with ExitStack() as resources:
+        if render_module is not None:
+            module_dir = Path(resources.enter_context(tempfile.TemporaryDirectory(
+                prefix="cadgen-animation-source-",
+            )))
+            module_path = module_dir / render_module.path.name
+            module_path.write_text(render_module.source, encoding="utf-8", newline="")
+            # The shared loader imports text via a data URL (relative imports
+            # are unsupported). Preserve its original filename in diagnostics;
+            # the mutable document sibling is never read again by this export.
+            argv += ["--render-module", str(module_path)]
+        with logger.timed(f"tessellate + write {label}"):
+            proc = subprocess.run(argv, capture_output=True, text=True)
     payload: dict = {}
     for line in reversed(proc.stdout.splitlines()):
         stripped = line.strip()

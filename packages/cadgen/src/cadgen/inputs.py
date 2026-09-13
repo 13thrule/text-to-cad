@@ -46,7 +46,10 @@ def declare_input(path: Path | str) -> Path:
     model is stale on its own, rewrite it with identical bytes (a checkout, an
     rsync) and it stays current, because the input is the CONTENT and not the
     mtime. What the model does with the file is never inspected -- a build
-    depends on the bytes it read, whatever it read them as.
+    records the bytes present at declaration. Declare immediately before the
+    read and keep the file stable through that read; returning a Path cannot
+    make the caller's separate read atomic. An edit later in the build makes
+    its result stale instead of binding the new bytes to the old geometry.
 
     Recording is scoped to a build. Called from a REPL, a test or a tool it
     still resolves and checks the path, but there is no run to record into.
@@ -69,6 +72,8 @@ def declare_input(path: Path | str) -> Path:
             "inputs on its file: Path(__file__).parent / 'atlas.json'."
         )
     from cadgen._internal.source_hash import note_discovered_input
+    from cadgen.store.closure import note_declared_file_hash
 
+    note_declared_file_hash(resolved)
     note_discovered_input(resolved)
     return resolved

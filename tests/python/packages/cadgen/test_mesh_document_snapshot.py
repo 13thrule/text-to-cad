@@ -12,6 +12,62 @@ from tests.python.support.tmp_root import generated_cad_directory
 
 
 class MeshDocumentSnapshotTests(unittest.TestCase):
+    def test_animation_source_is_pinned_before_mesh_preparation_and_ledgers_those_bytes(self):
+        from cadgen import step_export_target as door
+        from cadgen._internal.mesh_animation import animation_variant_token, parse_animation_option
+        from cadgen._internal.mesh_export import mesh_variant_key
+        from cadgen.store.records import document_mesh_sha, note_document_tree
+
+        with generated_cad_directory(prefix="animation-source-snapshot-") as directory:
+            root = Path(directory)
+            document = root / "arm.step"
+            document.write_bytes(b"selected document")
+            document_hash = hashlib.sha256(document.read_bytes()).hexdigest()
+            module = root / "arm.step.js"
+            before = "export const clips = { show: {duration: 1, update(t,m) {}} };"
+            after = before.replace("duration: 1", "duration: 2")
+            module.write_text(before, encoding="utf-8")
+            view = root / "view"
+            view.mkdir()
+            (view / "assembly.json").write_text(json.dumps({
+                "documentHash": document_hash, "components": {}, "occurrences": [],
+            }), encoding="utf-8")
+            out = root / "arm.glb"
+            spec = SimpleNamespace(step_path=document, entry_path=document, color=None, source="imported")
+            captured_paths = []
+
+            def prepare(*args, **kwargs):
+                module.write_text(after, encoding="utf-8")
+                return spec, view, None
+
+            def node(argv, **kwargs):
+                captured = Path(argv[argv.index("--render-module") + 1])
+                captured_paths.append(captured)
+                self.assertEqual(captured.name, module.name)
+                self.assertNotEqual(captured, module)
+                self.assertEqual(module.read_text(encoding="utf-8"), after)
+                source = captured.read_text(encoding="utf-8")
+                self.assertEqual(source, before)
+                # Stand in for the Node loader consuming this exact file.
+                out.write_bytes(source.encode("utf-8"))
+                return SimpleNamespace(returncode=0, stdout='{"ok":true}', stderr="")
+
+            with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(root / "store")}), \
+                    mock.patch.object(door, "_resolve_mesh_package", side_effect=prepare), \
+                    mock.patch.object(door, "_effective_export_tolerances", return_value=(None, None)), \
+                    mock.patch("subprocess.run", side_effect=node) as builder:
+                note_document_tree(document_hash, "tree-a")
+                door.export_cad_target(document, [("glb", out)], animation="show")
+                request = parse_animation_option("show")
+                key = mesh_variant_key("glb", None, None, animation_key=animation_variant_token(request, before))
+                self.assertEqual(document_mesh_sha(document_hash, key), hashlib.sha256(before.encode()).hexdigest())
+                self.assertFalse(captured_paths[0].exists(), "private source must be cleaned after Node finishes")
+                # Restoring the selected source may reuse only its own output.
+                module.write_text(before, encoding="utf-8")
+                door.export_cad_target(document, [("glb", out)], animation="show")
+                self.assertEqual(builder.call_count, 1)
+                self.assertEqual(out.read_text(encoding="utf-8"), before)
+
     def test_snapshot_uses_one_digest_for_its_tree_lookup(self):
         from cadgen.catalog import result_snapshot_for
 

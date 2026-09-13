@@ -1,7 +1,10 @@
 # Cadgen warm-build and meshing benchmarks
 
-Start with the [current summary](SUMMARY-20260911.md). The latest
-[FreeCAD-inspired follow-on](FOLLOWON-INTEGRATION-20260911.md) links the
+Start with the [full review and fresh main/branch comparison](FULL-REVIEW-20260912.md),
+which distinguishes warm edits, snapshots, first visible geometry and complete
+assembly readiness, including cold-load regressions. The earlier
+[summary](SUMMARY-20260911.md) and
+[FreeCAD-inspired follow-on](FOLLOWON-INTEGRATION-20260911.md) link the
 reference-assembly, pure-factory, incremental-scene, preview-delivery, command-completion and
 dependency-footprint studies and their reproduction commands. These use small
 and moderate fixtures; historical giant-assembly results are not current

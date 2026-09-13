@@ -219,7 +219,7 @@ test("a braided cord under morph warns that the weave is a shader, not geometry"
   });
   const morph = sample(braided, { fps: 10, seconds: 1 }, { deform: "morph" });
   assert.match(morph.warnings.join("\n"), /o1\.2 carries a braid/);
-  assert.match(morph.warnings.join("\n"), /cadgen's own CAD Viewer/);
+  assert.equal(morph.warnings.length, 1, "only the unsupported braid finish needs a warning");
 });
 
 test("a label the tree does not carry fails here, not at playback", () => {

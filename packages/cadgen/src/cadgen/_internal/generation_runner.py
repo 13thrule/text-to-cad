@@ -621,14 +621,14 @@ def _run_script_generator_body(
         if spec.dxf_path is None:
             raise RuntimeError(f"{spec.source_ref} has no configured DXF output")
         # The same closure a @step model records (relative to the model folder).
-        # Code reuse is a freshness link: a drawing that imports a helper records it
-        # (and its imports) here. Non-Python inputs are intentionally NOT tracked.
+        # Code and declared data inputs keep the hashes captured during the body.
         source_closure = capture_runtime_closure(
             modules_before_load,
             spec.script_path,
             base=spec.script_path.parent,
             executed_files=executed_files,
             discovered_inputs=read_files,
+            executed_hashes=executed_hashes.hashes,
         )
         # The product IS the .dxf: the run always writes it — the sibling by
         # default, `-o` renames — and the viewer parses that file directly.

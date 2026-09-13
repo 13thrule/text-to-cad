@@ -53,6 +53,7 @@ const runtimeChanges=git('status','--porcelain','--','packages/cadgen-js/src','a
 const profile=fs.mkdtempSync(path.join(os.tmpdir(),'viewer-cycle-'));
 const errors=[];
 const failed=[];
+const badResponseTasks=[];
 const context=await chromium.launchPersistentContext(profile,{
   headless:true, viewport:{width:1400,height:900},
   args:['--use-angle=metal','--enable-precise-memory-info','--disable-features=PrivateNetworkAccessSendPreflights']
@@ -85,6 +86,13 @@ page.on('console',message=>{
   errors.push(`console: ${message.text()}`);
 });
 page.on('requestfailed',r=>failed.push(`${r.failure()?.errorText||'failed'} ${r.url()}`));
+page.on('response',response=>{
+  if(response.status()<400)return;
+  if(response.status()===404 && response.url().includes('/__tess_cache/'))return;
+  badResponseTasks.push(response.text()
+    .then(body=>({status:response.status(),url:response.url(),body:body.slice(0,2000)}))
+    .catch(()=>({status:response.status(),url:response.url(),body:null})));
+});
 
 async function waitLoaded(file,previousModelKey=null){
   await page.waitForFunction(({expected,previousModelKey,minimumLevel})=>{
@@ -156,7 +164,12 @@ snapshots.push(await collect('repeated-after-first-pick'));
 const sequence=[otherFile,repeatedFile,otherFile,repeatedFile,otherFile,repeatedFile];
 for(let i=0;i<sequence.length;i++){
   await choose(sequence[i]);
-  await page.mouse.move(570,430);await page.waitForTimeout(100);await page.mouse.click(570,430);await page.waitForTimeout(180);
+  // The initial pick above already exercises lazy selector loading. Preserve
+  // that tab selection across switches and move hover outside the viewport so
+  // every plateau sample measures the same interaction state. Clicking a fixed
+  // screen coordinate here selects different topology after camera restoration,
+  // legitimately changing the size of Three's selection buffers.
+  await page.mouse.move(1,1);await page.waitForTimeout(180);
   snapshots.push(await collect(`cycle-${i+1}-${sequence[i]}`));
 }
 await page.getByRole('button',{name:'Orbit',exact:true}).click();
@@ -246,6 +259,7 @@ if(editFixture){
   }
 }
 
+const badResponses=await Promise.all(badResponseTasks);
 const result={
   startedAt,
   servedClientProof,
@@ -260,12 +274,13 @@ const result={
   firstPick:{method:firstPickMethod,selectorsBefore,selectorsAfter},
   snapshots,
   pageErrors:errors,
+  badResponses,
   requestFailures:failed,
   assertions:{
     repeatedInstancing:snapshots[0].probe?.surfaceInstanceSets===2 && snapshots[0].probe?.surfaceInstances===24,
     lazyInitially:selectorsBefore===0,
     firstDemandLoaded:selectorsAfter>selectorsBefore,
-    noPageErrors:errors.length===0,
+    noPageErrors:errors.length===0 && badResponses.length===0,
     noUnexpectedRequestFailures:failed.every(value=>value.startsWith('net::ERR_ABORTED ')),
     noLimitations:snapshots.every(s=>s.limitation==null),
   }
@@ -297,14 +312,14 @@ if(edits.length){
   result.assertions.editWorkersReclaimed=edits.every(edit=>(edit.snapshot.probe?.memoryPolicy?.retainedByCategory?.workerResidentEstimated||0)===0);
   result.editPlateau={kind:'saved STEP byte replacement in the same tab; source execution excluded',target:editFixture.target,variant:editFixture.variant,fixtureIdentity:edits.map(edit=>edit.variant?'variant':'original'),heapUsed:edits.map(edit=>edit.snapshot.heap?.used),ownedBytes:edits.map(edit=>edit.snapshot.probe?.memoryPolicy?.estimatedOwnedBytes),gpuBytes:edits.map(edit=>edit.snapshot.gpu.liveBytes),gpuBufferCounts:edits.map(edit=>edit.snapshot.gpu.liveBufferCount)};
 }
-result.environment={node:process.version,platform:process.platform,arch:process.arch,cpu:os.cpus()[0]?.model,totalMemoryBytes:os.totalmem(),revision,runtimeChangesAtStart:runtimeChanges,runtimeChangesAtEnd:git('status','--porcelain','--','packages/cadgen-js/src','apps/viewer/src','packages/cadgen/src/cadgen'),url:base,file:repeatedFile,other:otherFile,browserCache:'fresh profile initially; same profile for switches',tessellationCache:'preexisting server cache; neither cleared nor controlled by this harness',viewport:{width:1400,height:900},angle:'metal',lod:'default',minimumLevel};
+result.environment={node:process.version,platform:process.platform,arch:process.arch,cpu:os.cpus()[0]?.model,totalMemoryBytes:os.totalmem(),revision,runtimeChangesAtStart:runtimeChanges,runtimeChangesAtEnd:git('status','--porcelain','--','packages/cadgen-js/src','apps/viewer/src','packages/cadgen/src/cadgen'),url:base,file:repeatedFile,other:otherFile,browserCache:'fresh profile initially; same profile for switches',tessellationCache:'preexisting server cache; neither cleared nor controlled by this harness',plateauInteraction:'initial selection preserved across tab switches; pointer parked outside viewport content',viewport:{width:1400,height:900},angle:'metal',lod:'default',minimumLevel};
 fs.mkdirSync(path.dirname(path.resolve(args.out)),{recursive:true});
 fs.writeFileSync(args.out,JSON.stringify(result,null,2)+'\n');
 if (!Object.values(result.assertions).every(Boolean)) process.exitCode=1;
 console.log(JSON.stringify(result,null,2));
 await cdp.detach().catch(()=>{});
 } catch(error) {
-  const failure={error:String(error),pageErrors:errors,requestFailures:failed,url:page?.url(),body:await page?.locator('body').innerText().catch(()=>null),html:await page?.content().catch(()=>null)};
+  const failure={error:String(error),pageErrors:errors,badResponses:await Promise.all(badResponseTasks),requestFailures:failed,url:page?.url(),body:await page?.locator('body').innerText().catch(()=>null),html:await page?.content().catch(()=>null)};
   fs.mkdirSync(path.dirname(path.resolve(args.out)),{recursive:true});
   fs.writeFileSync(path.resolve(args.out)+'.failure.json',JSON.stringify(failure,null,2)+'\n');
   await page?.screenshot({path:path.resolve(args.out)+'.failure.png'}).catch(()=>{});

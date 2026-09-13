@@ -437,6 +437,12 @@ gh workflow run deploy-docs.yml -f ref=v0.5.0  # a past release: its tag
 
 ### Local and manual fallbacks
 
+After bundling, `scripts/release/check-wheel-contents.sh` builds from a clean
+temporary package copy and verifies that every bundled runtime file is present
+with identical bytes, with no obsolete assets left in the wheel. It leaves the
+checkout's build scratch untouched. Set `CADGEN_WHEEL_OUT_DIR` and
+`CADGEN_KEEP_WHEEL=1` to retain that checked wheel for an installed smoke test.
+
 For local release preparation, use the same scripts the workflow calls:
 
 ```bash

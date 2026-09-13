@@ -614,7 +614,7 @@ function enrichPackageAssemblyNode(node, partById, previous = null) {
   const rawChildren = Array.isArray(node?.children) ? node.children : [];
   const children = rawChildren.length
     ? rawChildren.map((child, index) => enrichPackageAssemblyNode(child, partById, previous?.children?.[index]))
-    : previous?.children || [];
+    : previous?.children?.length === 0 ? previous.children : [];
   const nodeType = String(node?.nodeType || "").trim() || (children.length ? "subassembly" : "part");
   const id = String(node?.id || "").trim();
   const name = String(node?.name || node?.label || id).trim();

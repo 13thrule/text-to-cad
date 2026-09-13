@@ -28,6 +28,46 @@
       "archiveSha256": "e191cab880fc7643f63c5d3a8fde3d998d0a040eed07f96adde239a14b2e59f1"
     },
     {
+      "path": "full-review-20260912.json",
+      "archive": "full-review-20260912.json.gz",
+      "bytes": 105772,
+      "sha256": "415ff0b98244570c3e6682b6916d9e502bc201546ee846e3d394c0f3697036e3",
+      "archiveBytes": 11067,
+      "archiveSha256": "31ef279265847ca8c5c605341aaaaf6b2575e5a0aacf59fe079eea01fd3e5f4e"
+    },
+    {
+      "path": "full-review-browser-20260912.json",
+      "archive": "full-review-browser-20260912.json.gz",
+      "bytes": 83872,
+      "sha256": "42d7ec589a986f633c10bf29f022b03e71c7f90393c4641613cb3bab22956fcc",
+      "archiveBytes": 4168,
+      "archiveSha256": "f52a6a4c528e7b1ae673c90f7ebdbde3de969682b7f41387325e9307535e2f76"
+    },
+    {
+      "path": "full-review-browser-iris-20260912.json",
+      "archive": "full-review-browser-iris-20260912.json.gz",
+      "bytes": 29776,
+      "sha256": "26337123b3df73909874ab684b3547accc9cc3fb8d4925e2467de024d3460ce5",
+      "archiveBytes": 3260,
+      "archiveSha256": "691fd66890486863672ffc33982da62eb8ec8e7e38fd428b456aa2d1b56752b2"
+    },
+    {
+      "path": "full-review-browser-iris-complete-20260912.json",
+      "archive": "full-review-browser-iris-complete-20260912.json.gz",
+      "bytes": 29390,
+      "sha256": "d47048b2eecb3587d139e178d33f50d5fb4230923bdae874d969ea06ff4649c9",
+      "archiveBytes": 2782,
+      "archiveSha256": "249f40ffd545b93e070cc64af4d68e5992f0a3f698a1af3ea09c7e70e7546dba"
+    },
+    {
+      "path": "full-review-reproduction-20260912.json",
+      "archive": "full-review-reproduction-20260912.json.gz",
+      "bytes": 829928,
+      "sha256": "baa6a34704a125ea558454e7f83ef761af0cb079adb6606a57975fd56e2582a1",
+      "archiveBytes": 152780,
+      "archiveSha256": "5f49ffe6a6c5a610df39ce13b625ddcf0d5a519f85a19bf384955b00b723c4e4"
+    },
+    {
       "path": "hand-canonical-l1-clipping-locked-20260910.json",
       "archive": "hand-canonical-l1-clipping-locked-20260910.json.gz",
       "bytes": 373107,

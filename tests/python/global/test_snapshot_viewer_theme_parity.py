@@ -15,8 +15,6 @@ from cadgen.snapshot_core import (  # noqa: E402
     CAMERA_OPTION_KEYS,
     DISPLAY_AXIS_GUIDE_KEYS,
     DISPLAY_CLIP_KEYS,
-    DISPLAY_EDGE_CLASS_IDS,
-    DISPLAY_EDGE_CLASS_KEYS,
     DISPLAY_EDGE_KEYS,
     DISPLAY_EXPLODED_KEYS,
     DISPLAY_GRID_GUIDE_KEYS,
@@ -34,6 +32,7 @@ from cadgen.snapshot_core import (  # noqa: E402
     validate_camera_option,
     validate_render_option,
     validate_render_job_compatibility,
+    validate_display_settings_values,
 )
 
 SCENE = repo_path("packages/cadgen-js/src/common/sceneSettings.js")
@@ -300,7 +299,6 @@ console.log(JSON.stringify(cases.map((camera) => {{
     def test_nested_display_keys_match(self):
         pairs = {
             "DISPLAY_EDGE_SETTINGS_KEYS": DISPLAY_EDGE_KEYS,
-            "DISPLAY_EDGE_CLASS_SETTINGS_KEYS": DISPLAY_EDGE_CLASS_KEYS,
             "DISPLAY_GUIDE_SETTINGS_KEYS": DISPLAY_GUIDE_KEYS,
             "DISPLAY_GRID_GUIDE_SETTINGS_KEYS": DISPLAY_GRID_GUIDE_KEYS,
             "DISPLAY_AXIS_GUIDE_SETTINGS_KEYS": DISPLAY_AXIS_GUIDE_KEYS,
@@ -311,7 +309,71 @@ console.log(JSON.stringify(cases.map((camera) => {{
         for exported, expected in pairs.items():
             with self.subTest(export=exported):
                 self.assertEqual(exported_strings(DISPLAY, exported), set(expected))
-        self.assertEqual(exported_strings(DISPLAY, "CAD_EDGE_CLASS_IDS"), set(DISPLAY_EDGE_CLASS_IDS))
+        self.assertEqual(set(DISPLAY_EDGE_KEYS), {"enabled", "silhouette"})
+        self.assertEqual(set(DISPLAY_GRID_GUIDE_KEYS), {"enabled"})
+
+    def test_snapshot_and_viewer_accept_only_edge_visibility_and_grid_toggle(self):
+        cases = [
+            {"edges": {"enabled": True, "silhouette": False}},
+            {"guides": {"grid": {"enabled": False}}},
+            *({"edges": {key: value}} for key, value in (
+                ("color", "#ffffff"), ("thickness", 3), ("opacity", 0.5),
+                ("classes", {"feature": {"thickness": 2}}), ("highlightThickness", 3),
+            )),
+            *({"guides": {"grid": {key: value}}} for key, value in (
+                ("density", 2), ("opacity", 0.5), ("cellColor", "#ffffff"), ("centerColor", "#000000"),
+            )),
+        ]
+        script = f'''
+import fs from "node:fs";
+import {{ validateDisplaySettings }} from {json.dumps(DISPLAY.as_uri())};
+console.log(JSON.stringify(JSON.parse(fs.readFileSync(0,"utf8")).map(value => {{
+  try {{ validateDisplaySettings(value); return true; }} catch {{ return false; }}
+}})));
+'''
+        completed = subprocess.run(["node", "--input-type=module", "-e", script],
+                                   input=json.dumps(cases), text=True, capture_output=True, check=True)
+        accepted = []
+        for case in cases:
+            try:
+                validate_display_settings_values(case, source_label="fixed ink parity")
+            except SnapshotError:
+                accepted.append(False)
+            else:
+                accepted.append(True)
+        self.assertEqual(accepted, [True, True] + [False] * 9)
+        self.assertEqual(accepted, json.loads(completed.stdout))
+
+    def test_normal_viewer_and_snapshot_resolve_same_fixed_ink_for_both_appearances(self):
+        ink = repo_path("packages/cadgen-js/src/common/cadInk.js")
+        script = f'''
+import {{ normalizeDisplaySettings }} from {json.dumps(DISPLAY.as_uri())};
+import {{ resolveSceneSettings }} from {json.dumps(SCENE.as_uri())};
+import {{ resolveCadEdgeSettings, resolveCadGridSettings }} from {json.dumps(ink.as_uri())};
+const display = {{edges: {{silhouette: false}}, guides: {{grid: {{enabled: true}}}}}};
+function inkFor(value, appearance) {{
+  return {{edges: resolveCadEdgeSettings(value.edges, {{colorMode: appearance}}),
+           grid: resolveCadGridSettings(value.guides.grid, {{colorMode: appearance}})}};
+}}
+console.log(JSON.stringify(["light", "dark"].map(appearance => {{
+  const snapshot = resolveSceneSettings({{display, appearance}});
+  return {{viewer: inkFor(normalizeDisplaySettings(display), appearance),
+           snapshot: inkFor(snapshot.display, snapshot.appearance)}};
+}})));
+'''
+        completed = subprocess.run(["node", "--input-type=module", "-e", script],
+                                   text=True, capture_output=True, check=True)
+        resolved = json.loads(completed.stdout)
+        for value in resolved:
+            self.assertEqual(value["viewer"], value["snapshot"])
+            styles = value["snapshot"]["edges"]["classes"]
+            self.assertEqual({key: style["thickness"] for key, style in styles.items()},
+                             {"feature": 1, "tangent": 0.65, "seam": 0.8, "degenerate": 0})
+            self.assertEqual(len({styles[key]["color"] for key in ("feature", "tangent", "seam")}), 3)
+            self.assertFalse(value["snapshot"]["edges"]["silhouette"])
+            self.assertEqual(value["snapshot"]["grid"]["enabled"], True)
+            self.assertEqual(value["snapshot"]["grid"]["density"], 1)
+        self.assertNotEqual(resolved[0]["snapshot"]["edges"]["classes"], resolved[1]["snapshot"]["edges"]["classes"])
 
 
 if __name__ == "__main__":

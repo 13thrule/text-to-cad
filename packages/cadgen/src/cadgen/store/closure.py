@@ -475,6 +475,21 @@ class ExecutionHashes:
                 return
 
 
+def note_declared_file_hash(path: Path) -> None:
+    """Pin a declared input before the author reads it, while a build is active.
+
+    Keep the first declaration even if the file changes or is declared again
+    during the body. Publication and the next freshness gate must see that edit.
+    """
+    hashes = _ACTIVE_HASHES
+    if hashes is None:
+        return
+    resolved = path.resolve()
+    key = str(resolved)
+    if key not in hashes:
+        hashes[key] = _semantic_source_hash(resolved)
+
+
 def note_consumed_file_hash(path: Path | str, digest: str) -> None:
     """Record the exact bytes a data reader consumed in the active build.
 

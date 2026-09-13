@@ -207,6 +207,29 @@ class TheFreshnessVariant(unittest.TestCase):
             base, animation_variant_token(parse_animation_option({"clip": "showcase", "fps": 24}), MODULE_SOURCE)
         )
 
+    def test_pre_snapshot_animation_ledger_cannot_satisfy_captured_source_export(self):
+        import hashlib
+        from cadgen._internal.mesh_export import document_mesh_current, record_document_mesh
+        from cadgen.store.records import note_document_tree
+        from tests.python.support.tmp_root import generated_cad_directory
+
+        request = parse_animation_option("showcase")
+        canonical = json.dumps(request, sort_keys=True, separators=(",", ":"))
+        old_token = hashlib.sha256((canonical + "\0" + MODULE_SOURCE).encode()).hexdigest()[:32]
+        captured_token = animation_variant_token(request, MODULE_SOURCE)
+        self.assertNotEqual(old_token, captured_token)
+        with generated_cad_directory(prefix="animation-ledger-admission-") as folder:
+            root = Path(folder)
+            output = root / "arm.glb"
+            output.write_bytes(b"an old export whose module may have raced")
+            with mock.patch.dict("os.environ", {"CADGEN_CACHE_DIR": str(root / "store")}):
+                note_document_tree("a" * 64, "b" * 64)
+                variant = dict(document_hash="a" * 64, fmt="glb", mesh_tolerance=None,
+                               mesh_angular_tolerance=None)
+                record_document_mesh(output, **variant, animation_key=old_token)
+                self.assertTrue(document_mesh_current(output, **variant, animation_key=old_token))
+                self.assertFalse(document_mesh_current(output, **variant, animation_key=captured_token))
+
     def test_a_static_variant_binds_absent_appearance_and_an_animated_one_cannot_collide(self):
         from cadgen._internal.source_sidecar import appearance_digest
 
@@ -247,8 +270,9 @@ class ResolvingTheClip(unittest.TestCase):
 
     def test_a_declared_clip_resolves_to_the_module_and_a_variant_token(self):
         module = self._write_module()
-        path, token = resolve_animation(self.document, parse_animation_option("teardown"))
-        self.assertEqual(module, path)
+        snapshot, token = resolve_animation(self.document, parse_animation_option("teardown"))
+        self.assertEqual(module, snapshot.path)
+        self.assertEqual(MODULE_SOURCE, snapshot.source)
         self.assertEqual(animation_variant_token(parse_animation_option("teardown"), MODULE_SOURCE), token)
 
 

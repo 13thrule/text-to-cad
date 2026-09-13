@@ -528,6 +528,29 @@ test("changed component bounds rebuild only affected tree paths and preserve exa
   assert.deepEqual(before.parts[0].bounds, a.bounds);
 });
 
+test("cross-revision composition removes descendants when a subassembly becomes a leaf", () => {
+  const { descriptor, a, b } = reuseFixture();
+  const leaf = descriptor.assembly.root.children[0];
+  descriptor.assembly.root.children[0] = {
+    id: "group", nodeType: "assembly", children: [leaf]
+  };
+  const before = buildComposedPackageMeshData(descriptor, { a, b });
+  const edited = structuredClone(descriptor);
+  edited.assembly.root.children[0] = { id: "first", nodeType: "part", children: [] };
+  const after = buildComposedPackageMeshData(edited, { a, b }, { previous: before });
+  assert.deepEqual(after.assemblyRoot.children[0].children, []);
+  assert.deepEqual(after.assemblyRoot.children[0].leafPartIds, ["first"]);
+  assert.deepEqual(after.assemblyRoot, buildComposedPackageMeshData(edited, { a, b }).assemblyRoot);
+  assert.equal(after.assemblyRoot.children[1], before.assemblyRoot.children[1], "unaffected leaf keeps its identity");
+  assert.equal(before.assemblyRoot.children[0].children[0].id, "first", "prior tree remains intact");
+
+  // Removing the last child of a still-present grouping node also clears it.
+  edited.assembly.root.children[0] = { id: "group", nodeType: "assembly", children: [] };
+  const empty = buildComposedPackageMeshData(edited, { a, b }, { previous: before });
+  assert.deepEqual(empty.assemblyRoot.children[0].children, []);
+  assert.deepEqual(empty.assemblyRoot, buildComposedPackageMeshData(edited, { a, b }).assemblyRoot);
+});
+
 test("new descriptor appearance, mirror and placement cannot reuse previous occurrence metadata", () => {
   const { descriptor, a, b } = reuseFixture();
   const before = buildComposedPackageMeshData(descriptor, { a, b });

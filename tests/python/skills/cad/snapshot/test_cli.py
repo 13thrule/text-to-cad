@@ -372,16 +372,14 @@ class SnapshotCliTests(unittest.TestCase):
     def test_display_json_accepts_the_viewer_edge_settings_shape(self) -> None:
         # Viewer-exported display settings can be pasted directly into a snapshot.
         self.assertEqual(
-            self._display_job('{"mode":"shaded_edges","edges":{"enabled":false}}')["display"],
-            {"mode": "shaded_edges", "edges": {"enabled": False}},
+            self._display_job('{"mode":"shaded_edges","edges":{"enabled":false,"silhouette":true}}')["display"],
+            {"mode": "shaded_edges", "edges": {"enabled": False, "silhouette": True}},
         )
 
-    def test_display_json_still_accepts_edge_styling(self) -> None:
-        # `edges` styles the linework selected by the display mode.
-        self.assertEqual(
-            self._display_job('{"mode":"shaded_edges","edges":{"highlightOpacity":0,"thickness":0.5}}')["display"],
-            {"mode": "shaded_edges", "edges": {"highlightOpacity": 0, "thickness": 0.5}},
-        )
+    def test_display_json_rejects_retired_edge_styling(self) -> None:
+        for key, value in {"color": "#123456", "highlightOpacity": 0, "thickness": 0.5}.items():
+            with self.subTest(key=key), self.assertRaisesRegex(SnapshotError, f"edges has unknown key.*{key}"):
+                self._display_job(json.dumps({"mode": "shaded_edges", "edges": {key: value}}))
 
     def test_display_json_accepts_valid_closed_set_values(self) -> None:
         self.assertEqual(self._display_job('{"mode":"shaded"}')["display"], {"mode": "shaded"})
@@ -401,14 +399,14 @@ class SnapshotCliTests(unittest.TestCase):
                 "parts/STEP/cylindrical_cap.step",
                 "tmp/cap.png",
                 "--display",
-                '{"edges":{"color":"#123456","highlightOpacity":0.5}}',
+                '{"edges":{"enabled":true,"silhouette":false}}',
             ]
         )
-        self.assertEqual(job["display"], {"edges": {"color": "#123456", "highlightOpacity": 0.5}})
+        self.assertEqual(job["display"], {"edges": {"enabled": True, "silhouette": False}})
 
         with self.assertRaisesRegex(SnapshotError, "unknown key.*edges"):
             job_from_argv(["parts/STEP/cylindrical_cap.step", "tmp/cap.png",
-                           "--render", '{"edges":{"color":"#123456"}}'])
+                           "--render", '{"edges":{"enabled":true}}'])
 
     def test_render_accepts_the_exported_debug_envelope(self) -> None:
         job = job_from_argv(
@@ -2125,11 +2123,13 @@ class JobDisplayResolutionTests(unittest.TestCase):
         self.assertEqual(packet["jobs"][0]["display"]["mode"], "wireframe")
 
     def test_job_display_file_path_is_loaded_into_settings(self):
-        body = {"mode": "wireframe", "edges": {"color": "#123456"}}
+        body = {"mode": "shaded_edges", "edges": {"enabled": True, "silhouette": False},
+                "guides": {"grid": {"enabled": False}}}
         packet = self._packet_for("models/stage.display.json", display_body=body)
         display = packet["jobs"][0]["display"]
-        self.assertEqual(display["mode"], "wireframe")
-        self.assertEqual(display["edges"]["color"], "#123456")
+        self.assertEqual(display["mode"], body["mode"])
+        self.assertEqual(display["edges"], body["edges"])
+        self.assertEqual(display["guides"]["grid"], body["guides"]["grid"])
 
     def test_job_display_invalid_mode_raises(self):
         with self.assertRaises(SnapshotError):
