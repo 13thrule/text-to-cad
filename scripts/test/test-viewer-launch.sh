@@ -177,10 +177,13 @@ if ! printf '%s' "$reuse_json" | grep -q "\"port\":$PORT"; then
   exit 1
 fi
 
-# End-to-end compile FROM THE BUNDLE: a raw STEP in the served root goes
+# End-to-end display FROM THE BUNDLE: a raw STEP in the served root goes
 # not-compiled -> POST (cadgen's compile entry point, a job in the pool)
-# -> rendered with a real tree in the store. The fixture is deliberately
-# non-LFS (CI checks out without LFS).
+# -> compiled geometry -> a real browser load that derives and fetches its
+# display surface. The fixture is deliberately non-LFS (CI checks out without
+# LFS). Geometry completion and display readiness are separate contracts: the
+# artifact endpoint must stay "compiled" after the geometry tree lands, while
+# the bundled client drives missing SURF work through /__cad/surfaces.
 FIXTURE="$REPO_ROOT/models/examples/imported/import-smoke.step"
 if ! head -1 "$FIXTURE" | grep -q "ISO-10303-21"; then
   echo "FAIL: import fixture is not STEP text (LFS pointer?): $FIXTURE" >&2
@@ -209,10 +212,90 @@ if ! ls "$CADGEN_CACHE_DIR"/index/document/* > /dev/null 2>&1; then
   exit 1
 fi
 status_json="$(curl -s -m 10 "$step_url")"
-if ! printf '%s' "$status_json" | grep -q '"rendered"'; then
-  echo "FAIL: compiled STEP did not settle rendered: $status_json" >&2
+if ! printf '%s' "$status_json" | grep -q '"state":"compiled"'; then
+  echo "FAIL: compiled STEP did not settle compiled: $status_json" >&2
   exit 1
 fi
+if ! printf '%s' "$status_json" | grep -q '"ref":"/__cad/store?'; then
+  echo "FAIL: compiled STEP did not publish its immutable store ref: $status_json" >&2
+  exit 1
+fi
+
+# Loading the page is load-bearing. Merely accepting the new compiled state
+# would let this smoke pass with a dead display path: a cold isolated store has
+# no SURF or TESS entries, so the bundled client must request exact surface
+# derivation, fetch the pinned SURF bytes, tessellate them, and clear its loading
+# overlay. CI installs Playwright's Chromium with requirements-dev.txt.
+"$PYTHON" - "http://$HOST:$PORT/?file=smoke.step" <<'PY'
+import sys
+import time
+from urllib.parse import parse_qs, urlparse
+
+from playwright.sync_api import sync_playwright
+
+url = sys.argv[1]
+responses = []
+page_errors = []
+surface_payload = None
+surface_fetches = set()
+
+with sync_playwright() as playwright:
+    browser = playwright.chromium.launch(
+        headless=True,
+        args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"],
+    )
+    try:
+        page = browser.new_page(viewport={"width": 1000, "height": 720})
+        page.on("response", lambda response: responses.append(response))
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+
+        seen = 0
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            page.wait_for_timeout(100)
+            current = responses[seen:]
+            seen = len(responses)
+            for response in current:
+                request = response.request
+                parsed = urlparse(response.url)
+                if parsed.path == "/__cad/surfaces" and request.method == "POST" and response.ok:
+                    payload = response.json()
+                    components = payload.get("components") if isinstance(payload, dict) else None
+                    if components and all(row.get("state") == "ready" for row in components.values()):
+                        surface_payload = payload
+                elif parsed.path == "/__cad/store" and response.ok:
+                    query = parse_qs(parsed.query)
+                    if query.get("tree") and query.get("surfaceInput") and query.get("object"):
+                        surface_fetches.add(response.url)
+
+            overlay_gone = page.locator(".cad-loading-overlay").count() == 0
+            if surface_payload and surface_fetches and overlay_gone:
+                break
+
+        if page_errors:
+            raise RuntimeError("browser page error: " + " | ".join(page_errors))
+        if not surface_payload:
+            raise RuntimeError("bundled client did not complete a cold /__cad/surfaces request")
+        rows = surface_payload["components"]
+        missing = [
+            cid for cid, row in rows.items()
+            if not any(fetch.endswith(row["url"]) for fetch in surface_fetches)
+        ]
+        if missing:
+            raise RuntimeError("bundled client did not fetch pinned SURF bytes for: " + ", ".join(missing))
+        if page.locator(".cad-loading-overlay").count():
+            raise RuntimeError("bundled client did not finish tessellating the display surface")
+        canvases = page.locator("canvas")
+        if not canvases.count() or not any(canvases.nth(index).is_visible() for index in range(canvases.count())):
+            raise RuntimeError("bundled client completed surface work without a visible canvas")
+        alerts = [text.strip() for text in page.locator('[role="alert"]').all_text_contents() if text.strip()]
+        if alerts:
+            raise RuntimeError("bundled client reported an alert: " + " | ".join(alerts))
+        print(f"    bundled client displayed {len(rows)} cold-derived surface component(s)")
+    finally:
+        browser.close()
+PY
 
 # The instance-manager side of the same entrypoint: list must show this server,
 # stop must end it.
@@ -225,5 +308,5 @@ if ! "$PYTHON" -m cadgen.viewer stop --port "$PORT" | grep -q "Stopped CAD Viewe
   exit 1
 fi
 
-echo "    served / and /__cad/server on rolled port $PORT; cadgen step build e2e OK; reuse/list/stop OK"
+echo "    served / and /__cad/server on rolled port $PORT; cadgen step compile + bundled display e2e OK; reuse/list/stop OK"
 echo "==> CAD Viewer launch smoke test passed"
