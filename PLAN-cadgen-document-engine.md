@@ -185,6 +185,14 @@ private execution. The independent 60-test frontend gate passes. This adds
 coverage needed by the real 118-part iris; it does not by itself improve that
 assembly's full request while later modifiers still force private replay.
 
+Sequential-sketch milestone implemented, 13 September 2026: repeated Polygon
+additions, multi-face pending transfer and extrusion preserve stock builder
+state and native aliases. Partial or changed-provider calls cannot publish a
+precomputed result. The independent 54-test builder/sketch gate passes. The
+real iris now reaches its first chamfer without escaping; its remaining
+private replay is still a performance regression, so this coverage milestone
+does not satisfy the full-request performance exit gate.
+
 - Route the common algebra and builder APIs through the operator registry. Trace numeric/topology queries and builder state explicitly.
 - Reconcile edited source, helper changes, inserted/reordered loops, changed branches, defaults and external data. Debug provenance is separate from evaluation identity.
 - Preserve child-model declarations and output obligations even when geometry is reused or a returned value is discarded.

@@ -38,6 +38,7 @@ class PendingTransfer:
 class ExtrusionProduct:
     handle: GeometryHandle
     clean: bool
+    count: int
 
 
 def _polygon_slots(native, auxiliary):
@@ -51,20 +52,24 @@ def _polygon_slots(native, auxiliary):
 
 
 def _extrusion_slots(native, auxiliary, clean):
-    if (type(auxiliary) is not tuple or len(auxiliary) != 3
-            or auxiliary[0] != "build123d.polygon-extrusion" or type(auxiliary[1]) is not int or auxiliary[1] != 1
-            or type(auxiliary[2]) is not bool or auxiliary[2] is not clean):
+    if (type(auxiliary) is not tuple or len(auxiliary) != 4
+            or auxiliary[0] != "build123d.polygon-extrusion"
+            or type(auxiliary[1]) is not int or auxiliary[1] != 2
+            or type(auxiliary[2]) is not bool or auxiliary[2] is not clean
+            or type(auxiliary[3]) is not int or not 1 <= auxiliary[3] <= 4096):
         raise ValueError("invalid polygon extrusion auxiliary data")
+    count = auxiliary[3]
     slots = _slots(native)
-    if (len(slots) != 3 or tuple(shape.ShapeType().name for shape in slots) !=
-            ("TopAbs_FACE", "TopAbs_SOLID", "TopAbs_SOLID")):
+    if (len(slots) != 3 * count or tuple(shape.ShapeType().name for shape in slots) !=
+            (("TopAbs_FACE",) * count + ("TopAbs_SOLID",) * (2 * count))):
         raise ValueError("invalid polygon extrusion native outputs")
     return slots
 
 
 def _decode_pending(value, native, *, has_prior):
     if (type(value) is not tuple or len(value) != 4 or value[0] != "build123d.pending-sketch"
-            or type(value[1]) is not int or value[1] != 1 or type(value[3]) is not tuple or len(value[3]) != 1):
+            or type(value[1]) is not int or value[1] != 1 or type(value[3]) is not tuple
+            or not 1 <= len(value[3]) <= 4096):
         raise ValueError("invalid pending sketch auxiliary data")
     layout = _decode_layout(value[2], native, expected_root="Part" if has_prior else None)
     if (layout.input_count != 1 + int(has_prior) or layout.prior_slot != (0 if has_prior else None)
@@ -77,6 +82,8 @@ def _decode_pending(value, native, *, has_prior):
                 or layout.created[ref[1]].kind != "Face"):
             raise ValueError("invalid pending sketch face role")
         faces.append(WrapperRef(*ref))
+    if len(set(faces)) != len(faces):
+        raise ValueError("invalid duplicate pending sketch face role")
     return layout, tuple(faces)
 
 
@@ -136,7 +143,7 @@ class PolygonKernel:
         wire, face = _polygon_slots(native, tx.document._get(seed.handle).auxiliary)
         return PolygonNative(wire, face)
 
-    def own(self, tx, seed: PolygonSeed) -> PolygonSeed:
+    def own(self, tx, seed: PolygonSeed, *, logical_id: str | None = None) -> PolygonSeed:
         """Retain one private input family including the pre-face wire.
 
         Copying the complete carrier preserves wire/face sharing and avoids
@@ -144,7 +151,9 @@ class PolygonKernel:
         """
         handle = tx.evaluate(OperatorSpec("build123d.builder.polygon-input", "1"),
                              (), (seed.handle,),
-                             lambda inputs, arena: NativeResult(inputs[0], auxiliary=("build123d.polygon-native", 1)))
+                             lambda inputs, arena: NativeResult(
+                                 inputs[0], auxiliary=("build123d.polygon-native", 1)),
+                             logical_id=logical_id)
         return PolygonSeed(handle)
 
     def project(self, tx, seed: PolygonSeed, slot: int) -> GeometryHandle:
@@ -156,7 +165,7 @@ class PolygonKernel:
 
 
 class SketchNativeEffects:
-    """First ADD of one closed Polygon, retaining all local sketch effects."""
+    """Sequential ADDs of closed Polygons, retaining all local sketch effects."""
 
     def __init__(self, frontend=None, *, require_cached=False):
         import build123d as bd
@@ -188,7 +197,8 @@ class SketchNativeEffects:
         self.solid_extrude = inspect.getattr_static(bd.Solid, "extrude")
         self.clean = inspect.getattr_static(bd.Shape, "clean")
 
-    def first(self, tx, seed: PolygonSeed) -> EffectBundle:
+    def add(self, tx, seed: PolygonSeed,
+            previous: EffectBundle | None = None) -> EffectBundle:
         bd = self.bd
         if not self.stock.providers_match():
             raise UnsupportedBuilderEffect("stock sketch providers changed")
@@ -202,23 +212,25 @@ class SketchNativeEffects:
             return face.faces()[0]
         def compute(inputs, arena):
             def capture():
-                return self.stock._capture(None, inputs, bd.Mode.ADD, True, skip_clean,
+                return self.stock._capture(previous, inputs, bd.Mode.ADD, True, skip_clean,
                                            builder_type=bd.BuildSketch, tool_factory=tool)
             native, layout = self.stock._execute(capture)
             return NativeResult(native, auxiliary=_encode_layout(layout))
+        arguments = (() if previous is None else (previous.handle,)) + (seed.handle,)
         handle = tx.evaluate(
-            OperatorSpec("build123d.builder.sketch-first-effects", "1", Mutation.READ_ONLY),
-            (skip_clean, self.stock._context_key), (seed.handle,), compute)
+            OperatorSpec("build123d.builder.sketch-add-effects", "1", Mutation.READ_ONLY),
+            (skip_clean, self.stock._context_key), arguments, compute)
         prototype = tx.document._get(handle)
         decoded_key = (handle.prototype_id, "sketch-effects-decoded-layout")
         layout = tx.document._derivations.get(decoded_key)
         if layout is None:
             layout = _decode_layout(prototype.auxiliary, prototype.shape, expected_root="Sketch")
-            if (layout.input_count != 1 or layout.prior_slot is not None
+            if (layout.input_count != 1 + int(previous is not None)
+                    or layout.prior_slot != (0 if previous is not None else None)
                     or len(layout.tools) != 1 or layout.tools[0].kind != "Face"):
-                raise ValueError("invalid first sketch input roles")
+                raise ValueError("invalid sketch addition input roles")
             tx.document._derivations[decoded_key] = layout
-        return EffectBundle(handle, layout, None, (seed.handle,))
+        return EffectBundle(handle, layout, previous, (seed.handle,))
 
     def transfer(self, tx, sketch: EffectBundle, previous: EffectBundle | None) -> PendingTransfer:
         bd = self.bd
@@ -255,33 +267,57 @@ class SketchNativeEffects:
         layout, faces = decoded
         return PendingTransfer(EffectBundle(handle, layout, previous, (sketch.handle,)), faces)
 
-    def extrude(self, tx, face: GeometryHandle, direction: tuple[float, float, float], *, clean: bool) -> ExtrusionProduct:
+    def extrude(self, tx, faces: tuple[GeometryHandle, ...],
+                direction: tuple[float, float, float], *, clean: bool) -> ExtrusionProduct:
         bd = self.bd
         if not self.stock.providers_match() or tx.escape_arena.active:
             raise UnsupportedBuilderEffect("extrusion requires an unexposed stock polygon face")
-        if (type(direction) is not tuple or len(direction) != 3 or type(clean) is not bool
+        if (type(faces) is not tuple or not 1 <= len(faces) <= 4096
+                or any(type(face) is not GeometryHandle for face in faces)
+                or type(direction) is not tuple or len(direction) != 3 or type(clean) is not bool
                 or any(type(v) not in (float, int) or not math.isfinite(v) for v in direction)
                 or not any(direction)):
             raise UnsupportedBuilderEffect("extrusion requires a finite nonzero direction")
         def compute(inputs, arena):
             def kernel():
-                source = bd.Face(bd.Face.cast(inputs[0]).wrapped)
-                solid = self.solid_extrude.__func__(bd.Solid, source, direction)
-                raw = self.stock._wrapped.fget(solid)
-                if clean:
-                    self.clean(solid)
-                return NativeResult(_pack((inputs[0], raw, self.stock._wrapped.fget(solid))),
-                                    auxiliary=("build123d.polygon-extrusion", 1, clean))
+                raw, cleaned = [], []
+                for native in inputs:
+                    source = bd.Face(bd.Face.cast(native).wrapped)
+                    solid = self.solid_extrude.__func__(bd.Solid, source, direction)
+                    raw.append(self.stock._wrapped.fget(solid))
+                    if clean:
+                        self.clean(solid)
+                    cleaned.append(self.stock._wrapped.fget(solid))
+                return NativeResult(
+                    _pack((*inputs, *raw, *cleaned)),
+                    auxiliary=("build123d.polygon-extrusion", 2, clean, len(inputs)))
             return self.stock._execute(kernel)
-        handle = tx.evaluate(OperatorSpec("build123d.builder.polygon-extrusion", "1", Mutation.READ_ONLY),
-                             (direction, clean, self.stock._context_key), (face,), compute)
+        handle = tx.evaluate(OperatorSpec("build123d.builder.polygon-extrusion", "2", Mutation.READ_ONLY),
+                             (direction, clean, self.stock._context_key), faces, compute)
         prototype = tx.document._get(handle)
         _extrusion_slots(prototype.shape, prototype.auxiliary, clean)
-        return ExtrusionProduct(handle, clean)
+        return ExtrusionProduct(handle, clean, len(faces))
 
-    def extrusion_input(self, tx, product: ExtrusionProduct) -> GeometryHandle:
-        return tx.evaluate(OperatorSpec("build123d.builder.extrusion-input", "1", Mutation.READ_ONLY),
-                           (), (product.handle,), lambda inputs, arena: NativeResult(_pack((_slots(inputs[0])[2],))))
+    def extrusion_inputs(self, tx, product: ExtrusionProduct) -> tuple[GeometryHandle, ...]:
+        result = []
+        for index in range(product.count):
+            slot = 2 * product.count + index
+            result.append(tx.evaluate(
+                OperatorSpec("build123d.builder.extrusion-input", "2", Mutation.READ_ONLY),
+                index, (product.handle,),
+                lambda inputs, arena, slot=slot: NativeResult(_slots(inputs[0])[slot])))
+        return tuple(result)
+
+    def extrusion_result(self, tx, inputs: tuple[GeometryHandle, ...]) -> GeometryHandle:
+        bd = self.bd
+        def compute(native_inputs, _arena):
+            def kernel():
+                solids = [bd.Solid(bd.Solid.cast(native).wrapped) for native in native_inputs]
+                return NativeResult(self.stock._wrapped.fget(bd.Part(solids)))
+            return self.stock._execute(kernel)
+        return tx.evaluate(
+            OperatorSpec("build123d.builder.extrusion-result", "1", Mutation.READ_ONLY),
+            self.stock._context_key, inputs, compute)
 
 
 @dataclass
@@ -289,6 +325,8 @@ class _PolygonFrame:
     shape: Any
     builder: Any
     points: tuple
+    logical_id: str
+    previous: "_SketchState | None" = None
     seed: PolygonSeed | None = None
     native: PolygonNative | None = None
     wire: Any = None
@@ -301,14 +339,17 @@ class _PolygonFrame:
 class _SketchState:
     bundle: EffectBundle
     result: Any
+    result_handle: GeometryHandle
+    lasts: Any = None
+    rows: tuple = ()
     eligible: bool = True
 
 
 @dataclass
 class _PendingState:
     transfer: PendingTransfer
-    face: Any
-    handle: GeometryHandle
+    source_faces: tuple
+    handles: tuple[GeometryHandle, ...]
     faces: list
     planes: list
     plane: Any
@@ -320,19 +361,23 @@ class _ExtrudeFrame:
     pending_state: _PendingState
     clean: bool
     mode: Any
+    direction: tuple[float, float, float]
     product: ExtrusionProduct | None = None
-    input_handle: GeometryHandle | None = None
+    input_handles: tuple[GeometryHandle, ...] = ()
+    result_handle: GeometryHandle | None = None
     native_slots: tuple | None = None
-    source: Any = None
-    cleaned: bool = False
-    output: GeometryHandle | None = None
-    source_native: Any = None
+    sources: list = field(default_factory=list)
+    source_indices: dict = field(default_factory=dict)
+    cleaned: set = field(default_factory=set)
+    outputs: tuple[GeometryHandle, ...] = ()
+    source_natives: tuple = ()
+    published: bool = False
     pending: list = field(default_factory=list)
     wrappers: list = field(default_factory=list)
 
 
 class SketchEffectsFrontend:
-    """Provenance for the single stock Polygon construction sequence."""
+    """Provenance for sequential stock Polygon construction sequences."""
 
     def __init__(self, frontend, *, deferred=False):
         import contextvars
@@ -364,10 +409,11 @@ class SketchEffectsFrontend:
                 return self.polygon_init(shape, *points, **kwargs)
             if self.stock is None:
                 self.activate(require_cached=True)
-            normalized = self._admit(shape, points, kwargs)
+            admitted = self._admit(shape, points, kwargs)
             old = self.current
-            self.current = (_PolygonFrame(shape, self.context.get(None), normalized)
-                            if normalized is not None else None)
+            self.current = (_PolygonFrame(
+                shape, self.context.get(None), admitted[0], f._logical("polygon-input"),
+                admitted[1]) if admitted is not None else None)
             succeeded = False
             try:
                 self.polygon_init(shape, *points, **kwargs)
@@ -388,7 +434,9 @@ class SketchEffectsFrontend:
             actual = tuple((v.X, v.Y) for v in vertices)
             if actual != frame.points or any(v.Z != 0 for v in vertices):
                 return original_wire.__func__(cls, vertices, close)
-            frame.seed = self.effects.kernel.own(f.transaction, self.effects.kernel.evaluate(f.transaction, frame.points))
+            frame.seed = self.effects.kernel.own(
+                f.transaction, self.effects.kernel.evaluate(f.transaction, frame.points),
+                logical_id=frame.logical_id)
             frame.native = self.effects.kernel.instantiate(f.transaction, frame.seed)
             frame.wire = cls(bd.Wire.cast(frame.native.wire).wrapped)
             return frame.wire
@@ -433,9 +481,11 @@ class SketchEffectsFrontend:
             if self.stock is None:
                 self.activate(require_cached=True)
             old = self.extruding
-            pending = self._admit_extrude(to_extrude, amount, dir, until, target, both, taper, clean, mode)
-            self.extruding = (_ExtrudeFrame(self.context.get(None), pending, clean, mode)
-                              if pending is not None else None)
+            admitted = self._admit_extrude(
+                to_extrude, amount, dir, until, target, both, taper, clean, mode)
+            self.extruding = (_ExtrudeFrame(
+                self.context.get(None), admitted[0], clean, mode, admitted[1])
+                if admitted is not None else None)
             result, succeeded = None, False
             try:
                 # This is the original Python body: pending lists are consumed
@@ -452,29 +502,47 @@ class SketchEffectsFrontend:
         def solid(cls, obj, direction):
             frame = self.extruding
             from OCP.gp import gp_Vec
-            if (f._compute_depth or frame is None or frame.product is not None
-                    or cls is not bd.Solid or obj is not frame.pending_state.face
+            index = -1 if frame is None else len(frame.sources)
+            if (f._compute_depth or frame is None
+                    or index >= len(frame.pending_state.source_faces)
+                    or cls is not bd.Solid or obj is not frame.pending_state.source_faces[index]
                     or type(direction) is not bd.Vector
                     or type(object.__getattribute__(direction, "__dict__").get("_wrapped")) is not gp_Vec
                     or not self.stock.providers_match()):
                 return solid_extrude.__func__(cls, obj, direction)
             values = tuple(direction)
-            frame.product = self.effects.extrude(f.transaction, frame.pending_state.handle, values, clean=frame.clean)
-            frame.input_handle = self.effects.extrusion_input(f.transaction, frame.product)
-            from .resources import ResourceRequest
-            with f.transaction.document.admission.admit(ResourceRequest(), cancellation=f.transaction.cancellation):
-                owned = copy_shape(f.transaction.document._get(frame.product.handle).shape)
-            f.transaction.stats.native_copies += 1
-            frame.native_slots = _slots(owned)
-            frame.source = cls(bd.Solid.cast(frame.native_slots[1]).wrapped)
-            return frame.source
+            if values != frame.direction:
+                return solid_extrude.__func__(cls, obj, direction)
+            if frame.product is None:
+                frame.product = self.effects.extrude(
+                    f.transaction, frame.pending_state.handles, frame.direction,
+                    clean=frame.clean)
+                frame.input_handles = self.effects.extrusion_inputs(
+                    f.transaction, frame.product)
+                frame.result_handle = self.effects.extrusion_result(
+                    f.transaction, frame.input_handles)
+                from .resources import ResourceRequest
+                with f.transaction.document.admission.admit(
+                        ResourceRequest(), cancellation=f.transaction.cancellation):
+                    owned = copy_shape(f.transaction.document._get(frame.product.handle).shape)
+                f.transaction.stats.native_copies += 1
+                frame.native_slots = _slots(owned)
+            count = frame.product.count
+            source = cls(bd.Solid.cast(frame.native_slots[count + index]).wrapped)
+            frame.source_indices[id(source)] = index
+            frame.sources.append(source)
+            return source
 
         def clean(shape):
             frame = self.extruding
-            if (not f._compute_depth and frame is not None and shape is frame.source and frame.product is not None
-                    and frame.clean and not frame.cleaned and self.stock.providers_match()):
-                f._native_originals["wrapped"].fset(shape, bd.Solid.cast(frame.native_slots[2]).wrapped)
-                frame.cleaned = True
+            index = None if frame is None else frame.source_indices.get(id(shape))
+            if (not f._compute_depth and frame is not None and index is not None
+                    and frame.product is not None and frame.clean
+                    and index not in frame.cleaned and self.stock.providers_match()):
+                count = frame.product.count
+                f._native_originals["wrapped"].fset(
+                    shape, bd.Solid.cast(frame.native_slots[2 * count + index]).wrapped)
+                frame.cleaned.add(index)
                 return shape
             return clean_shape(shape)
 
@@ -503,12 +571,24 @@ class SketchEffectsFrontend:
             return None
         pending = self.pending.get(id(builder))
         if (pending is None or builder.pending_faces is not pending.faces or builder.pending_face_planes is not pending.planes
-                or len(pending.faces) != 1 or pending.faces[0] is not pending.face
-                or len(pending.planes) != 1 or pending.planes[0] is not pending.plane
-                or _state(pending.face) is None or _state(pending.face).private
-                or _state(pending.face).handle != pending.handle):
+                or not 1 <= len(pending.faces) <= 4096
+                or len(pending.faces) != len(pending.source_faces)
+                or len(pending.planes) != len(pending.source_faces)
+                or any(pending.faces[index] is not face
+                       for index, face in enumerate(pending.source_faces))
+                or any(plane is not pending.plane for plane in pending.planes)
+                or any(_state(face) is None or _state(face).private
+                       or _state(face).handle != pending.handles[index]
+                       for index, face in enumerate(pending.source_faces))):
             return None
-        return pending
+        vector = pending.plane.z_dir * amount
+        direction_values = tuple(vector)
+        if (len(direction_values) != 3
+                or any(type(value) not in (int, float) or not math.isfinite(value)
+                       for value in direction_values)
+                or not any(direction_values)):
+            return None
+        return pending, direction_values
 
     def _patch(self, owner, name, replacement):
         old = inspect.getattr_static(owner, name)
@@ -536,11 +616,17 @@ class SketchEffectsFrontend:
                 or kwargs.get("rotation", 0) != 0 or kwargs.get("mode", bd.Mode.ADD) is not bd.Mode.ADD):
             return None
         builder = self.context.get(None)
-        if type(builder) is not bd.BuildSketch or vars(builder).get("_sketch_local") is not None:
+        if type(builder) is not bd.BuildSketch:
             return None
         if (builder._tag != "BuildSketch" or builder._shape is not bd.Face or builder._sub_class is not bd.Sketch
                 or type(builder.lasts) is not dict
                 or any(name in vars(builder) for name in ("_add_to_context", "_add_to_pending", "_obj", "_shapes"))):
+            return None
+        previous = self.builders.get(id(builder))
+        if previous is None:
+            if vars(builder).get("_sketch_local") is not None:
+                return None
+        elif not self._builder_unchanged(builder, previous):
             return None
         locations = self.locations.get(None)
         if type(locations) is not bd.LocationList:
@@ -560,7 +646,7 @@ class SketchEffectsFrontend:
             if (len(points) < 3 or any(type(p) not in (tuple, list) or len(p) != 2
                     or any(type(v) not in (int, float) or not math.isfinite(v) for v in p) for p in points)):
                 return None
-            return tuple(tuple(float(v) for v in p) for p in points)
+            return tuple(tuple(float(v) for v in p) for p in points), previous
         except OverflowError:
             return None
 
@@ -577,15 +663,22 @@ class SketchEffectsFrontend:
                 or kwargs != {"mode": bd.Mode.ADD} or f.transaction.escape_arena.active
                 or not self.stock.providers_match()):
             return False
+        previous = frame.previous
+        if ((previous is None and vars(builder).get("_sketch_local") is not None)
+                or (previous is not None and not self._builder_unchanged(builder, previous))):
+            return False
         source = objects[0]
         raw = object.__getattribute__(source, "__dict__")
         parent = raw.get("topo_parent")
         if (type(parent) is not bd.Face or not f._native_originals["wrapped"].fget(parent).IsSame(frame.native.face)
                 or not f._native_originals["wrapped"].fget(source).IsSame(frame.native.face)):
             return False
-        bundle = self.effects.first(f.transaction, frame.seed)
+        bundle = self.effects.add(
+            f.transaction, frame.seed, None if previous is None else previous.bundle)
         frame.bundle = bundle
         made = {WrapperRef("tool", 0): source}
+        if previous is not None:
+            made[WrapperRef("prior")] = previous.result
         parent_ref = bundle.layout.tools[0].topo_parent
         if parent_ref is None:
             raise ValueError("stock sketch effect lost its constructor face")
@@ -601,7 +694,7 @@ class SketchEffectsFrontend:
             self._manage(shape, handle, builder)
             return shape
         result = wrapper(bundle.layout.result)
-        builder.obj_before = None
+        builder.obj_before = None if previous is None else previous.result
         builder.to_combine = list(objects)
         builder._obj = result
         for kind, row in zip((bd.Vertex, bd.Edge, bd.Face, bd.Solid), bundle.layout.lasts):
@@ -609,17 +702,27 @@ class SketchEffectsFrontend:
         frame.pending.extend((shape, self.stock.project(f.transaction, bundle, ref))
                              for ref, shape in ((WrapperRef("tool", 0), source), (parent_ref, parent)))
         frame.pending.append((frame.wire, self.effects.kernel.project(f.transaction, frame.seed, 0)))
-        self.builders[id(builder)] = _SketchState(bundle, result)
+        from .frontend import _state
+        result_state = _state(result)
+        if result_state is None or result_state.handle is None:
+            raise ValueError("stock sketch result lost its managed geometry handle")
+        result_handle = result_state.handle
+        self.builders[id(builder)] = _SketchState(bundle, result, result_handle)
         f._record_fallback("sketch-effects-retained")
         return True
 
     def _extrude_add(self, builder, objects, kwargs):
+        from .builder_effects import _BuilderState, _single_solid
         from .native import topology_map
         f, bd, frame = self.frontend, self.frontend._bd, self.extruding
-        if (frame.builder is not builder or frame.input_handle is None or len(objects) != 1
-                or objects[0] is not frame.source or type(objects[0]) is not bd.Solid
+        if (frame.builder is not builder or frame.product is None or frame.result_handle is None
+                or len(objects) != frame.product.count or len(frame.sources) != len(objects)
+                or len(frame.input_handles) != len(objects)
+                or any(type(source) is not bd.Solid or objects[index] is not source
+                       for index, source in enumerate(frame.sources))
                 or kwargs != {"clean": frame.clean, "mode": frame.mode}
-                or (frame.clean and not frame.cleaned) or f.transaction.escape_arena.active
+                or (frame.clean and frame.cleaned != set(range(len(objects))))
+                or f.transaction.escape_arena.active
                 or not self.stock.providers_match()):
             return False
         solid = f._builder_effects.activate(require_cached=True)
@@ -632,17 +735,49 @@ class SketchEffectsFrontend:
         if previous is not None:
             if not previous.eligible or builder._part is not previous.part or not solid._part_unchanged(previous):
                 return False
-            from .builder_effects import _single_solid
-            if topology_map(f.transaction.document._get(previous.bundle.handle).shape).Contains(
-                    _single_solid(f.transaction.document._get(frame.input_handle).shape)):
+            prior = topology_map(f.transaction.document._get(previous.bundle.handle).shape)
+            if any(prior.Contains(_single_solid(f.transaction.document._get(handle).shape))
+                   for handle in frame.input_handles):
                 return False
         elif builder._part is not None or frame.mode is bd.Mode.SUBTRACT:
             return False
-        native = f._native_originals["wrapped"].fget(frame.source)
-        result = solid._publish(builder, objects, frame.input_handle, frame.mode, frame.clean, previous, frame, native)
-        if result:
-            f._record_fallback("sketch-extrusion-retained")
-        return result
+        natives = tuple(f._native_originals["wrapped"].fget(source)
+                        for source in frame.sources)
+        builder.obj_before = builder._part
+        builder.to_combine = list(objects)
+        bundle = solid.stock.evaluate(
+            f.transaction, None if previous is None else previous.bundle,
+            frame.input_handles, mode=frame.mode, clean=frame.clean)
+        made = {WrapperRef("tool", index): source
+                for index, source in enumerate(frame.sources)}
+        if previous is not None:
+            made[WrapperRef("prior")] = previous.part
+        def wrapper(ref):
+            if ref in made:
+                return made[ref]
+            record = bundle.layout.created[ref.index]
+            handle = solid.stock.project(f.transaction, bundle, ref)
+            shape = solid.stock._execute(
+                solid.stock._instantiate, record,
+                f.transaction.document._get(handle).shape)
+            made[ref] = shape
+            shape.topo_parent = None if record.topo_parent is None else wrapper(record.topo_parent)
+            solid._manage(shape, handle, builder)
+            return shape
+        result = wrapper(bundle.layout.result)
+        builder._part = result
+        for kind, row in zip((bd.Vertex, bd.Edge, bd.Face, bd.Solid), bundle.layout.lasts):
+            builder.lasts[kind] = bd.ShapeList(wrapper(ref) for ref in row)
+        frame.outputs = tuple(solid.stock.project(
+            f.transaction, bundle, WrapperRef("tool", index))
+            for index in range(len(frame.sources)))
+        frame.source_natives = natives
+        frame.pending.extend(zip(frame.sources, frame.outputs))
+        solid.builders[id(builder)] = _BuilderState(bundle, result)
+        f._record_fallback("builder-effects-retained")
+        f._record_fallback("sketch-extrusion-retained")
+        frame.published = True
+        return True
 
     def _transfer(self, builder, objects, kwargs):
         from .builder_effects import _BuilderState
@@ -699,30 +834,79 @@ class SketchEffectsFrontend:
         builder._part = result
         for kind, row in zip((bd.Vertex, bd.Edge, bd.Face, bd.Solid), bundle.layout.lasts):
             builder.lasts[kind] = bd.ShapeList(wrapper(ref) for ref in row)
-        face = wrapper(transfer.faces[0])
-        builder.pending_faces.append(face)
-        builder.pending_face_planes.append(context.workplanes[0])
-        self.pending[id(builder)] = _PendingState(transfer, face, projected[transfer.faces[0]],
-                                                  builder.pending_faces, builder.pending_face_planes,
-                                                  context.workplanes[0])
+        faces = tuple(wrapper(ref) for ref in transfer.faces)
+        handles = tuple(projected[ref] for ref in transfer.faces)
+        plane = context.workplanes[0]
+        builder.pending_faces.extend(faces)
+        builder.pending_face_planes.extend(plane for _face in faces)
+        self.pending[id(builder)] = _PendingState(
+            transfer, faces, handles, builder.pending_faces,
+            builder.pending_face_planes, plane)
         if result is not None:
             solid.builders[id(builder)] = _BuilderState(bundle, result)
         f._record_fallback("sketch-pending-retained")
         return True
 
     def _sketch_unchanged(self, state):
+        from .frontend import _state
         source = state.result
         raw = object.__getattribute__(source, "__dict__")
         record = state.bundle.layout.created[state.bundle.layout.result.index]
         if raw.keys() - {"_wrapped", "_cadgen_document_state", "for_construction", "label", "_color",
                          "topo_parent", "material", "joints", "_NodeMixin__children", "_NodeMixin__parent"}:
             return False
-        return (type(raw.get("label")) is str and raw["label"] == record.label
+        managed = _state(source)
+        return (managed is not None and managed.session is self.frontend
+                and not managed.private and managed.handle == state.result_handle
+                and type(raw.get("label")) is str and raw["label"] == record.label
                 and type(raw.get("material")) is str and raw["material"] == record.material
                 and raw.get("for_construction") is record.for_construction and raw.get("_color") is None
                 and raw.get("topo_parent") is None and type(raw.get("joints")) is dict and not raw["joints"]
                 and type(raw.get("_NodeMixin__children")) is list and not raw["_NodeMixin__children"]
                 and raw.get("_NodeMixin__parent") is None)
+
+    def _builder_unchanged(self, builder, state):
+        from .frontend import _state
+        bd = self.frontend._bd
+        if (not state.eligible or vars(builder).get("_sketch_local") is not state.result
+                or builder.lasts is not state.lasts or not self._sketch_unchanged(state)
+                or len(state.rows) != 4):
+            return False
+        for kind, expected_list, expected in state.rows:
+            current = state.lasts.get(kind)
+            if (current is not expected_list or type(current) is not bd.ShapeList
+                    or list.__len__(current) != len(expected)):
+                return False
+            for index, (shape, handle, parent) in enumerate(expected):
+                if list.__getitem__(current, index) is not shape:
+                    return False
+                managed = _state(shape)
+                raw = object.__getattribute__(shape, "__dict__")
+                if (managed is None or managed.session is not self.frontend or managed.private
+                        or managed.handle != handle or raw.get("topo_parent") is not parent):
+                    return False
+        return True
+
+    def _snapshot_builder(self, builder, state):
+        from .frontend import _state
+        bd = self.frontend._bd
+        rows = []
+        for kind in (bd.Vertex, bd.Edge, bd.Face, bd.Solid):
+            current = builder.lasts.get(kind)
+            if type(current) is not bd.ShapeList:
+                state.eligible = False
+                return
+            expected = []
+            for shape in list.__iter__(current):
+                managed = _state(shape)
+                if managed is None or managed.session is not self.frontend or managed.private:
+                    state.eligible = False
+                    return
+                raw = object.__getattribute__(shape, "__dict__")
+                expected.append((shape, managed.handle, raw.get("topo_parent")))
+            rows.append((kind, current, tuple(expected)))
+        state.lasts = builder.lasts
+        state.rows = tuple(rows)
 
     def _manage(self, shape, handle, builder):
         self.frontend._builder_effects._manage(shape, handle, builder)
@@ -730,13 +914,24 @@ class SketchEffectsFrontend:
 
     def capture(self, shape):
         extruding = self.extruding
-        if extruding is not None and extruding.output is not None:
-            from .builder_effects import _single_solid
+        if extruding is not None and extruding.result_handle is not None:
             native = self.frontend._native_originals["wrapped"].fget(shape)
-            try:
-                matches = _single_solid(native).IsSame(extruding.source_native)
-            except UnsupportedBuilderEffect:
-                matches = False
+            from OCP.TopAbs import TopAbs_SOLID
+            from OCP.TopExp import TopExp_Explorer
+            explorer = TopExp_Explorer(native, TopAbs_SOLID)
+            solids = []
+            while explorer.More():
+                solids.append(explorer.Current())
+                explorer.Next()
+            remaining = list(extruding.source_natives)
+            matches = len(solids) == len(remaining)
+            for solid in solids:
+                indices = [index for index, expected in enumerate(remaining)
+                           if solid.IsSame(expected)]
+                if len(indices) != 1:
+                    matches = False
+                    break
+                remaining.pop(indices[0])
             if matches:
                 extruding.wrappers.append(shape)
             return matches
@@ -766,17 +961,22 @@ class SketchEffectsFrontend:
         tool = self.stock.project(self.frontend.transaction, frame.bundle, WrapperRef("tool", 0))
         for shape in (*frame.wrappers, frame.shape):
             self._manage(shape, tool, frame.builder)
+        state = self.builders.get(id(frame.builder))
+        if state is not None and state.bundle is frame.bundle:
+            self._snapshot_builder(frame.builder, state)
 
     def _finish_extrude(self, frame, result, succeeded):
         solid = self.frontend._builder_effects
         self.pending.pop(id(frame.builder), None)
-        if not succeeded or frame.output is None:
+        captured_result = any(shape is result for shape in frame.wrappers)
+        if (not succeeded or not frame.published or frame.result_handle is None
+                or not captured_result):
             solid.revoke(frame.builder)
             return
         for shape, handle in frame.pending:
             solid._manage(shape, handle, frame.builder)
-        for shape in (*frame.wrappers, result):
-            solid._manage(shape, frame.output, frame.builder)
+        for shape in frame.wrappers:
+            solid._manage(shape, frame.result_handle, frame.builder)
 
     def revoke(self, builder):
         state = self.builders.get(id(builder))

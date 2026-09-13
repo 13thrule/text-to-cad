@@ -74,6 +74,13 @@ metadata containers in each copied tree. Unsupported author values still take
 ordinary private execution. Saved hierarchy paths and appearance are verified
 for both execution paths.
 
+Sequential stock Polygon additions retain their sketch result and complete
+builder effects, including overlapping unions. Pending transfer preserves the
+ordered faces and plane references; bounded multi-face extrusion reuses native
+results while executing the ordinary constructor and builder lifecycle. Changed
+builder state or provider drift enters private execution. Only a fully admitted
+extrusion sequence can bind its returned wrapper to the retained result.
+
 Unfiltered stock selections retain their exact build123d traversal order and
 degenerate-edge exclusion. Iteration snapshots real subshape wrappers; indexing
 and slices preserve stock list behavior and topology parents. Each projection

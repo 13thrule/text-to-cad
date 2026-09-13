@@ -34,7 +34,7 @@ class SketchEffectsTests(unittest.TestCase):
         document = Document("projected-slot-views")
         with document.begin() as tx:
             seed = effects.kernel.own(tx, effects.kernel.evaluate(tx, POINTS))
-            bundle = effects.first(tx, seed)
+            bundle = effects.add(tx, seed)
             native = document._get(bundle.handle).shape
             expected = effects_module._slots(native)
             refs = tuple(WrapperRef("created", index) for index in range(len(bundle.layout.created)))
@@ -133,7 +133,7 @@ class SketchEffectsTests(unittest.TestCase):
         for turn in range(2):
             with document.begin() as tx:
                 seed = effects.kernel.own(tx, effects.kernel.evaluate(tx, POINTS))
-                bundle = effects.first(tx, seed)
+                bundle = effects.add(tx, seed)
                 view = effects.stock.materialize(tx, bundle)
                 actual = object.__new__(bd.BuildSketch)
                 actual._obj = view.result
@@ -167,6 +167,154 @@ class SketchEffectsTests(unittest.TestCase):
                     self.assertIs(sketch.to_combine[0], sketch.lasts[bd.Face][0])
                     if turn:
                         self.assertEqual(0, before)
+                tx.commit()
+
+    def test_sequential_disjoint_and_overlapping_polygons_reuse_and_localize_edits(self):
+        profiles = (
+            ((0., 0.), (4., 0.), (4., 4.), (0., 4.)),
+            ((6., 0.), (10., 0.), (10., 4.), (6., 4.)),
+            ((2., 2.), (8., 2.), (8., 6.), (2., 6.)),
+            ((12., 0.), (14., 0.), (14., 2.), (12., 2.)),
+        )
+        def build(rows):
+            with bd.BuildSketch() as sketch:
+                polygons = tuple(bd.Polygon(points, align=None) for points in rows)
+            result = sketch._obj
+            observed = (
+                round(result.area, 8), len(result.faces()), len(result.edges()),
+                tuple(len(sketch.lasts[kind])
+                      for kind in (bd.Vertex, bd.Edge, bd.Face, bd.Solid)),
+                sketch.to_combine[0] is sketch.lasts[bd.Face][0],
+                all(edge.topo_parent is sketch.lasts[bd.Face][0].topo_parent
+                    for edge in sketch.lasts[bd.Edge]),
+                tuple(round(polygon.area, 8) for polygon in polygons),
+            )
+            return result, observed
+
+        _expected_shape, expected = build(profiles)
+        document = Document("sequential-polygon-effects")
+        for turn in range(2):
+            with document.begin() as tx:
+                with FrontendSession(tx) as frontend:
+                    _result, actual = build(profiles)
+                    computed, reused = tx.stats.computed, tx.stats.reused
+                    self.assertEqual(expected, actual)
+                    self.assertEqual(4, frontend._fallback_counts.get("sketch-effects-retained"))
+                tx.commit()
+            if turn:
+                self.assertEqual(0, computed)
+                self.assertGreater(reused, 4)
+
+        edited = list(profiles)
+        edited[1] = ((6., 0.), (11., 0.), (11., 4.), (6., 4.))
+        expected_edited = build(tuple(edited))[1]
+        with document.begin() as tx:
+            with FrontendSession(tx) as frontend:
+                _result, actual = build(tuple(edited))
+                self.assertEqual(expected_edited, actual)
+                self.assertNotEqual(expected[0], actual[0])
+                self.assertGreater(tx.stats.computed, 0)
+                self.assertGreater(tx.stats.reused, 0)
+                self.assertEqual(4, frontend._fallback_counts.get("sketch-effects-retained"))
+            tx.commit()
+
+    def test_sequential_polygon_state_mutations_deopt_before_stock_add(self):
+        first = ((0., 0.), (4., 0.), (4., 4.), (0., 4.))
+        second = ((6., 0.), (9., 0.), (9., 3.), (6., 3.))
+        def build(mutation):
+            with bd.BuildSketch() as sketch:
+                bd.Polygon(first, align=None)
+                if mutation == "lasts":
+                    sketch.lasts[bd.Face].clear()
+                else:
+                    sketch.lasts[bd.Edge][0].topo_parent = None
+                bd.Polygon(second, align=None)
+            return (round(sketch._obj.area, 8), len(sketch._obj.faces()),
+                    len(sketch._obj.edges()))
+
+        for mutation in ("lasts", "parent"):
+            expected = build(mutation)
+            document = Document("sequential-polygon-deopt-" + mutation)
+            for _ in range(2):
+                with document.begin() as tx:
+                    with FrontendSession(tx) as frontend:
+                        self.assertEqual(expected, build(mutation))
+                        self.assertEqual(
+                            1, frontend._fallback_counts.get("sketch-effects-retained"))
+                    tx.commit()
+
+    def test_sequential_polygon_pending_transfer_and_extrude_reuse(self):
+        profiles = (
+            ((0., 0.), (4., 0.), (4., 4.), (0., 4.)),
+            ((6., 0.), (10., 0.), (10., 4.), (6., 4.)),
+            ((12., 0.), (15., 0.), (15., 3.), (12., 3.)),
+        )
+        def build():
+            with bd.BuildPart() as part:
+                with bd.BuildSketch(bd.Plane.XY.offset(2.)) as sketch:
+                    for points in profiles:
+                        bd.Polygon(points, align=None)
+                pending, planes = part.pending_faces, part.pending_face_planes
+                bd.extrude(amount=3.)
+            result = part.part
+            return (round(result.volume, 8), len(result.solids()), len(result.faces()),
+                    len(pending), len(planes), part.pending_faces is not pending,
+                    part.pending_face_planes is not planes, round(sketch._obj.area, 8),
+                    len(part.to_combine), len(part.lasts[bd.Solid]),
+                    tuple(first is second for first, second in
+                          zip(part.to_combine, part.lasts[bd.Solid])))
+
+        expected = build()
+        document = Document("sequential-polygon-extrusion")
+        for turn in range(2):
+            with document.begin() as tx:
+                with FrontendSession(tx) as frontend:
+                    actual = build()
+                    computed = tx.stats.computed
+                    self.assertEqual(expected, actual)
+                    self.assertEqual(3, frontend._fallback_counts.get("sketch-effects-retained"))
+                    self.assertEqual(1, frontend._fallback_counts.get("sketch-pending-retained"))
+                    self.assertEqual(1, frontend._fallback_counts.get("sketch-extrusion-retained"))
+                tx.commit()
+            if turn:
+                self.assertEqual(0, computed)
+
+    def test_multi_face_extrusion_provider_drift_cannot_publish_precomputed_result(self):
+        from cadgen._document.frontend import _state
+        profiles = (
+            ((0., 0.), (4., 0.), (4., 4.), (0., 4.)),
+            ((6., 0.), (9., 0.), (9., 3.), (6., 3.)),
+        )
+        def ordinary():
+            with bd.BuildPart() as part:
+                with bd.BuildSketch():
+                    for points in profiles:
+                        bd.Polygon(points, align=None)
+                result = bd.extrude(amount=3.)
+            return round(part.part.volume, 8), len(result.solids())
+
+        expected = ordinary()
+        document = Document("multi-face-extrusion-provider-drift")
+        for _ in range(2):
+            with document.begin() as tx:
+                with FrontendSession(tx) as frontend:
+                    with bd.BuildPart() as part:
+                        with bd.BuildSketch():
+                            for points in profiles:
+                                bd.Polygon(points, align=None)
+                        effects = frontend._sketch_effects
+                        original_add = effects._extrude_add
+                        def drift(*args, **kwargs):
+                            effects.stock._stock = False
+                            return original_add(*args, **kwargs)
+                        with patch.object(effects, "_extrude_add", drift):
+                            result = bd.extrude(amount=3.)
+                    self.assertEqual(expected,
+                                     (round(part.part.volume, 8), len(result.solids())))
+                    state = _state(result)
+                    self.assertTrue(state is None or state.private)
+                    self.assertEqual(
+                        0, frontend._fallback_counts.get("sketch-extrusion-retained", 0))
                 tx.commit()
 
     def test_sketch_exit_keeps_pending_list_and_plane_identities_with_and_without_part(self):
@@ -232,7 +380,7 @@ class SketchEffectsTests(unittest.TestCase):
                     handle = effects.kernel.project(tx, seed, 1)
                     prototype_face = bd.Face(bd.Face.cast(tx.document._get(handle).shape).wrapped)
                     before = native_records(prototype_face)
-                    product = effects.extrude(tx, handle, (0., 0., amount), clean=clean)
+                    product = effects.extrude(tx, (handle,), (0., 0., amount), clean=clean)
                     self.assertEqual(before, native_records(prototype_face))
                     slots = _slots(tx.escape_arena.native(product.handle))
                     actual_face = bd.Face(bd.Face.cast(slots[0]).wrapped)
@@ -397,7 +545,7 @@ def model():
                     _polygon_slots(polygon.shape, value)
             with self.assertRaises(ValueError):
                 _polygon_slots(_pack((face, wire)), polygon.auxiliary)
-            sketch = effects.first(tx, seed)
+            sketch = effects.add(tx, seed)
             with bd.WorkplaneList(bd.Plane.XY):
                 transfer = effects.transfer(tx, sketch, None)
             pending = document._get(transfer.bundle.handle)
@@ -407,10 +555,11 @@ def model():
                 with self.assertRaises(ValueError):
                     _decode_pending(invalid, pending.shape, has_prior=False)
             face_handle = effects.stock.project(tx, transfer.bundle, transfer.faces[0])
-            product = effects.extrude(tx, face_handle, (0., 0., 3.), clean=True)
+            product = effects.extrude(tx, (face_handle,), (0., 0., 3.), clean=True)
             extrusion = document._get(product.handle)
-            for invalid in (None, ("build123d.polygon-extrusion", True, True),
-                            ("build123d.polygon-extrusion", 1, 1)):
+            for invalid in (None, ("build123d.polygon-extrusion", True, True, 1),
+                            ("build123d.polygon-extrusion", 2, 1, 1),
+                            ("build123d.polygon-extrusion", 2, True, 0)):
                 with self.assertRaises(ValueError):
                     _extrusion_slots(extrusion.shape, invalid, True)
             slots = _slots(extrusion.shape)
