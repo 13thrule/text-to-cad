@@ -74,6 +74,19 @@ metadata containers in each copied tree. Unsupported author values still take
 ordinary private execution. Saved hierarchy paths and appearance are verified
 for both execution paths.
 
+Unfiltered stock selections retain their exact build123d traversal order and
+degenerate-edge exclusion. Iteration snapshots real subshape wrappers; indexing
+and slices preserve stock list behavior and topology parents. Each projection
+keeps its native parent allocation as an input, so later raw mutation enters the
+same private alias family. A transient carrier view avoids rescanning every
+subshape and is cleared at escape and session exit. Exact Edge geometry type,
+radius, arc center and circle/ellipse normal queries return fresh scalar/vector
+values without copying geometry. Provider code, mutable lookup tables and native
+methods remain guarded on use, including after a warm session's lazy admission.
+Custom index/filter callbacks, changed providers and unsupported normal paths
+execute privately. Filtered iteration and ordinary-list fillet/chamfer retention
+remain outside this bounded selection adapter.
+
 `RevisionConsumer` pins an exact committed root and resolves occurrence paths
 within that owner and revision. Trusted read-only queries return immutable
 values; derived callbacks operate on private native copies and reuse immutable

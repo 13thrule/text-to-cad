@@ -178,16 +178,22 @@ class ManagedSelection:
     def __len__(self) -> int:
         session = _require_session(self._owner)
         state = _state(self._owner)
-        if state is None or state.private or state.handle is None:
+        if (state is None or state.private or state.handle is None
+                or not session._selection.providers_match()):
             return len(self._private_value())
         handle = session._geometry_handle(self._owner)
+        if not self._filters:
+            return session.transaction.query(
+                handle, lambda native: len(session._selection._slots(native, self._kind)))
         return session.transaction.query(handle, lambda native: len(self._apply(native)))
 
     def __iter__(self) -> Iterator[Any]:
-        return iter(self._private_value())
+        session = _require_session(self._owner)
+        return iter(session._selection.selected(self))
 
     def __getitem__(self, index: Any) -> Any:
-        return self._private_value()[index]
+        session = _require_session(self._owner)
+        return session._selection.selected(self, index, indexed=True)
 
 
 def _require_session(shape: Any | None = None) -> "FrontendSession":
@@ -232,6 +238,7 @@ class FrontendSession:
         self._builder_kernel: tuple[str, str] | None = None
         self._builder_effects = None
         self._sketch_effects = None
+        self._selection = None
 
     @classmethod
     def current(cls) -> "FrontendSession | None":
@@ -283,6 +290,8 @@ class FrontendSession:
             _PATCH_LOCK.release()
 
     def _restore(self) -> None:
+        if self._selection is not None:
+            self._selection.clear()
         failure = None
         for owner, name, original in reversed(self._originals):
             try:
@@ -356,7 +365,8 @@ class FrontendSession:
             state = _state(shape)
             if (state is not None and not state.private and session._compute_depth == 0
                     and name not in session._SAFE_ATTRIBUTES):
-                session._escape_shape(shape)
+                if session._selection is None or not session._selection.allows_access(shape, name):
+                    session._escape_shape(shape)
             return original_getattribute(shape, name)
 
         def wrapped_get(shape: Any) -> Any:
@@ -768,6 +778,9 @@ class FrontendSession:
         self._prepare_primitive_guards(
             original_box_init, original_cone_init, original_cylinder_init,
             original_make_box, original_make_cone, original_make_cylinder)
+        from .selection import SelectionAdapter
+        self._selection = SelectionAdapter(self)
+        self._selection.prepare()
         # Install the small entry interceptors on every replay.  A runtime is
         # proven only after one session has discovered and finalized both full
         # transitive provider inventories before any authored code can run.
@@ -800,6 +813,7 @@ class FrontendSession:
                 _EFFECT_PROOFS.move_to_end(proof_key)
                 while len(_EFFECT_PROOFS) > _EFFECT_PROOF_LIMIT:
                     _EFFECT_PROOFS.popitem(last=False)
+        self._selection.finalize()
 
     def _effect_proof_key(self):
         """Identity-only key for one installed provider runtime generation."""
@@ -1708,6 +1722,8 @@ class FrontendSession:
         return original(shape)
 
     def _escape_shape(self, shape: Any) -> Any:
+        if self._selection is not None:
+            self._selection.clear()
         state = _state(shape)
         if self._sketch_effects is not None:
             self._sketch_effects.revoke_shape(shape)
