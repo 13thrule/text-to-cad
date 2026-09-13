@@ -166,8 +166,9 @@ def publish_outputs(result, inventory, private_paths, deadline, *, published):
     # Every output is complete and verified before the first external rename.
     for row, data in zip(inventory, owned):
         _check(deadline)
+        receipt = PublishedOutput(row["target"], len(data), hashlib.sha256(data).hexdigest())
         write_bytes_atomic(row["target"], data)
-        published.append(PublishedOutput(row["target"], len(data), hashlib.sha256(data).hexdigest()))
+        published.append(receipt)
     # Read back every final path after all writes. A later camera's publication
     # can expose a concurrent replacement of an earlier camera's destination.
     for receipt in published:
