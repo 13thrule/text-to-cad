@@ -104,6 +104,13 @@ snapshot renderer and the node builders in `bin/`).
   adding a face color cannot recolor other faces or bake a theme into geometry.
   Color alpha and PBR opacity multiply once,
   consistently for flat and vertex-colored occurrences.
+  Static native exports share `documentManifest` validation and the packed mesh
+  decoder directly. Their pure encoder consumes no package directory, SURF
+  asset, old store or Three scene. GLB retains indexed mesh instances and exact
+  linear RGBA; 3MF carries standard color/metallic display resources with explicit
+  quantization and unsupported-field facts. STL is appearance-free and rejects
+  triangles lost to world-float32 rounding. Export bytes use canonical structural
+  paths and authored labels rather than scene-owner or allocation identifiers.
 - **Worker isolation**: each tessellation worker runs one request at a time;
   excess requests wait on the client. Aborting synchronous work replaces only
   its worker, preserving other callers. A failed worker request reports an

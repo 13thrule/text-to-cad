@@ -7,6 +7,7 @@ import { parseSurf } from "../lib/surf/container.js";
 import { tessellateComponent } from "../lib/surf/tessellate.js";
 import { lodTessellationForLevel } from "../lib/surf/lodPolicy.js";
 import { validateSnapshotRenderJob } from "./snapshotJobValidation.js";
+import { loadDocumentSnapshot } from "./documentSnapshotSource.js";
 import {
   SCENE_QUALITY,
   resolveSceneQuality,
@@ -543,6 +544,12 @@ export async function loadSource(input, options = {}) {
   const rawTessellation = photographicRender ? null : inputObject.quality?.tessellation;
   const tessellation = tessellationForSnapshotQuality(inputObject);
   assertStepOnlyOption(kind, rawTessellation, "quality.tessellation");
+  if (Object.hasOwn(resolved, "document")) {
+    if (Object.keys(options).some((key) => !["signal", "stageTimings"].includes(key))) {
+      throw new Error("Native document snapshots cannot be combined with another source option");
+    }
+    return loadDocumentSnapshot(inputObject, { tessellation, signal: options.signal });
+  }
   const kinematics = photographicRender ? undefined : inputObject.kinematics ?? options.kinematics;
   const stepParameterUrl = String(
     inputObject.stepParameterUrl || resolved.stepParameterUrl || options.stepParameterUrl || ""

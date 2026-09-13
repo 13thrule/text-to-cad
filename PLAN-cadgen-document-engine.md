@@ -210,6 +210,17 @@ Exit: clean restart, cold load, corrupt/truncated storage, interrupted commit, s
 
 Owner: import/export agent, gpt-5.6-sol / high. Native translation reviewer: gpt-6-astra / xhigh.
 
+Static native mesh producers implemented, 13 September 2026: one immutable
+display product feeds STL, indexed GLB and indexed 3MF without the old surface
+store or a Three.js scene. GLB retains repeated geometry, hierarchy, linear
+colors and PBR; 3MF reports its narrower color/material capabilities; STL
+explicitly checks world-coordinate rounding. Export ownership has bounded
+transport, cancellation and child reaping, exact product reuse and verified
+publication receipts. Root review passes 58 native mesh/display/STEP tests,
+1,117 shared JavaScript tests and 619 viewer tests. Source mesh declarations,
+grouped scheduler publication and animation export remain separate integration
+gates; this is not the public all-format cutover.
+
 - Import STEP once into a resident assembly with reusable prototypes and compact occurrence tables. Retain hierarchy, units, labels, colors and intrinsic materials.
 - Apply assembly changes by reference, including nested subassemblies, repeated parts, appearance overrides and mirrors. Only changed ancestors require composition work.
 - Reuse an XCAF export representation or equivalent preparation data where valid. Stream deterministic STEP output; do not invent an incremental STEP text patcher as a prerequisite.

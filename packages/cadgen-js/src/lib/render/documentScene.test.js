@@ -145,6 +145,28 @@ test("nested occurrences decode once, apply origin once, and share geometry acro
   b.dispose();
 });
 
+test("photographic adoption retains appearance without CAD edge construction or picking scope", async () => {
+  const { bytes, manifest } = fixture(1, true);
+  manifest.nodes[2].appearance.face_colors = [[0, [.2, .4, .6, .8]]];
+  manifest.occurrences[0].appearance.face_colors = [[0, [.2, .4, .6, .8]]];
+  const rendered = await adoptDocumentScene(manifest, async () => bytes, { inspection: false });
+  const source = rendered.parts[0].sourceMesh;
+  assert.equal(source.cadEdgePositions.length, 0);
+  assert.equal(source.cadEdgeIndices.length, 0);
+  assert.equal(Object.hasOwn(source, "documentEdgePickRanges"), false);
+  assert.equal(Object.hasOwn(source, "documentEdgeRanges"), false);
+  assert.ok(Math.abs(source.colors[3] - .8) < 1e-7);
+  assert.equal(rendered.parts[0].material.roughness, .25);
+  assert.throws(() => documentFaceReference(rendered, rendered.parts[0].id, 0), /adopted document scene/);
+
+  let reads = 0;
+  const inspected = await adoptDocumentScene(manifest, async () => { reads++; return bytes; }, { previous: rendered });
+  assert.equal(reads, 1, "an Inspect source cannot reuse a Render-only adoption");
+  assert.ok(inspected.parts[0].sourceMesh.cadEdgePositions.length);
+  assert.equal(documentFaceReference(inspected, inspected.parts[0].id, 0).ordinal, 0);
+  await assert.rejects(adoptDocumentScene(manifest, () => assert.fail("invalid policy fetched"), { inspection: "false" }), /boolean/);
+});
+
 test("mutable manifest and fetched buffers are isolated across asynchronous hashing", async () => {
   const { bytes, manifest } = fixture();
   let release;

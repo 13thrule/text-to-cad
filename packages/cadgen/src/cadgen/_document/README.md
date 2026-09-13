@@ -103,6 +103,33 @@ has displayed 24 colored occurrences through Inspect and both photographic
 backgrounds using this path. The public viewer's resident update integration is
 still a separate gate.
 
+`MeshProductSession` produces static STL/GLB/3MF from that same pinned display
+product and explicit mesh quality. GLB preserves indexed geometry, repeated mesh
+nodes, local float32 positions and double placement/origin transforms. One root
+basis converts millimeters/Z-up to meters/Y-up. Linear RGBA reaches its material
+unchanged, with authored opacity multiplied once. 3MF uses indexed components,
+standard sRGB color groups and linked metallic display properties for roughness
+and metalness. Its structured facts report sRGB rounding and unsupported alpha,
+opacity and clearcoat fields. GLB extras and 3MF metadata retain closed authored
+material facts; neither derives physical properties. STL carries no appearance
+and reports world-float32 rounding; collapsed or reversed triangles fail.
+Export bytes exclude document, revision, allocation, source and cache identifiers.
+Structural occurrence paths, labels, geometry, appearance and codec determine
+the result. Unauthored colors use the encoder's neutral default.
+
+The service must construct its `MeshEncoder` before authored execution. That
+owner captures the packaged JS program, interpreter and environment; results
+record actual Node/V8 versions too. Bounded binary packets travel through owned
+regular temporary descriptors. The acceptance deadline includes staging,
+encoding and publication. Failure or cancellation kills and reaps the child
+before releasing its files, with a cleanup receipt. Input assets are limited to
+256 MiB, encoded outputs to 128 MiB total, and each metadata frame to 16 MiB.
+These are transport/admission bounds, not measured process RSS. Warm exact bytes
+skip both encoding and output staging. Publication rejects symlink/nonregular
+targets, rechecks selected prior bytes, records each completed effect immediately
+and attests the final file before success. Source mesh declarations and grouped
+scheduler integration remain separate from this producer interface.
+
 `TopologyHistory` carries generated, modified, deleted and unchanged relations
 captured while the kernel builder still exists. Subelement ordinals are exact
 within one evaluation, not persistent selection names. Unknown history is marked

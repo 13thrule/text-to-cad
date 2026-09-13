@@ -45,6 +45,7 @@ SNAPSHOT_BUILD_DEPS_DIR="${CADGEN_SNAPSHOT_BUILD_DEPS_DIR:-$REPO_ROOT/tmp/cadgen
 BUILDER_ENTRIES=(
   "$REPO_ROOT/packages/cadgen-js/bin/dxf-mesh.mjs"
   "$REPO_ROOT/packages/cadgen-js/bin/mesh-export.mjs"
+  "$REPO_ROOT/packages/cadgen-js/bin/document-mesh-export.mjs"
 )
 
 MODE="write"
