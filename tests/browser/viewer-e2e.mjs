@@ -36,6 +36,9 @@ const fixtures = [
 ];
 const expectedBounds = { min: [39, -3, -5], max: [45, 3, 9] };
 const viewport = { width: 1400, height: 900 };
+const viewerOrigin = args.url ? new URL(args.url).origin : "";
+const latestReleaseApiUrl = "https://api.github.com/repos/earthtojake/text-to-cad/releases/latest";
+const currentVersion = fs.readFileSync(path.join(REPO, "VERSION"), "utf8").trim();
 const failures = [];
 const results = [];
 
@@ -60,18 +63,50 @@ const browser = await chromium.launch({
 
 async function newPage({ lod = true } = {}) {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 1 });
-  const page = await context.newPage();
   const errors = [];
+  await context.route("**/*", async (route) => {
+    const request = route.request();
+    const url = request.url();
+    if (url === latestReleaseApiUrl && request.method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          tag_name: `v${currentVersion}`,
+          html_url: `https://github.com/earthtojake/text-to-cad/releases/tag/v${currentVersion}`,
+          body: "",
+        }),
+      });
+      return;
+    }
+    const parsed = new URL(url);
+    if (["http:", "https:"].includes(parsed.protocol) && parsed.origin !== viewerOrigin) {
+      errors.push(`unexpected external request: ${request.method()} ${url} (${request.resourceType()})`);
+      await route.abort("blockedbyclient");
+      return;
+    }
+    await route.continue();
+  });
+  const page = await context.newPage();
   page.on("pageerror", (error) => errors.push(`page: ${error.message || error}`));
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+    if (message.type() !== "error") return;
+    const location = message.location();
+    const source = location.url
+      ? ` at ${location.url}:${Number(location.lineNumber) + 1}:${Number(location.columnNumber) + 1}`
+      : "";
+    errors.push(`console: ${message.text()}${source}`);
   });
   await page.addInitScript(({ lodOn }) => {
     if (!lodOn) window.__CAD_VIEWER_LOD__ = false;
     window.__viewerTestLodEvents = [];
     window.addEventListener("cad:lod-level", (event) => window.__viewerTestLodEvents.push(event.detail));
   }, { lodOn: lod });
-  return { context, page, errors };
+  return {
+    context,
+    page,
+    errors,
+  };
 }
 
 async function openFile(page, file) {

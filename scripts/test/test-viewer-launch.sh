@@ -235,7 +235,7 @@ fi
 # no SURF or TESS entries, so the bundled client must request exact surface
 # derivation, fetch the pinned SURF bytes, tessellate them, and clear its loading
 # overlay. CI installs Playwright's Chromium with requirements-dev.txt.
-"$PYTHON" - "http://$HOST:$PORT/?file=smoke.step" <<'PY'
+"$PYTHON" - "http://$HOST:$PORT/?file=smoke.step" "$(cat "$REPO_ROOT/VERSION")" <<'PY'
 import sys
 import time
 from urllib.parse import parse_qs, urlparse
@@ -255,6 +255,11 @@ with sync_playwright() as playwright:
     )
     try:
         page = browser.new_page(viewport={"width": 1000, "height": 720})
+        # The startup update check must not depend on GitHub or its rate limit.
+        page.route(
+            "https://api.github.com/repos/earthtojake/text-to-cad/releases/latest",
+            lambda route: route.fulfill(json={"tag_name": f"v{sys.argv[2]}"}),
+        )
         page.on("response", lambda response: responses.append(response))
         page.on("pageerror", lambda error: page_errors.append(str(error)))
         page.goto(url, wait_until="domcontentloaded", timeout=30_000)

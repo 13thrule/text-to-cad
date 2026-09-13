@@ -45,7 +45,8 @@ def _test_files():
     paths = set()
     for extension in ("py", "js", "mjs", "ts"):
         paths.update(TESTS.rglob(f"*.{extension}"))
-    paths.update((REPO_ROOT / "scripts" / "test").rglob("*.sh"))
+    for extension in ("py", "sh"):
+        paths.update((REPO_ROOT / "scripts" / "test").rglob(f"*.{extension}"))
     for package in (REPO_ROOT / "packages" / "cadgen-js", REPO_ROOT / "apps" / "viewer"):
         for folder in ("src", "scripts"):
             for extension in ("js", "mjs", "cjs", "jsx", "ts", "tsx"):
