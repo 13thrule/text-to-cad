@@ -326,6 +326,7 @@ def _wake_pipe_listener(address: str) -> None:
     GENERIC_WRITE = 0x40000000
     OPEN_EXISTING = 3
     FILE_FLAG_OVERLAPPED = 0x40000000
+    ERROR_PIPE_BUSY = 231
     handles = []
     try:
         # CPython PipeListener owns one pending instance and one queued instance.
@@ -336,7 +337,12 @@ def _wake_pipe_listener(address: str) -> None:
             handle = create(address, GENERIC_READ | GENERIC_WRITE, 0, None,
                             OPEN_EXISTING, FILE_FLAG_OVERLAPPED, None)
             if handle == ctypes.c_void_p(-1).value:
-                break
+                error = ctypes.get_last_error()
+                if error == ERROR_PIPE_BUSY:
+                    break
+                # The Server guard retains the listener through this wakeup, so
+                # even a missing pipe is unexpected rather than a close race.
+                raise ctypes.WinError(error)
             handles.append(handle)
     finally:
         for handle in handles:

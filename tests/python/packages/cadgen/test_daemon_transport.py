@@ -247,8 +247,12 @@ class ServerShutdownTest(unittest.TestCase):
 
         kernel = mock.Mock()
         kernel.CreateFileW.side_effect = (11, ctypes.c_void_p(-1).value)
-        with mock.patch.object(ctypes, "WinDLL", return_value=kernel, create=True):
+        with mock.patch.object(ctypes, "WinDLL", return_value=kernel, create=True), \
+                mock.patch.object(ctypes, "get_last_error", return_value=231, create=True) as last_error, \
+                mock.patch.object(ctypes, "WinError", create=True) as win_error:
             transport._wake_pipe_listener("private-pipe")
+        last_error.assert_called_once_with()
+        win_error.assert_not_called()
         self.assertEqual(kernel.CreateFileW.call_count, 2)
         kernel.CloseHandle.assert_called_once_with(11)
         kernel.WaitNamedPipeW.assert_not_called()
@@ -256,27 +260,46 @@ class ServerShutdownTest(unittest.TestCase):
     def test_pipe_wakeup_open_failure_closes_previously_opened_handle(self):
         import ctypes
 
-        kernel = mock.Mock()
-        kernel.CreateFileW.side_effect = (11, OSError("second open failed"))
-        with mock.patch.object(ctypes, "WinDLL", return_value=kernel, create=True):
-            with self.assertRaisesRegex(OSError, "second open failed"):
-                transport._wake_pipe_listener("private-pipe")
-        kernel.CloseHandle.assert_called_once_with(11)
+        # File/path-not-found cannot be a normal close race while the Server
+        # guard retains its listener. Access/resource errors must also stay loud.
+        for error in (2, 3, 5, 8):
+            with self.subTest(winerror=error):
+                kernel = mock.Mock()
+                kernel.CreateFileW.side_effect = (11, ctypes.c_void_p(-1).value)
+                failure = OSError(error, "second open failed")
+                with mock.patch.object(ctypes, "WinDLL", return_value=kernel, create=True), \
+                        mock.patch.object(ctypes, "get_last_error", return_value=error, create=True) as last_error, \
+                        mock.patch.object(ctypes, "WinError", return_value=failure, create=True) as win_error:
+                    with self.assertRaises(OSError) as caught:
+                        transport._wake_pipe_listener("private-pipe")
+                self.assertIs(caught.exception, failure)
+                last_error.assert_called_once_with()
+                win_error.assert_called_once_with(error)
+                kernel.CloseHandle.assert_called_once_with(11)
 
     def test_failed_wakeup_keeps_admission_closed_and_later_close_can_retry(self):
+        import ctypes
+
         pending = _PendingListener()
+        kernel = mock.Mock()
+        kernel.CreateFileW.side_effect = (ctypes.c_void_p(-1).value, 11, 12)
+        kernel.CloseHandle.side_effect = lambda _: pending.release.set()
+        failure = OSError(5, "wakeup unavailable")
         with mock.patch.object(transport.mpc, "Listener", return_value=pending), \
-                mock.patch.object(transport, "_wake_listener") as wake:
+                mock.patch.object(transport, "_family", return_value="AF_PIPE"), \
+                mock.patch.object(ctypes, "WinDLL", return_value=kernel, create=True), \
+                mock.patch.object(ctypes, "get_last_error", return_value=5, create=True) as last_error, \
+                mock.patch.object(ctypes, "WinError", return_value=failure, create=True) as win_error:
             listener = transport.Server("private", b"secret")
-            wake.side_effect = OSError("wakeup unavailable")
             thread, results, errors = self.accept_in_thread(listener)
             try:
                 self.assertTrue(pending.entered.wait(1))
-                with self.assertRaisesRegex(OSError, "wakeup unavailable"):
+                with self.assertRaises(OSError) as caught:
                     listener.close()
+                self.assertIs(caught.exception, failure)
                 self.assertTrue(listener.closed)
                 self.assertEqual(pending.close_calls, 0)
-                wake.side_effect = lambda *_: pending.release.set()
+                kernel.CloseHandle.assert_not_called()
                 listener.close()
                 listener.close()
             finally:
@@ -285,7 +308,10 @@ class ServerShutdownTest(unittest.TestCase):
             self.assertFalse(thread.is_alive())
             self.assertEqual(errors, [])
             self.assertEqual(results, [None])
-            self.assertEqual(wake.call_count, 2)
+            self.assertEqual(kernel.CreateFileW.call_count, 3)
+            self.assertEqual(kernel.CloseHandle.call_args_list, [mock.call(11), mock.call(12)])
+            last_error.assert_called_once_with()
+            win_error.assert_called_once_with(5)
             self.assertEqual(pending.close_calls, 1)
 
     def real_listener(self):
