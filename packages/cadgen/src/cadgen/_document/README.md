@@ -211,7 +211,12 @@ structural auxiliary results. Recovery verifies all reachable native subshape
 sharing classes and the allocation-provenance DAG before installing a new owner.
 Auxiliary values are closed, immutable and bounded in their expanded form;
 builder layouts cannot live only in a disposable mesh/derivation cache. Codec
-version 4 is a hard cut, with no earlier-version reader. Disjoint allocation
+version 5 is a hard cut, with no earlier-version reader. It may additionally
+carry one bounded optional blob of already-produced native mesh packets. Each
+packet is bound to the exact prototype topology attestation, runtime, loaded
+producer and quality options and is fully validated before reuse. Missing,
+corrupt or incompatible optional data is a cache miss while the required native
+checkpoint remains usable. Disjoint allocation
 graphs use compact evaluation provenance. Local ancestry intervals accelerate
 the proof but never enter identity; overlapping intervals use exact traversal,
 so reordered checkpoint reconstruction produces the same keys.

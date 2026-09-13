@@ -6,18 +6,25 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import tempfile
 from threading import Event
+from types import MappingProxyType
 import unittest
+from unittest.mock import patch
 
 from cadgen._document import (AssemblyGroup, Document, GeometryLeaf, LogicalIdentity,
                               Mutation, NativeResult, OperatorSpec, RevisionState,
                               SubelementRef, TopologyHistory, TopologyRelation)
 from cadgen._document.checkpoint import (CHECKPOINT_VERSION, CheckpointCodec,
                                         CheckpointCorrupt, CheckpointIncompatible,
+                                        _MESH_ROLE,
                                         _native_topology_attestation, _shape_digest,
                                         _write_native, checkpoint_engine_version)
+from cadgen._document.display import build_display
+from cadgen._document.meshing import MeshOptions
+from cadgen._document import meshing
 from cadgen._document.native import topology_map
 from cadgen._document.resources import Cancelled
 from cadgen._document.roots import IDENTITY_TRANSFORM, walk_root
@@ -131,6 +138,161 @@ class CheckpointTests(unittest.TestCase):
         expected = self.catalog.head(document.document_id)
         self.assertTrue(self.codec.commit(staged, expected_head=expected))
         return staged.revision_id
+
+    def mesh_revision(self, document_id="checkpoint-mesh"):
+        document = Document(document_id, runtime=self.runtime)
+        with document.begin("mesh-source") as tx:
+            handle = box(tx)
+            tx.bind_root(GeometryLeaf("part", handle, label="Part"),
+                         unrepresented_metadata=())
+            revision = tx.commit()
+        return document, revision
+
+    def test_native_mesh_packets_survive_restart_and_view_edits_at_exact_quality(self):
+        source, revision = self.mesh_revision()
+        first = build_display(source, revision.revision_id)
+        expected = dict(source._derivations)
+        self.assertEqual(1, len(expected))
+        catalog_revision = self.publish(source, revision)
+
+        recovered = self.codec.recover(source.document_id, catalog_revision)
+        document = recovered.document
+        self.assertEqual(expected, document._derivations)
+        with patch("cadgen._document.meshing._mesh_private",
+                   side_effect=AssertionError("same-quality restart remeshed")):
+            reopened = build_display(document, recovered.revision.revision_id)
+        self.assertEqual(tuple(first.assets), tuple(reopened.assets))
+
+        with document.begin("view-edit") as tx:
+            root = AssemblyGroup("placed", (recovered.revision.root,), translated(7.),
+                                 appearance={"color": (0.2, 0.3, 0.4, 0.5)})
+            tx.bind_root(root, unrepresented_metadata=())
+            view_revision = tx.commit()
+        with patch("cadgen._document.meshing._mesh_private",
+                   side_effect=AssertionError("appearance or placement remeshed")):
+            build_display(document, view_revision.revision_id)
+
+        original = meshing._mesh_private
+        changed = MeshOptions(relative_chord=.01, angular=.35, edges=True)
+        with patch("cadgen._document.meshing._mesh_private", wraps=original) as remesh:
+            build_display(document, view_revision.revision_id, options=changed)
+        self.assertEqual(1, remesh.call_count)
+
+    def test_optional_mesh_blob_corruption_recovers_native_and_rebuilds(self):
+        source, revision = self.mesh_revision("corrupt-mesh")
+        build_display(source, revision.revision_id)
+        catalog_revision = self.publish(source, revision)
+        with self.catalog._transaction(write=False):
+            row = self.catalog._db.execute(
+                "SELECT b.digest FROM revision_blobs r JOIN blobs b ON b.digest=r.digest "
+                "WHERE r.revision_id=? AND r.role=?",
+                (catalog_revision, _MESH_ROLE),
+            ).fetchone()
+        self.assertIsNotNone(row)
+        (self.catalog._objects / row[0]).unlink()
+
+        recovered = self.codec.recover(source.document_id, catalog_revision)
+        self.assertEqual({}, recovered.document._derivations)
+        original = meshing._mesh_private
+        with patch("cadgen._document.meshing._mesh_private", wraps=original) as remesh:
+            build_display(recovered.document, recovered.revision.revision_id)
+        self.assertEqual(1, remesh.call_count)
+
+    def test_incompatible_mesh_producer_is_a_cache_miss(self):
+        from cadgen._document import checkpoint as checkpoint_module
+
+        source, revision = self.mesh_revision("incompatible-mesh")
+        build_display(source, revision.revision_id)
+        catalog_revision = self.publish(source, revision)
+        producer = dict(checkpoint_module._MESH_PRODUCER)
+        producer["semantics"] = "incompatible-mesh-producer"
+        with patch.object(checkpoint_module, "_MESH_PRODUCER",
+                          MappingProxyType(producer)):
+            recovered = self.codec.recover(source.document_id, catalog_revision)
+        self.assertEqual({}, recovered.document._derivations)
+
+    def test_changed_live_mesh_producer_or_validator_rejects_recovered_cache(self):
+        source, revision = self.mesh_revision("changed-recovery-mesher")
+        build_display(source, revision.revision_id)
+        catalog_revision = self.publish(source, revision)
+        for name in ("_mesh_private", "unpack_mesh"):
+            with self.subTest(name=name), patch.object(
+                    meshing, name, side_effect=AssertionError("changed producer ran")):
+                recovered = self.codec.recover(source.document_id, catalog_revision)
+                self.assertEqual({}, recovered.document._derivations)
+
+    def test_changed_mesh_options_validator_rejects_recovered_cache(self):
+        source, revision = self.mesh_revision("changed-mesh-options")
+        build_display(source, revision.revision_id)
+        catalog_revision = self.publish(source, revision)
+        with patch.object(MeshOptions, "__post_init__",
+                          side_effect=AssertionError("changed option validator ran")):
+            recovered = self.codec.recover(source.document_id, catalog_revision)
+        self.assertEqual({}, recovered.document._derivations)
+
+    def test_mesh_packet_and_topology_binding_tampering_are_cache_misses(self):
+        source, revision = self.mesh_revision("tampered-mesh")
+        build_display(source, revision.revision_id)
+        head = self.publish(source, revision)
+        with self.catalog.lease(head) as lease:
+            valid = self.catalog.read(lease)
+        cache = valid.payloads[_MESH_ROLE]
+        length, = struct.unpack_from("<I", cache, 8)
+        body_start = 12 + length + (-length) % 4
+        original_header = json.loads(cache[12:12 + length])
+        original_body = cache[body_start:]
+
+        for name in ("topology", "packet"):
+            with self.subTest(name=name):
+                header = json.loads(json.dumps(original_header))
+                body = original_body
+                if name == "topology":
+                    header["entries"][0]["topology_digest"] = "0" * 64
+                else:
+                    body = body[:-1] + bytes((body[-1] ^ 1,))
+                encoded = json.dumps(header, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False, allow_nan=False).encode()
+                altered = (cache[:8] + struct.pack("<I", len(encoded)) + encoded
+                           + b" " * ((-len(encoded)) % 4) + body)
+                payloads = dict(valid.payloads)
+                payloads[_MESH_ROLE] = altered
+                staged = self.catalog.stage(source.document_id, valid.metadata, payloads)
+                self.assertTrue(self.catalog.checkpoint(staged, expected_head=head))
+                head = staged.revision_id
+                recovered = self.codec.recover(source.document_id, head)
+                self.assertEqual({}, recovered.document._derivations)
+
+    def test_mesh_cache_count_is_bounded_and_arbitrary_derivations_are_excluded(self):
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeCylinder
+
+        document = Document("bounded-mesh", runtime=self.runtime)
+        with document.begin("two-prototypes") as tx:
+            first = box(tx)
+            second = tx.evaluate(
+                OperatorSpec("checkpoint-cylinder"), (), (),
+                lambda *_: NativeResult(BRepPrimAPI_MakeCylinder(2., 4.).Shape()))
+            tx.bind_root(AssemblyGroup("root", (
+                GeometryLeaf("box", first), GeometryLeaf("cylinder", second))),
+                unrepresented_metadata=())
+            revision = tx.commit()
+        build_display(document, revision.revision_id)
+        self.assertEqual(2, len(document._derivations))
+        document._derivations[("author", "opaque")] = b"not a mesh packet"
+        with patch("cadgen._document.checkpoint.MAX_MESH_CACHE_ENTRIES", 1):
+            catalog_revision = self.publish(document, revision)
+        recovered = self.codec.recover(document.document_id, catalog_revision)
+        self.assertEqual(1, len(recovered.document._derivations))
+        self.assertTrue(all(key[1:3] == ("consumer-v2", "native-mesh-2")
+                            for key in recovered.document._derivations))
+
+    def test_changed_live_mesh_producer_is_not_persisted(self):
+        source, revision = self.mesh_revision("changed-mesher")
+        build_display(source, revision.revision_id)
+        with patch("cadgen._document.meshing._pack", lambda *_args, **_kwargs: b""):
+            catalog_revision = self.publish(source, revision)
+        with self.catalog.lease(catalog_revision) as lease:
+            checkpoint = self.catalog.read(lease)
+        self.assertNotIn(_MESH_ROLE, checkpoint.payloads)
 
     def test_deep_allocation_chain_recovers_without_python_recursion(self):
         document = Document("deep", runtime=self.runtime)

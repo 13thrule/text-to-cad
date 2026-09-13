@@ -23,8 +23,8 @@ from typing import Any, Iterator, Mapping
 from uuid import uuid4
 
 
-SCHEMA_VERSION = 1
-ENGINE_VERSION = "document-catalog-v1"
+SCHEMA_VERSION = 2
+ENGINE_VERSION = "document-catalog-v2"
 _OWNER = b"CADGEN DOCUMENT STORE\x00v1\n"
 _OWNER_READY = _OWNER + b"initialized\n"
 _MAGIC = "cadgen.document.catalog"
@@ -605,6 +605,64 @@ class Catalog:
             return Checkpoint(lease.revision_id, document, metadata, payloads)
         finally:
             for _, _, _, fd in opened:
+                os.close(fd)
+
+    def read_partitioned(self, lease: Lease, *, required_roles: frozenset[str],
+                         optional_role_limits: Mapping[str, int]) -> Checkpoint:
+        """Read required payloads strictly and bounded optional payloads best-effort.
+
+        The caller supplies both partitions from its engine schema; payload data
+        cannot reclassify a required role.  The complete immutable row manifest
+        is verified before opening any blob.  Optional blob absence or content
+        corruption is a cache miss, while required-role and catalog integrity
+        failures remain fatal.
+        """
+        if (type(required_roles) is not frozenset
+                or any(type(role) is not str or not role for role in required_roles)):
+            raise TypeError("required payload roles require a frozenset of names")
+        if (type(optional_role_limits) is not dict
+                or any(type(role) is not str or not role
+                       or type(limit) is not int or limit < 0
+                       for role, limit in optional_role_limits.items())):
+            raise TypeError("optional payload roles require exact nonnegative byte limits")
+        optional_roles = frozenset(optional_role_limits)
+        if required_roles & optional_roles:
+            raise ValueError("required and optional payload roles must be disjoint")
+        opened_required = []
+        opened_optional = []
+        try:
+            with self._transaction():
+                self._check_lease(lease)
+                document, metadata, rows = self._verified_manifest(lease.revision_id)
+                by_role = {role: (digest, size) for role, digest, size in rows}
+                actual = frozenset(by_role)
+                if not required_roles <= actual:
+                    raise StorageCorrupt("checkpoint required payload is missing")
+                if not actual <= required_roles | optional_roles:
+                    raise StorageCorrupt("checkpoint payload role is outside the engine schema")
+                opened_required = self._open_payloads(
+                    [(role, *by_role[role]) for role in sorted(required_roles)])
+                for role in sorted(actual & optional_roles):
+                    digest, size = by_role[role]
+                    if size > optional_role_limits[role]:
+                        continue
+                    try:
+                        fd = self._open_blob(digest, size)
+                    except StorageCorrupt:
+                        continue
+                    opened_optional.append((role, digest, size, fd))
+            payloads = {role: self._read_open_blob(fd, digest, size)
+                        for role, digest, size, fd in opened_required}
+            for role, digest, size, fd in opened_optional:
+                try:
+                    payloads[role] = self._read_open_blob(fd, digest, size)
+                except StorageCorrupt:
+                    pass
+            return Checkpoint(lease.revision_id, document, metadata, payloads)
+        finally:
+            for _, _, _, fd in opened_required:
+                os.close(fd)
+            for _, _, _, fd in opened_optional:
                 os.close(fd)
 
     def record_export(self, lease: Lease, product: str, digest: str, metadata: dict) -> None:

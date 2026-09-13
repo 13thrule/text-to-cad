@@ -3,8 +3,9 @@
 The caller owns the :class:`storage.Catalog`.  This module is the only bridge
 between that kernel-free byte catalog and the document's private native state.
 It has no legacy readers and never converts an incompatible payload.  This
-bounded proof retains the selected revision's evaluation closure and root; it
-does not persist derived products or private STEP-import registry descriptors.
+bounded proof retains the selected revision's evaluation closure and root.  Its
+only optional derived data is a validated native-mesh packet cache; arbitrary
+derivations and private STEP-import registry descriptors are never persisted.
 """
 from __future__ import annotations
 
@@ -12,6 +13,9 @@ from dataclasses import dataclass
 import hashlib
 from io import BytesIO
 import json
+import marshal
+import struct
+import sys
 from types import MappingProxyType
 from typing import Any
 
@@ -22,13 +26,23 @@ from .native import SubelementRef, TopologyHistory, TopologyRelation, topology_m
 from .resources import ResourceAdmission, ResourceRequest
 from .roots import AssemblyGroup, GeometryLeaf, root_handles, validate_root
 from .storage import Catalog, ExportReceipt, Stage
+from . import consumers as _consumers
+from . import meshing as _meshing
+from . import native as _native
 
 
-CHECKPOINT_VERSION = 4
+CHECKPOINT_VERSION = 5
 EVALUATION_SEMANTICS = "cadgen-document-evaluation-v3.closed-constructor-v1.auxiliary-v1.disjoint-dags-v1"
 _MAGIC = "cadgen.document.native-checkpoint"
 _MANIFEST_ROLE = "document-manifest"
 _NATIVE_ROLE = "document-native"
+_MESH_ROLE = "document-native-mesh-cache"
+_MESH_CACHE_MAGIC = b"CGDMCHE\x00"
+_MESH_CACHE_VERSION = 1
+_MESH_PRODUCER_SEMANTICS = "cadgen-native-mesh-v2.consumer-v2.copier-order-v1"
+MAX_MESH_CACHE_ENTRIES = 128
+MAX_MESH_CACHE_INDEX_BYTES = 1024 * 1024
+MAX_MESH_CACHE_BYTES = 128 * 1024**2
 
 
 class CheckpointError(ValueError):
@@ -55,23 +69,138 @@ class RecoveredCheckpoint:
     historical_receipts: tuple[ExportReceipt, ...]
 
 
-def _native_fingerprint() -> dict[str, Any]:
-    import OCP
-
-    version = getattr(OCP, "__version__", None)
+def _read_native_fingerprint() -> dict[str, Any]:
+    version = _native.dependency_version("cadquery-ocp")
     if type(version) is not str or not version:
-        raise CheckpointIncompatible("the native runtime has no stable OCP version")
+        raise CheckpointIncompatible("the native runtime has no stable distribution version")
     return {
-        "ocp": version,
+        "cadquery_ocp": version,
         "codec": "BinTools_FormatVersion_VERSION_4",
     }
+
+
+_CAPTURED_NATIVE_FINGERPRINT = MappingProxyType(_read_native_fingerprint())
+
+
+def _native_fingerprint() -> dict[str, Any]:
+    """Return the engine-owned pre-author native identity."""
+    return dict(_CAPTURED_NATIVE_FINGERPRINT)
+
+
+def _implementation_digest() -> str:
+    """Fingerprint the loaded closed mesh producer without consulting disk."""
+    functions = (
+        _meshing.MeshOptions.__init__,
+        _meshing.MeshOptions.__post_init__,
+        _meshing.mesh_for_occurrence,
+        _meshing._mesh_private,
+        _meshing._pack,
+        _meshing.unpack_mesh,
+        _meshing._validate_ranges,
+        _consumers._DocumentBridge.prototype_shape,
+        _consumers._DocumentBridge.derivation,
+        _consumers._DocumentBridge.save_derivation,
+        _consumers.RevisionConsumer.derive,
+        _native.copy_shape_with_topology_order,
+    )
+    digest = hashlib.sha256()
+    for function in functions:
+        digest.update(function.__module__.encode("utf-8"))
+        digest.update(b"\x00")
+        digest.update(function.__qualname__.encode("utf-8"))
+        digest.update(b"\x00")
+        digest.update(marshal.dumps(function.__code__))
+    return digest.hexdigest()
+
+
+def _default_proof(value: Any) -> Any:
+    if value is None or type(value) in (bool, int, float, str, bytes):
+        return (type(value), value)
+    if type(value) is tuple:
+        return (tuple, tuple(_default_proof(item) for item in value))
+    if type(value) is dict:
+        return (dict, tuple((key, _default_proof(value[key])) for key in sorted(value)))
+    if type(value) is _meshing.MeshOptions and type(vars(value)) is dict:
+        return (_meshing.MeshOptions,
+                tuple((key, _default_proof(item)) for key, item in sorted(vars(value).items())))
+    return (type(value), value)
+
+
+def _function_proof(function) -> tuple[Any, ...]:
+    return (function, function.__code__, _default_proof(function.__defaults__),
+            _default_proof(function.__kwdefaults__))
+
+
+_MESH_FUNCTION_PROOFS = (
+    (_meshing.MeshOptions, "__init__", _function_proof(_meshing.MeshOptions.__init__)),
+    (_meshing.MeshOptions, "__post_init__",
+     _function_proof(_meshing.MeshOptions.__post_init__)),
+    (_meshing, "mesh_for_occurrence", _function_proof(_meshing.mesh_for_occurrence)),
+    (_meshing, "_mesh_private", _function_proof(_meshing._mesh_private)),
+    (_meshing, "_pack", _function_proof(_meshing._pack)),
+    (_meshing, "unpack_mesh", _function_proof(_meshing.unpack_mesh)),
+    (_meshing, "_validate_ranges", _function_proof(_meshing._validate_ranges)),
+    (_consumers._DocumentBridge, "prototype_shape",
+     _function_proof(_consumers._DocumentBridge.prototype_shape)),
+    (_consumers._DocumentBridge, "derivation",
+     _function_proof(_consumers._DocumentBridge.derivation)),
+    (_consumers._DocumentBridge, "save_derivation",
+     _function_proof(_consumers._DocumentBridge.save_derivation)),
+    (_consumers.RevisionConsumer, "derive", _function_proof(_consumers.RevisionConsumer.derive)),
+    (_native, "copy_shape_with_topology_order",
+     _function_proof(_native.copy_shape_with_topology_order)),
+)
+_MESH_GLOBAL_PROOFS = (
+    (_consumers, "copy_shape_with_topology_order", _consumers.copy_shape_with_topology_order),
+    (_consumers, "normalize", _consumers.normalize),
+    (_consumers, "_freeze_value", _consumers._freeze_value),
+    (_consumers, "ResourceRequest", _consumers.ResourceRequest),
+    (_consumers, "_MISSING", _consumers._MISSING),
+    (_meshing, "MeshOptions", _meshing.MeshOptions),
+    (_meshing, "ResourceRequest", _meshing.ResourceRequest),
+    (_meshing, "asdict", _meshing.asdict),
+)
+_MESH_VALUE_PROOFS = (
+    (_meshing, "VERSION", _default_proof(_meshing.VERSION)),
+    (_meshing, "MAGIC", _default_proof(_meshing.MAGIC)),
+    (_meshing, "MAX_PACKET_BYTES", _default_proof(_meshing.MAX_PACKET_BYTES)),
+    (_meshing, "MAX_HEADER_BYTES", _default_proof(_meshing.MAX_HEADER_BYTES)),
+    (_meshing, "MAX_TOPOLOGY_ROWS", _default_proof(_meshing.MAX_TOPOLOGY_ROWS)),
+    (_meshing, "_LAYOUT", _default_proof(_meshing._LAYOUT)),
+    (_meshing, "_EDGE_CLASSES", frozenset(_meshing._EDGE_CLASSES)),
+)
+_MESH_PRODUCER = MappingProxyType({
+    "semantics": _MESH_PRODUCER_SEMANTICS,
+    "implementation": _implementation_digest(),
+    "python": sys.implementation.cache_tag,
+    "native": MappingProxyType(dict(_CAPTURED_NATIVE_FINGERPRINT)),
+})
+
+
+def _mesh_producer_is_current() -> bool:
+    if not all(getattr(owner, name, None) is proof[0]
+               and _function_proof(proof[0]) == proof
+               for owner, name, proof in _MESH_FUNCTION_PROOFS):
+        return False
+    if not all(getattr(owner, name, None) is value
+               for owner, name, value in _MESH_GLOBAL_PROOFS):
+        return False
+    for owner, name, proof in _MESH_VALUE_PROOFS:
+        current = getattr(owner, name, None)
+        if (name == "_EDGE_CLASSES" and
+                (type(current) is not set or frozenset(current) != proof)):
+            return False
+        if name != "_EDGE_CLASSES" and _default_proof(current) != proof:
+            return False
+    return True
 
 
 def checkpoint_engine_version() -> str:
     """Catalog engine identity; changing it causes the disposable hard reset."""
     native = _native_fingerprint()
     return (f"document-checkpoint-v{CHECKPOINT_VERSION};"
-            f"eval={EVALUATION_SEMANTICS};ocp={native['ocp']};codec=bintools-v4")
+            f"eval={EVALUATION_SEMANTICS};ocp={native['cadquery_ocp']};codec=bintools-v4;"
+            f"mesh={_MESH_PRODUCER['implementation']}")
 
 
 def _expect_fields(value: Any, fields: set[str], what: str) -> dict[str, Any]:
@@ -651,6 +780,210 @@ def _manifest_bytes(value: dict[str, Any]) -> bytes:
                       ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
+def _mesh_producer_value() -> dict[str, Any]:
+    return {
+        "semantics": _MESH_PRODUCER["semantics"],
+        "implementation": _MESH_PRODUCER["implementation"],
+        "python": _MESH_PRODUCER["python"],
+        "native": dict(_MESH_PRODUCER["native"]),
+    }
+
+
+def _cancel_checkpoint(cancellation) -> None:
+    if cancellation is not None and cancellation.is_set():
+        from .resources import Cancelled
+
+        raise Cancelled("document checkpoint was cancelled")
+
+
+def _mesh_bindings(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Bind mesh ordinals to the checkpoint's exact restored topology proof."""
+    topology = manifest["native_topology"]
+    same_classes = topology["same_classes"]
+    result = {}
+    for row, members in zip(manifest["prototypes"], topology["prototypes"]):
+        order = {"face": [], "edge": []}
+        for member in members:
+            shape_type, location_class = same_classes[member[0] - 1]
+            kind = ("face" if shape_type == "TopAbs_FACE" else
+                    "edge" if shape_type == "TopAbs_EDGE" else None)
+            if kind is not None:
+                order[kind].append([member[0], member[1], member[2], location_class])
+        order_payload = _manifest_bytes({"version": 1, "order": order})
+        result[row["prototype_id"]] = {
+            "shape_digest": row["shape_digest"],
+            "topology_digest": hashlib.sha256(order_payload).hexdigest(),
+            "faces": len(order["face"]),
+            "edges": len(order["edge"]),
+        }
+    return result
+
+
+def _mesh_cache_payload(document: Document, manifest: dict[str, Any], cancellation) -> bytes | None:
+    """Pack bounded, already-computed native mesh derivations without callbacks."""
+    if not _mesh_producer_is_current():
+        return None
+    bindings = _mesh_bindings(manifest)
+    expected_runtime = normalize(document.runtime)
+    candidates = []
+    candidate_bytes = 0
+    body_limit = MAX_MESH_CACHE_BYTES - MAX_MESH_CACHE_INDEX_BYTES - 12
+    for key, packet in document._derivations.items():
+        _cancel_checkpoint(cancellation)
+        try:
+            if (type(key) is not tuple or len(key) != 6
+                    or type(key[0]) is not str or key[0] not in bindings
+                    or key[1] != "consumer-v2"
+                    or key[2] != f"native-mesh-{_meshing.VERSION}"
+                    or type(key[3]) is not tuple
+                    or key[3] not in (("face",), ("face", "edge"))
+                    or type(key[4]) is not tuple or type(key[5]) is not tuple
+                    or key[5] != expected_runtime
+                    or type(packet) is not bytes
+                    or len(packet) > _meshing.MAX_PACKET_BYTES):
+                continue
+            header, _ = _meshing.unpack_mesh(packet)
+            topology = (("face", "edge") if header["options"]["edges"] else ("face",))
+            binding = bindings[key[0]]
+            if (key[3] != topology or key[4] != normalize(header["options"])
+                    or len(header["faces"]) != binding["faces"]
+                    or len(header["edges"]) != (binding["edges"] if topology[-1] == "edge" else 0)):
+                continue
+            descriptor = {
+                "prototype": key[0],
+                "parameters": _encode_value(key[4]),
+                "topology": list(topology),
+                "shape_digest": binding["shape_digest"],
+                "topology_digest": binding["topology_digest"],
+                "faces": binding["faces"],
+                "edges": binding["edges"] if topology[-1] == "edge" else 0,
+                "size": len(packet),
+                "sha256": hashlib.sha256(packet).hexdigest(),
+            }
+            if len(candidates) >= MAX_MESH_CACHE_ENTRIES:
+                break
+            if candidate_bytes + len(packet) > body_limit:
+                continue
+            candidates.append((_manifest_bytes(descriptor), descriptor, packet))
+            candidate_bytes += len(packet)
+        except (CheckpointError, TypeError, ValueError, KeyError, OverflowError,
+                RecursionError):
+            continue
+    selected = []
+    body_bytes = 0
+    for _, descriptor, packet in sorted(candidates, key=lambda item: item[0]):
+        selected.append((dict(descriptor, offset=body_bytes), packet))
+        body_bytes += len(packet)
+    if not selected:
+        return None
+    header = {
+        "magic": "cadgen.document.native-mesh-cache",
+        "version": _MESH_CACHE_VERSION,
+        "producer": _mesh_producer_value(),
+        "entries": [descriptor for descriptor, _ in selected],
+    }
+    encoded = _manifest_bytes(header)
+    if not encoded or len(encoded) > MAX_MESH_CACHE_INDEX_BYTES:
+        return None
+    padding = (-len(encoded)) % 4
+    size = 12 + len(encoded) + padding + body_bytes
+    if size > MAX_MESH_CACHE_BYTES:
+        return None
+    _cancel_checkpoint(cancellation)
+    payload = b"".join((_MESH_CACHE_MAGIC, struct.pack("<I", len(encoded)), encoded,
+                        b" " * padding, *(packet for _, packet in selected)))
+    _cancel_checkpoint(cancellation)
+    return payload
+
+
+def _install_mesh_cache(document: Document, payload: bytes,
+                        bindings: dict[str, dict[str, Any]], cancellation) -> None:
+    """Install independently validated packets; malformed cache data is a miss."""
+    if not _mesh_producer_is_current():
+        return
+    try:
+        if (type(payload) is not bytes or not 12 <= len(payload) <= MAX_MESH_CACHE_BYTES
+                or payload[:8] != _MESH_CACHE_MAGIC):
+            return
+        length, = struct.unpack_from("<I", payload, 8)
+        start = 12 + length + (-length) % 4
+        if not 0 < length <= MAX_MESH_CACHE_INDEX_BYTES or start > len(payload):
+            return
+        header = json.loads(payload[12:12 + length])
+        if (_manifest_bytes(header) != payload[12:12 + length]
+                or type(header) is not dict
+                or set(header) != {"magic", "version", "producer", "entries"}
+                or header["magic"] != "cadgen.document.native-mesh-cache"
+                or header["version"] != _MESH_CACHE_VERSION
+                or header["producer"] != _mesh_producer_value()
+                or type(header["entries"]) is not list
+                or len(header["entries"]) > MAX_MESH_CACHE_ENTRIES):
+            return
+        parsed = []
+        offset = 0
+        keys = set()
+        for raw in header["entries"]:
+            _cancel_checkpoint(cancellation)
+            raw = _expect_fields(
+                raw,
+                {"prototype", "parameters", "topology", "shape_digest",
+                 "topology_digest", "faces", "edges", "offset", "size", "sha256"},
+                "mesh cache entry",
+            )
+            prototype = _nonempty(raw["prototype"], "mesh prototype")
+            topology_raw = raw["topology"]
+            if (type(topology_raw) is not list
+                    or tuple(topology_raw) not in (("face",), ("face", "edge"))):
+                return
+            topology = tuple(topology_raw)
+            parameters = _decode_value(raw["parameters"])
+            if type(parameters) is not tuple:
+                return
+            size = _integer(raw["size"], "mesh packet size", minimum=12)
+            if (raw["offset"] != offset or size > _meshing.MAX_PACKET_BYTES
+                    or start + offset + size > len(payload)):
+                return
+            digest = raw["sha256"]
+            if (type(digest) is not str or len(digest) != 64
+                    or any(character not in "0123456789abcdef" for character in digest)):
+                return
+            binding = bindings.get(prototype)
+            if (binding is None
+                    or raw["shape_digest"] != binding["shape_digest"]
+                    or raw["topology_digest"] != binding["topology_digest"]
+                    or raw["faces"] != binding["faces"]
+                    or raw["edges"] != (binding["edges"] if topology[-1] == "edge" else 0)):
+                return
+            key = (prototype, "consumer-v2", f"native-mesh-{_meshing.VERSION}",
+                   topology, parameters, normalize(document.runtime))
+            if key in keys:
+                return
+            keys.add(key)
+            parsed.append((key, start + offset, size, digest, binding))
+            offset += size
+        if start + offset != len(payload):
+            return
+    except (CheckpointError, TypeError, ValueError, KeyError, UnicodeError,
+            OverflowError, RecursionError, json.JSONDecodeError):
+        return
+    for key, offset, size, digest, binding in parsed:
+        _cancel_checkpoint(cancellation)
+        packet = payload[offset:offset + size]
+        try:
+            if hashlib.sha256(packet).hexdigest() != digest:
+                continue
+            header, _ = _meshing.unpack_mesh(packet)
+            topology = key[3]
+            if (normalize(header["options"]) != key[4]
+                    or len(header["faces"]) != binding["faces"]
+                    or len(header["edges"]) != (binding["edges"] if topology[-1] == "edge" else 0)
+                    or topology != (("face", "edge") if header["options"]["edges"] else ("face",))):
+                continue
+        except (TypeError, ValueError, KeyError, OverflowError, RecursionError):
+            continue
+        document._derivations[key] = packet
+
+
 class CheckpointCodec:
     """Encode and recover exact revisions through a caller-owned Catalog."""
 
@@ -682,12 +1015,14 @@ class CheckpointCodec:
         self._check_runtime()
         if normalize(document.runtime) != self._normalized_runtime:
             raise CheckpointIncompatible("document runtime differs from checkpoint codec runtime")
-        request = resources or ResourceRequest(kind="checkpoint")
+        request = resources or ResourceRequest(
+            kind="checkpoint", derived_bytes=MAX_MESH_CACHE_BYTES)
         if request.kind != "checkpoint":
             raise ValueError("checkpoint staging requires checkpoint resource admission")
         with document.admission.admit(request, cancellation=cancellation):
             with document.pin(revision_id) as pin:
                 manifest, native = _manifest(document, pin.revision)
+                mesh_cache = _mesh_cache_payload(document, manifest, cancellation)
                 metadata = {
                     "version": CHECKPOINT_VERSION,
                     "kind": _MAGIC,
@@ -695,11 +1030,12 @@ class CheckpointCodec:
                     "native_runtime": _native_fingerprint(),
                     "runtime": _encode_value(self._normalized_runtime),
                 }
-                return self.catalog.stage(
-                    document.document_id, metadata,
-                    {_MANIFEST_ROLE: _manifest_bytes(manifest), _NATIVE_ROLE: native},
-                    seconds=seconds,
-                )
+                payloads = {_MANIFEST_ROLE: _manifest_bytes(manifest),
+                            _NATIVE_ROLE: native}
+                if mesh_cache is not None:
+                    payloads[_MESH_ROLE] = mesh_cache
+                return self.catalog.stage(document.document_id, metadata, payloads,
+                                          seconds=seconds)
 
     def commit(self, stage: Stage, *, expected_head: str | None) -> bool:
         if not isinstance(stage, Stage):
@@ -719,12 +1055,17 @@ class CheckpointCodec:
         if type(selected) is not str or not selected:
             raise TypeError("checkpoint recovery requires an exact catalog revision")
         owner_admission = admission or ResourceAdmission()
-        request = resources or ResourceRequest(kind="checkpoint")
+        request = resources or ResourceRequest(
+            kind="checkpoint", derived_bytes=2 * MAX_MESH_CACHE_BYTES)
         if request.kind != "checkpoint":
             raise ValueError("checkpoint recovery requires checkpoint resource admission")
         with owner_admission.admit(request, cancellation=cancellation):
             with self.catalog.lease(selected, seconds=seconds) as lease:
-                checkpoint = self.catalog.read(lease)
+                checkpoint = self.catalog.read_partitioned(
+                    lease,
+                    required_roles=frozenset({_MANIFEST_ROLE, _NATIVE_ROLE}),
+                    optional_role_limits={_MESH_ROLE: MAX_MESH_CACHE_BYTES},
+                )
                 receipts = self.catalog.exports(lease)
             if checkpoint.document_id != document_id:
                 raise CheckpointCorrupt("catalog checkpoint belongs to another document")
@@ -737,7 +1078,7 @@ class CheckpointCodec:
             }
             if checkpoint.metadata != expected_metadata:
                 raise CheckpointIncompatible("checkpoint metadata runtime or schema is incompatible")
-            if set(checkpoint.payloads) != {_MANIFEST_ROLE, _NATIVE_ROLE}:
+            if not {_MANIFEST_ROLE, _NATIVE_ROLE} <= set(checkpoint.payloads):
                 raise CheckpointCorrupt("checkpoint payload roles are invalid")
             document = Document(document_id, runtime=self.runtime, admission=owner_admission)
             if resources is None:
@@ -745,18 +1086,22 @@ class CheckpointCodec:
                     kind="checkpoint", cpu_slots=0,
                     native_bytes=len(checkpoint.payloads[_NATIVE_ROLE]))
                 with owner_admission.admit(native_request, cancellation=cancellation):
-                    revision, historical_state, completed = self._install(
+                    revision, historical_state, completed, bindings = self._install(
                         document, checkpoint.payloads[_MANIFEST_ROLE],
                         checkpoint.payloads[_NATIVE_ROLE])
             else:
-                revision, historical_state, completed = self._install(
+                revision, historical_state, completed, bindings = self._install(
                     document, checkpoint.payloads[_MANIFEST_ROLE],
                     checkpoint.payloads[_NATIVE_ROLE])
+            mesh_cache = checkpoint.payloads.get(_MESH_ROLE)
+            if mesh_cache is not None:
+                _install_mesh_cache(document, mesh_cache, bindings, cancellation)
         return RecoveredCheckpoint(document, revision, selected, historical_state,
                                    completed, receipts)
 
     def _install(self, document: Document, manifest_payload: bytes, native: bytes
-                 ) -> tuple[Revision, RevisionState, tuple[str, ...]]:
+                 ) -> tuple[Revision, RevisionState, tuple[str, ...],
+                            dict[str, dict[str, Any]]]:
         try:
             def reject_constant(value: str) -> None:
                 raise ValueError(f"non-finite JSON constant: {value}")
@@ -979,4 +1324,4 @@ class CheckpointCodec:
         order = (request_sequence, publication_sequence)
         for path in required:
             document._output_claims[path] = order
-        return revision, historical_state, tuple(completed_raw)
+        return revision, historical_state, tuple(completed_raw), _mesh_bindings(manifest)

@@ -193,6 +193,11 @@ class WorkerTests(unittest.TestCase):
             with DocumentWorker(self.catalog, startup_timeout=60) as first:
                 source_result, _ = self._result(first.generate(self.source, timeout=60))
                 source_revision = source_result["revision"]
+                display, _ = self._result(first.display(
+                    source_revision,
+                    options={"relative_chord": .01, "angular": .5, "edges": True},
+                    timeout=60))
+                known_meshes = [asset["identity"] for asset in display["assets"]]
                 checkpoint, _ = self._result(first.checkpoint(source_revision, timeout=60))
                 self.assertTrue(checkpoint["published"])
                 saved = CapturedInput.read(self.target)
@@ -213,6 +218,18 @@ class WorkerTests(unittest.TestCase):
                 self.assertNotEqual(source_owner, recovered["revision"]["owner"])
                 self.assertEqual(0, recovered["evaluations"]["computed"])
                 self.assertGreater(recovered["evaluations"]["reused"], 0)
+                redisplay, redisplay_buffers = self._result(restarted.display(
+                    recovered["revision"],
+                    options={"relative_chord": .01, "angular": .5, "edges": True},
+                    known=known_meshes, timeout=60))
+                self.assertEqual([], redisplay["assets"])
+                self.assertEqual(1, len(redisplay_buffers))
+                changed_quality, changed_buffers = self._result(restarted.display(
+                    recovered["revision"],
+                    options={"relative_chord": .02, "angular": .5, "edges": True},
+                    known=known_meshes, timeout=60))
+                self.assertEqual(1, len(changed_quality["assets"]))
+                self.assertEqual(2, len(changed_buffers))
                 self.target.write_bytes(b"another replacement before saved import")
                 reopened, _ = self._result(restarted.open_step(saved, timeout=60))
                 self.assertTrue(reopened["reused"])

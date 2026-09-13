@@ -189,6 +189,16 @@ Exit: all chosen plate/gear/curved/imported/assembly fixtures run without @memo.
 
 Owner: persistence agent, gpt-5.6-sol / high. Reviewer: gpt-6-astra / high.
 
+Native mesh recovery milestone implemented, 13 September 2026: checkpoint
+version 5 optionally carries a bounded cache of already-produced mesh packets.
+Recovery proves each packet's native topology binding, producer, runtime and
+quality before reuse. Missing or corrupt optional bytes leave the required
+native checkpoint usable. A real worker restart reuses the same-quality mesh;
+a quality change emits a new asset. The focused 59-test gate includes live
+producer mutation, corruption, packet limits, storage integrity and restart.
+This closes a bounded persistence path, not public fast-reopen integration or
+the packed-versus-individual storage benchmark and disk-pressure gates below.
+
 - Build the transactional catalog, payload storage, checkpoint loader, leases, corruption handling, version reset and bounded reclamation.
 - Capture source/input revisions and export bindings atomically with their metadata. Verify payload integrity at trust boundaries, not through repeated whole-assembly serialization.
 - Persist hot prototype geometry, compact topology maps and frequently requested display assets in bulk. Benchmark individual blobs against packed segments before choosing thresholds.

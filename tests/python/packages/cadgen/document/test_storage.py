@@ -16,7 +16,7 @@ from cadgen._document.storage import (Catalog, LeaseExpired, StageExpired,
 
 class CatalogTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="document-store-v1-")
+        self.temporary = tempfile.TemporaryDirectory(prefix="document-store-v2-")
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "managed"
 
@@ -58,6 +58,30 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual(reopened.head("part"), first.revision_id)
             with reopened.lease(first.revision_id) as lease:
                 self.assertEqual(reopened.read(lease).payloads["native"], b"one")
+
+    def test_partitioned_read_keeps_required_integrity_and_drops_corrupt_optional(self):
+        with Catalog(self.root) as catalog:
+            staged = catalog.stage(
+                "part", {"version": 1},
+                {"manifest": b"required", "mesh-cache": b"optional"})
+            self.assertTrue(catalog.checkpoint(staged, expected_head=None))
+            with catalog._transaction(write=False):
+                optional_digest, = catalog._db.execute(
+                    "SELECT digest FROM revision_blobs WHERE revision_id=? AND role='mesh-cache'",
+                    (staged.revision_id,),
+                ).fetchone()
+            (catalog._objects / optional_digest).unlink()
+            with catalog.lease(staged.revision_id) as lease:
+                result = catalog.read_partitioned(
+                    lease, required_roles=frozenset({"manifest"}),
+                    optional_role_limits={"mesh-cache": 1024})
+                self.assertEqual({"manifest": b"required"}, result.payloads)
+                with self.assertRaises(StorageCorrupt):
+                    catalog.read(lease)
+                with self.assertRaises(StorageCorrupt):
+                    catalog.read_partitioned(
+                        lease, required_roles=frozenset({"mesh-cache"}),
+                        optional_role_limits={"manifest": 1024})
 
     def test_lease_gc_and_export_receipts_are_revision_bound(self):
         with Catalog(self.root) as catalog:
