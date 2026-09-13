@@ -86,6 +86,34 @@ The initial cold traces found and drove fixes to premature UI timestamps and a
 stale limitation label. Their independent scheduler timings remain useful;
 the final UI regressions and follow-up browser checks verify the corrected UI.
 
+## Cinematic appearance follow-up
+
+The standard-mesh checks above do **not** establish complete visual parity with
+the earlier renderer. A subsequent review of the live Moonwatch found Cinematic
+lighting combined with **Solid** display mode, which draws CAD edges. The model
+has physical brushing grooves at 0.14 mm pitch and 0.018 mm depth; their 1.15 px
+feature outlines overlap into dark fields at the assembly's viewing scale.
+Switching the live view to **Rendered** removed those overlays without changing
+the camera or tessellation. A private comparison using ordinary Three.js lines
+and the same edge arrays reproduced the dark fields, excluding instanced line
+extrusion as their cause. A representative 6.83 x 8.59 x 2.96 mm center link has
+1,808 edge segments totaling 1,030.72 mm; its longest segment is 6.80 mm.
+
+The earlier surface shader composited the maximum of a triangle's edge coverages
+once; the newer separate line pass blends overlapping fragments independently.
+An equal-camera image comparison is still needed to quantify that difference and
+decide whether dense edge display needs suppression or different compositing.
+Rendered mode is an immediate viewing option, not proof of Solid-mode parity.
+
+Cinematic's environment texture, surface normals and PBR channels were present.
+The saved fixture has no appearance sidecar and all 301 occurrences lack authored
+material overrides. Applying the source project's material rules in an isolated
+render changed the finish of 287 occurrences, but did not eliminate all shiny
+faceting. Neither missing material metadata nor specular aliasing has been
+established as a new regression. Remaining appearance work requires matched
+images, including dense brushing and polished curved surfaces; matching mesh
+hashes alone is insufficient. The original STEP and source were not modified.
+
 ## Reproduction
 
 Use a private viewer and store. Prepare the saved STEP's geometry before timing,
