@@ -54,7 +54,7 @@ This fixture is opt-in; default short runs still use the plate and Assembly24.
 
 Its frozen old-engine cold build is approximately 20 seconds on the development
 machine. Start with three cold and three warm samples, run the two engines
-serially, and use `--warm-timeout 160` for each primed edit session. The per-build
+serially, and use `--warm-timeout 120` for each primed edit session. The per-build
 cap remains 60 seconds. Use the same `full-paired` report arguments described
 below; both runtime revisions are archived before timing and the report keeps
 every sample, actual output check, and independent geometry oracle. Do not mix
@@ -331,25 +331,62 @@ PYTHONPATH=packages/cadgen/src "$CAD_PYTHON" \
 
 The six bounded cases are a drilled and filleted plate, a translated cylinder,
 sphere, torus, trimmed fillet/cut solid, and a modest curved boolean solid.
-Each report checks exact native validity, volume, area and bounds; complete
-face and nondegenerate-edge coverage; sampled triangle-centroid distance to
-the corresponding trimmed native face; sampled display-edge distance; mesh
-volume and face areas; normal/winding agreement; coordinate-welded closure;
-and axis support extents as limited silhouette evidence. It records raw
-triangle counts but never treats equal counts or equal numeric tolerances as a
-quality proof. Centroid sampling is not a global Hausdorff bound, and axis
-support does not compare full occluding contours; these limits are repeated in
-the report. A completed report exits nonzero when either pipeline fails a
-quality gate; that result is a finding, while exceptions indicate a harness or
-fixture failure.
+Each copied face/edge is matched to its source through OCCT copy history; the
+comparison does not assume equal traversal order. Original native bytes and
+actual transferred SURF/mesh bytes are checked for stability.
 
-Without `--serial-window`, every stage time is labeled
-`diagnostic-concurrent-functional-only`. Node process and module setup is a
-separate cold boundary; decode, tessellation and packing are per-request warm
-stages in one persistent worker. Python CAD imports are also separate, while
-Python interpreter launch is explicitly excluded. Use `--serial-window` only
-inside an externally reserved native-compute window; setting it is an
-attestation by the operator, not automatic host-idleness detection.
+The common quality target is an absolute distance of `0.0015 × exact native
+bounding diagonal`, with a normal-angle limit of 0.35 radians. Neither producer's
+internal scale defines acceptance. The gate requires complete faces and all
+nondegenerate edges; finite unit normals; positive-area triangles with outward
+analytic orientation; numerical welded closure with opposite edge directions;
+volume error at most 1%; total and individual face area error at most 2%; and
+axis support error within the same distance target. The numerical weld spacing
+is `diagonal × 2^-20`, matching the native transport test corpus.
+
+Independent quality measurements include:
+
+- Closed-form plane, cylinder, sphere and torus distance at every triangle's
+  centroid and three edge midpoints, plus exact analytic normal comparison.
+- Distances to the actual trimmed native face at those four points for up to
+  64 evenly spaced triangles per face.
+- A mesh-independent 9×9 UV grid restricted to each exact trimmed face, measured
+  against that face's actual triangles with a separate numerical distance oracle.
+- Every display polyline vertex and segment midpoint against its native edge,
+  and 65 uniformly spaced native curve parameters against the display polyline.
+
+Each distance measurement must satisfy the same absolute target. These are
+sampled error and numerical closure checks, not a global Hausdorff proof or a
+pixel-quality comparison. Axis support extents do not compare full occluding
+contours. Raw triangle counts are descriptive only. `--self-test` exercises the
+independent point/triangle distance oracle without loading the CAD kernel.
+
+Calibration tries three fixed refinement factors, `1`, `0.5` and `0.25`, on each
+producer's chord and loop parameters; angular parameters scale by the square
+root of that factor. Each producer selects its first passing rung before timing.
+A producer that fails all rungs retains every failure reason. That is an
+unsupported quality match within this bounded search, not proof that no possible
+parameter choice can work. The report exits nonzero when any fixture cannot
+qualify; that result is a finding, while exceptions indicate a harness/fixture
+failure.
+
+Without `--serial-window`, all times are explicitly diagnostic. A separately
+reserved serial window enables one primer followed by five measured paired
+samples (`--iterations`), with alternating producer order. Every measured packet
+must pass the same gate and match its calibrated bytes. A speed ratio is emitted
+only for fully qualified pairs. The compared boundary includes a fresh native
+copy on both sides: native tessellation/CGMESH encoding versus SURF extraction
+and encoding followed by JS decode/tessellation/TESS encoding. Copy-history
+verification, artifact IO, IPC and quality checks are excluded on both sides.
+Python module imports and Node process/module setup are separate cold boundaries;
+Python interpreter launch is excluded. Code fingerprints, OCP/NumPy/Node/Three
+versions and the actual Three module hashes are recorded. `--serial-window` is
+an operator attestation, not automatic host-idleness detection.
+
+The [13 September matched-quality report](MESH-QUALITY-20260913.md) qualifies
+three of the six fixtures. Native wins the plate and cylinder production
+boundary, while JS wins the torus. Sphere and the two JS structural failures
+remain explicitly unqualified; they receive no speed ratio.
 
 ## Installed dependency closure observation
 

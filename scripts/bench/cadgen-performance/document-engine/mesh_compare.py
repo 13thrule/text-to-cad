@@ -10,7 +10,7 @@ created during a separately recorded serial measurement window.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 import hashlib
 from io import BytesIO
@@ -31,7 +31,16 @@ DEFAULT_SCRATCH = ROOT / "models/tmp/document-engine-mesh-compare"
 ALL_CASES = ("plate", "cylinder", "sphere", "torus", "trimmed_cut", "curved")
 TESS_MAGIC = 0x53534554
 TESS_VERSION = 4
-MAX_FACE_SAMPLES = 24
+MAX_FACE_SAMPLES = 64
+FACE_GRID = 9
+EDGE_SAMPLES = 65
+MAX_TRIANGLES = 250_000
+RUNG_FACTORS = (1., .5, .25)
+
+
+def _check(deadline):
+    if time.monotonic() >= deadline:
+        raise TimeoutError("mesh comparison exceeded its original fixture budget")
 
 
 @dataclass(frozen=True)
@@ -355,16 +364,208 @@ def _point_distance(point, target) -> float:
     return float(distance.Value())
 
 
-def _mesh_quality(mesh: Mesh, exact: dict[str, Any]) -> dict[str, Any]:
+def _copy_input(shape, exact):
+    """Prove each copied ordinal's source identity through OCCT copy history."""
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+    from OCP.TopAbs import TopAbs_EDGE, TopAbs_FACE
+    from OCP.TopExp import TopExp
+    from OCP.TopTools import TopTools_IndexedMapOfShape
+
+    started = time.perf_counter()
+    copier = BRepBuilderAPI_Copy(shape, True, False)
+    copied = copier.Shape()
+    copy_ms = (time.perf_counter() - started) * 1000
+    correspondence = {}
+    for name, kind in (("face", TopAbs_FACE), ("edge", TopAbs_EDGE)):
+        mapped = TopTools_IndexedMapOfShape()
+        TopExp.MapShapes_s(copied, kind, mapped)
+        source = exact[name + "Map"]
+        inverse = {}
+        for ordinal in range(1, source.Extent() + 1):
+            image = copier.ModifiedShape(source.FindKey(ordinal))
+            index = mapped.FindIndex(image)
+            if image.IsNull() or index <= 0 or index in inverse:
+                raise RuntimeError("copy has no exact one-to-one topology correspondence")
+            inverse[index] = ordinal
+        if len(inverse) != mapped.Extent():
+            raise RuntimeError("copy topology correspondence is incomplete")
+        correspondence[name] = inverse
+    return copied, correspondence, copy_ms
+
+
+def _source_ordinals(mesh, correspondence):
+    return replace(mesh, faces=tuple((correspondence["face"][ordinal], start, count)
+                                    for ordinal, start, count in mesh.faces),
+                   edges=tuple((correspondence["edge"][ordinal], points)
+                               for ordinal, points in mesh.edges))
+
+
+def _distance_to_segments(point, starts, ends):
+    import numpy as np
+    vectors = ends - starts
+    denominator = np.einsum("ij,ij->i", vectors, vectors)
+    fraction = np.divide(np.einsum("ij,ij->i", point - starts, vectors), denominator,
+                         out=np.zeros(len(starts)), where=denominator > 0)
+    residual = point - (starts + np.clip(fraction, 0, 1)[:, None] * vectors)
+    return np.einsum("ij,ij->i", residual, residual)
+
+
+def _distance_to_triangles(points, triangles, deadline):
+    """Independent Euclidean point/triangle distances; bounded one-point blocks."""
+    import numpy as np
+    a, b, c = triangles[:, 0], triangles[:, 1], triangles[:, 2]
+    ab, ac = b - a, c - a
+    normals = np.cross(ab, ac)
+    squared = np.einsum("ij,ij->i", normals, normals)
+    aa = np.einsum("ij,ij->i", ab, ab)
+    bb = np.einsum("ij,ij->i", ac, ac)
+    mixed = np.einsum("ij,ij->i", ab, ac)
+    denominator = aa * bb - mixed * mixed
+    result = []
+    for point in points:
+        _check(deadline)
+        delta = point - a
+        signed = np.einsum("ij,ij->i", delta, normals)
+        projection = delta - np.divide(signed, squared, out=np.zeros(len(a)), where=squared > 0)[:, None] * normals
+        pa = np.einsum("ij,ij->i", projection, ab)
+        pc = np.einsum("ij,ij->i", projection, ac)
+        u = np.divide(bb * pa - mixed * pc, denominator, out=np.zeros(len(a)), where=denominator > 0)
+        v = np.divide(aa * pc - mixed * pa, denominator, out=np.zeros(len(a)), where=denominator > 0)
+        inside = (denominator > 0) & (u >= 0) & (v >= 0) & (u + v <= 1)
+        distances = np.divide(signed * signed, squared, out=np.full(len(a), np.inf), where=inside)
+        distances = np.minimum(distances, _distance_to_segments(point, a, b))
+        distances = np.minimum(distances, _distance_to_segments(point, b, c))
+        distances = np.minimum(distances, _distance_to_segments(point, c, a))
+        result.append(math.sqrt(max(0., float(distances.min()))))
+    return result
+
+
+def _oracle_self_test():
+    import numpy as np
+    triangle = np.array([[[0., 0., 0.], [1., 0., 0.], [0., 1., 0.]]])
+    points = np.array([[.25, .25, 0.], [.25, .25, 2.], [-1., 0., 0.], [1., 1., 0.], [0., 0., 0.]])
+    expected = [0., 2., 1., math.sqrt(.5), 0.]
+    shift = np.array([25., -8., 4.])
+    variants = ((points, triangle), (points, triangle[:, ::-1]), (points + shift, triangle + shift))
+    for samples, triangles in variants:
+        actual = _distance_to_triangles(samples, triangles, time.monotonic() + 2)
+        if not np.allclose(actual, expected, rtol=1e-12, atol=1e-12):
+            raise RuntimeError(f"independent triangle-distance oracle self-test failed: {actual}")
+    degenerate = np.array([[[0., 0., 0.], [0., 0., 0.], [1., 0., 0.]]])
+    if _distance_to_triangles(np.array([[1., 1., 0.]]), degenerate, time.monotonic() + 2) != [1.]:
+        raise RuntimeError("degenerate triangle-distance oracle self-test failed")
+    return {"passed": True, "checks": 16, "coverage": ["interior", "plane distance", "edge", "vertex", "reversal", "translation", "degenerate triangle"]}
+
+
+def _surface_oracle(face):
+    """Independent closed-form oracle for the four exact corpus surface types."""
+    import numpy as np
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+    from OCP.BRepTools import BRepTools
+    from OCP.GeomAbs import GeomAbs_Plane, GeomAbs_Cylinder, GeomAbs_Sphere, GeomAbs_Torus
+    from OCP.TopAbs import TopAbs_REVERSED
+    from OCP.gp import gp_Pnt, gp_Vec
+
+    surface = BRepAdaptor_Surface(face, True)
+    kind = surface.GetType()
+    names = {GeomAbs_Plane: "plane", GeomAbs_Cylinder: "cylinder",
+             GeomAbs_Sphere: "sphere", GeomAbs_Torus: "torus"}
+    if kind not in names:
+        raise RuntimeError(f"corpus surface {kind} has no independent analytic oracle")
+    primitive = getattr(surface, names[kind].title())()
+    center = np.array(primitive.Location().Coord())
+    axis = np.array(primitive.Axis().Direction().Coord()) if kind != GeomAbs_Sphere else None
+    sign = -1. if face.Orientation() == TopAbs_REVERSED else 1.
+    # Fillet cylinders may have a left-handed native parametric frame. Its
+    # normal is dU×dV, so radial-outward alone is not the surface orientation.
+    if not primitive.Position().Direct():
+        sign = -sign
+
+    def evaluate(points):
+        delta = np.asarray(points) - center
+        if kind == GeomAbs_Plane:
+            return np.abs(delta @ axis), np.broadcast_to(axis * sign, delta.shape)
+        if kind == GeomAbs_Sphere:
+            length = np.linalg.norm(delta, axis=1)
+            normals = delta / length[:, None]
+            distance = np.abs(length - primitive.Radius())
+        else:
+            radial = delta - (delta @ axis)[:, None] * axis
+            length = np.linalg.norm(radial, axis=1)
+            normals = radial / length[:, None]
+            if kind == GeomAbs_Cylinder:
+                distance = np.abs(length - primitive.Radius())
+            else:
+                tube = delta - primitive.MajorRadius() * normals
+                radius = np.linalg.norm(tube, axis=1)
+                normals = tube / radius[:, None]
+                distance = np.abs(radius - primitive.MinorRadius())
+        return distance, normals * sign
+    u0, u1, v0, v1 = BRepTools.UVBounds_s(face)
+    point, du, dv = gp_Pnt(), gp_Vec(), gp_Vec()
+    surface.D1(u0 + (u1 - u0) * .381966, v0 + (v1 - v0) * .381966, point, du, dv)
+    derivative_normal = np.array(du.Crossed(dv).Coord())
+    length = float(np.linalg.norm(derivative_normal))
+    if not math.isfinite(length) or length <= 0:
+        raise RuntimeError("native parametric derivative normal is undefined at oracle control point")
+    derivative_normal *= (-1. if face.Orientation() == TopAbs_REVERSED else 1.) / length
+    _, analytic_normal = evaluate([point.Coord()])
+    if float(analytic_normal[0] @ derivative_normal) < 1 - 1e-9:
+        raise RuntimeError("analytic normal oracle disagrees with exact native surface derivatives")
+    return surface, names[kind], evaluate
+
+
+def _independent_face_points(face, surface):
+    from OCP.BRepClass import BRepClass_FaceClassifier
+    from OCP.BRepTools import BRepTools
+    from OCP.TopAbs import TopAbs_IN, TopAbs_ON
+    from OCP.gp import gp_Pnt2d
+    u0, u1, v0, v1 = BRepTools.UVBounds_s(face)
+    if not all(map(math.isfinite, (u0, u1, v0, v1))):
+        raise RuntimeError("corpus face has unbounded UV domain")
+    points = []
+    for i in range(FACE_GRID):
+        for j in range(FACE_GRID):
+            u, v = u0 + (u1 - u0) * (i + .5) / FACE_GRID, v0 + (v1 - v0) * (j + .5) / FACE_GRID
+            if BRepClass_FaceClassifier(face, gp_Pnt2d(u, v), 1e-9).State() in (TopAbs_IN, TopAbs_ON):
+                points.append(surface.Value(u, v).Coord())
+    if not points:
+        raise RuntimeError("independent trimmed face grid contains no valid sample")
+    return points
+
+
+def _mesh_quality(mesh: Mesh, exact: dict[str, Any], deadline: float) -> dict[str, Any]:
+    import numpy as np
+    from OCP.BRepAdaptor import BRepAdaptor_Curve
     from OCP.BRepGProp import BRepGProp
     from OCP.GProp import GProp_GProps
     from OCP.TopoDS import TopoDS
 
     face_map, edge_map = exact["faceMap"], exact["edgeMap"]
+    if not mesh.indices or len(mesh.indices) % 3 or len(mesh.indices) // 3 > MAX_TRIANGLES:
+        raise ValueError("mesh exceeds the bounded triangle inventory")
+    positions, normals = np.asarray(mesh.positions), np.asarray(mesh.normals)
+    if (positions.shape != normals.shape or positions.ndim != 2 or positions.shape[1] != 3
+            or not np.isfinite(positions).all() or not np.isfinite(normals).all()
+            or min(mesh.indices) < 0 or max(mesh.indices) >= len(positions)):
+        raise ValueError("invalid finite mesh buffers")
+    offset = 0
+    for ordinal, start, count in sorted(mesh.faces, key=lambda row: row[1]):
+        if (not 1 <= ordinal <= face_map.Extent() or start != offset or count <= 0 or count % 3):
+            raise ValueError("face ranges do not partition the mesh")
+        offset += count
+    if len({row[0] for row in mesh.faces}) != len(mesh.faces) or offset != len(mesh.indices):
+        raise ValueError("face ranges do not partition the mesh")
     face_ords = {row[0] for row in mesh.faces}
     expected_faces = set(range(1, face_map.Extent() + 1))
     face_area_errors = []
     sampled_errors = []
+    reverse_errors = []
+    analytic_errors = []
+    analytic_winding_disagreements = 0
+    maximum_normal_angle = 0.
+    maximum_vertex_normal_angle = 0.
+    surface_types = {}
     mesh_area = 0.
     signed_volume = 0.
     zero_area = sub_quantization_area = disagreements = near_orthogonal = 0
@@ -378,6 +579,7 @@ def _mesh_quality(mesh: Mesh, exact: dict[str, Any]) -> dict[str, Any]:
         return tuple(round(value / quantization) for value in point)
 
     for ordinal, start, count in mesh.faces:
+        _check(deadline)
         props = GProp_GProps()
         face = TopoDS.Face_s(face_map.FindKey(ordinal))
         BRepGProp.SurfaceProperties_s(face, props)
@@ -421,18 +623,67 @@ def _mesh_quality(mesh: Mesh, exact: dict[str, Any]) -> dict[str, Any]:
                 row[1] += 1 if ka < kb else -1
             if local // 3 % sample_step == 0 and sampled < MAX_FACE_SAMPLES:
                 centroid = tuple((a[axis] + b[axis] + c[axis]) / 3 for axis in range(3))
-                sampled_errors.append(_point_distance(centroid, face))
+                mids = [tuple((first[axis] + second[axis]) / 2 for axis in range(3))
+                        for first, second in ((a, b), (b, c), (c, a))]
+                sampled_errors.extend(_point_distance(point, face) for point in (centroid, *mids))
                 sampled += 1
         mesh_area += area
         face_area_errors.append(abs(area - exact_area) / max(exact_area, 1e-12))
+        surface, kind, oracle = _surface_oracle(face)
+        surface_types[ordinal] = kind
+        triangles = positions[np.asarray(mesh.indices[start:start + count]).reshape((-1, 3))]
+        centroids = triangles.mean(axis=1)
+        probes = np.concatenate((centroids, (triangles[:, 0] + triangles[:, 1]) * .5,
+                                 (triangles[:, 1] + triangles[:, 2]) * .5,
+                                 (triangles[:, 2] + triangles[:, 0]) * .5))
+        errors, _ = oracle(probes)
+        if not np.isfinite(errors).all():
+            raise RuntimeError("analytic oracle returned a non-finite surface distance")
+        analytic_errors.extend(errors.tolist())
+        exact_points = _independent_face_points(face, surface)
+        self_errors, _ = oracle(exact_points)
+        if float(self_errors.max()) > exact["diagonal"] * 1e-10:
+            raise RuntimeError("analytic oracle disagrees with exact native surface points")
+        reverse_errors.extend(_distance_to_triangles(np.asarray(exact_points), triangles, deadline))
+        cross = np.cross(triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0])
+        lengths = np.linalg.norm(cross, axis=1)
+        reliable = lengths > quantization * quantization
+        _, analytic_normals = oracle(centroids)
+        cosines = np.einsum("ij,ij->i", cross[reliable] / lengths[reliable, None], analytic_normals[reliable])
+        if len(cosines):
+            analytic_winding_disagreements += int((cosines <= 0).sum())
+            maximum_normal_angle = max(maximum_normal_angle, float(np.arccos(np.clip(cosines, -1, 1)).max()))
+        vertex_ids = np.unique(mesh.indices[start:start + count])
+        _, expected_normals = oracle(positions[vertex_ids])
+        normal_cosines = np.einsum("ij,ij->i", normals[vertex_ids], expected_normals)
+        if not np.isfinite(cosines).all() or not np.isfinite(normal_cosines).all():
+            raise RuntimeError("analytic oracle returned a non-finite surface normal")
+        maximum_vertex_normal_angle = max(maximum_vertex_normal_angle, float(np.arccos(np.clip(normal_cosines, -1, 1)).max()))
 
     exact_edge_ords = set(range(1, edge_map.Extent() + 1))
     represented_edge_ords = {ordinal for ordinal, _ in mesh.edges}
+    if (len(represented_edge_ords) != len(mesh.edges)
+            or represented_edge_ords - exact_edge_ords):
+        raise ValueError("display edge identity inventory is invalid")
     edge_errors = []
+    reverse_edge_errors = []
     for ordinal, points in mesh.edges:
-        edge = edge_map.FindKey(ordinal)
-        step = max(1, len(points) // 12)
-        edge_errors.extend(_point_distance(point, edge) for point in points[::step])
+        _check(deadline)
+        if len(points) < 2:
+            raise ValueError("represented display edge contains no segment")
+        edge = TopoDS.Edge_s(edge_map.FindKey(ordinal))
+        values = np.asarray(points)
+        if values.shape != (len(points), 3) or not np.isfinite(values).all():
+            raise ValueError("display edge coordinates are not finite 3D points")
+        mids = (values[:-1] + values[1:]) * .5
+        # Every displayed segment's midpoint is checked; vertices alone can be
+        # exact while a coarse chord crosses far away from its native curve.
+        edge_errors.extend(_point_distance(point, edge) for point in np.concatenate((values, mids)))
+        curve = BRepAdaptor_Curve(edge)
+        first, last = curve.FirstParameter(), curve.LastParameter()
+        for parameter in np.linspace(first, last, EDGE_SAMPLES):
+            point = np.array(curve.Value(float(parameter)).Coord())
+            reverse_edge_errors.append(math.sqrt(float(_distance_to_segments(point, values[:-1], values[1:]).min())))
     non_two = sum(count != 2 for count, _ in welded_edges.values())
     winding_mismatch = sum(count == 2 and winding != 0
                            for count, winding in welded_edges.values())
@@ -465,7 +716,13 @@ def _mesh_quality(mesh: Mesh, exact: dict[str, Any]) -> dict[str, Any]:
             "rms": math.sqrt(sum(value * value for value in sampled_errors)
                              / max(1, len(sampled_errors))),
         },
+        "analyticSurfaceError": {"samples": len(analytic_errors), "max": max(analytic_errors, default=0.),
+                                 "surfaceTypes": surface_types, "normalOracleCheckedAgainstNativeDerivatives": True},
+        "exactFaceToMeshError": {"samples": len(reverse_errors), "max": max(reverse_errors, default=0.)},
         "sampledEdgeErrorMax": max(edge_errors, default=0.),
+        "exactEdgeToPolylineErrorMax": max(reverse_edge_errors, default=0.),
+        "exactEdgeSamples": len(reverse_edge_errors),
+        "displayEdgeSamples": len(edge_errors),
         "meshArea": mesh_area,
         "totalAreaRelativeError": abs(mesh_area - exact["area"]) / max(exact["area"], 1e-12),
         "maxFaceAreaRelativeError": max(face_area_errors, default=0.),
@@ -479,6 +736,10 @@ def _mesh_quality(mesh: Mesh, exact: dict[str, Any]) -> dict[str, Any]:
             "disagreementFaces": sorted(disagreement_faces),
             "nearOrthogonalTriangles": near_orthogonal,
             "minimumCosine": min_normal_cosine,
+            "analyticOrientationDisagreements": analytic_winding_disagreements,
+            "maximumTriangleToAnalyticNormalAngle": maximum_normal_angle,
+            "maximumVertexToAnalyticNormalAngle": maximum_vertex_normal_angle,
+            "maximumNormalLengthError": float(np.abs(np.linalg.norm(normals, axis=1) - 1).max()),
         },
         "weldedTopology": {
             "quantization": quantization,
@@ -492,11 +753,11 @@ def _mesh_quality(mesh: Mesh, exact: dict[str, Any]) -> dict[str, Any]:
 
 def _strip_exact(exact: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in exact.items()
-            if key not in {"faceMap", "edgeMap"}}
+            if key not in {"faceMap", "edgeMap", "degenerateEdges"}}
 
 
 def _quality_pass(quality: dict[str, Any], exact: dict[str, Any],
-                  degenerate_edges: set[int]) -> tuple[bool, list[str]]:
+                  degenerate_edges: set[int], target: float, angular: float) -> tuple[bool, list[str]]:
     failures = []
     if not quality["faceCoverage"]["complete"]:
         failures.append("incomplete face coverage")
@@ -507,133 +768,167 @@ def _quality_pass(quality: dict[str, Any], exact: dict[str, Any],
         failures.append("zero-area triangles")
     if quality["normalWinding"]["disagreements"]:
         failures.append("winding disagrees with vertex normals")
+    if quality["normalWinding"]["analyticOrientationDisagreements"]:
+        failures.append("triangle orientation disagrees with exact outward surface normals")
+    if quality["normalWinding"]["maximumNormalLengthError"] > 1e-5:
+        failures.append("transported vertex normals are not unit length")
+    if (quality["normalWinding"]["maximumTriangleToAnalyticNormalAngle"] > angular
+            or quality["normalWinding"]["maximumVertexToAnalyticNormalAngle"] > angular):
+        failures.append("normal fidelity exceeds common angular target")
+    if quality["weldedTopology"]["nonTwoIncidentSegments"]:
+        failures.append("coordinate-welded mesh is not closed with two incident triangles")
+    if quality["weldedTopology"]["orientationMismatchSegments"]:
+        failures.append("coordinate-welded segment orientations disagree")
     if quality["signedVolume"] <= 0 and exact["volume"] > 0:
         failures.append("closed solid has nonpositive signed mesh volume")
     if quality["volumeRelativeError"] > .01:
         failures.append("mesh volume differs by more than 1%")
     if quality["totalAreaRelativeError"] > .02:
         failures.append("mesh area differs by more than 2%")
-    if quality["sampledFaceError"]["max"] > quality["targetAbsoluteChord"] * 2:
-        failures.append("sampled face error exceeds twice requested chord target")
-    if quality["axisSilhouetteExtentErrorMax"] > quality["targetAbsoluteChord"] * 2:
-        failures.append("axis silhouette extent exceeds twice requested chord target")
+    if quality["maxFaceAreaRelativeError"] > .02:
+        failures.append("a corresponding face area differs by more than 2%")
+    for name, error in (("sampled trimmed-face", quality["sampledFaceError"]["max"]),
+                        ("all-triangle analytic surface", quality["analyticSurfaceError"]["max"]),
+                        ("independent exact-face-to-mesh", quality["exactFaceToMeshError"]["max"]),
+                        ("display-edge-to-native-curve", quality["sampledEdgeErrorMax"]),
+                        ("independent exact-edge-to-polyline", quality["exactEdgeToPolylineErrorMax"]),
+                        ("axis support extent", quality["axisSilhouetteExtentErrorMax"])):
+        if not math.isfinite(error) or error > target:
+            failures.append(f"{name} error exceeds common absolute target")
     return not failures, failures
+
+
+def _produce(producer, shape, exact, folder, stem, worker, options, deadline):
+    from cadgen._document.meshing import MeshOptions, _mesh_private
+    from cadgen._internal.surface_extract import extract_surface_component
+
+    _check(deadline)
+    copied, correspondence, copy_ms = _copy_input(shape, exact)
+    artifacts = {}
+    coverage = None
+    if producer == "native":
+        started = time.perf_counter()
+        payload = _mesh_private(copied, MeshOptions(options["chord"], options["angular"], True))
+        produced = time.perf_counter()
+        path = folder / (stem + ".cgmesh")
+        path.write_bytes(payload)
+        if path.read_bytes() != payload:
+            raise RuntimeError("native comparison artifact differs from the produced bytes")
+        mesh = _source_ordinals(_native_mesh(payload), correspondence)
+        stages = {"copy": copy_ms, "tessellateAndPack": (produced - started) * 1000}
+        artifacts["packet"] = str(path.relative_to(ROOT))
+    else:
+        started = time.perf_counter()
+        surf = extract_surface_component(copied)
+        produced = time.perf_counter()
+        surf_path = folder / (stem + ".surf")
+        surf_path.write_bytes(surf)
+        path = folder / (stem + ".tess")
+        node = worker.run(surf_path, path, chord=options["chord"], loop=options["loop"], angular=options["angular"])
+        payload = path.read_bytes()
+        if node["sourceSha256"] != hashlib.sha256(surf).hexdigest() or node["packetSha256"] != hashlib.sha256(payload).hexdigest():
+            raise RuntimeError("JS comparison transfer differs from the captured source/output bytes")
+        mesh = _source_ordinals(_js_mesh(path, options["chord"], node["scale"]), correspondence)
+        stages = {"copy": copy_ms, "surfaceExtractAndPack": (produced - started) * 1000,
+                  **{key: node["stagesMs"][key] for key in ("decode", "tessellate", "pack")}}
+        coverage = {key: node[key] for key in ("sourceFaceOrds", "meshFaceOrds", "sourceEdgeOrds", "meshEdgeOrds", "omittedEdges")}
+        artifacts.update(packet=str(path.relative_to(ROOT)), surf=str(surf_path.relative_to(ROOT)),
+                         surfaceSha256=hashlib.sha256(surf).hexdigest())
+    # Native-history correspondence, artifact IO and the independent quality
+    # oracle are outside the production boundary, on both sides.
+    compute_ms = sum(stages.values())
+    _check(deadline)
+    quality = _mesh_quality(mesh, exact, deadline)
+    passed, failures = _quality_pass(quality, exact, exact["degenerateEdges"],
+                                     exact["commonTarget"], exact["commonAngular"])
+    if producer == "javascript":
+        omitted = coverage["omittedEdges"]
+        omitted_source = {correspondence["edge"][row["ord"]] for row in omitted}
+        if omitted_source != exact["degenerateEdges"] or any(row["hasCurve"] for row in omitted):
+            passed = False
+            failures.append("JS omitted edges are not exactly explicit degenerates")
+    return {"options": options, "passed": passed, "failures": failures, "quality": quality,
+            "packetSha256": hashlib.sha256(payload).hexdigest(), "artifacts": artifacts,
+            "stagesDiagnosticMs": stages, "productionDiagnosticMs": compute_ms,
+            "coverageFromSource": coverage,
+            "copyToSourceOrdinals": {key: [value[i] for i in sorted(value)] for key, value in correspondence.items()}}
 
 
 def run_case(name: str, folder: Path, worker: NodeWorker, args) -> dict[str, Any]:
     from OCP.BRep import BRep_Tool
     from OCP.TopoDS import TopoDS
-    from cadgen._document.meshing import MeshOptions, _mesh_private
-    from cadgen._document.native import copy_shape
-    from cadgen._internal.surface_extract import extract_surface_component
+    import statistics
 
     case_started = time.monotonic()
-    started = time.monotonic()
+    deadline = case_started + args.timeout
     shape = FACTORIES[name]()
-    fixture_ms = (time.monotonic() - started) * 1000
     exact = _exact(shape)
-    if not exact["valid"] or exact["solidsCount"] < 1:
-        raise RuntimeError(f"{name} fixture is not a valid solid")
-
-    started = time.monotonic()
-    native_input = copy_shape(shape)
-    native_copy_ms = (time.monotonic() - started) * 1000
-    started = time.monotonic()
-    native_packet = _mesh_private(
-        native_input, MeshOptions(args.native_relative_chord, args.angular, True))
-    native_tess_pack_ms = (time.monotonic() - started) * 1000
-    native_path = folder / f"{name}.native.cgmesh"
-    started = time.monotonic()
-    native_path.write_bytes(native_packet)
-    native_write_ms = (time.monotonic() - started) * 1000
-
-    started = time.monotonic()
-    surface_input = copy_shape(shape)
-    surface_copy_ms = (time.monotonic() - started) * 1000
-    started = time.monotonic()
-    surf = extract_surface_component(surface_input)
-    surface_extract_pack_ms = (time.monotonic() - started) * 1000
-    surf_path = folder / f"{name}.surf"
-    started = time.monotonic()
-    surf_path.write_bytes(surf)
-    surf_write_ms = (time.monotonic() - started) * 1000
-    tess_path = folder / f"{name}.tess"
-    node = worker.run(surf_path, tess_path, chord=args.js_chord,
-                      loop=args.js_loop, angular=args.angular)
-
-    native_mesh = _native_mesh(native_packet)
-    js_mesh = _js_mesh(tess_path, args.js_chord, node["scale"])
-    native_quality = _mesh_quality(native_mesh, exact)
-    js_quality = _mesh_quality(js_mesh, exact)
-    degenerate_edges = {ordinal for ordinal in range(1, exact["edgeMap"].Extent() + 1)
-                        if BRep_Tool.Degenerated_s(
-                            TopoDS.Edge_s(exact["edgeMap"].FindKey(ordinal)))}
-    native_pass, native_failures = _quality_pass(native_quality, exact, degenerate_edges)
-    js_pass, js_failures = _quality_pass(js_quality, exact, degenerate_edges)
-    omitted = node["omittedEdges"]
-    if ({item["ord"] for item in omitted} != degenerate_edges
-            or any(item["hasCurve"] for item in omitted)):
-        js_pass = False
-        js_failures.append("JS omitted edges are not exactly explicit degenerates")
-    elapsed = time.monotonic() - case_started
-    if elapsed > args.timeout:
-        raise TimeoutError(f"{name} exceeded the bounded {args.timeout:g}s fixture budget")
-    ratio = (js_quality["sampledFaceError"]["max"]
-             / max(native_quality["sampledFaceError"]["max"], 1e-15))
-    return {
-        "case": name,
-        "status": "passed" if native_pass and js_pass else "failed",
-        "elapsedDiagnosticMs": elapsed * 1000,
-        "exact": _strip_exact(exact),
-        "geometryInput": {
-            "sameFactoryInstance": True,
-            "pipelineInputsAreIndependentNativeCopies": True,
-            "units": "millimetres",
-            "nativeShapeSha256": _native_shape_digest(shape),
-            "surfacePayloadSha256": hashlib.sha256(surf).hexdigest(),
-        },
-        "native": {
-            "stagesMs": {"copy": native_copy_ms,
-                         "tessellateAndPack": native_tess_pack_ms,
-                         "artifactWrite": native_write_ms},
-            "quality": native_quality,
-            "failures": native_failures,
-        },
-        "javascript": {
-            "stagesMs": {"copy": surface_copy_ms,
-                         "surfaceExtractAndPack": surface_extract_pack_ms,
-                         "surfArtifactWrite": surf_write_ms,
-                         **node["stagesMs"]},
-            "coverageFromSource": {key: node[key] for key in (
-                "sourceFaceOrds", "meshFaceOrds", "sourceEdgeOrds",
-                "meshEdgeOrds", "omittedEdges")},
-            "quality": js_quality,
-            "failures": js_failures,
-        },
-        "qualityComparison": {
-            "sampledFaceMaxErrorRatioJsToNative": ratio,
-            "nativeSampledMaxOverChordTarget": (
-                native_quality["sampledFaceError"]["max"]
-                / native_quality["targetAbsoluteChord"]),
-            "jsSampledMaxOverChordTarget": (
-                js_quality["sampledFaceError"]["max"]
-                / js_quality["targetAbsoluteChord"]),
-            "bothSampledMaxWithinChordTarget": (
-                native_quality["sampledFaceError"]["max"]
-                <= native_quality["targetAbsoluteChord"]
-                and js_quality["sampledFaceError"]["max"]
-                <= js_quality["targetAbsoluteChord"]),
-            "targetsAreEqualNumericRelativeChord": (
-                args.native_relative_chord == args.js_chord),
-            "triangleCountsAreEvidenceOnly": True,
-        },
-        "fixtureBuildDiagnosticMs": fixture_ms,
-        "artifacts": {
-            "native": str(native_path.relative_to(ROOT)),
-            "surf": str(surf_path.relative_to(ROOT)),
-            "tess": str(tess_path.relative_to(ROOT)),
-        },
-    }
+    if not exact["valid"] or exact["solidsCount"] != 1:
+        raise RuntimeError(f"{name} fixture is not one valid solid")
+    before = _native_shape_digest(shape)
+    exact["degenerateEdges"] = {ordinal for ordinal in range(1, exact["edgeMap"].Extent() + 1)
+                                if BRep_Tool.Degenerated_s(TopoDS.Edge_s(exact["edgeMap"].FindKey(ordinal)))}
+    exact["commonTarget"] = exact["diagonal"] * args.target_relative_error
+    exact["commonAngular"] = args.target_angular_error
+    calibration, selected = {}, {}
+    for producer, chord, loop in (("native", args.native_relative_chord, None),
+                                   ("javascript", args.js_chord, args.js_loop)):
+        calibration[producer] = []
+        for rung, factor in enumerate(RUNG_FACTORS):
+            options = {"chord": chord * factor, "angular": args.angular * math.sqrt(factor),
+                       "loop": None if loop is None else loop * factor}
+            sample = _produce(producer, shape, exact, folder, f"{name}.{producer}.calibration-{rung}",
+                              worker, options, deadline)
+            calibration[producer].append(sample)
+            if sample["passed"]:
+                selected[producer] = sample
+                break
+    paired = set(selected) == {"native", "javascript"}
+    measured = []
+    measurement_failures = []
+    if paired and args.serial_window:
+        # Coarsest passing rung is fixed before timing; performance never picks
+        # quality. One explicit per-case primer precedes five measured pairs.
+        for iteration in range(args.iterations + 1):
+            samples = {}
+            order = ("native", "javascript") if iteration % 2 == 0 else ("javascript", "native")
+            for producer in order:
+                sample = _produce(producer, shape, exact, folder,
+                                  f"{name}.{producer}.{'prime' if iteration == 0 else iteration}",
+                                  worker, selected[producer]["options"], deadline)
+                failures = list(sample["failures"])
+                if sample["packetSha256"] != selected[producer]["packetSha256"]:
+                    failures.append("packed output differs from its calibrated immutable bytes")
+                if failures:
+                    measurement_failures.append({"producer": producer, "iteration": iteration, "failures": failures})
+                samples[producer] = {"productionMs": sample["productionDiagnosticMs"],
+                                     "stagesMs": sample["stagesDiagnosticMs"],
+                                     "packetSha256": sample["packetSha256"],
+                                     "quality": sample["quality"], "failures": failures}
+            if iteration:
+                measured.append({"order": order, **samples})
+    stable = before == _native_shape_digest(shape)
+    if not stable:
+        raise RuntimeError("a pipeline mutated the shared native source shape")
+    qualified = paired and not measurement_failures
+    timing = None
+    if qualified and args.serial_window:
+        medians = {producer: statistics.median(row[producer]["productionMs"] for row in measured)
+                   for producer in ("native", "javascript")}
+        timing = {"mediansMs": medians,
+                  "javascriptToNativeRatio": medians["javascript"] / medians["native"]}
+    _check(deadline)
+    return {"case": name, "status": "matched" if qualified else "unsupported-quality",
+            "exact": _strip_exact(exact), "commonAbsoluteErrorTarget": exact["commonTarget"],
+            "geometryInput": {"sameFactoryInstance": True, "independentPrivateCopies": True,
+                              "completeCopyHistoryCorrespondence": True, "originalBytesUnchanged": stable,
+                              "nativeShapeSha256": before, "units": "millimetres"},
+            "calibration": calibration,
+            "selectedOptions": {producer: sample["options"] for producer, sample in selected.items()},
+            "qualityQualifiedPair": qualified, "measurementFailures": measurement_failures,
+            "measuredSamples": measured,
+            "qualifiedTiming": timing,
+            "elapsedDiagnosticMs": (time.monotonic() - case_started) * 1000}
 
 
 def _safe_scratch(path: str) -> Path:
@@ -654,6 +949,11 @@ def _source_fingerprints() -> dict[str, str]:
         "surfaceExtractor": ROOT / "packages/cadgen/src/cadgen/_internal/surface_extract.py",
         "javascriptTessellator": ROOT / "packages/cadgen-js/src/lib/surf/tessellate.js",
         "javascriptCodec": ROOT / "packages/cadgen-js/src/lib/surf/tessellationCache.js",
+        "javascriptEvaluator": ROOT / "packages/cadgen-js/src/lib/surf/evaluate.js",
+        "javascriptContainer": ROOT / "packages/cadgen-js/src/lib/surf/container.js",
+        "javascriptDependencies": ROOT / "packages/cadgen-js/package-lock.json",
+        "threeModule": ROOT / "packages/cadgen-js/node_modules/three/build/three.module.js",
+        "threeCore": ROOT / "packages/cadgen-js/node_modules/three/build/three.core.js",
         "harness": Path(__file__).resolve(),
         "worker": WORKER,
     }
@@ -669,18 +969,30 @@ def main(argv=None) -> int:
     parser.add_argument("--js-chord", type=float, default=.0015)
     parser.add_argument("--js-loop", type=float, default=.0005)
     parser.add_argument("--angular", type=float, default=.35)
+    parser.add_argument("--target-relative-error", type=float, default=.0015,
+                        help="common absolute-error target divided by exact native diagonal")
+    parser.add_argument("--target-angular-error", type=float, default=.35)
+    parser.add_argument("--iterations", type=int, default=5)
     parser.add_argument("--timeout", type=float, default=60.)
     parser.add_argument("--serial-window", action="store_true",
                         help="attest that this run had an externally reserved serial window")
+    parser.add_argument("--self-test", action="store_true", help="test the independent numerical distance oracle without source/kernel/browser work")
     args = parser.parse_args(argv)
+    oracle_tests = _oracle_self_test()
+    if args.self_test:
+        print(json.dumps(oracle_tests, sort_keys=True))
+        return 0
     cases = tuple(item.strip() for item in args.cases.split(",") if item.strip())
     if not cases or any(item not in FACTORIES for item in cases):
         parser.error(f"--cases must select from {','.join(ALL_CASES)}")
-    for value in (args.native_relative_chord, args.js_chord, args.js_loop, args.angular):
+    for value in (args.native_relative_chord, args.js_chord, args.js_loop, args.angular,
+                  args.target_relative_error, args.target_angular_error):
         if not math.isfinite(value) or value <= 0:
             parser.error("mesh tolerances must be positive finite values")
     if not math.isfinite(args.timeout) or not 0 < args.timeout <= 60:
         parser.error("--timeout must be positive and at most 60 seconds")
+    if not 1 <= args.iterations <= 9:
+        parser.error("--iterations must be within 1..9")
 
     scratch = _safe_scratch(args.scratch)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
@@ -689,6 +1001,7 @@ def main(argv=None) -> int:
     sources_before = _source_fingerprints()
     import_started = time.monotonic()
     import OCP
+    import numpy
     from cadgen._document import meshing as _candidate_meshing  # noqa: F401
     from cadgen._internal import surface_extract as _comparison_surface  # noqa: F401
     python_cad_import_ms = (time.monotonic() - import_started) * 1000
@@ -701,9 +1014,10 @@ def main(argv=None) -> int:
     if sources_after != sources_before:
         raise RuntimeError("mesh comparison runtime source changed during the run")
     report = {
-        "schema": 1,
+        "schema": 2,
         "kind": "cadgen-document-mesh-comparison",
-        "status": "passed" if all(row["status"] == "passed" for row in rows) else "failed",
+        "numericalOracleSelfTest": oracle_tests,
+        "status": "passed" if all(row["qualityQualifiedPair"] for row in rows) else "unsupported-quality-cases",
         "createdUtc": datetime.now(timezone.utc).isoformat(),
         "timingEvidence": ("reserved-serial-window" if args.serial_window
                            else "diagnostic-concurrent-functional-only"),
@@ -713,8 +1027,14 @@ def main(argv=None) -> int:
             "warmStagesArePerRequest": True,
             "pythonInterpreterLaunchExcluded": True,
             "nodeRequestStagesExcludeColdSetup": True,
+            "nativeProduction": "private native copy + tessellate + packed CGMESH extraction/encoding",
+            "javascriptProduction": "private native copy + SURF extraction/encoding + JS decode + tessellate + packed TESS encoding",
+            "bothExclude": ["fixture construction", "copy-history correspondence proof", "artifact IO", "IPC", "quality oracle"],
+            "parameterSelection": "first passing fixed refinement rung, before timed samples",
+            "oneExplicitPrimerPerQualifiedCase": True,
+            "alternatingProducerOrder": True,
         },
-        "runtime": {"python": sys.version, "ocp": OCP.__version__,
+        "runtime": {"python": sys.version, "ocp": OCP.__version__, "numpy": numpy.__version__,
                     "node": worker.runtime,
                     "gitHead": subprocess.run(
                         ["git", "rev-parse", "HEAD"], cwd=ROOT, check=True,
@@ -726,15 +1046,28 @@ def main(argv=None) -> int:
             "jsChord": args.js_chord,
             "jsLoop": args.js_loop,
             "angular": args.angular,
-            "maximumFaceCentroidSamplesPerFace": MAX_FACE_SAMPLES,
+            "commonRelativeError": args.target_relative_error,
+            "commonAngularError": args.target_angular_error,
+            "refinementRungFactors": RUNG_FACTORS,
+            "maximumTrimmedFaceTrianglesSampledPerFace": MAX_FACE_SAMPLES,
+            "samplesPerSelectedTriangle": 4,
+            "analyticSamplesPerTriangle": 4,
+            "independentTrimmedUvGridSide": FACE_GRID,
+            "independentUniformParameterSamplesPerEdge": EDGE_SAMPLES,
+            "maximumTrianglesPerPacket": MAX_TRIANGLES,
+            "measuredRepetitions": args.iterations,
             "fixtureTimeoutSeconds": args.timeout,
         },
         "limitations": [
-            "Sampled centroid-to-trimmed-face distance is evidence, not a global "
+            "Sampled two-way surface/edge distances are evidence, not a global "
             "Hausdorff bound.",
             "Axis support extents are silhouette evidence, not full hidden-line or "
             "occluding-contour comparison.",
             "Equal tolerance values and triangle counts do not establish equal mesh quality.",
+            "The closed-form numerical oracle covers only the four analytic surface types in this bounded corpus.",
+            "Coordinate welding uses exactDiagonal * 2^-20; this is numerical closure evidence, not native topology identity.",
+            "Three fixed parameter rungs do not establish that a failing producer can never meet a quality target.",
+            "Speed ratios exist only for fixtures where both producers and every measured sample pass the same target.",
             "Diagnostic timings are not performance claims unless timingEvidence records "
             "a reserved serial window.",
             "Python interpreter launch and artifact write costs are outside the common "
@@ -743,7 +1076,7 @@ def main(argv=None) -> int:
         "cases": rows,
     }
     report_path = folder / "report.json"
-    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True, allow_nan=False) + "\n")
     print(str(report_path.relative_to(ROOT)))
     return 0 if report["status"] == "passed" else 1
 

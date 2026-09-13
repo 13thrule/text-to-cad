@@ -3,6 +3,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
 import { parseSurf } from "../../../../packages/cadgen-js/src/lib/surf/container.js";
 import {
@@ -17,12 +19,19 @@ import {
 
 const reply = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+const require = createRequire(new URL("../../../../packages/cadgen-js/package.json", import.meta.url));
+const threeBuild = dirname(require.resolve("three"));
+const threePackage = JSON.parse(readFileSync(join(threeBuild, "../package.json"), "utf8"));
 
 reply({
   ready: true,
   node: process.version,
   tessellatorVersion: TESSELLATION_VERSION,
   defaultOptions: DEFAULT_OPTIONS,
+  threeVersion: threePackage.version,
+  threeSourceSha256: Object.fromEntries(["three.module.js", "three.core.js"].map(
+    (name) => [name, digest(readFileSync(join(threeBuild, name)))],
+  )),
 });
 
 const lines = createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -75,6 +84,8 @@ for await (const line of lines) {
       },
       sourceBytes: sourceBytes.length,
       packetBytes: packed.length,
+      sourceSha256: sourceDigest,
+      packetSha256: digest(packed),
       sourceFaceOrds: index.faces.map((face) => face.ord),
       meshFaceOrds: component.faceRanges.map((range) => range.ord),
       sourceEdgeOrds,
