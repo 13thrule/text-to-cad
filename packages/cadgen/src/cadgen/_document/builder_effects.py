@@ -122,8 +122,9 @@ def _mutable_runtime_state(value, *, _seen=None, _budget=None, _depth=0):
 
 
 def _same_identity_tuple(actual, expected):
-    return (len(actual) == len(expected)
-            and all(left is right for left, right in zip(actual, expected)))
+    return (actual is expected
+            or (len(actual) == len(expected)
+                and all(left is right for left, right in zip(actual, expected))))
 
 
 @dataclass(frozen=True)
