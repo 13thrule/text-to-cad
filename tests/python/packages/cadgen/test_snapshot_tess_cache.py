@@ -61,7 +61,7 @@ class AssetServerIsMandatoryTest(unittest.TestCase):
             side_effect=OSError("Address family not supported"),
         ):
             with self.assertRaises(SnapshotError) as caught:
-                asyncio.run(renderer.start())
+                asyncio.run(renderer.render({"outputs": []}))
         message = str(caught.exception)
         self.assertIn("loopback HTTP server", message)
         self.assertIn("Address family not supported", message)
@@ -138,8 +138,7 @@ class SnapshotAssetServerTests(unittest.TestCase):
         self.root.mkdir()
         (self.root / "inside.step").write_bytes(b"ISO-10303-21;")
         (self.home / "outside.secret").write_bytes(b"nope")
-        self.active_root: Path | None = self.root
-        self.server = SnapshotAssetServer(lambda: self.active_root)
+        self.server = SnapshotAssetServer(self.root)
         self.addCleanup(self.server.close)
 
     def request(self, method: str, path: str, body: bytes | None = None):
@@ -160,9 +159,10 @@ class SnapshotAssetServerTests(unittest.TestCase):
         self.assertEqual(headers.get("cache-control"), "no-store")
         status, _, _ = self.request("GET", "/__render_asset/%2e%2e/outside.secret")
         self.assertIn(status, (403, 404), "traversal must never serve bytes")
-        self.active_root = None
-        status, _, _ = self.request("GET", "/__render_asset/inside.step")
-        self.assertEqual(status, 404)
+        # No mutable root provider can redirect this capability to another job.
+        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(self.home / "other-store")}):
+            status, body, _ = self.request("GET", "/__render_asset/inside.step")
+            self.assertEqual((status, body), (200, b"ISO-10303-21;"))
 
     def test_tess_cache_round_trip_and_preflight(self) -> None:
         name = NAME
@@ -177,6 +177,66 @@ class SnapshotAssetServerTests(unittest.TestCase):
         status, _, headers = self.request("OPTIONS", f"{TESS_CACHE_ROUTE_PREFIX}{name}")
         self.assertEqual(status, 204)
         self.assertIn("POST", headers.get("access-control-allow-methods", ""))
+
+    def test_capability_is_required_and_another_job_token_has_no_authority(self):
+        import urllib.error
+        import urllib.request
+        from urllib.parse import urlparse
+        other = SnapshotAssetServer(self.root)
+        self.addCleanup(other.close)
+        for path in ("/__render_asset/inside.step", urlparse(other.base_url).path + "/__render_asset/inside.step"):
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(f"http://127.0.0.1:{self.server.port}{path}", timeout=2)
+            self.assertEqual(404, caught.exception.code)
+        self.server.close()
+        self.assertFalse(self.server._thread.is_alive())
+        self.assertTrue(self.server._closed.is_set())
+
+    def test_handler_registration_racing_revocation_cannot_retain_a_socket(self):
+        import threading
+        entered = threading.Event()
+        request = mock.Mock()
+        request.settimeout.side_effect = lambda seconds: entered.set()
+        handler = object.__new__(self.server._httpd.RequestHandlerClass)
+        handler.request = request
+        errors = []
+        def setup():
+            try:
+                handler.setup()
+            except ConnectionAbortedError as error:
+                errors.append(error)
+        with self.server._connections_lock:
+            registering = threading.Thread(target=setup)
+            registering.start()
+            self.assertTrue(entered.wait(1))
+            closing = threading.Thread(target=self.server.close)
+            closing.start()
+            self.assertTrue(self.server._closed.wait(1))
+        registering.join(1)
+        closing.join(1)
+        self.assertFalse(registering.is_alive())
+        self.assertFalse(closing.is_alive())
+        self.assertEqual(1, len(errors))
+        request.close.assert_called_once()
+        self.assertNotIn(request, self.server._connections)
+
+    def test_cache_and_store_asset_paths_are_bound_before_environment_changes(self):
+        from cadgen.store.paths import store_root
+        from cadgen.store.view import views_root
+        original_store = store_root()
+        original_view = views_root()
+        original_view.mkdir(parents=True, exist_ok=True)
+        (original_view / "proof.json").write_bytes(b"original store")
+        other_store = self.home / "other-store"
+        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(other_store)}):
+            status, _, _ = self.request("POST", f"{TESS_CACHE_ROUTE_PREFIX}{NAME}", PAYLOAD)
+            self.assertEqual(204, status)
+            status, body, _ = self.request("GET", f"{TESS_CACHE_ROUTE_PREFIX}{NAME}{ADMISSION_QUERY}")
+            self.assertEqual((200, PAYLOAD), (status, body))
+            status, body, _ = self.request("GET", "/__store_asset/proof.json")
+            self.assertEqual((200, b"original store"), (status, body))
+        self.assertTrue((original_store / "index/mesh" / FIXTURE["key"]).is_file())
+        self.assertFalse(other_store.exists())
 
     def test_unadmitted_reads_never_reach_the_cache(self) -> None:
         from urllib.parse import urlencode
@@ -200,7 +260,8 @@ class SnapshotAssetServerTests(unittest.TestCase):
             with self.subTest(path=path):
                 connection = http.client.HTTPConnection("127.0.0.1", self.server.port, timeout=2)
                 try:
-                    connection.putrequest("POST", path)
+                    from urllib.parse import urlparse
+                    connection.putrequest("POST", urlparse(self.server.base_url).path + path)
                     connection.putheader("Content-Length", str(TESS_CACHE_METADATA_MAX_BYTES + 1))
                     connection.endheaders()
                     response = connection.getresponse()
@@ -280,12 +341,10 @@ class SnapshotBrowserTessCacheIntegrationTest(unittest.TestCase):
             try:
                 cold = await renderer.render(job)
                 self.assertTrue(cold["ok"])
-                self.assertEqual(
-                    {"secure": True, "subtle": True},
-                    await renderer.page.evaluate(
-                        "({secure: isSecureContext, subtle: !!globalThis.crypto?.subtle})"
-                    ),
-                )
+                # Every completed call has already released its page/context.
+                # The successful cache provider requires secure SubtleCrypto.
+                self.assertIsNone(renderer.page)
+                self.assertIsNone(renderer.context)
                 mesh_entries = list((root / "cache/index/mesh").iterdir())
                 self.assertEqual(len(mesh_entries), 1)
                 cached_index = mesh_entries[0].read_bytes()

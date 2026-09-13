@@ -335,7 +335,9 @@ def _connect(address: str) -> transport.Channel:
     return transport.connect(address, key)
 
 
-def _connect_or_spawn(address: str) -> transport.Channel | None:
+def _connect_or_spawn(address: str, *, deadline: float | None = None) -> transport.Channel | None:
+    if deadline is not None and time.monotonic() >= deadline:
+        return None
     try:
         return _connect(address)
     except OSError:
@@ -359,7 +361,7 @@ def _connect_or_spawn(address: str) -> transport.Channel | None:
             process = _spawn_daemon(address)
             if process is None:
                 return None
-        deadline = time.monotonic() + SPAWN_WAIT_SECONDS
+        deadline = min(deadline, time.monotonic() + SPAWN_WAIT_SECONDS) if deadline is not None else time.monotonic() + SPAWN_WAIT_SECONDS
         while time.monotonic() < deadline:
             try:
                 return _connect(address)

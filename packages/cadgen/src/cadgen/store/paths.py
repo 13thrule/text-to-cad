@@ -12,7 +12,21 @@ The JS mirror is ``cadgenCacheRootDir`` in
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
+
+_job_store_root: ContextVar[Path | None] = ContextVar("cadgen_job_store_root", default=None)
+
+
+@contextmanager
+def _bind_store_root(root: Path):
+    """Bind already-resolved job authority without changing process environment."""
+    token = _job_store_root.set(root)
+    try:
+        yield
+    finally:
+        _job_store_root.reset(token)
 
 # Mirror of TESSELLATION_VERSION in packages/cadgen-js/src/lib/surf/tessellate.js
 # (sync-tested). It is part of the MESH index key, not a store salt.
@@ -24,6 +38,9 @@ INDEX_KINDS = ("model", "document", "output", "component", "surface", "op", "mes
 
 
 def store_root() -> Path:
+    bound = _job_store_root.get()
+    if bound is not None:
+        return bound
     override = os.environ.get("CADGEN_CACHE_DIR", "").strip()
     if override:
         # Absolutized ONCE, against the cwd of the process that first reads it,

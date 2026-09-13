@@ -263,6 +263,28 @@ For 3MF, the first scope is Core 1.2 plus color-group and 2D-texture visualizati
 
 Owner: snapshot agent, gpt-5.6-sol / high. Isolation/pixel comparison: gpt-5.6-terra / high.
 
+Lifecycle milestone implemented, 13 September 2026: the existing daemon worker
+explicitly owns a warm Chromium service, while artifact preparation stays on the
+caller thread. Only closed resolved packets and captured capabilities cross the
+transport. Each job gets a fresh context/page; cancellation, upload, response
+backpressure and teardown share one absolute deadline. Failed native I/O joins
+retain their charged handles and poison admission instead of allowing another
+launch. Snapshot/video cleanup and async encoder termination have focused tests.
+The final combined snapshot/CLI/lifecycle gate passes 337 tests, and 37 daemon
+routing/artifact integration tests pass. Two actual snapshot CLI commands reuse
+one Chromium owner and produce identical PNG bytes; active cancellation leaves
+all six observed worker/driver/browser PIDs absent immediately after CLI return,
+and the following request succeeds. Protocol tests establish cleanup before the
+completion receipt. Worker EOF acknowledges browser closure and joins its service
+thread. These are bounded correctness checks, not a p95 performance result.
+
+This milestone retains the current artifact-resolution door and shared browser
+renderer. The document engine's revision-bound native snapshot cutover, native
+GLB clip/video parity, broad format isolation, shared resource accounting and the
+full warm performance gate remain open. The transport helper's process startup
+overhead is measured separately; browser reuse does not remove every per-command
+process or import cost.
+
 - Reuse a bounded Chromium/render-worker pool across CLI calls, not only within one snapshot packet. Retain reusable modules and immutable decoded assets.
 - Start with browser-process reuse and a fresh context/page per job. Add page or decoded-asset reuse only after its stronger lifecycle proof passes. Never share mutable Three scenes, GLB graphs, mixers, textures or render targets between jobs.
 - Give each job a pinned document revision, camera, output resolution, rendering policy and animation time. Reset all mutable scene, lighting, selection and animation state between jobs; discard a context when teardown cannot be proven.

@@ -5,13 +5,9 @@ Everything here is format-agnostic: the headless browser driver, the job normali
 knows nothing about STEP topology, drawings, or robot descriptions -- a caller resolves its
 own input to an asset URL and hands the result to :func:`render_resolved_job_packet`.
 
-It lives in cadgen rather than in a skill because two skills need it and a skill may not
-import another skill's code (AGENTS.md). It was extracted verbatim from the CAD skill's
-snapshot CLI, which remains its largest caller and keeps every STEP-specific resolver.
-
-The one thing the core cannot know is where the browser runtime (render.html and
-snapshot-render.js) lives: each skill bundles its own copy. So `runtime_dir` is passed in
-by the caller rather than derived here.
+The browser runtime ships in the cadgen distribution. Its resolved `runtime_dir`
+is supplied by the caller, including when an explicitly owned browser serves
+several requests on one event loop.
 """
 
 from __future__ import annotations
@@ -27,6 +23,7 @@ import struct
 import sys
 import time
 from collections.abc import Mapping
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from hashlib import sha256
 from math import isfinite
@@ -59,6 +56,8 @@ VIDEO_TEARDOWN_TIMEOUT_SECONDS = 30
 # How often a video says where it is when nothing is painting a progress bar.
 VIDEO_NARRATE_INTERVAL_SECONDS = 15.0
 RENDER_BROWSER_STARTUP_TIMEOUT_MS = 15_000
+RENDER_BROWSER_IDLE_SECONDS = 30
+RENDER_BROWSER_CLOSE_SECONDS = 5
 SUPPORTED_RENDER_MODES = {"view", "section", "list"}
 MESH_INPUT_KINDS = {"glb", "stl", "3mf"}
 MESH_SUPPORTED_RENDER_MODES = {"view", "list"}
@@ -1309,22 +1308,68 @@ class SnapshotAssetServer:
     """Loopback HTTP server for the snapshot page's BULK bytes.
 
     Serves exactly two path families — ``/__render_asset/`` (files under the
-    active render root, same containment rule as the CDP route for the page
+    job's immutable render root, same containment rule as the CDP route for the page
     itself) and ``/__tess_cache/`` (the shared tessellation cache) — to
     whatever origin the snapshot page runs as (CORS ``*``; the socket is
     loopback-only and serves only what the page may already read).
-    ``root_provider`` is read per request so one server follows the renderer
-    across jobs. There is no fallback: the renderer refuses to start without
+    A random URL capability and captured store root belong to one job; neither
+    can acquire the next job's authority. There is no fallback: the renderer refuses to start without
     this server, because the CDP transport cannot carry these payloads.
     """
 
-    def __init__(self, root_provider) -> None:
+    def __init__(self, root_path: Path | None) -> None:
         import http.server
+        import secrets
+        import socket
+        import threading
+        from cadgen.store.paths import _bind_store_root, store_root
 
         server = self
+        root = None if root_path is None else Path(root_path).resolve()
+        cache_root = store_root().resolve()
+        with _bind_store_root(cache_root):
+            packages_root = _store_packages_root().resolve()
+        capability = "/" + secrets.token_urlsafe(24)
+        self._closed = threading.Event()
+        self._connections = set()
+        self._connections_lock = threading.Lock()
+        self._socket_shutdown = socket.SHUT_RDWR
 
         class Handler(http.server.BaseHTTPRequestHandler):
             protocol_version = "HTTP/1.1"
+
+            def setup(self):
+                self.request.settimeout(10)
+                with server._connections_lock:
+                    if server._closed.is_set():
+                        self.request.close()
+                        raise ConnectionAbortedError("snapshot capability was revoked")
+                    server._connections.add(self.request)
+                try:
+                    super().setup()
+                except BaseException:
+                    with server._connections_lock:
+                        server._connections.discard(self.request)
+                    raise
+
+            def finish(self):
+                try:
+                    super().finish()
+                finally:
+                    with server._connections_lock:
+                        server._connections.discard(self.request)
+
+            def handle_one_request(self):
+                with _bind_store_root(cache_root):
+                    super().handle_one_request()
+
+            def _path(self):
+                parsed = urlparse(self.path)
+                if server._closed.is_set() or not parsed.path.startswith(capability + "/"):
+                    self.close_connection = True
+                    self._send(404, b"expired or unknown snapshot capability")
+                    return None
+                return parsed._replace(path=parsed.path[len(capability):])
 
             def log_message(self, *_args) -> None:  # noqa: D102 - quiet by design
                 return
@@ -1344,6 +1389,8 @@ class SnapshotAssetServer:
                     _write_http_body(self.wfile, body)
 
             def do_OPTIONS(self) -> None:  # noqa: N802 - http.server naming
+                if self._path() is None:
+                    return
                 self.send_response(204)
                 self.send_header("access-control-allow-origin", "*")
                 self.send_header("access-control-allow-methods", "GET, POST, OPTIONS")
@@ -1352,7 +1399,9 @@ class SnapshotAssetServer:
                 self.end_headers()
 
             def do_GET(self) -> None:  # noqa: N802 - http.server naming
-                parsed = urlparse(self.path)
+                parsed = self._path()
+                if parsed is None:
+                    return
                 pathname = parsed.path
                 if pathname.startswith(TESS_CACHE_ROUTE_PREFIX):
                     query = parse_qs(parsed.query)
@@ -1375,7 +1424,7 @@ class SnapshotAssetServer:
                     return
                 if pathname.startswith(STORE_ASSET_ROUTE_PREFIX):
                     try:
-                        file_path = route_file(pathname, STORE_ASSET_ROUTE_PREFIX, _store_packages_root())
+                        file_path = route_file(pathname, STORE_ASSET_ROUTE_PREFIX, packages_root)
                     except RouteFileError as exc:
                         self._send(exc.status, str(exc).encode(), "text/plain; charset=utf-8")
                         return
@@ -1385,9 +1434,8 @@ class SnapshotAssetServer:
                     self._send(200, file_path.read_bytes(), content_type_for_path(file_path))
                     return
                 if pathname.startswith(RENDER_ASSET_ROUTE_PREFIX):
-                    root = server.root_provider()
                     if root is None:
-                        self._send(404, b"no active render root", "text/plain; charset=utf-8")
+                        self._send(404, b"no job render root", "text/plain; charset=utf-8")
                         return
                     try:
                         file_path = route_file(pathname, RENDER_ASSET_ROUTE_PREFIX, root)
@@ -1402,7 +1450,10 @@ class SnapshotAssetServer:
                 self._send(404, b"not found", "text/plain; charset=utf-8")
 
             def do_POST(self) -> None:  # noqa: N802 - http.server naming
-                pathname = urlparse(self.path).path
+                parsed = self._path()
+                if parsed is None:
+                    return
+                pathname = parsed.path
                 if not pathname.startswith(TESS_CACHE_ROUTE_PREFIX):
                     self._send(404, b"not found", "text/plain; charset=utf-8")
                     return
@@ -1442,23 +1493,41 @@ class SnapshotAssetServer:
 
                 self._send(write_tess_cache_entry(pathname, body))
 
-        self.root_provider = root_provider
-        self._httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        class JobHTTPServer(http.server.ThreadingHTTPServer):
+            def handle_error(self, request, client_address):
+                if not server._closed.is_set():
+                    super().handle_error(request, client_address)
+
+        self._httpd = JobHTTPServer(("127.0.0.1", 0), Handler)
         self._httpd.daemon_threads = True
         self.port = self._httpd.server_address[1]
-        import threading
-
-        self._thread = threading.Thread(target=self._httpd.serve_forever, name="snapshot-assets", daemon=True)
+        self._base_url = f"http://127.0.0.1:{self.port}{capability}"
+        self._thread = threading.Thread(target=lambda: self._httpd.serve_forever(poll_interval=.05),
+                                        name="snapshot-assets", daemon=True)
         self._thread.start()
 
     @property
     def base_url(self) -> str:
-        return f"http://127.0.0.1:{self.port}"
+        return self._base_url
 
     def close(self) -> None:
+        if self._closed.is_set():
+            return
+        self._closed.set()
+        # Stop accepting first. A setup already in flight must either register
+        # before this snapshot or observe revocation under the same guard.
+        self._httpd.shutdown()
+        with self._connections_lock:
+            connections = tuple(self._connections)
+        for connection in connections:
+            try:
+                connection.shutdown(self._socket_shutdown)
+                connection.close()
+            except OSError:
+                pass
         try:
-            self._httpd.shutdown()
             self._httpd.server_close()
+            self._thread.join(timeout=1)
         except OSError:
             pass
 
@@ -1467,7 +1536,7 @@ def resolve_snapshot_route_file(
     raw_url: str,
     *,
     runtime_dir: Path,
-    active_root_path: Path | None = None,
+    root_path: Path | None = None,
 ) -> Path:
     parsed = urlparse(raw_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -1476,9 +1545,9 @@ def resolve_snapshot_route_file(
     if parsed.path == "/render.html":
         return Path(runtime_dir) / "render.html"
     if parsed.path.startswith("/__render_asset/"):
-        if active_root_path is None:
-            raise RouteFileError("snapshot render asset requested without an active render root")
-        return route_file(parsed.path, "/__render_asset/", active_root_path)
+        if root_path is None:
+            raise RouteFileError("snapshot render asset requested without a job render root")
+        return route_file(parsed.path, "/__render_asset/", root_path)
     if parsed.path.startswith(STORE_ASSET_ROUTE_PREFIX):
         return route_file(parsed.path, STORE_ASSET_ROUTE_PREFIX, _store_packages_root())
     if parsed.path == "/snapshot-render.js":
@@ -1497,38 +1566,133 @@ async def with_snapshot_timeout(awaitable: Any, timeout_seconds: object, label: 
         return await asyncio.wait_for(awaitable, timeout=timeout)
     except asyncio.TimeoutError as exc:
         raise SnapshotError(f"{label} timed out after {timeout_seconds}s") from exc
+
+
+async def _finish_snapshot_cleanup(awaitable):
+    """Finish bounded disposal even if the caller cancels more than once."""
+    cleanup = asyncio.ensure_future(awaitable)
+    cancelled = False
+    while not cleanup.done():
+        try:
+            await asyncio.shield(cleanup)
+        except asyncio.CancelledError:
+            cancelled = True
+    cleanup.result()
+    if cancelled:
+        raise asyncio.CancelledError
+
+
+def _capture_snapshot_job(job):
+    """Detach closed JSON values before a queued job yields to its caller."""
+    active = set()
+    budget = [1_000_000, 64 * 1024 * 1024]
+    def capture(value, depth=0):
+        budget[0] -= 1
+        if depth > 64 or budget[0] < 0:
+            raise SnapshotError("snapshot job exceeds its structural limit")
+        kind = type(value)
+        if value is None or kind in (bool, int):
+            return value
+        if kind is float:
+            if not isfinite(value):
+                raise SnapshotError("snapshot job numbers must be finite")
+            return value
+        if kind is str:
+            budget[1] -= len(value)
+            if budget[1] < 0:
+                raise SnapshotError("snapshot job text exceeds its size limit")
+            return value
+        if kind not in (dict, list, tuple):
+            raise SnapshotError("snapshot jobs require plain JSON objects, arrays and scalar values")
+        if id(value) in active:
+            raise SnapshotError("snapshot jobs cannot contain cycles")
+        active.add(id(value))
+        try:
+            if kind is dict:
+                if any(type(key) is not str for key in value):
+                    raise SnapshotError("snapshot job object keys must be strings")
+                return {capture(key, depth + 1): capture(child, depth + 1) for key, child in value.items()}
+            return [capture(child, depth + 1) for child in value]
+        finally:
+            active.remove(id(value))
+    if type(job) is not dict:
+        raise SnapshotError("a snapshot job must be a plain JSON object")
+    return capture(job)
+
+
 class BatchSnapshotRenderer:
     def __init__(self, runtime_dir: Path) -> None:
-        # Each skill bundles its own render.html/snapshot-render.js, so the driver is told
-        # where they are rather than locating them relative to itself.
-        self.runtime_dir = Path(runtime_dir)
+        # One explicit owner on one event loop; no process-global browser pool.
+        self.runtime_dir = Path(runtime_dir).resolve()
         self.playwright = None
+        self._playwright_manager = None
         self.browser = None
         self.context = None
         self.page = None
-        self.active_root_path: Path | None = None
         self.asset_server: SnapshotAssetServer | None = None
         self.started = False
+        self._lock = asyncio.Lock()
+        self._loop = None
+        self._active_task = None
+        self._idle_handle = None
+        self._idle_generation = 0
+        self._idle_task = None
+        self._closed = False
+        self._close_task = None
+        self._shutdown_error = None
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_exc):
+        await self.close()
+
+    def _bind_loop(self):
+        loop = asyncio.get_running_loop()
+        if self._loop is not None and self._loop is not loop:
+            raise SnapshotError("a snapshot browser owner must stay on its owning event loop")
+        self._loop = loop
+        if self._closed:
+            raise SnapshotError("the snapshot browser owner is closed")
+
+    def _cancel_idle(self):
+        self._idle_generation += 1
+        if self._idle_handle is not None:
+            self._idle_handle.cancel()
+            self._idle_handle = None
+
+    def _schedule_idle(self):
+        generation = self._idle_generation
+        async def expire():
+            async with self._lock:
+                if generation == self._idle_generation:
+                    try:
+                        await self._close_browser()
+                    except SnapshotError:
+                        # The owner retains the failed cleanup and its handles.
+                        # A later request is refused; explicit close can retry.
+                        pass
+        def expired():
+            self._idle_handle = None
+            self._idle_task = asyncio.create_task(expire())
+        self._idle_handle = self._loop.call_later(RENDER_BROWSER_IDLE_SECONDS, expired)
 
     async def start(self) -> None:
-        if self.started:
+        """Warm Chromium only; every render creates and retires its own page."""
+        self._bind_loop()
+        async with self._lock:
+            self._cancel_idle()
+            await self._start_browser()
+            self._schedule_idle()
+
+    async def _start_browser(self) -> None:
+        if self._shutdown_error is not None:
+            raise self._shutdown_error
+        if self.started and self.browser.is_connected():
             return
+        if self.browser is not None or self.playwright is not None:
+            await self._close_browser()
         try:
-            try:
-                self.asset_server = SnapshotAssetServer(lambda: self.active_root_path)
-            except OSError as exc:
-                # The loopback server is the ONLY transport for bulk mesh bytes.
-                # The old fallback (Playwright's route) hands every intercepted
-                # body to the driver as escaped text in one protocol message, so
-                # a large assembly killed the renderer with ERR_STRING_TOO_LONG
-                # and reported it as a lost driver connection. A snapshot that
-                # cannot bind a loopback socket must say so, not silently take
-                # the transport that fails on real models.
-                raise SnapshotError(
-                    "CAD snapshot needs a loopback HTTP server on 127.0.0.1 for its mesh "
-                    f"bytes and could not start one: {exc}. Allow a local socket "
-                    "(the port is ephemeral and never leaves this machine) and retry."
-                ) from exc
             try:
                 from playwright.async_api import async_playwright
             except ImportError as exc:
@@ -1537,8 +1701,11 @@ class BatchSnapshotRenderer:
                     "Install the invoking skill's own requirements.txt (it ships playwright), "
                     "then run `python -m playwright install chromium` if needed."
                 ) from exc
-            self.playwright = await async_playwright().start()
-            self.browser = await self.playwright.chromium.launch(
+            self._playwright_manager = async_playwright()
+            self.playwright = await asyncio.wait_for(
+                self._playwright_manager.start(), RENDER_BROWSER_STARTUP_TIMEOUT_MS / 1000,
+            )
+            self.browser = await asyncio.wait_for(self.playwright.chromium.launch(
                 headless=True,
                 timeout=RENDER_BROWSER_STARTUP_TIMEOUT_MS,
                 # The intercepted localhost page and its 127.0.0.1 bulk server
@@ -1566,39 +1733,99 @@ class BatchSnapshotRenderer:
                     # platform default stands.
                     *(["--use-angle=metal"] if sys.platform == "darwin" else []),
                 ],
-            )
-            self.context = await self.browser.new_context(
-                viewport={"width": SIMPLE_RENDER_WIDTH, "height": SIMPLE_RENDER_HEIGHT},
-                device_scale_factor=1,
-            )
-            self.page = await self.context.new_page()
-            # The page addresses the cache server DIRECTLY. Injected before any
-            # page script so the runtime's provider is built with it (see the
-            # transport note above: an intercepted URL costs the pipe, even
-            # when the route only answers with a redirect).
-            await self.context.add_init_script(
-                f"window.__cadgenSnapshotAssetOrigin = {json.dumps(self.asset_server.base_url)};"
-            )
-            await self.page.route(SNAPSHOT_ROUTE_GLOB, self.handle_route)
-            await self.page.goto(SNAPSHOT_RENDER_URL, wait_until="load", timeout=DEFAULT_TIMEOUT_SECONDS * 1000)
-            await self.page.wait_for_function(
-                "typeof window.__snapshotRender === 'function' && "
-                "typeof window.__snapshotRenderSequence === 'function'",
-                timeout=DEFAULT_TIMEOUT_SECONDS * 1000,
-            )
+            ), RENDER_BROWSER_STARTUP_TIMEOUT_MS / 1000)
             self.started = True
-        except Exception:  # noqa: BLE001 - any startup failure must still tear down the browser, then re-raise
-            await self.close()
+        except BaseException:
+            await _finish_snapshot_cleanup(self._close_browser())
             raise
 
-    async def handle_route(self, route: Any) -> None:
+    @asynccontextmanager
+    async def _job(self, job):
+        self._bind_loop()
+        resolved = job.get("resolved") if is_plain_object(job.get("resolved")) else {}
+        root_value = resolved.get("rootPath")
+        root_path = Path(str(root_value)).resolve() if root_value else None
+        # Capture paths before waiting for another job; never read a changing
+        # root from the renderer when the browser asks for bytes later.
+        from cadgen.store.paths import _bind_store_root, store_root
+        cache_root = store_root().resolve()
+        async with self._lock:
+            self._bind_loop()
+            self._cancel_idle()
+            self._active_task = asyncio.current_task()
+            failed = False
+            try:
+                try:
+                    with _bind_store_root(cache_root):
+                        self.asset_server = SnapshotAssetServer(root_path)
+                except OSError as exc:
+                    raise SnapshotError(
+                        "CAD snapshot needs a loopback HTTP server on 127.0.0.1 for its mesh "
+                        f"bytes and could not start one: {exc}. Allow a local socket "
+                        "(the port is ephemeral and never leaves this machine) and retry."
+                    ) from exc
+                await self._start_browser()
+                asset_server = self.asset_server
+                async def prepare():
+                    self.context = await self.browser.new_context(
+                        viewport={"width": SIMPLE_RENDER_WIDTH, "height": SIMPLE_RENDER_HEIGHT},
+                        device_scale_factor=1,
+                    )
+                    await self.context.add_init_script(
+                        f"window.__cadgenSnapshotAssetOrigin = {json.dumps(asset_server.base_url)};"
+                    )
+                    self.page = await self.context.new_page()
+                    async def route(request):
+                        await self.handle_route(request, root_path=root_path, asset_server=asset_server)
+                    await self.page.route(SNAPSHOT_ROUTE_GLOB, route)
+                    await self.page.goto(SNAPSHOT_RENDER_URL, wait_until="load",
+                                         timeout=DEFAULT_TIMEOUT_SECONDS * 1000)
+                    await self.page.wait_for_function(
+                        "typeof window.__snapshotRender === 'function' && "
+                        "typeof window.__snapshotRenderSequence === 'function'",
+                        timeout=DEFAULT_TIMEOUT_SECONDS * 1000,
+                    )
+                await with_snapshot_timeout(prepare(), job.get("timeoutSeconds"), "snapshot page preparation")
+                yield self.page
+            except BaseException:
+                failed = True
+                raise
+            finally:
+                context, server = self.context, self.asset_server
+                self.context = self.page = self.asset_server = None
+                async def release():
+                    broken = failed
+                    if context is not None:
+                        try:
+                            await asyncio.wait_for(context.close(), RENDER_BROWSER_CLOSE_SECONDS)
+                        except Exception:
+                            broken = True
+                    if server is not None:
+                        server.close()
+                    if broken:
+                        await self._close_browser()
+                    elif not self._closed:
+                        self._schedule_idle()
+                try:
+                    await _finish_snapshot_cleanup(release())
+                except asyncio.CancelledError:
+                    self._cancel_idle()
+                    await _finish_snapshot_cleanup(self._close_browser())
+                    raise
+                finally:
+                    self._active_task = None
+
+    async def handle_route(self, route: Any, *, root_path: Path | None, asset_server: SnapshotAssetServer) -> None:
         request = route.request
         parsed = urlparse(request.url)
         bulk = (
             parsed.path.startswith(RENDER_ASSET_ROUTE_PREFIX)
             or parsed.path.startswith(STORE_ASSET_ROUTE_PREFIX)
         )
-        if bulk and request.url.startswith(SNAPSHOT_ORIGIN):
+        if request.method != "GET":
+            await route.fulfill(status=405, content_type="text/plain; charset=utf-8", body="method not allowed")
+            return
+        if bulk and f"{parsed.scheme}://{parsed.netloc}" == SNAPSHOT_ORIGIN:
             # These asset URLs are page-relative (the job names files, not
             # origins), so they are intercepted and redirected: a tiny 307
             # crosses the pipe and the payload rides the loopback socket. GETs
@@ -1606,18 +1833,15 @@ class BatchSnapshotRenderer:
             # enough for them and not for the cache (see the transport note).
             await route.fulfill(
                 status=307,
-                headers={"location": f"{self.asset_server.base_url}{parsed.path}"},
+                headers={"location": f"{asset_server.base_url}{parsed.path}"},
                 body="",
             )
-            return
-        if request.method != "GET":
-            await route.fulfill(status=405, content_type="text/plain; charset=utf-8", body="method not allowed")
             return
         try:
             file_path = resolve_snapshot_route_file(
                 request.url,
                 runtime_dir=self.runtime_dir,
-                active_root_path=self.active_root_path,
+                root_path=root_path,
             )
         except RouteFileError as exc:
             await route.fulfill(status=exc.status, content_type="text/plain; charset=utf-8", body=str(exc))
@@ -1636,9 +1860,11 @@ class BatchSnapshotRenderer:
         )
 
     async def render(self, job: Mapping[str, object]) -> dict[str, object]:
-        await self.start()
-        resolved = job.get("resolved") if is_plain_object(job.get("resolved")) else {}
-        self.active_root_path = Path(str(resolved.get("rootPath") or "")).resolve()
+        job = _capture_snapshot_job(job)
+        async with self._job(job):
+            return await self._render(job)
+
+    async def _render(self, job: Mapping[str, object]) -> dict[str, object]:
         width, height = max_output_size(job)
         await self.page.set_viewport_size({"width": width, "height": height})
         timeout_seconds = job.get("timeoutSeconds") or DEFAULT_TIMEOUT_SECONDS
@@ -1678,6 +1904,11 @@ class BatchSnapshotRenderer:
         and not a tty -- so the frame counter below reaches nobody there. A
         caller that IS painting passes nothing and gets none of these lines.
         """
+        job = _capture_snapshot_job(job)
+        async with self._job(job):
+            return await self._render_video(job, progress=progress, narrate=narrate)
+
+    async def _render_video(self, job, *, progress=None, narrate=None):
         import tempfile
 
         from cadgen.snapshot_video import (
@@ -1686,11 +1917,8 @@ class BatchSnapshotRenderer:
             video_container_for_path,
         )
 
-        await self.start()
         report = resolve_progress(progress)
         say = narrate if callable(narrate) else (lambda message: None)
-        resolved = job.get("resolved") if is_plain_object(job.get("resolved")) else {}
-        self.active_root_path = Path(str(resolved.get("rootPath") or "")).resolve()
         width, height = max_output_size(job)
         await self.page.set_viewport_size({"width": width, "height": height})
         timeout_seconds = job.get("timeoutSeconds") or DEFAULT_TIMEOUT_SECONDS
@@ -1762,14 +1990,14 @@ class BatchSnapshotRenderer:
                         counted_at = time.perf_counter()
                         say(f"video: frame {index + 1}/{frames}")
                 say(f"video: encoding {frames} frames as {container}")
-                encode_video(
+                await with_snapshot_timeout(encode_video(
                     frames_path,
                     output_path=output_path,
                     fps=fps,
                     container=container,
                     quality=str(video.get("quality") or ""),
                     loop=bool(video.get("loop", True)),
-                )
+                ), timeout_seconds, "video encoding")
         finally:
             # The prepared model holds GPU buffers for the whole encode, so it is
             # freed whatever happened -- and a teardown that fails must not mask
@@ -1778,14 +2006,16 @@ class BatchSnapshotRenderer:
             # JavaScript it was waiting on, so a clip that wedges inside
             # `update` leaves this call queued behind it, and an untimed await
             # here would swallow the frame timeout the caller needs to see.
-            try:
-                teardown = await with_snapshot_timeout(
-                    self.page.evaluate("() => window.__snapshotRenderSequenceDispose()"),
-                    VIDEO_TEARDOWN_TIMEOUT_SECONDS,
-                    "video teardown",
-                )
-            except Exception:  # noqa: BLE001 - best-effort teardown
-                teardown = None
+            teardown = None
+            if sys.exc_info()[0] is None:
+                try:
+                    teardown = await with_snapshot_timeout(
+                        self.page.evaluate("() => window.__snapshotRenderSequenceDispose()"),
+                        VIDEO_TEARDOWN_TIMEOUT_SECONDS,
+                        "video teardown",
+                    )
+                except Exception:  # noqa: BLE001 - best-effort teardown
+                    pass
             if is_plain_object(teardown):
                 warnings = [str(warning) for warning in (teardown.get("warnings") or [])]
         return {
@@ -1811,44 +2041,60 @@ class BatchSnapshotRenderer:
             "warnings": warnings,
         }
 
-    async def close(self) -> None:
-        if self.asset_server is not None:
-            try:
-                self.asset_server.close()
-            except Exception:  # noqa: BLE001 - best-effort teardown
-                pass
-            self.asset_server = None
-        if self.context is not None:
-            try:
-                await self.context.close()
-            except Exception:  # noqa: BLE001 - best-effort teardown; a failing close must not mask the original error
-                pass
-            self.context = None
-        if self.browser is not None:
-            try:
-                await self.browser.close()
-            except Exception:  # noqa: BLE001 - best-effort teardown; a failing close must not mask the original error
-                pass
-            self.browser = None
-        if self.playwright is not None:
-            try:
-                await self.playwright.stop()
-            except Exception:  # noqa: BLE001 - best-effort teardown; a failing close must not mask the original error
-                pass
-            self.playwright = None
-        self.page = None
+    async def _close_browser(self) -> None:
+        browser, playwright, manager = self.browser, self.playwright, self._playwright_manager
         self.started = False
-# --- progress ----------------------------------------------------------------------
-# A snapshot was silent for its ENTIRE run, then grew a progress class of its own: free-text
-# phases, its own tty handling, its own clear(). Two implementations of one idea, sharing
-# nothing, guaranteed to drift.
-#
-# It reports through the shared phase model now (SNAPSHOT in coordination/kinds.py). The
-# per-job counter that used to be formatted INTO a phase name ("rendering 3/12 model.step")
-# is a real done/total, so a reader can render it as a bar like any other counted phase --
-# and the CLI line, the tty handling and the non-tty degradation all come from one place.
+        # The context manager already owns its driver while start() is still
+        # waiting for the Playwright handshake. Retire that partial startup too.
+        driver = (playwright, "stop") if playwright is not None else (manager, "__aexit__")
+        browser_error = driver_error = None
+        for value, method in ((browser, "close"), driver):
+            if value is not None:
+                try:
+                    await asyncio.wait_for(getattr(value, method)(), RENDER_BROWSER_CLOSE_SECONDS)
+                except Exception as exc:
+                    if method == "close":
+                        browser_error = exc
+                    else:
+                        driver_error = exc
+        # Driver shutdown owns its browser children, so its acknowledgement
+        # also covers a disconnected browser whose close call failed. A failed
+        # driver stop cannot be replaced by launching yet another process.
+        if driver_error is not None or driver[0] is None and browser_error is not None:
+            self._shutdown_error = SnapshotError(
+                "snapshot browser teardown failed; the owner retains its resources and refuses new jobs"
+            )
+            raise self._shutdown_error from (driver_error or browser_error)
+        self.browser = self.playwright = self._playwright_manager = None
+        self._shutdown_error = None
 
-
+    async def close(self) -> None:
+        """Retire this owner. Explicit ownership must outlive all its jobs."""
+        if self._closed:
+            if self._close_task is not None:
+                if self._close_task.done() and self._close_task.exception() is not None:
+                    async def retry():
+                        async with self._lock:
+                            await self._close_browser()
+                    self._close_task = asyncio.create_task(retry())
+                await _finish_snapshot_cleanup(self._close_task)
+            return
+        self._bind_loop()
+        if self._active_task is asyncio.current_task():
+            raise SnapshotError("a snapshot owner cannot close from inside its active job")
+        self._closed = True
+        self._cancel_idle()
+        task = self._active_task
+        if task is not None and task is not asyncio.current_task():
+            task.cancel()
+        async def release():
+            async with self._lock:
+                await self._close_browser()
+            if self._idle_task is not None:
+                await self._idle_task
+                self._idle_task = None
+        self._close_task = asyncio.create_task(release())
+        await _finish_snapshot_cleanup(self._close_task)
 
 def _browser_stage_timings(value: object) -> dict[str, object]:
     """Keep measured durations, never the browser's image payload or metadata."""
@@ -1948,7 +2194,8 @@ async def render_resolved_job_packet(
                 result = {**result, "debug": debug_info}
             results.append(result if packet["single"] else {"input": job.get("input"), **result})
     finally:
-        await snapshot_renderer.close()
+        if renderer is None:
+            await snapshot_renderer.close()
     if packet["single"]:
         return results[0]
     return {

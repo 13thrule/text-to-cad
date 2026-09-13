@@ -129,7 +129,7 @@ _TIMED_OUT = object()  # _read_frame: the wait elapsed; distinct from None (pipe
 class Worker:
     """One warm subprocess. Owned by the pool; never shared between concurrent jobs."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, deadline: float | None = None) -> None:
         from cadgen.daemon.client import daemon_address
         from cadgen.daemon.executors import worker_env
 
@@ -160,7 +160,8 @@ class Worker:
         self._frames: queue.Queue = queue.Queue()
         self._reader = threading.Thread(target=self._pump, name="cadgen-worker-frames", daemon=True)
         self._reader.start()
-        ready = self._read_frame(timeout=SPAWN_TIMEOUT_SECONDS)
+        startup_seconds = SPAWN_TIMEOUT_SECONDS if deadline is None else min(SPAWN_TIMEOUT_SECONDS, max(0, deadline - time.monotonic()))
+        ready = self._read_frame(timeout=startup_seconds)
         if ready is _TIMED_OUT:
             ready = None
         if not ready or "ready" not in ready:
@@ -204,6 +205,23 @@ class Worker:
         except (OSError, ValueError) as exc:
             raise WorkerGone(f"worker stdin closed: {exc}") from exc
 
+    def next_frame(self, *, timeout: float) -> dict | None:
+        """Poll one frame without treating an ordinary idle interval as failure.
+
+        The request owner enforces its absolute deadline and owns reclamation.
+        None means only that this poll elapsed; pipe EOF still raises WorkerGone.
+        """
+        frame = self._read_frame(timeout=timeout)
+        if frame is _TIMED_OUT:
+            return None
+        if frame is None:
+            status = self._exit_status()
+            raise WorkerGone(
+                f"worker {getattr(self, 'pid', self.proc.pid)} {describe_exit(status)}",
+                exit_status=status,
+            )
+        return frame
+
     def frames(self, *, silence_timeout: float | None = None):
         """Yield frames until the terminating one, which is yielded last.
 
@@ -236,6 +254,26 @@ class Worker:
 
     def alive(self) -> bool:
         return self.proc.poll() is None
+
+    def reclaim(self, deadline: float) -> bool:
+        """Cooperative worker shutdown, then kill and reap within one deadline.
+
+        The process receipt is independent of a browser API acknowledgement.
+        It proves this worker exited; it does not invent an acknowledgement for
+        browser descendants when the worker could not finish its own teardown.
+        """
+        proc = self.proc
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+            try:
+                proc.wait(timeout=max(0, deadline - time.monotonic() - 5))
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=max(0, deadline - time.monotonic()))
+            return True
+        except (OSError, subprocess.TimeoutExpired):
+            return proc.poll() is not None
 
     def kill(self) -> None:
         proc = self.proc
@@ -279,8 +317,8 @@ class Pool:
 
     # --- spares -------------------------------------------------------------------
 
-    def _spawn(self) -> Worker:
-        worker = Worker()
+    def _spawn(self, *, deadline: float | None = None) -> Worker:
+        worker = Worker() if deadline is None else Worker(deadline=deadline)
         with self._cv:
             self._stats["imports"] += 1
         return worker
@@ -329,7 +367,7 @@ class Pool:
 
     # --- acquire / release -------------------------------------------------------
 
-    def acquire(self, model: str = "", *, dependency: bool = False) -> Worker:
+    def acquire(self, model: str = "", *, dependency: bool = False, deadline: float | None = None) -> Worker:
         """A worker for ``model``, or an explicit memory-admission failure.
 
         ``model`` is the script path (the routing key); "" means a request with
@@ -374,7 +412,7 @@ class Pool:
                 self._active_pending += 1
         if worker is None:
             try:
-                worker = self._spawn()
+                worker = self._spawn() if deadline is None else self._spawn(deadline=deadline)
             except BaseException:
                 with self._cv:
                     self._active_pending -= 1

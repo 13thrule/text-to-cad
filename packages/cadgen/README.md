@@ -15,7 +15,11 @@ snapshots, the warm daemon and its build pool, and the CAD Viewer
 instance).
 
 Snapshot `--debug --json` reports artifact resolution and measured browser
-stages; see [snapshot diagnostics](SNAPSHOTS.md) for timing boundaries.
+stages. Snapshot commands reuse Chromium through an explicitly owned daemon
+worker, with a fresh context and captured asset capabilities for each job.
+Ordinary library calls own and close their renderer. See
+[snapshot diagnostics and lifecycle](SNAPSHOTS.md) for timing and ownership
+boundaries.
 
 **MAY DEPEND ON** — the Python ecosystem it declares (OCP/build123d lazily,
 never at namespace-import time) and the *built outputs* of `cadgen-js`.

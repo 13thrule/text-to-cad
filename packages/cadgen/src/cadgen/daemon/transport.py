@@ -250,11 +250,15 @@ class Channel:
         self._conn = conn
         self._close_guard = threading.Lock()
         self._closed = False
+        self._receiving_stopped = False
+        self._sending_stopped = False
 
     def send(self, payload: bytes) -> None:
+        if self._sending_stopped:
+            raise OSError("daemon channel sending has stopped")
         self._conn.send_bytes(payload)
 
-    def recv(self, timeout: float | None = None) -> bytes | None:
+    def recv(self, timeout: float | None = None, *, max_bytes: int | None = None) -> bytes | None:
         """One message, or None if nothing arrived within ``timeout``.
 
         ``poll`` replaces the socket timeout the old code set per read: a daemon that is
@@ -267,13 +271,74 @@ class Channel:
         drained). One shape for callers on both.
         """
         try:
+            if self._receiving_stopped:
+                return b""
             if timeout is not None and not self._conn.poll(timeout):
                 return None
-            return self._conn.recv_bytes()
+            if self._receiving_stopped:
+                return b""
+            return self._conn.recv_bytes() if max_bytes is None else self._conn.recv_bytes(maxlength=max_bytes)
         except EOFError:
             return b""
         except OSError:
             return b""
+
+    def stop_receiving(self) -> None:
+        """Cancel pending reads while preserving the terminal response direction.
+
+        Closing a POSIX descriptor alone does not interrupt an in-progress
+        read on it. Shutdown on a duplicate of that owned socket does. Windows
+        named pipes use overlapped I/O; CancelIoEx requests its cancellation.
+        Neither call is a completion receipt: the owner must join its reader.
+        A Windows owner may repeat cancellation while waiting for that join.
+        """
+        with self._close_guard:
+            self._receiving_stopped = True
+            if self._closed:
+                return
+            if os.name == "nt":
+                import ctypes
+                from ctypes import wintypes
+
+                cancel = ctypes.WinDLL("kernel32", use_last_error=True).CancelIoEx
+                cancel.argtypes = (wintypes.HANDLE, wintypes.LPVOID)
+                cancel.restype = wintypes.BOOL
+                if not cancel(self._conn.fileno(), None):
+                    error = ctypes.get_last_error()
+                    if error != 1168:  # ERROR_NOT_FOUND: no I/O is pending yet.
+                        raise OSError(error, "could not cancel daemon channel receive")
+            else:
+                import socket
+
+                with socket.fromfd(self._conn.fileno(), socket.AF_UNIX, socket.SOCK_STREAM) as duplicate:
+                    duplicate.shutdown(socket.SHUT_RD)
+
+    def stop_sending(self) -> None:
+        """Interrupt a pending send; that partially written channel is unusable.
+
+        This is an abort request, not proof that its writer stopped. The owner
+        must join the writer before releasing the connection's charged memory.
+        """
+        with self._close_guard:
+            self._sending_stopped = True
+            if self._closed:
+                return
+            if os.name == "nt":
+                import ctypes
+                from ctypes import wintypes
+
+                cancel = ctypes.WinDLL("kernel32", use_last_error=True).CancelIoEx
+                cancel.argtypes = (wintypes.HANDLE, wintypes.LPVOID)
+                cancel.restype = wintypes.BOOL
+                if not cancel(self._conn.fileno(), None):
+                    error = ctypes.get_last_error()
+                    if error != 1168:
+                        raise OSError(error, "could not cancel daemon channel send")
+            else:
+                import socket
+
+                with socket.fromfd(self._conn.fileno(), socket.AF_UNIX, socket.SOCK_STREAM) as duplicate:
+                    duplicate.shutdown(socket.SHUT_WR)
 
     def close(self) -> None:
         # Connection.close() is idempotent only when calls are serialized: it

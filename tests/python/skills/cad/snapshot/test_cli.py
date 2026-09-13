@@ -1935,7 +1935,11 @@ class SnapshotCliTests(unittest.TestCase):
             async def start_renderer() -> None:
                 renderer = snapshot_main.BatchSnapshotRenderer(RUNTIME_DIR)
                 try:
-                    await renderer.start()
+                    with mock.patch("cadgen.snapshot_core.SnapshotAssetServer", return_value=SimpleNamespace(
+                        base_url="http://127.0.0.1:1234/job-test", close=mock.Mock(),
+                    )):
+                        async with renderer._job({}):
+                            pass
                 finally:
                     await renderer.close()
 

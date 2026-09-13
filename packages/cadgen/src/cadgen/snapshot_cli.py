@@ -1501,6 +1501,7 @@ async def run_snapshot_async(
     runtime_dir: Path | None = None,
     cwd: Path | None = None,
     stdin: Any = sys.stdin,
+    renderer: BatchSnapshotRenderer | None = None,
 ) -> SnapshotResult:
     """Render whatever ``options`` describes and report what was written.
 
@@ -1539,12 +1540,18 @@ async def run_snapshot_async(
             labels=SNAPSHOT.labels,
         )
         progress.phase(PHASE_BROWSER)
-        result = await render_snapshot(
-            packet,
-            runtime_dir=browser_runtime_dir(runtime_dir),
-            progress=progress,
-            narrate=snapshot_narrator(logger),
-        )
+        from cadgen.snapshot_service import current_snapshot_service
+        service = current_snapshot_service() if renderer is None else None
+        if service is not None:
+            result = await service.render(
+                packet, runtime_dir=browser_runtime_dir(runtime_dir),
+                progress=progress, narrate=snapshot_narrator(logger),
+            )
+        else:
+            result = await render_snapshot(
+                packet, runtime_dir=browser_runtime_dir(runtime_dir), renderer=renderer,
+                progress=progress, narrate=snapshot_narrator(logger),
+            )
         progress.finish()
     return result
 
