@@ -41,6 +41,57 @@ class EscapeIndependenceTests(unittest.TestCase):
             op_memo.uninstall()
         self.addCleanup(op_memo.install if installed else lambda: None)
 
+    def test_repeated_projection_maps_are_shared_without_merging_independent_copies(self):
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCP.TopAbs import TopAbs_FACE
+        from OCP.TopExp import TopExp_Explorer
+        from cadgen._document import native
+
+        document = Document("shared-map-independent-allocations")
+        constructor = OperatorSpec("map-box", mutation=Mutation.READ_ONLY)
+        selection = OperatorSpec("map-face", mutation=Mutation.READ_ONLY)
+        with document.begin() as tx:
+            roots = tuple(tx.evaluate(constructor, (), (), lambda inputs, arena:
+                                     NativeResult(BRepPrimAPI_MakeBox(2., 3., 4.).Shape()))
+                          for _ in range(2))
+            faces = tuple(tuple(tx.evaluate(selection, (), (root,), lambda inputs, arena:
+                                            NativeResult(TopExp_Explorer(inputs[0], TopAbs_FACE).Current()))
+                                for _ in range(32)) for root in roots)
+            self.assertEqual(roots[0].prototype_id, roots[1].prototype_id)
+            self.assertNotEqual(roots[0].allocation_id, roots[1].allocation_id)
+            with patch.object(native, "topology_map", wraps=native.topology_map) as scanned:
+                first, second = (tx.escape_arena.native(root) for root in roots)
+                self.assertEqual(2, scanned.call_count)
+                self.assertEqual(2, tx.escape_arena.copy_batches)
+                self.assertFalse(first.IsPartner(second))
+                set_vertex_x(first, 61.)
+                self.assertTrue(all(vertex_x(tx.escape_arena.native(face)) == 61. for face in faces[0]))
+                self.assertTrue(all(vertex_x(tx.escape_arena.native(face)) == 0. for face in faces[1]))
+                self.assertEqual(0., vertex_x(document._get(roots[0]).shape))
+                self.assertEqual(2, scanned.call_count)
+
+    def test_topology_lookup_does_not_survive_private_copy_operation(self):
+        from OCP.BRep import BRep_Builder
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCP.TopoDS import TopoDS_Compound
+        from cadgen._document.native import NativeEscapeArena, topology_map
+
+        compound, builder = TopoDS_Compound(), BRep_Builder()
+        builder.MakeCompound(compound)
+        builder.Add(compound, BRepPrimAPI_MakeBox(2., 3., 4.).Shape())
+        arena = NativeEscapeArena(lambda: {})
+        arena._copy_region({"first": (compound, ())})
+        first_count = topology_map(arena._shapes["first"]).Extent()
+        added = BRepPrimAPI_MakeBox(5., 6., 7.).Shape()
+        compound.Free(True)
+        builder.Add(compound, added)
+        arena._copy_region({"second": (compound, (("new", added),)),
+                            "new": (added, ())})
+        self.assertGreater(topology_map(arena._shapes["second"]).Extent(), first_count)
+        self.assertTrue(topology_map(arena._shapes["second"]).Contains(arena._shapes["new"]))
+        self.assertEqual(2, arena.copy_batches)
+        self.assertEqual(first_count, topology_map(arena._shapes["first"]).Extent())
+
     def test_closed_contract_is_explicit_and_excludes_geometry_inputs(self):
         from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
         self.assertFalse(OperatorSpec("ordinary").closed_constructor)

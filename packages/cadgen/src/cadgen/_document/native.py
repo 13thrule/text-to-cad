@@ -257,13 +257,15 @@ class NativeEscapeArena:
         self.copy_batches = 0
 
     def _copy_region(self, owned) -> None:
-        groups = _alias_families(owned)
+        topology = _topology_lookup()
+        groups = _alias_families(owned, topology=topology)
         for members in groups:
             shapes = tuple(owned[key][0] for key in members)
             moved = any(shape.IsPartner(source) and not shape.IsSame(source)
                         for key in members for shape, parents in (owned[key],)
                         for _, source in parents)
-            copied = _copy_placed_family(members, owned) if moved else copy_many(shapes)
+            copied = (_copy_placed_family(members, owned, topology=topology)
+                      if moved else copy_many(shapes))
             self._shapes.update(zip(members, copied))
             self.copy_batches += 1
             if self._on_copy is not None:
@@ -309,14 +311,35 @@ class NativeEscapeArena:
         self._owned.clear()
 
 
-def _alias_families(owned):
+def _topology_lookup():
+    """Reuse immutable native maps only within one private-copy operation.
+
+    Several execution allocations can refer to the same retained native object.
+    They remain separate allocations/families; only the topology traversal is
+    shared. Hold each exact object so Python cannot reuse its id during this
+    operation, and discard the lookup before author code can mutate a copy.
+    """
+    maps = {}
+
+    def lookup(shape):
+        key = id(shape)
+        cached = maps.get(key)
+        if cached is None:
+            cached = maps[key] = (shape, topology_map(shape))
+        return cached[1]
+
+    return lookup
+
+
+def _alias_families(owned, *, topology=None):
     """Group exact dependency aliases; native locations distinguish occurrences.
 
     Only a whole-root rigid move uses IsPartner across different placements.
     Stripping every subshape location would merge unrelated repeated cutters.
     """
+    topology = _topology_lookup() if topology is None else topology
     parent = {key: key for key in owned}
-    maps = {key: topology_map(shape) for key, (shape, _) in owned.items()}
+    maps = {key: topology(shape) for key, (shape, _) in owned.items()}
     def find(key):
         while parent[key] != key:
             parent[key] = parent[parent[key]]
@@ -333,7 +356,7 @@ def _alias_families(owned):
             # copies them together without a hand-written subshape rewrite.
             shares = shape.IsPartner(source)
             if not shares:
-                source_map = topology_map(source)
+                source_map = topology(source)
                 shares = any(result_map.Contains(source_map.FindKey(index))
                              for index in range(1, source_map.Extent() + 1))
             if shares:
@@ -352,7 +375,7 @@ def _alias_families(owned):
     return tuple(tuple(members) for members in groups.values())
 
 
-def _copy_placed_family(members, owned):
+def _copy_placed_family(members, owned, *, topology=None):
     """Copy root placements/selections as views of their canonical source.
 
     OCCT Copy treats differing TopLoc locations as different copy-map keys.
@@ -361,6 +384,7 @@ def _copy_placed_family(members, owned):
     aliases requires private replay; rewriting its edges breaks surface bindings.
     """
     from OCP.TopLoc import TopLoc_Location
+    topology = _topology_lookup() if topology is None else topology
     identity = TopLoc_Location()
     member_set = set(members)
     views = {}
@@ -383,13 +407,13 @@ def _copy_placed_family(members, owned):
                 view = relative.Multiplied(parent_view)
                 views[key] = (canonical_parent.Oriented(shape.Orientation()), view)
                 break
-            if topology_map(source).Contains(shape):
+            if topology(source).Contains(shape):
                 views[key] = (shape.Moved(parent_view.Inverted()), parent_view)
                 break
         else:
-            output_map = topology_map(shape)
+            output_map = topology(shape)
             for source, parent_view in resolved:
-                source_map = topology_map(source)
+                source_map = topology(source)
                 if (not parent_view.IsIdentity()
                         and any(output_map.Contains(source_map.FindKey(index))
                                 for index in range(1, source_map.Extent() + 1))):
