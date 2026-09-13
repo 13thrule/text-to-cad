@@ -26,7 +26,7 @@ bundled runtimes byte-for-byte: 191 Python/typing files, 2 internal Node
 resolver files, 4 Node-runtime files, 3 browser-snapshot files, 22
 Viewer-runtime files, and `viewer/collation.json`. There were zero missing,
 extra, or changed files. Importing
-`from cadgen import feature` from an empty `PYTHONPATH` left both `build123d`
+`from cadgen import memo` from an empty `PYTHONPATH` left both `build123d`
 and `OCP` unloaded.
 
 The main reviewer independently compared all 223 archive payloads against both
@@ -54,7 +54,7 @@ An isolated three-part fixture used an ordinary `python wheel_fixture.py
 isolated daemon/store with `CADGEN_JOBS=1`, `CADGEN_COMPONENT_WORKERS=1`, no
 spares, and worker recycle after one job. The first fresh worker recorded three
 feature misses; a second fresh worker reconstructed all three from the disk
-cache (`3` hits, `0` misses); and `CADGEN_FEATURE_CACHE=0` again recorded three
+cache (`3` hits, `0` misses); and `CADGEN_MEMO_CACHE=0` again recorded three
 misses. The three saved STEP byte hashes were identical:
 
 `02e9cc155ff5466daf142186ccd88f839f34e08339e3bf394dc8d1fb706fb654`.

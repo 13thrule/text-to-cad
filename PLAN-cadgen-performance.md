@@ -148,7 +148,7 @@ computations and components through publication and browser adoption.
   decorators, including input identity, dependency discovery and invalidation.
   Arbitrary monolithic Python cannot be partially skipped by assuming an old
   trace is still valid; unsupported cases retain ordinary execution semantics.
-  **Result:** optional `@feature` factories use the existing operation index,
+  **Result:** optional `@memo` factories use the existing operation index,
   immutable BREP objects and private canonical returns. The decorator declares
   purity; defensive guards are not a proof of arbitrary Python behavior. A
   one-part edit in a nine-part assembly reuses eight features and recomputes

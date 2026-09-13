@@ -1,6 +1,6 @@
 """Optional reuse of pure, parameterized intermediate CAD computations.
 
-``@feature`` does not declare an output or a model. Unsupported Python and
+``@memo`` does not declare an output or a model. Unsupported Python and
 calls inside an existing builder execute normally. Eligible calls use the
 store's operation index and receive private canonical shape reconstructions.
 No kernel is imported by importing or applying the decorator.
@@ -26,7 +26,7 @@ import struct
 import types
 from collections import OrderedDict
 
-__all__ = ["feature"]
+__all__ = ["memo"]
 
 _SCHEME = 1
 _CODE_LIMIT = 256
@@ -420,7 +420,7 @@ def _read(key):
     from cadgen.store.objects import read_verified_object
 
     entry = read_entry("op", key)
-    if not entry or entry.get("featureScheme") != _SCHEME:
+    if not entry or entry.get("memoScheme") != _SCHEME:
         return None
     try:
         data = read_verified_object(entry["object"])
@@ -433,15 +433,15 @@ def _write(key, stored):
     from cadgen.store.index import write_entry
     from cadgen.store.objects import put_object
 
-    write_entry("op", key, {"featureScheme": _SCHEME,
+    write_entry("op", key, {"memoScheme": _SCHEME,
                            "object": put_object(stored.brep, repair=True),
                            "cls": stored.cls_path, "recipe": stored.recipe})
 
 
-def feature(func=None):
+def memo(func=None):
     """Declare a pure parameterized geometry factory for reuse during builds.
 
-    Use ``@feature`` or ``@feature()`` on a helper returning a shape. It creates
+    Use ``@memo`` or ``@memo()`` on a helper returning a shape. It creates
     no files. The function must compute deterministic geometry from immutable
     arguments/globals/helpers under an unmodified dependency runtime, without
     externally observable side effects. This is an author contract, not an
@@ -449,13 +449,13 @@ def feature(func=None):
 
     Supported finite scalar/tuple inputs, local CAD operations, deterministic
     helpers and math can reuse results. Unsupported Python and ambient builders
-    execute normally. ``CADGEN_FEATURE_CACHE=0``
+    execute normally. ``CADGEN_MEMO_CACHE=0``
     disables result reuse while preserving eligible canonical return semantics.
     """
     if func is None:
-        return feature
+        return memo
     if type(func) is not types.FunctionType:
-        raise TypeError("@feature decorates an ordinary Python function")
+        raise TypeError("@memo decorates an ordinary Python function")
 
     @functools.wraps(func)
     def call(*args, **kwargs):
@@ -470,13 +470,13 @@ def feature(func=None):
             bound.apply_defaults()
             inputs = tuple((name, _literal(value)) for name, value in bound.arguments.items())
             from cadgen._internal import op_memo
-            key = op_memo._op_index_key(("feature", _SCHEME, function_key, inputs))
+            key = op_memo._op_index_key(("memo", _SCHEME, function_key, inputs))
         except (_Decline, ValueError, TypeError):
             _stats["declined"] += 1
             return func(*args, **kwargs)
         from cadgen._internal.source_hash import note_executed_files
         note_executed_files(files)
-        enabled = (_reuse_trusted and os.environ.get("CADGEN_FEATURE_CACHE", "1") != "0"
+        enabled = (_reuse_trusted and os.environ.get("CADGEN_MEMO_CACHE", "1") != "0"
                    and op_memo._enabled() and op_memo._disk_enabled())
         if enabled:
             stored = _read(key)

@@ -507,12 +507,12 @@ def _run_script_generator_body(
     from cadgen._internal import determinism
 
     determinism.install()
-    # Establish the canonical feature interface. Only the earlier worker
+    # Establish the canonical memo interface. Only the earlier worker
     # bootstrap can enable reuse; a generic embedding may already have run
     # authored initialization and cannot upgrade that untrusted snapshot.
-    from cadgen import features
+    from cadgen import memoization
 
-    features.install()
+    memoization.install()
     generated_scene: LoadedStepScene | None = None
     # Deterministic closure capture (see run_script_generator's docstring): start from a
     # clean first-party module space, then record every first-party file executed while

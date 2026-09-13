@@ -21,7 +21,7 @@ stages; see [snapshot diagnostics](SNAPSHOTS.md) for timing boundaries.
 never at namespace-import time) and the *built outputs* of `cadgen-js`.
 Never app code, never `cadgen-js` source at runtime.
 
-Expensive pure parameterized geometry helpers may opt into [`@feature`](FEATURES.md).
+Expensive pure parameterized geometry helpers may opt into [`@memo`](MEMO.md).
 The decorator uses the existing object/index store and requires no author-owned
 cache utilities. It is separate from the parameterless models that declare files.
 

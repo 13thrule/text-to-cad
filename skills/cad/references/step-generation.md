@@ -165,11 +165,11 @@ deliberately:
   decouple (export it once, then treat the export like any other document).
   Read it with `cadgen.read_step`, below.
 
-### Reusing expensive factories
+### Memoizing expensive geometry helpers
 
-`from cadgen import feature` adds an optional `@feature` to a parameterized
+`from cadgen import memo` adds an optional `@memo` to a parameterized
 geometry helper. The model still takes no arguments and declares all files;
-the feature returns a shape and creates no files. Use it for expensive repeated
+the helper returns a shape and creates no files. Use it for expensive repeated
 booleans or builders, returning an ordinary `Solid` or a builder's `.part`.
 Place reusable factories in a helper module so changing the parent's placement
 or configuration leaves their source unchanged. Keys include each helper's
@@ -187,11 +187,11 @@ ordinary execution. Cheap primitives often cost less to execute than to verify
 and reconstruct, so do not decorate every function.
 
 Normal warm workers and transient child workers support reuse. Generic embedded
-calls execute the body. Eligible misses, hits and `CADGEN_FEATURE_CACHE=0` use
+calls execute the body. Eligible misses, hits and `CADGEN_MEMO_CACHE=0` use
 the same private canonical return codec; native handle identity is not an input
 or an output contract. Missing objects recover by running the factory. No
 additional caching, ownership or invalidation helpers belong in authored code.
-`FEATURES.md` in the installed cadgen package specifies the complete contract.
+`MEMO.md` in the installed cadgen package specifies the complete contract.
 
 ### Children
 

@@ -156,9 +156,9 @@ def _warm_imports() -> None:
     with contextlib.suppress(Exception):
         importlib.import_module("build123d")
         # This fresh worker has not accepted or executed authored source yet.
-        # Only bootstrap may establish the feature cache's runtime witness;
+        # Only bootstrap may establish the memo cache's runtime witness;
         # generic in-process runners cannot bless a caller's earlier patches.
-        importlib.import_module("cadgen.features").install(trusted_worker=True)
+        importlib.import_module("cadgen.memoization").install(trusted_worker=True)
     with contextlib.suppress(Exception):
         importlib.import_module("cadgen.generation")
     for tool in _TOOL_IMPORTS:

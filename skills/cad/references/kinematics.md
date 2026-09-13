@@ -388,9 +388,10 @@ What morph does not carry, said in the summary every time:
 - **a clip that re-routes a tube's `rest` path mid-span.** Morph targets are
   deltas against ONE base mesh, and a rest path that moves has no such mesh.
   Refused by name; move the tube with `.rotate()`/`.translate()` instead.
-- **playback in cadgen's own CAD Viewer**, which reads a GLB's geometry and
-  ignores its glTF animation — as it already does for the rigid channels. Play
-  the file in Blender, a three.js viewer, or a browser model preview.
+
+The CAD Viewer plays a GLB's embedded rigid, skinned and morph animation through
+its Animation tab in both Inspect and Render. These are baked clips: the STEP
+render module's procedural controls are not available in the exported GLB.
 
 A tube the clip holds in a fixed non-rest shape still ships **posed**, with no
 targets: the rest shape would be the silent freeze this mode exists to prevent.

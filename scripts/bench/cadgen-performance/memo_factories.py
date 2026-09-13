@@ -23,9 +23,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 FACTORY = """\
 from cadgen import build123d as bd
-from cadgen import feature
+from cadgen import memo
 
-@feature
+@memo
 def plate(width, holes):
     with bd.BuildPart() as p:
         bd.Box(width, 20, 6)
@@ -37,7 +37,7 @@ def plate(width, holes):
 PARENT = """\
 from cadgen import build123d as bd
 from cadgen import step
-from feature_geometry import plate
+from memo_geometry import plate
 
 REQUEST = {request}
 SHIFT = {shift}
@@ -66,7 +66,7 @@ def parser():
     result.add_argument("--parts", nargs="+", type=int)
     result.add_argument("--repeats", type=int, default=3)
     result.add_argument("--timeout", type=float, default=90)
-    result.add_argument("--output", type=Path, default=REPO / "models/tmp/feature-factories-benchmark")
+    result.add_argument("--output", type=Path, default=REPO / "models/tmp/memo-factories-benchmark")
     result.add_argument("--report", type=Path, required=True)
     result.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     return result
@@ -78,14 +78,14 @@ def run(args):
     # Reproduce the worker's real pre-authored initialization. Direct/embedded
     # run_model_argv callers have no witness and deliberately cannot reuse.
     _warm_imports()
-    from cadgen import features
+    from cadgen import memoization
     from cadgen.cli._run_model import run_model_argv
     from cadgen.daemon import executors
     from cadgen.store.records import read_record
     from cadgen.store.trees import get_tree
 
-    if not features._reuse_trusted:
-        raise RuntimeError("fresh worker did not establish the feature witness")
+    if not memoization._reuse_trusted:
+        raise RuntimeError("fresh worker did not establish the memo witness")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     geometry_edit = args.scenario == "local-geometry"
@@ -96,7 +96,7 @@ def run(args):
     os.environ["CADGEN_DAEMON"] = "0"
     os.environ["CADGEN_OP_MEMO"] = "1"
     os.environ["CADGEN_OP_MEMO_DISK"] = "1"
-    helper = output / "feature_geometry.py"
+    helper = output / "memo_geometry.py"
     helper.write_text(FACTORY, encoding="utf-8")
     request = 0
     records = []
@@ -110,8 +110,8 @@ def run(args):
         template = GEOMETRY_PARENT if geometry_edit else PARENT
         script.write_text(template.format(count=count, shift=shift, request=request,
                                           width_delta=width_delta), encoding="utf-8")
-        os.environ["CADGEN_FEATURE_CACHE"] = "1" if enabled else "0"
-        before = dict(features._stats)
+        os.environ["CADGEN_MEMO_CACHE"] = "1" if enabled else "0"
+        before = dict(memoization._stats)
         events = []
         started = time.perf_counter()
         executors.set_event_sink(lambda event: events.append(((time.perf_counter() - started)*1000, event)))
@@ -127,12 +127,12 @@ def run(args):
         record = read_record(script)
         step = script.with_suffix(".step")
         payload = step.read_bytes()
-        delta = {name: value - before[name] for name, value in features._stats.items()}
+        delta = {name: value - before[name] for name, value in memoization._stats.items()}
         row = {"parts": count, "shift": shift, "reuse": enabled, "measured": measured,
                "completeMs": elapsed,
                "previewMs": next((ms for ms, event in events if event.get("preview")), None),
                "sourceResultMs": next((ms for ms, event in events if event.get("sourceResult")), None),
-               "features": delta, "tree": record["tree"], "stepBytes": len(payload),
+               "memoization": delta, "tree": record["tree"], "stepBytes": len(payload),
                "stepSha256": hashlib.sha256(payload).hexdigest()}
         if geometry_edit:
             tree = get_tree(record["tree"])
@@ -148,17 +148,17 @@ def run(args):
             misses = 1 if enabled and geometry_edit else (0 if enabled else count)
             expected = {"hits": count - misses, "misses": misses, "declined": 0, "unstorable": 0}
             if delta != expected:
-                raise RuntimeError(f"expected feature counters {expected}, got {delta}")
+                raise RuntimeError(f"expected memo counters {expected}, got {delta}")
         records.append(row)
         return row
 
     summaries = []
     for count in args.parts:
-        # Prime kernel operations, feature entries and the ordinary writer.
+        # Prime kernel operations, memo entries and the ordinary writer.
         baseline = build(count, 0, True, False)
         build(count, 0 if geometry_edit else 1, False, False)
-        if geometry_edit and baseline["features"]["misses"] != 6:
-            raise RuntimeError("baseline did not prime exactly six unique feature inputs")
+        if geometry_edit and baseline["memoization"]["misses"] != 6:
+            raise RuntimeError("baseline did not prime exactly six unique memo inputs")
         pairs = []
         for index in range(args.repeats):
             shift = 0 if geometry_edit else 2 + index
@@ -196,12 +196,12 @@ def run(args):
 
     from importlib.metadata import version
     provenance = {}
-    for relative in ("packages/cadgen/src/cadgen/features.py", "packages/cadgen/src/cadgen/_internal/op_memo.py",
+    for relative in ("packages/cadgen/src/cadgen/memoization.py", "packages/cadgen/src/cadgen/_internal/op_memo.py",
                      "packages/cadgen/src/cadgen/_internal/generation_runner.py", "packages/cadgen/src/cadgen/daemon/worker.py"):
         provenance[relative] = hashlib.sha256((REPO / relative).read_bytes()).hexdigest()
     report = {"boundary": "Warm worker bootstrap, normal public source builds, baseline op_memo primed in both modes; source writes excluded. Preview event is not a browser frame. STEP completion includes ordinary persistence/readback.",
               "scenario": ("One occurrence changes width; eight retain baseline arguments. Each pair uses a novel width and verifies only occurrence 0 geometry changes."
-                           if geometry_edit else "Placement-only revisions of repeated pure feature parts; REQUEST causes both matched variants to rebuild identical geometry."),
+                           if geometry_edit else "Placement-only revisions of repeated pure memo parts; REQUEST causes both matched variants to rebuild identical geometry."),
               "orderQualification": "Each pair alternates cache-off/cache-on order. The second build can reuse the first build's saved-byte/readback results and kernel operations; novel geometry is not separately primed. Individual order and rows are retained for the local-geometry scenario.",
               "platform": platform.platform(), "python": platform.python_version(),
               "versions": {name: version(name) for name in ("build123d", "cadquery-ocp-novtk")},

@@ -132,9 +132,9 @@ if __name__ == "__main__":
         # The transient executor starts this module in a fresh interpreter.
         # Establish the witness before main can load any model. The event flag
         # selects that bootstrap mode; trust comes from this startup ordering.
-        from cadgen import features
+        from cadgen import memoization
 
-        features.install(trusted_worker=True)
+        memoization.install(trusted_worker=True)
     code = main()
     if os.environ.get("CADGEN_EVENTS") == "1":
         # A transient worker (cadgen.daemon.executors): its parent is waiting on this

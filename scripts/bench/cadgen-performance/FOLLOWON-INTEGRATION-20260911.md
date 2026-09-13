@@ -23,7 +23,7 @@ assembly and 24-occurrence fixtures. No giant hand assembly was built.
    exact-type introspection difference are documented. A cross-build native
    shape cache was investigated and rejected: savings were tiny and a test
    shape's BREP bytes changed after copying.
-2. **Reusable pure intermediate factories (R2).** Optional `@feature` reuses
+2. **Reusable pure intermediate factories (R2).** Optional `@memo` reuses
    expensive parameterized CAD helpers, including their Python/builder work.
    It uses the existing operation index and immutable BREP objects. Changed
    arguments, code, captured dependencies or globals invalidate the result.
@@ -91,7 +91,7 @@ The local R2 geometry edit recorded exactly eight feature hits and one miss;
 the other eight components, BREP identities and placements remained unchanged.
 
 A 12-hole BuildPart helper alone improved from 75.0 to 4.8 ms (15.7×), while a
-cheap two-hole algebra helper became slower (2.3 to 5.3 ms). `@feature` is for
+cheap two-hole algebra helper became slower (2.3 to 5.3 ms). `@memo` is for
 costly repeated helpers, not every primitive. A factory/helper source-file edit
 conservatively invalidates the factories in that file; arbitrary monolithic
 Python does not acquire a feature graph automatically.

@@ -1,6 +1,9 @@
 # Pure intermediate factories: R2 validation, 2026-09-11
 
-`@feature` adds optional reuse of expensive, parameterized intermediate CAD
+Code examples use the current `@memo` API; archived measurements retain their
+original source fingerprints.
+
+`@memo` adds optional reuse of expensive, parameterized intermediate CAD
 factories. It skips the factory's Python/builder work, in addition to the
 existing kernel-operation cache. It writes immutable BREP objects and ordinary
 operation-index entries; the enclosing `@step` model still owns the build,
@@ -8,7 +11,7 @@ dependency closure and exports. No FreeCAD dependency or extra authoring cache
 helpers were introduced.
 
 This is an explicit **pure factory contract**, not automatic purity certification.
-See [the public contract](../../../packages/cadgen/FEATURES.md). The implementation
+See [the public contract](../../../packages/cadgen/MEMO.md). The implementation
 declines unsupported inputs/code/contexts and provides bounded defensive runtime
 checks. Arbitrary dependency mutation and observable side effects are outside
 the contract. A fresh worker establishes the runtime witness before authored
@@ -16,15 +19,15 @@ source loads; generic embedded execution does not reuse feature results.
 
 ## Matched public source-edit builds
 
-The durable [harness](feature_factories.py) constructs assemblies of drilled
-plates through an actual `@step` parent and separate `@feature` helper module.
+The durable [harness](memo_factories.py) constructs assemblies of drilled
+plates through an actual `@step` parent and separate `@memo` helper module.
 Each source revision changes the assembly placement. A separate request constant
 makes both variants execute the model even when their final geometry is identical.
 The helper has six possible width/hole-count combinations; larger cases repeat
 those prototypes. The largest case has 24 occurrences and a 318,202-byte STEP.
 
 Both modes use the same current branch, warm `op_memo`, worker bootstrap and
-canonical-return semantics. “Before” is `CADGEN_FEATURE_CACHE=0`; “after” enables
+canonical-return semantics. “Before” is `CADGEN_MEMO_CACHE=0`; “after” enables
 feature result reuse. This isolates R2 and is not a comparison against the entire
 branch's original baseline. Source-file writes and worker startup are excluded.
 Three pairs per size alternate execution order. Figures are medians in
@@ -57,7 +60,7 @@ Reproduce from the repository root with a configured CAD Python environment:
 
 ```sh
 PYTHONPATH=packages/cadgen/src .venv/bin/python \
-  scripts/bench/cadgen-performance/feature_factories.py \
+  scripts/bench/cadgen-performance/memo_factories.py \
   --parts 3 9 24 --repeats 3 --timeout 90 \
   --output models/tmp/feature-factories-benchmark \
   --report models/tmp/feature-factories-benchmark/report.json
@@ -109,7 +112,7 @@ hashes. Earlier placement measurements and their raw file remain unchanged.
 
 ```sh
 PYTHONPATH=packages/cadgen/src .venv/bin/python \
-  scripts/bench/cadgen-performance/feature_factories.py \
+  scripts/bench/cadgen-performance/memo_factories.py \
   --scenario local-geometry --parts 9 --repeats 3 --timeout 60 \
   --output models/tmp/feature-local-geometry-benchmark \
   --report models/tmp/feature-local-geometry-benchmark/report.json
@@ -149,8 +152,8 @@ The focused feature suites passed **23 tests in 12.14 seconds**:
 
 ```sh
 PYTHONPATH=packages/cadgen/src .venv/bin/python -m unittest \
-  tests.python.packages.cadgen.test_features \
-  tests.python.packages.cadgen.test_feature_build
+  tests.python.packages.cadgen.test_memo \
+  tests.python.packages.cadgen.test_memo_build
 ```
 
 Coverage includes cold/warm/disabled canonical equivalence, private returned

@@ -977,9 +977,9 @@ supersession does not cancel their exports.
 
 ## 9c. Pure parameterized features
 
-The optional `@feature` decorator declares a pure intermediate geometry
+The optional `@memo` decorator declares a pure intermediate geometry
 factory, with the author preconditions and execution limits in
-[`FEATURES.md`](FEATURES.md). It declares no output, model record or job. The
+[`MEMO.md`](MEMO.md). It declares no output, model record or job. The
 existing `index/op` maps its scheme/runtime/code/source/helper/global/default/
 closure/argument key to a canonical BREP object and attribute recipe. Objects
 contain no source paths. Hits verify disk content and reconstruct a private

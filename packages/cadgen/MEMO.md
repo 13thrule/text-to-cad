@@ -1,15 +1,15 @@
 # Reusing parameterized CAD computations
 
-`@feature` is an optional decorator for an expensive, pure geometry factory.
+`@memo` is an optional decorator for an expensive, pure geometry factory.
 It can skip the factory's Python and CAD work when its inputs are unchanged.
 It declares no output, model record, job or CLI command; a parameterless
 `@step` model still owns the build and all declared exports.
 
 ```python
 # geometry.py
-from cadgen import feature, build123d as bd
+from cadgen import memo, build123d as bd
 
-@feature
+@memo
 def drilled_plate(width, holes):
     with bd.BuildPart() as plate:
         bd.Box(width, 20, 6)
@@ -28,7 +28,7 @@ It does not infer independent feature histories from arbitrary monolithic Python
 
 ## Author contract
 
-Adding `@feature` declares that the factory computes geometry only from its
+Adding `@memo` declares that the factory computes geometry only from its
 arguments and captured immutable Python globals, defaults, closure values and
 deterministic helpers, under an unmodified CAD/math dependency runtime. It must
 have no externally observable side effects. Do not use it for file reads or
@@ -61,7 +61,7 @@ dependency mutation part of the supported contract.
 Generic embedded/in-process execution cannot prove that initialization order,
 so it executes the body. An existing untrusted witness cannot be upgraded.
 Eligible calls still use the canonical return codec consistently: cache miss,
-hit and `CADGEN_FEATURE_CACHE=0` return equivalent private reconstructions. The
+hit and `CADGEN_MEMO_CACHE=0` return equivalent private reconstructions. The
 decorator can therefore change wrapper/native identity compared with an
 undecorated call. Do not depend on the identity of an intermediate handle.
 Arguments and returned native geometry are never retained for sharing across
@@ -75,9 +75,9 @@ source path in the object. Hits verify the required disk object and reconstruct
 private geometry; missing/corrupt data runs the factory and repairs the entry.
 There is no native RAM cache or second storage framework. Process eviction and
 store deletion remain recoverable. Source dependencies remain in the owning
-model's closure even when a feature body is skipped.
+model's closure even when a memoized body is skipped.
 
-`CADGEN_FEATURE_CACHE=0` disables result reuse for diagnosis. It does not force
+`CADGEN_MEMO_CACHE=0` disables result reuse for diagnosis. It does not force
 a current model to rebuild; use the model's normal `--force` flag as needed.
 No agent imports cache keys, sessions, persistence or invalidation utilities.
 The full object/index and publication rules are in [STORE.md](STORE.md).
