@@ -295,6 +295,30 @@ full warm performance gate remain open. The transport helper's process startup
 overhead is measured separately; browser reuse does not remove every per-command
 process or import cost.
 
+Native still-consumption milestone implemented, 13 September 2026: an internal
+caller-owned preparation door stages exact `DisplayProduct` manifest/CGMESH
+bytes, or captures saved STEP plus its companion once and imports those buffers
+through `DocumentDispatcher`. It submits a closed native input to the shared
+renderer with no old package/SURF/source fallback. Inspect retains edges and
+revision-scoped picking; photographic Render omits both while preserving face
+RGBA/PBR and the shared output pipeline. Native motion, selector requests and
+non-view modes fail explicitly in this slice. The public STEP snapshot cutover
+and complete motion/format acceptance gate remain open.
+
+One deadline starts before saved import/preparation. Hash verification, complete
+asset membership, regular-file admission and private job capabilities bind
+browser reads. Four atomic staging slots per captured cache root each admit at
+most 272 MiB; an exited caller does not free a slot. Context/worker cleanup proof
+releases its token-bound slot, while uncertain cleanup retains it and eventually
+refuses new admission. Tests include independent short-lived callers exhausting
+that persistent capacity, FIFO substitutions and preserved cancellation errors.
+The real native smoke renders five jobs/six PNGs through one Chromium launch;
+two cameras fetch one manifest and two unique meshes once. Saved-file overwrite
+between preparation calls preserves each captured digest and scene. Requested
+240×160 and 160×240 dimensions, light/dark Render, released contexts/pages, zero
+remaining staging slots and joined service shutdown pass. This is correctness
+evidence, not the full P9 latency or cross-format gate.
+
 - Reuse a bounded Chromium/render-worker pool across CLI calls, not only within one snapshot packet. Retain reusable modules and immutable decoded assets.
 - Start with browser-process reuse and a fresh context/page per job. Add page or decoded-asset reuse only after its stronger lifecycle proof passes. Never share mutable Three scenes, GLB graphs, mixers, textures or render targets between jobs.
 - Give each job a pinned document revision, camera, output resolution, rendering policy and animation time. Reset all mutable scene, lighting, selection and animation state between jobs; discard a context when teardown cannot be proven.
@@ -328,7 +352,14 @@ gate skips source execution; the new engine executes source and should reuse
 managed CAD operations. A stock Cone insertion currently triggers private
 execution for subsequent operations. Fixing real-model frontend coverage and
 running repeated geometry/placement edits are required before claiming gains
-at this scale.
+at this scale. Cone now has guarded retained construction and builder insertion;
+the same iris still escapes at the second Polygon in a multi-polygon sketch, so
+warm performance remains about 18 seconds in an in-process diagnostic. That
+diagnostic excludes worker startup and is not interchangeable with the complete
+request times above. Three old-engine mounting-hole edits measured 5.893, 5.943
+and 5.960 seconds, with all 118 saved occurrences independently checked and only
+the intended base ring changed. The repeatable full-request harness now includes
+this real source as an opt-in `iris118` fixture.
 
 - Profile Python capture, kernel work, import, export, meshes and browser startup separately. Prewarming may improve an interactive request but must not be presented as an empty-process cold improvement.
 - Remove duplicate frontend work, combine suitable kernel operations, batch IPC and persist useful checkpoints. Optimize expensive modeling algorithms where the corpus reveals them; a feature graph cannot skip genuinely new geometry.

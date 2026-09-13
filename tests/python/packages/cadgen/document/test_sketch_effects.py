@@ -23,6 +23,40 @@ class SketchEffectsTests(unittest.TestCase):
             op_memo.uninstall()
         self.addCleanup(op_memo.install if installed else lambda: None)
 
+    def test_projecting_last_outputs_scans_the_carrier_once_and_escape_stays_private(self):
+        from cadgen._document import builder_effects as effects_module
+        from cadgen._document.builder_effects import WrapperRef
+        from OCP.BRep import BRep_Builder, BRep_Tool
+        from OCP.TopoDS import TopoDS
+        from OCP.gp import gp_Pnt
+
+        effects = SketchNativeEffects()
+        document = Document("projected-slot-views")
+        with document.begin() as tx:
+            seed = effects.kernel.own(tx, effects.kernel.evaluate(tx, POINTS))
+            bundle = effects.first(tx, seed)
+            native = document._get(bundle.handle).shape
+            expected = effects_module._slots(native)
+            refs = tuple(WrapperRef("created", index) for index in range(len(bundle.layout.created)))
+            self.assertGreater(len(refs), 10)
+            with patch.object(effects_module, "_slots", wraps=effects_module._slots) as scan:
+                handles = [effects.stock.project(tx, bundle, ref) for ref in refs]
+                self.assertEqual(1, scan.call_count)
+            for ref, handle in zip(refs, handles):
+                self.assertTrue(document._get(handle).shape.IsSame(
+                    expected[bundle.layout.created[ref.index].native_slot]))
+            vertex_index = next(index for index, record in enumerate(bundle.layout.created)
+                                if record.kind == "Vertex")
+            vertex_handle = handles[vertex_index]
+            before = BRep_Tool.Pnt_s(TopoDS.Vertex(document._get(vertex_handle).shape)).X()
+            private = TopoDS.Vertex(tx.escape_arena.native(vertex_handle))
+            BRep_Builder().UpdateVertex(private, gp_Pnt(99., 31., 17.), .01)
+            projected = effects.stock.project(tx, bundle, refs[vertex_index])
+            self.assertEqual(99., BRep_Tool.Pnt_s(TopoDS.Vertex(document._get(projected).shape)).X())
+            self.assertEqual(before, BRep_Tool.Pnt_s(TopoDS.Vertex(document._get(vertex_handle).shape)).X())
+            self.assertIsNone(effects.stock._projection_carrier)
+            tx.commit()
+
     def test_polygon_wire_and_face_match_stock_and_reuse_without_native_rebuild(self):
         kernel = PolygonKernel()
         expected_wire = bd.Wire.make_polygon(POINTS)

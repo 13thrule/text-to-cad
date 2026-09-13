@@ -41,6 +41,59 @@ class FrontendSemanticsTest(unittest.TestCase):
             op_memo.uninstall()
         self.addCleanup(op_memo.install if was_installed else lambda: None)
 
+    def test_redundant_geometry_and_children_keep_assembly_managed(self):
+        from cadgen._document.frontend import _state
+        from cadgen._document.returned import bind_returned_shape
+
+        def model(obj_type, children_type):
+            parts = [bd.Box(4, 6, 2), bd.Cylinder(1, 2).moved(bd.Pos(8, 0, 0))]
+            parts[0].label, parts[1].label = "plate", "pin"
+            return bd.Compound(obj=obj_type(parts), children=children_type(parts),
+                               label="assembly", material="steel")
+
+        for obj_type, children_type in ((list, list), (tuple, list), (list, tuple), (tuple, tuple)):
+            expected = _facts(model(obj_type, children_type))
+            document = Document(f"redundant-compound-{obj_type}-{children_type}")
+            for turn in range(2):
+                with self.subTest(obj=obj_type, children=children_type, turn=turn):
+                    with document.begin() as transaction:
+                        with FrontendSession(transaction) as frontend:
+                            result = model(obj_type, children_type)
+                            self.assertIsNotNone(_state(result))
+                            self.assertFalse(_state(result).private)
+                            self.assertEqual({}, frontend._fallback_counts)
+                            self.assertTrue(all(child.parent is result for child in result.children))
+                            bind_returned_shape(frontend, result)
+                            if turn:
+                                self.assertEqual(0, transaction.stats.computed)
+                                self.assertEqual(0, transaction.stats.native_copies)
+                            result = frontend.materialize(result)
+                        transaction.commit()
+                    self.assertEqual(expected, _facts(result))
+
+    def test_nonredundant_compound_obj_executes_ordinary_input_observations(self):
+        from cadgen._document.frontend import _state
+
+        for iterable in (False, True):
+            observed = []
+            with Document(f"nonredundant-compound-{iterable}").begin() as transaction:
+                with FrontendSession(transaction) as frontend:
+                    first, second = bd.Box(4, 6, 2), bd.Box(2, 3, 4)
+                    def objects():
+                        observed.append("iterated")
+                        yield first
+                    obj = objects() if iterable else [first]
+                    result = bd.Compound(obj=obj, children=[second])
+                    self.assertTrue(_state(result).private)
+                    self.assertEqual(["iterated"] if iterable else [], observed)
+                    self.assertGreaterEqual(frontend._fallback_counts["compound-native-construction"], 1)
+                    result = frontend.materialize(result)
+                transaction.commit()
+            # Stock children attachment determines the final geometry; the
+            # different obj sequence must still be consumed before attachment.
+            self.assertAlmostEqual(24, result.volume)
+            self.assertEqual(1, len(result.children))
+
     def test_boolean_cleanup_context_is_part_of_identity_in_both_orders(self):
         def adjacent_boxes():
             return (bd.Box(2, 2, 2, align=(bd.Align.MAX, bd.Align.CENTER, bd.Align.CENTER))

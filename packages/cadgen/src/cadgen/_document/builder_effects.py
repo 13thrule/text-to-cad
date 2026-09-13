@@ -442,6 +442,11 @@ class StockBuilderEffects:
         extra_providers = tuple(extra_providers)
         self.bd = bd
         self.frontend = frontend
+        # One immutable carrier view, local to this adapter. Projecting every
+        # vertex/edge from a builder's lasts must not rescan all its slot holders
+        # for each output. Native escape never uses this retained view.
+        self._projection_carrier = None
+        self._projection_slots = ()
         original = {} if frontend is None else {
             (owner, name): value for owner, name, value in frontend._originals}
         def original_provider(owner, name, current):
@@ -888,10 +893,20 @@ class StockBuilderEffects:
         if ref.role == "prior":
             return self.project(tx, bundle.previous, bundle.previous.layout.result)
         record = (bundle.layout.tools if ref.role == "tool" else bundle.layout.created)[ref.index]
+        def compute(inputs, arena):
+            carrier = inputs[0]
+            if arena.active:
+                self._projection_carrier, self._projection_slots = None, ()
+                slots = _slots(carrier)
+            else:
+                if carrier is not self._projection_carrier:
+                    slots = _slots(carrier)
+                    self._projection_carrier, self._projection_slots = carrier, slots
+                slots = self._projection_slots
+            return NativeResult(slots[record.native_slot])
         return tx.evaluate(
             OperatorSpec("build123d.builder.effect-output", "1", Mutation.READ_ONLY),
-            record.native_slot, (bundle.handle,),
-            lambda inputs, arena: NativeResult(_slots(inputs[0])[record.native_slot]))
+            record.native_slot, (bundle.handle,), compute)
 
     def _capture(self, previous, native_inputs, mode, clean, skip_clean, *,
                  builder_type=None, tool_factory=None, include_pending=False):

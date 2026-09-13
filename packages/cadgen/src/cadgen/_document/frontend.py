@@ -313,6 +313,7 @@ class FrontendSession:
         original_getattribute = inspect.getattr_static(bd.Shape, "__getattribute__")
         original_wrapped = inspect.getattr_static(bd.Shape, "wrapped")
         original_box_init = inspect.getattr_static(bd.Box, "__init__")
+        original_cone_init = inspect.getattr_static(bd.Cone, "__init__")
         original_cylinder_init = inspect.getattr_static(bd.Cylinder, "__init__")
         original_compound_init = inspect.getattr_static(bd.Compound, "__init__")
         original_add = inspect.getattr_static(bd.Shape, "__add__")
@@ -329,6 +330,7 @@ class FrontendSession:
         original_location_mul = inspect.getattr_static(bd.Location, "__mul__")
         original_fillet_function = bd.fillet
         original_make_box = inspect.getattr_static(bd.Solid, "make_box")
+        original_make_cone = inspect.getattr_static(bd.Solid, "make_cone")
         original_make_cylinder = inspect.getattr_static(bd.Solid, "make_cylinder")
 
         self._native_originals = {
@@ -425,6 +427,64 @@ class FrontendSession:
             session._init_empty(shape, logical, handle)
             shape.length, shape.width, shape.box_height = length, width, height
 
+        def cone_init(shape: Any, bottom_radius: float, top_radius: float, height: float,
+                      arc_size: float = 360, rotation=(0, 0, 0), align=None,
+                      mode=None) -> None:
+            kwargs = {"arc_size": arc_size, "rotation": rotation}
+            if align is not None:
+                kwargs["align"] = align
+            if mode is not None:
+                kwargs["mode"] = mode
+            if session._compute_depth:
+                original_cone_init(shape, bottom_radius, top_radius, height, **kwargs)
+                return
+            context_provider = inspect.getattr_static(bd.Builder, "_get_context")
+            context_variable = inspect.getattr_static(bd.Builder, "_current")
+            if (not _stock_function(context_provider, "build123d.build_common", "Builder._get_context")
+                    or type(context_variable) is not ContextVar):
+                session._record_fallback("opaque-cone-provider-or-parameters")
+                original_cone_init(shape, bottom_radius, top_radius, height, **kwargs)
+                session._capture_private(shape, "opaque-cone")
+                return
+            context = context_variable.get(None)
+            dimensions = (bottom_radius, top_radius, height, arc_size)
+            if context is not None:
+                session._builder_constructor(
+                    "cone", shape, context, original_cone_init,
+                    (bottom_radius, top_radius, height), kwargs,
+                    original_make_cone, dimensions,
+                )
+                return
+            align = (bd.Align.CENTER,) * 3 if align is None else align
+            mode = bd.Mode.ADD if mode is None else mode
+            if not session._closed_primitive(
+                    "cone", shape, dimensions, rotation, align, mode):
+                session._record_fallback("opaque-cone-provider-or-parameters")
+                original_cone_init(shape, bottom_radius, top_radius, height,
+                                   arc_size=arc_size, rotation=rotation,
+                                   align=align, mode=mode)
+                session._capture_private(shape, "opaque-cone")
+                return
+            logical = session._logical("cone")
+            parameters = (float(bottom_radius), float(top_radius), float(height),
+                          float(arc_size), session._rotation_key(rotation),
+                          session._align_key(align), mode,
+                          session._primitive_context_key("cone", original_make_cone))
+            def compute(_inputs, _arena):
+                native = object.__new__(bd.Cone)
+                session._inside_compute(
+                    original_cone_init, native, bottom_radius, top_radius, height,
+                    arc_size=arc_size, rotation=rotation, align=align, mode=mode)
+                return NativeResult(original_wrapped.fget(native))
+            handle = session.transaction.evaluate(
+                OperatorSpec("build123d.Cone", "1", Mutation.READ_ONLY,
+                             closed_constructor=True), parameters, (), compute,
+                logical_id=logical,
+            )
+            session._init_empty(shape, logical, handle)
+            shape.bottom_radius, shape.top_radius = bottom_radius, top_radius
+            shape.cone_height, shape.arc_size, shape.align = height, arc_size, align
+
         def cylinder_init(shape: Any, radius: float, height: float, arc_size: float = 360,
                           rotation=(0, 0, 0), align=None, mode=None) -> None:
             kwargs = {"arc_size": arc_size, "rotation": rotation}
@@ -489,11 +549,16 @@ class FrontendSession:
                     values = tuple(supplied)
                 except TypeError:
                     values = None
-            # BasePartObject passes its real native compound in ``obj`` and an
-            # author hierarchy in ``children``.  Empty iterables and calls
-            # carrying both cannot establish managed occurrence ownership;
-            # treating them as such would discard Sphere/Torus/etc. geometry.
-            if (values and not (obj is not None and children is not None)
+            # A redundant obj/children sequence is common in authored assemblies.
+            # Admit only exact built-in sequences with the same wrapper objects
+            # in the same order, without comparing Shapes or running iterators.
+            # BasePartObject's native obj and arbitrary/mismatched iterables
+            # still execute normally; they cannot prove this hierarchy's body.
+            redundant_obj = (type(obj) in (list, tuple)
+                             and type(children) in (list, tuple)
+                             and len(obj) == len(children)
+                             and all(first is second for first, second in zip(obj, children)))
+            if (values and (obj is None or redundant_obj)
                     and type(shape) is bd.Compound and children is not None
                     and parent is None
                     and type(label) is str and type(color) in (type(None), bd.Color)
@@ -663,6 +728,9 @@ class FrontendSession:
         def make_box(cls, *args, **kwargs):
             return session._builder_solid("box", cls, original_make_box, args, kwargs)
 
+        def make_cone(cls, *args, **kwargs):
+            return session._builder_solid("cone", cls, original_make_cone, args, kwargs)
+
         def make_cylinder(cls, *args, **kwargs):
             return session._builder_solid("cylinder", cls, original_make_cylinder, args, kwargs)
 
@@ -670,8 +738,10 @@ class FrontendSession:
         self._patch(bd.Shape, "wrapped", property(wrapped_get, wrapped_set, original_wrapped.fdel,
                                                    original_wrapped.__doc__))
         self._patch(bd.Box, "__init__", box_init)
+        self._patch(bd.Cone, "__init__", cone_init)
         self._patch(bd.Cylinder, "__init__", cylinder_init)
         self._patch(bd.Solid, "make_box", classmethod(make_box))
+        self._patch(bd.Solid, "make_cone", classmethod(make_cone))
         self._patch(bd.Solid, "make_cylinder", classmethod(make_cylinder))
         self._patch(bd.Compound, "__init__", compound_init)
         self._patch(bd.Shape, "__add__", add)
@@ -695,8 +765,9 @@ class FrontendSession:
         import cadgen.build123d as proxy
         if "fillet" in vars(proxy):
             self._patch(proxy, "fillet", fillet_function)
-        self._prepare_primitive_guards(original_box_init, original_cylinder_init,
-                                       original_make_box, original_make_cylinder)
+        self._prepare_primitive_guards(
+            original_box_init, original_cone_init, original_cylinder_init,
+            original_make_box, original_make_cone, original_make_cylinder)
         # Install the small entry interceptors on every replay.  A runtime is
         # proven only after one session has discovered and finalized both full
         # transitive provider inventories before any authored code can run.
@@ -783,7 +854,8 @@ class FrontendSession:
             if effects.stock is not None:
                 effects.stock.finalize_frontend_guards()
 
-    def _prepare_primitive_guards(self, box, cylinder, make_box, make_cylinder):
+    def _prepare_primitive_guards(self, box, cone, cylinder,
+                                  make_box, make_cone, make_cylinder):
         """Pin the small stock constructor path, including its native providers.
 
         The closed contract cannot be inferred from an empty geometry-input
@@ -791,7 +863,8 @@ class FrontendSession:
         mutable native global. Such calls always execute as ordinary Python.
         """
         from build123d import objects_part, build_common
-        from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCylinder
+        from OCP.BRepPrimAPI import (BRepPrimAPI_MakeBox, BRepPrimAPI_MakeCone,
+                                    BRepPrimAPI_MakeCylinder)
         from OCP.TopoDS import TopoDS
         bd = self._bd
         originals = {(owner, name): value for owner, name, value in self._originals}
@@ -830,16 +903,22 @@ class FrontendSession:
         self._primitive_guards = {}
         for kind, constructor, factory, kernel in (
                 ("box", box, make_box, BRepPrimAPI_MakeBox),
+                ("cone", cone, make_cone, BRepPrimAPI_MakeCone),
                 ("cylinder", cylinder, make_cylinder, BRepPrimAPI_MakeCylinder)):
-            cls = bd.Box if kind == "box" else bd.Cylinder
+            cls = {"box": bd.Box, "cone": bd.Cone, "cylinder": bd.Cylinder}[kind]
             stock = (_stock_function(constructor, "build123d.objects_part", f"{cls.__name__}.__init__")
                      and _stock_function(factory, "build123d.topology.three_d", f"Solid.make_{kind}"))
             kernel_globals = factory.__func__.__globals__ if stock else {}
-            native_name = "BRepPrimAPI_MakeBox" if kind == "box" else "BRepPrimAPI_MakeCylinder"
+            native_name = {
+                "box": "BRepPrimAPI_MakeBox",
+                "cone": "BRepPrimAPI_MakeCone",
+                "cylinder": "BRepPrimAPI_MakeCylinder",
+            }[kind]
             kernel_valid = (stock and type(kernel).__module__ == "pybind11_builtins"
                             and kernel_globals.get(native_name) is kernel
                             and kernel_globals.get("TopoDS") is TopoDS
-                            and (kind == "box" or kernel_globals.get("DEG2RAD") == math.pi / 180))
+                            and (kind == "box" or
+                                 kernel_globals.get("DEG2RAD") == math.pi / 180))
             native_checks = tuple((owner, name, inspect.getattr_static(owner, name, None))
                                   for owner, name in ((kernel, "__init__"), (kernel, "Shape"),
                                                       (TopoDS, "Solid")))
@@ -884,22 +963,43 @@ class FrontendSession:
     def _closed_primitive(self, kind, shape, dimensions, rotation, align, mode):
         bd = self._bd
         try:
-            bounded = all(type(value) in (int, float) and math.isfinite(value) and value > 0
-                          for value in dimensions)
+            bounded = self._primitive_dimensions_match(kind, dimensions)
             bounded_rotation = (type(rotation) is tuple and len(rotation) == 3
                                 and all(type(value) in (int, float) and math.isfinite(value)
                                         for value in rotation))
         except OverflowError:
             return False
-        return (type(shape) is (bd.Box if kind == "box" else bd.Cylinder)
+        classes = {"box": bd.Box, "cone": bd.Cone, "cylinder": bd.Cylinder}
+        return (kind in classes and type(shape) is classes[kind]
                 and bounded
-                and (kind != "cylinder" or dimensions[2] <= 360)
                 and bounded_rotation
                 and (type(align) is bd.Align or (type(align) is tuple and len(align) == 3
                                                and all(type(value) is bd.Align for value in align)))
                 and type(mode) is bd.Mode
                 and self._primitive_provider_matches(kind)
                 and self._can_defer_hierarchy(shape, ()))
+
+    @staticmethod
+    def _primitive_dimensions_match(kind, dimensions):
+        if type(dimensions) is not tuple:
+            return False
+        try:
+            bounded = all(type(value) in (int, float) and math.isfinite(value)
+                          for value in dimensions)
+        except OverflowError:
+            return False
+        if not bounded:
+            return False
+        if kind == "box":
+            return len(dimensions) == 3 and all(value > 0 for value in dimensions)
+        if kind == "cylinder":
+            return (len(dimensions) == 3 and dimensions[0] > 0
+                    and dimensions[1] > 0 and 0 < dimensions[2] <= 360)
+        if kind == "cone":
+            return (len(dimensions) == 4 and dimensions[0] >= 0
+                    and dimensions[1] >= 0 and dimensions[0] != dimensions[1]
+                    and dimensions[2] > 0 and 0 < dimensions[3] <= 360)
+        return False
 
     def _inside_compute(self, fn, *args, **kwargs):
         self._compute_depth += 1
@@ -922,21 +1022,15 @@ class FrontendSession:
         bd = self._bd
         mode = kwargs.get("mode", bd.Mode.ADD)
         builtin_kernel = self._primitive_provider_matches(kind)
-        try:
-            bounded_dimensions = all(
-                type(value) in (int, float) and math.isfinite(value) and value > 0
-                for value in dimensions
-            )
-        except OverflowError:
-            bounded_dimensions = False
+        bounded_dimensions = self._primitive_dimensions_match(kind, dimensions)
+        classes = {"box": bd.Box, "cone": bd.Cone, "cylinder": bd.Cylinder}
         eligible = (
             type(context) is bd.BuildPart
-            and type(shape) is (bd.Box if kind == "box" else bd.Cylinder)
+            and kind in classes and type(shape) is classes[kind]
             and type(mode) is bd.Mode
             and mode in (bd.Mode.ADD, bd.Mode.SUBTRACT, bd.Mode.REPLACE, bd.Mode.PRIVATE)
             and builtin_kernel
             and bounded_dimensions
-            and (kind != "cylinder" or dimensions[2] <= 360)
         )
         self._record_fallback("builder-effects-replayed" if eligible else "builder-opaque-constructor")
         previous = self._builder_kernel
@@ -959,12 +1053,13 @@ class FrontendSession:
         if pending is None or pending[0] != kind or cls is not self._bd.Solid:
             return factory(*args, **kwargs)
         self._builder_kernel = None  # exactly one kernel call per constructor
-        # Only the exact factory call made by the ordinary Box/Cylinder body is
+        # Only the exact factory call made by the ordinary Box/Cone/Cylinder body is
         # covered. Forward customized calls without coercion or extra keywords.
-        if (len(args) != (3 if kind == "box" else 2)
+        argument_counts = {"box": 3, "cone": 3, "cylinder": 2}
+        if (kind not in argument_counts or len(args) != argument_counts[kind]
                 or set(kwargs) != (set() if kind == "box" else {"angle"})
                 or any(type(value) not in (int, float) for value in args)
-                or (kind == "cylinder" and type(kwargs["angle"]) not in (int, float))
+                or (kind != "box" and type(kwargs["angle"]) not in (int, float))
                 or not self._primitive_provider_matches(kind)):
             return factory(*args, **kwargs)
         logical = pending[1]

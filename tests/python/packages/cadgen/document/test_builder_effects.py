@@ -234,6 +234,90 @@ class BuilderEffectsTest(unittest.TestCase):
         self.assertGreater(stats[1], 0)
         self.assertEqual([2., 2., 2., 2.5], calls)
 
+    def test_stock_cone_insertion_matches_and_reuses_with_local_dimension_edits(self):
+        calls = []
+        def fixture(top_radius=2.):
+            calls.append(top_radius)
+            with bd.BuildPart() as builder:
+                bd.Box(18., 18., 4., align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN))
+                with bd.Locations(bd.Pos(3., -2., 2.8)):
+                    cone = bd.Cone(
+                        bottom_radius=1., top_radius=top_radius, height=1.4,
+                        align=(bd.Align.CENTER, bd.Align.CENTER, bd.Align.MIN),
+                        mode=bd.Mode.SUBTRACT,
+                    )
+            return builder.part, (cone,)
+
+        expected, _ = fixture()
+        expected_facts = facts(expected)
+        document = Document("effects-cone-frontend")
+        for turn in range(2):
+            actual, retained, counts, stats = self.run_frontend(document, fixture)
+            self.assertEqual(expected_facts, facts(actual))
+            self.assertEqual(2, counts.get("builder-effects-retained", 0))
+            self.assertEqual((1., 2., 1.4, 360),
+                             (retained[0].bottom_radius, retained[0].top_radius,
+                              retained[0].cone_height, retained[0].arc_size))
+            if turn:
+                self.assertEqual(0, stats[0])
+                self.assertGreater(stats[1], 2)
+
+        changed, _, counts, stats = self.run_frontend(document, lambda: fixture(2.5))
+        self.assertNotEqual(facts(actual), facts(changed))
+        self.assertGreater(stats[0], 0)
+        self.assertGreater(stats[1], 0)
+        self.assertEqual(2, counts.get("builder-effects-retained", 0))
+        self.assertEqual([2., 2., 2., 2.5], calls)
+
+    def test_cone_tip_and_invalid_equal_radii_follow_stock_constructor(self):
+        expected = bd.Cone(2., 0., 3.)
+        document = Document("effects-cone-tip")
+        for turn in range(2):
+            with document.begin() as tx:
+                with FrontendSession(tx) as frontend:
+                    actual = bd.Cone(2., 0., 3.)
+                    stats = (tx.stats.computed, tx.stats.reused)
+                    actual = frontend.materialize(actual)
+                tx.commit()
+            self.assertEqual(facts(expected), facts(actual))
+            if turn:
+                self.assertEqual(0, stats[0])
+                self.assertGreater(stats[1], 0)
+
+        try:
+            bd.Cone(2., 2., 3.)
+        except Exception as error:  # exact native exception is part of stock behavior
+            expected_error = error
+        else:
+            self.fail("stock equal-radius cone unexpectedly succeeded")
+        with document.begin() as tx:
+            with FrontendSession(tx):
+                with self.assertRaisesRegex(type(expected_error), "identic radii"):
+                    bd.Cone(2., 2., 3.)
+
+    def test_replaced_cone_kernel_executes_ordinarily_on_every_revision(self):
+        import inspect
+        original = inspect.getattr_static(bd.Solid, "make_cone")
+        calls = []
+        def replacement(cls, *args, **kwargs):
+            calls.append((args, kwargs))
+            return original.__func__(cls, *args, **kwargs)
+        def fixture():
+            with bd.BuildPart() as builder:
+                bd.Cone(3., 1., 4.)
+            return builder.part, ()
+
+        with patch.object(bd.Solid, "make_cone", classmethod(replacement)):
+            expected, _ = fixture()
+            expected_facts = facts(expected)
+            document = Document("effects-cone-provider")
+            for _ in range(2):
+                calls.clear()
+                actual, _, counts, _ = self.run_frontend(document, fixture)
+                self.assertEqual(expected_facts, facts(actual))
+                self.assertEqual(1, len(calls))
+                self.assertEqual(0, counts.get("builder-effects-retained", 0))
+
     def test_frontend_escape_revokes_builder_before_later_native_effects(self):
         from OCP.BRep import BRep_Builder, BRep_Tool
         from OCP.gp import gp_Pnt
