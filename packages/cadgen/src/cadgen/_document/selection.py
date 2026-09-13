@@ -15,11 +15,20 @@ from .builder_effects import (
 )
 from .core import Mutation, OperatorSpec
 from .native import NativeResult
+from .provider_proof import OperationProviderProof
 
 
 _PROOFS = OrderedDict()
 _MISSING = object()
 _TABLES = ("geom_LUT_EDGE", "geom_LUT_FACE", "inverse_shape_LUT", "downcast_LUT")
+
+
+def _edge_view(edge_type, downcast, native, _new=object.__new__,
+               _getattribute=object.__getattribute__):
+    """Make the minimal exact receiver used by stock scalar Edge methods."""
+    wrapper = _new(edge_type)
+    _getattribute(wrapper, "__dict__")["_wrapped"] = downcast(native)
+    return wrapper
 
 
 @dataclass(frozen=True)
@@ -30,6 +39,11 @@ class _Proof:
     fields: tuple
     bindings: tuple
     callables: tuple
+    binding_globals: tuple
+    edge_downcast: tuple
+    providers: tuple
+    frontend_originals: tuple
+    edge_view: object
 
 
 class SelectionAdapter:
@@ -42,6 +56,7 @@ class SelectionAdapter:
         self._kind = None
         self._members = ()
         self._origins = {}
+        self.query_proofs = {}
         mixin = frontend._topology.Mixin1D
         self.extra = (
             (bd.Shape, "geom_type"), (bd.Edge, "arc_center"),
@@ -50,9 +65,13 @@ class SelectionAdapter:
             *((bd.Vector, name) for name in ("__init__", "__getattribute__",
                                             "__setattr__", "wrapped")),
         )
+        self.original_providers = tuple(
+            (owner, name, inspect.getattr_static(owner, name, _MISSING))
+            for owner, name in self.extra
+        )
         self.original = {
-            name: inspect.getattr_static(owner, name)
-            for owner, name in self.extra[:4]
+            name: provider
+            for owner, name, provider in self.original_providers[:4]
         }
         self.installed = {}
         for owner, name in self.extra[:3]:
@@ -88,71 +107,192 @@ class SelectionAdapter:
             self.proof = prior
 
     def finalize(self):
-        if self.stock is None:
-            return
-        self.stock._adopt_frontend_interceptors()
-        self.stock.finalize_frontend_guards()
+        if self.stock is not None:
+            self.stock._adopt_frontend_interceptors()
+            self.stock.finalize_frontend_guards()
+            if self.proof is None:
+                if not self.stock.providers_match() or self.stock._canonical_plan is None:
+                    return
+                from OCP import GeomAbs, TopAbs, gp
+                from OCP.TopoDS import TopoDS
+                from .frontend import _stock_function
+                native = tuple(
+                    (owner, name, inspect.getattr_static(owner, name))
+                    for owner, names in (
+                        (gp.gp_Circ, ("Radius", "Axis", "Position")),
+                        (gp.gp_Elips, ("Axis", "Position")),
+                        (gp.gp_Ax1, ("Direction",)), (gp.gp_Ax2, ("Location",)),
+                        (gp.gp_Pnt, ("XYZ",)), (gp.gp_Dir, ("XYZ",)),
+                    ) for name in names
+                )
+                if not all(type(provider).__name__ == "instancemethod"
+                           and type(owner).__module__ == "pybind11_builtins"
+                           for owner, _name, provider in native):
+                    return
+                edge_downcast = (TopoDS, "Edge", inspect.getattr_static(TopoDS, "Edge"))
+                if (type(edge_downcast[2]).__name__ != "builtin_function_or_method"
+                        or not (edge_downcast[2].__module__ or "").startswith("OCP.")):
+                    return
+                tables = tuple(
+                    (name, value, _closed_runtime_value(value))
+                    for name in _TABLES
+                    for value in (inspect.getattr_static(self.bd.Shape, name),)
+                )
+                fields = tuple((owner, name) for owner, names in (
+                    *((owner, ("_wrapped",)) for owner in (
+                        self.bd.Shape, self.bd.Vertex, self.bd.Edge, self.bd.Face,
+                        self.bd.Solid, self.bd.Vector)),
+                    (self.bd.Vertex, ("X", "Y", "Z")),
+                    (self.bd.Face, ("created_on",)),
+                    (self.bd.Vector, ("vector_index",)),
+                ) for name in names)
+                if any(inspect.getattr_static(owner, name, _MISSING) is not _MISSING
+                       for owner, name in fields):
+                    return
+                # Stock methods also compare/format enums and dynamically
+                # dereference module constants. Pin those bindings without
+                # invoking their methods from the proof check.
+                bindings = tuple(
+                    (owner, name, inspect.getattr_static(owner, name, _MISSING))
+                    for owner, names in (
+                        (self.bd, ("GeomType",)),
+                        (self.bd.GeomType, (
+                            "__eq__", "__ne__", "__hash__", "__str__", "__format__",
+                            "__getattribute__", "CIRCLE", "ELLIPSE")),
+                        (type(self.bd.GeomType), ("__getattribute__", "__getattr__")),
+                        *((owner, ("__eq__", "__ne__", "__hash__")) for owner in (
+                            TopAbs.TopAbs_ShapeEnum, GeomAbs.GeomAbs_CurveType,
+                            GeomAbs.GeomAbs_SurfaceType)),
+                        (TopAbs, tuple("TopAbs_" + name for name in (
+                            "VERTEX", "EDGE", "WIRE", "FACE", "SHELL", "SOLID",
+                            "COMPSOLID", "COMPOUND", "SHAPE"))),
+                    ) for name in names
+                )
+                callables = []
+                for _owner, _name, provider in bindings:
+                    if inspect.isfunction(provider):
+                        if not _stock_function(provider, "enum", provider.__qualname__):
+                            return
+                        guard = _CallableGuard.capture(provider)
+                        if guard is None:
+                            return
+                        callables.append(guard)
+                edge_view_guard = _CallableGuard.capture(_edge_view)
+                if edge_view_guard is None:
+                    return
+                callables.append(edge_view_guard)
+                binding_globals = []
+                seen_globals = set()
+                for guard in callables:
+                    function = guard.function
+                    namespace = function.__globals__
+                    for name in function.__code__.co_names:
+                        if name not in namespace:
+                            continue
+                        key = (id(namespace), name)
+                        if key in seen_globals:
+                            continue
+                        seen_globals.add(key)
+                        value = namespace[name]
+                        binding_globals.append(
+                            (namespace, name, value, _closed_runtime_value(value)
+                             if type(value) in (tuple, list, dict, set, frozenset)
+                             else None))
+                self.proof = _Proof(
+                    self.stock._canonical_plan, tables, native, fields,
+                    bindings, tuple(callables), tuple(binding_globals), edge_downcast,
+                    self.original_providers,
+                    (self.frontend._native_originals["getattribute"],
+                     self.frontend._native_originals["wrapped"]),
+                    _edge_view)
+                _PROOFS[self._proof_key] = self.proof
+                while len(_PROOFS) > 8:
+                    _PROOFS.popitem(last=False)
         if self.proof is not None:
+            self._finalize_query_proofs()
+
+    def _finalize_query_proofs(self):
+        """Bind small canonical proofs to this session's fresh interceptors."""
+        bd, proof = self.bd, self.proof
+        if (not self.providers_match()
+                or len(self.original_providers) != len(proof.providers)
+                or any(owner is not expected_owner or name != expected_name
+                       or provider is not expected
+                       for (owner, name, provider),
+                           (expected_owner, expected_name, expected)
+                       in zip(self.original_providers, proof.providers))
+                or self.frontend._native_originals["getattribute"] is not proof.frontend_originals[0]
+                or self.frontend._native_originals["wrapped"] is not proof.frontend_originals[1]):
             return
-        if not self.stock.providers_match() or self.stock._canonical_plan is None:
-            return
-        from OCP import GeomAbs, TopAbs, gp
-        from .frontend import _stock_function
-        native = tuple(
-            (owner, name, inspect.getattr_static(owner, name))
-            for owner, names in (
-                (gp.gp_Circ, ("Radius", "Axis", "Position")),
-                (gp.gp_Elips, ("Axis", "Position")),
-                (gp.gp_Ax1, ("Direction",)), (gp.gp_Ax2, ("Location",)),
-                (gp.gp_Pnt, ("XYZ",)), (gp.gp_Dir, ("XYZ",)),
-            ) for name in names
+        canonical = {(id(owner), name): provider
+                     for owner, name, provider in proof.providers}
+        adaptor = canonical[(id(bd.Edge), "geom_adaptor")]
+        wrapped = inspect.getattr_static(bd.Shape, "wrapped", _MISSING)
+        getattribute = tuple(
+            (owner, "__getattribute__", inspect.getattr_static(owner, "__getattribute__"))
+            for owner in (bd.Shape, bd.Edge, bd.Vector)
         )
-        if not all(type(provider).__name__ == "instancemethod"
-                   and type(owner).__module__ == "pybind11_builtins"
-                   for owner, _name, provider in native):
-            return
-        tables = tuple((name, _closed_runtime_value(inspect.getattr_static(self.bd.Shape, name)))
-                       for name in _TABLES)
-        fields = tuple((owner, name) for owner, names in (
-            *((owner, ("_wrapped",)) for owner in (
-                self.bd.Shape, self.bd.Vertex, self.bd.Edge, self.bd.Face,
-                self.bd.Solid, self.bd.Vector)),
-            (self.bd.Vertex, ("X", "Y", "Z")), (self.bd.Face, ("created_on",)),
-            (self.bd.Vector, ("vector_index",)),
-        ) for name in names)
-        if any(inspect.getattr_static(owner, name, _MISSING) is not _MISSING
-               for owner, name in fields):
-            return
-        # Stock methods also compare/format enums and dynamically dereference
-        # module constants. Those operations can invoke authored Python just as
-        # a replaced geometry descriptor can; object identity alone is not a
-        # proof for a Python function whose code can change in place.
-        bindings = tuple((owner, name, inspect.getattr_static(owner, name, _MISSING))
-                         for owner, names in (
-            (self.bd, ("GeomType",)),
-            (self.bd.GeomType, ("__eq__", "__ne__", "__hash__", "__str__", "__format__",
-                                "__getattribute__", "CIRCLE", "ELLIPSE")),
-            (type(self.bd.GeomType), ("__getattribute__", "__getattr__")),
-            *((owner, ("__eq__", "__ne__", "__hash__")) for owner in (
-                TopAbs.TopAbs_ShapeEnum, GeomAbs.GeomAbs_CurveType, GeomAbs.GeomAbs_SurfaceType)),
-            (TopAbs, tuple("TopAbs_" + name for name in (
-                "VERTEX", "EDGE", "WIRE", "FACE", "SHELL", "SOLID",
-                "COMPSOLID", "COMPOUND", "SHAPE"))),
-        ) for name in names)
-        callables = []
-        for _owner, _name, provider in bindings:
-            if inspect.isfunction(provider):
-                if not _stock_function(provider, "enum", provider.__qualname__):
-                    return
-                guard = _CallableGuard.capture(provider)
-                if guard is None:
-                    return
-                callables.append(guard)
-        self.proof = _Proof(self.stock._canonical_plan, tables, native, fields,
-                            bindings, tuple(callables))
-        _PROOFS[self._proof_key] = self.proof
-        while len(_PROOFS) > 8:
-            _PROOFS.popitem(last=False)
+        present_bindings = tuple(
+            (owner, name, expected) for owner, name, expected in proof.bindings
+            if expected is not _MISSING
+        )
+        absent_bindings = tuple(
+            (owner, name) for owner, name, expected in proof.bindings
+            if expected is _MISSING
+        )
+        common = (
+            *proof.native,
+            *present_bindings,
+            *((bd.Shape, name, value, state) for name, value, state in proof.tables),
+            (bd, "Edge", bd.Edge),
+            (bd.Edge, "geom_adaptor", adaptor),
+            (bd.Shape, "wrapped", wrapped),
+            (bd.Edge, "wrapped", inspect.getattr_static(bd.Edge, "wrapped", _MISSING)),
+            (bd.Edge, "__dict__", inspect.getattr_static(bd.Edge, "__dict__", _MISSING)),
+            proof.edge_downcast,
+            *getattribute,
+        )
+        vector = tuple(
+            (bd.Vector, name, inspect.getattr_static(bd.Vector, name, _MISSING))
+            for name in ("__init__", "__getattribute__", "__setattr__", "wrapped")
+        )
+        original = self.original
+        edge_view = proof.edge_view
+        operations = {
+            "geom_type": ((original["geom_type"], edge_view), ()),
+            "radius": ((original["radius"], adaptor, edge_view), ()),
+            "arc_center": (
+                (original["arc_center"], original["geom_type"], adaptor, edge_view),
+                (*vector,
+                 (bd.Shape, "geom_type", self.installed.get("geom_type")),
+                 (bd.Edge, "geom_type", self.installed.get("geom_type"))),
+            ),
+            "normal": (
+                (original["normal"], original["geom_type"], adaptor, edge_view),
+                (*vector,
+                 (bd.Shape, "geom_type", self.installed.get("geom_type")),
+                 (bd.Edge, "geom_type", self.installed.get("geom_type"))),
+            ),
+        }
+        for name, (entries, extra) in operations.items():
+            installed = self.installed.get(name)
+            if installed is None:
+                continue
+            operation = OperationProviderProof.capture(
+                proof.plan, entries,
+                descriptors=(*common, *extra, (
+                    bd.Shape if name == "geom_type" else
+                    self.frontend._topology.Mixin1D if name in ("radius", "normal") else
+                    bd.Edge,
+                    name,
+                    installed,
+                )),
+                absent=(*proof.fields, *absent_bindings),
+                callable_guards=proof.callables,
+                global_baselines=proof.binding_globals,
+            )
+            if operation is not None:
+                self.query_proofs[name] = operation
 
     def providers_match(self):
         if self.proof is None:
@@ -163,8 +303,9 @@ class SelectionAdapter:
             self.stock.finalize_frontend_guards()
         try:
             return (self.stock.providers_match()
-                    and all(_closed_runtime_value(inspect.getattr_static(self.bd.Shape, name)) == value
-                            for name, value in self.proof.tables)
+                    and all(inspect.getattr_static(self.bd.Shape, name) is expected
+                            and _closed_runtime_value(expected) == value
+                            for name, expected, value in self.proof.tables)
                     and all(inspect.getattr_static(owner, name, _MISSING) is provider
                             for owner, name, provider in self.proof.native)
                     and all(inspect.getattr_static(owner, name, _MISSING) is _MISSING
@@ -174,6 +315,10 @@ class SelectionAdapter:
                     and all(guard.matches() for guard in self.proof.callables))
         except (AttributeError, ValueError):
             return False
+
+    def query_providers_match(self, name):
+        proof = self.query_proofs.get(name)
+        return proof is not None and proof.matches()
 
     def allows_access(self, shape, name):
         # A shadowing authored callable must see a private native wrapper even
@@ -278,13 +423,16 @@ class SelectionAdapter:
         if state is None or frontend._compute_depth:
             return original(shape)
         if (state.private or type(shape) is not self.bd.Edge
-                or not frontend.active or not self.providers_match()):
+                or not frontend.active or not self.query_providers_match(name)):
             return original(frontend._escape_shape(shape))
+        downcast = self.proof.edge_downcast[2]
+        edge_view = self.proof.edge_view
         handle = frontend._geometry_handle(shape)
         if name == "normal":
             geom_type = tx.query(handle, lambda native: frontend._inside_compute(
-                self.original["geom_type"].fget, frontend._wrap_native(native)))
+                self.original["geom_type"].fget,
+                edge_view(self.bd.Edge, downcast, native)))
             if geom_type not in (self.bd.GeomType.CIRCLE, self.bd.GeomType.ELLIPSE):
                 return original(frontend._escape_shape(shape))
         return tx.query(handle, lambda native: frontend._inside_compute(
-            original, frontend._wrap_native(native)))
+            original, edge_view(self.bd.Edge, downcast, native)))

@@ -1,6 +1,7 @@
 """Stock topology ordering, analytic values and private alias boundaries."""
 from __future__ import annotations
 
+import inspect
 import unittest
 from unittest.mock import patch
 
@@ -130,7 +131,8 @@ class SelectionTests(unittest.TestCase):
             tx.commit()
         with document.begin() as tx:
             with FrontendSession(tx) as frontend:
-                self.assertIsNone(frontend._selection.stock)
+                self.assertIsNotNone(frontend._selection.stock)
+                self.assertTrue(frontend._selection.query_providers_match("radius"))
                 part = bd.Cylinder(2, 3)
                 original = bd.Edge.geom_adaptor
                 observed = []
@@ -141,6 +143,136 @@ class SelectionTests(unittest.TestCase):
                     self.assertEqual(2, part.edges()[0].radius)
                 self.assertTrue(observed)
                 self.assertTrue(all(observed))
+
+    def test_scalar_query_rejects_preentry_adaptor_alias_replacement(self):
+        from build123d.topology import one_d
+
+        document = Document("selection-preentry-alias-proof")
+        with document.begin() as tx:
+            with FrontendSession(tx):
+                edge = bd.Cylinder(2, 3).edges()[0]
+                self.assertEqual(2, edge.radius)
+                retained = tx.document._get(_state(edge).handle).shape
+            tx.commit()
+
+        original = one_d.BRepAdaptor_Curve
+        observed = []
+        current = [None]
+        class AuthoredCurve:
+            def __new__(cls, native):
+                frontend = current[0]
+                observed.append(
+                    (_state(edge).private, frontend._compute_depth,
+                     native.IsSame(retained)))
+                return original(native)
+
+        with patch.object(one_d, "BRepAdaptor_Curve", AuthoredCurve):
+            with document.begin() as tx:
+                with FrontendSession(tx) as frontend:
+                    current[0] = frontend
+                    self.assertFalse(
+                        frontend._selection.query_providers_match("radius"))
+                    self.assertEqual(2, edge.radius)
+                tx.commit()
+        self.assertEqual([(True, 0, False)], observed)
+
+    def test_scalar_query_uses_its_live_proof_without_full_builder_revalidation(self):
+        with Document("narrow-selection-proof").begin() as tx:
+            with FrontendSession(tx) as frontend:
+                edge = bd.Cylinder(2, 3).edges()[0]
+                stock = frontend._selection.stock
+                self.assertIsNotNone(stock)
+                with patch.object(
+                        stock, "providers_match",
+                        side_effect=AssertionError("scalar query used the full builder proof")):
+                    self.assertEqual(2, edge.radius)
+                self.assertFalse(_state(edge).private)
+                self.assertFalse(tx.escape_arena.active)
+
+    def test_scalar_query_rechecks_original_function_body_on_every_call(self):
+        with Document("selection-function-body-proof").begin() as tx:
+            with FrontendSession(tx) as frontend:
+                edge = bd.Cylinder(2, 3).edges()[0]
+                self.assertEqual(2, edge.radius)
+                function = frontend._selection.original["radius"].fget
+                namespace = function.__globals__
+                observed = []
+                namespace["_cadgen_test_observed"] = observed
+                namespace["_cadgen_test_state"] = _state
+                def changed(shape):
+                    _cadgen_test_observed.append(
+                        (_cadgen_test_state(shape).private, shape.wrapped is not None))
+                    return 31
+                code = function.__code__
+                try:
+                    function.__code__ = changed.__code__
+                    self.assertEqual(31, edge.radius)
+                finally:
+                    function.__code__ = code
+                    namespace.pop("_cadgen_test_observed", None)
+                    namespace.pop("_cadgen_test_state", None)
+                self.assertEqual([(True, True)], observed)
+
+    def test_scalar_query_avoids_part_cast_and_rejects_concrete_wrapped_shadow(self):
+        with Document("selection-minimal-edge-view").begin() as tx:
+            with FrontendSession(tx) as frontend:
+                edge = bd.Cylinder(2, 3).edges()[0]
+                retained = tx.document._get(_state(edge).handle).shape
+                cast_calls = []
+                def cast(native):
+                    cast_calls.append(native)
+                    return bd.Edge(native)
+                with patch.object(bd.Part, "cast", staticmethod(cast)):
+                    self.assertEqual(2, edge.radius)
+                self.assertEqual([], cast_calls)
+                self.assertFalse(_state(edge).private)
+
+                wrapped = inspect.getattr_static(bd.Edge, "wrapped")
+                observed = []
+                def authored(shape):
+                    native = wrapped.fget(shape)
+                    observed.append(
+                        (_state(shape).private, frontend._compute_depth,
+                         native.IsSame(retained)))
+                    return native
+                with patch.object(
+                        bd.Edge, "wrapped", property(authored, wrapped.fset)):
+                    self.assertEqual(2, edge.radius)
+                self.assertEqual([(True, 0, False)], observed)
+
+    def test_scalar_query_rejects_native_attribute_dispatch_replacement(self):
+        from OCP.BRepAdaptor import BRepAdaptor_Curve
+
+        with Document("selection-native-dispatch-proof").begin() as tx:
+            with FrontendSession(tx) as frontend:
+                edge = bd.Cylinder(2, 3).edges()[0]
+                retained = tx.document._get(_state(edge).handle).shape
+                self.assertEqual(2, edge.radius)
+                getattribute = inspect.getattr_static(
+                    BRepAdaptor_Curve, "__getattribute__")
+                observed = []
+                def authored(adaptor, name):
+                    if name == "GetType":
+                        native = getattribute(adaptor, "Edge")()
+                        observed.append(
+                            (_state(edge).private, frontend._compute_depth,
+                             native.IsSame(retained)))
+                    return getattribute(adaptor, name)
+                with patch.object(BRepAdaptor_Curve, "__getattribute__", authored):
+                    self.assertEqual(2, edge.radius)
+                self.assertEqual([(True, 0, False)], observed)
+
+    def test_scalar_query_downcasts_a_generic_captured_edge_without_escape(self):
+        stock = bd.Edge.make_circle(3)
+        with Document("selection-generic-edge-root").begin() as tx:
+            handle = tx.capture(stock.wrapped)
+            with FrontendSession(tx) as frontend:
+                edge = object.__new__(bd.Edge)
+                frontend._init_empty(edge, "generic-edge", handle)
+                self.assertEqual(3, edge.radius)
+                self.assertEqual(tuple(stock.arc_center), tuple(edge.arc_center))
+                self.assertFalse(_state(edge).private)
+                self.assertFalse(tx.escape_arena.active)
 
     def test_query_value_constructor_descriptor_and_subclass_escape(self):
         for kind in ("descriptor", "subclass"):
