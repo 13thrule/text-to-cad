@@ -53,7 +53,18 @@ class NativeArtifactTransport(unittest.TestCase):
         deadline = time.monotonic() + timeout
         while not predicate() and time.monotonic() < deadline:
             time.sleep(0.005)
-        self.assertTrue(predicate(), message)
+        self.assertTrue(predicate(), message() if callable(message) else message)
+
+    @staticmethod
+    def stop_process(process):
+        if process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
 
     def settled(self):
         def idle():
@@ -191,9 +202,13 @@ surfaces.derive=derive
             self.assertEqual(self.private.broker.snapshot()["granted"], 6, "inline nested native identity acquired an extra slot")
 
     def test_real_transient_surface_keeps_coalesced_native_work_after_owner_detach(self):
-        entered, release = self.root / "native-entered", self.root / "native-release"
+        entered = self.root / "native-entered"
+        release = self.root / "native-release"
+        derived = self.root / "native-derived"
         script = self.source_guard() + f"""
 import time
+import build123d
+from cadgen._internal import component_package,surface_extract
 from cadgen.daemon import artifacts,broker
 from cadgen.store import surfaces
 original=surfaces.derive
@@ -204,7 +219,9 @@ def derive(*args,**kwargs):
     while not Path({str(release)!r}).exists():
         if time.monotonic()>deadline: raise RuntimeError('test barrier')
         time.sleep(.005)
-    return original(*args,**kwargs)
+    result=original(*args,**kwargs)
+    Path({str(derived)!r}).write_text('derived')
+    return result
 surfaces.derive=derive
 raise SystemExit(artifacts._main())
 """
@@ -214,12 +231,22 @@ raise SystemExit(artifacts._main())
             self.assertEqual(argv, [sys.executable, "-m", "cadgen.daemon.artifacts"])
             process = original_popen([sys.executable, "-c", script], **kwargs)
             processes.append(process)
+            self.addCleanup(self.stop_process, process)
             return process
 
         with mock.patch.object(artifacts.subprocess, "Popen", side_effect=start):
             first = artifacts.submit_artifact(self.request, store_root=self.store)
             self.addCleanup(first.detach)
-            self.wait_for(entered.exists, "native worker did not acquire its lease")
+            self.wait_for(
+                lambda: entered.exists() or first.done(),
+                lambda: "native worker did not acquire its lease after cold native startup: "
+                f"child={processes[0].poll() if processes else 'not started'}, "
+                f"broker={self.private.broker.snapshot()}, future_done={first.done()}",
+                timeout=60,
+            )
+            if not entered.exists():
+                first.result()
+                self.fail("native worker completed without entering the guarded derivation")
             second = artifacts.submit_artifact(copy.deepcopy(self.request), store_root=self.store)
             self.addCleanup(second.detach)
             self.wait_for(lambda: self.private.broker.snapshot()["coalesced"] == 1, "second subscriber did not attach")
@@ -228,7 +255,27 @@ raise SystemExit(artifacts._main())
                 first.result()
             self.assertIsNone(processes[0].poll())
             release.write_text("continue", encoding="utf-8")
-            result = second.result(20)
+
+            # The entered marker is deliberately emitted after the child's lazy native
+            # imports. This test owns the detach/result handoff, not a cold OCP
+            # startup benchmark. Separate real surface derivation from broker
+            # delivery so a failure names the stalled phase and its live state.
+            self.wait_for(
+                lambda: derived.exists() or second.done(),
+                lambda: "native surface derivation did not finish after owner detach: "
+                f"child={processes[0].poll()}, broker={self.private.broker.snapshot()}, "
+                f"future_done={second.done()}",
+                timeout=60,
+            )
+            if not derived.exists():
+                second.result()
+                self.fail("native artifact completed without the guarded derivation marker")
+            self.wait_for(
+                second.done,
+                lambda: "derived native surface was not delivered to its attached subscriber: "
+                f"child={processes[0].poll()}, broker={self.private.broker.snapshot()}",
+            )
+            result = second.result()
             self.assert_geometry_and_result(result)
             self.wait_for(lambda: all(process.poll() is not None for process in processes), "native child remained alive")
         self.assertEqual(len(processes), 1)
