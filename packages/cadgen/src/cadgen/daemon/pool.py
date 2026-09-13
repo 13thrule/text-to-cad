@@ -36,6 +36,7 @@ import os
 import queue
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -146,6 +147,10 @@ class Worker:
         self.proc = subprocess.Popen(
             [sys.executable, "-m", "cadgen.daemon.worker"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=None,
+            # Spares can remain idle before their first request.  Start them in the
+            # same stable directory worker._park uses between jobs so they never pin
+            # the daemon launcher's project cwd on Windows.
+            cwd=tempfile.gettempdir(),
             # utf-8 EXPLICITLY: this pipe carries JSON frames and the worker encodes
             # utf-8 (worker.serve), so neither end infers the platform code page.
             env=env, text=True, encoding="utf-8", errors="backslashreplace", bufsize=1,

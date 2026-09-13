@@ -44,7 +44,7 @@ sys.meta_path.insert(0, NoKernel())
 from cadgen.snapshot_cli import _ensure_snapshot_step_artifact
 from cadgen.step_targets import ResolvedStepTarget
 
-document = Path("/selected.step")
+document = Path("/selected.step").resolve()
 target = ResolvedStepTarget("selected", document, document)
 pin = ("a" * 64, "b" * 64)
 descriptor = {"documentHash": pin[0], "tree": pin[1], "components": {}, "occurrences": []}

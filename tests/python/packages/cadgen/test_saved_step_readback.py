@@ -433,7 +433,7 @@ class SavedStepReadbackTest(unittest.TestCase):
                     return
                 path = os.path.abspath(os.fsdecode(args[0]))
                 write_only = (event == "open" and len(args) > 2 and isinstance(args[2], int)
-                              and args[2] & os.O_ACCMODE == os.O_WRONLY)
+                              and args[2] & (os.O_WRONLY | os.O_RDWR) == os.O_WRONLY)
                 if not write_only and any(path == prefix or path.startswith(prefix + os.sep) for prefix in forbidden):
                     raise AssertionError("saved reader read code index: " + path)
             sys.addaudithook(guard)
@@ -523,6 +523,54 @@ class SavedStepReadbackTest(unittest.TestCase):
             "repaired": ["tree", "brep", "unreadable-brep"],
             "forced": True, "codeIndexReadsForbidden": True,
         })
+
+
+class NativePlacementValidationTest(unittest.TestCase):
+    def setUp(self):
+        # Finish provider imports before replacing gp_Trsf, so a lazy import
+        # cannot retain the test's fake constructor after the patch ends.
+        __import__("build123d")
+
+    def test_construction_error_without_standard_failure_parent_repairs_saved_readback(self):
+        from OCP import Standard, gp
+        from cadgen._internal import step_scene_package
+        from cadgen.store.materialize import _location_from_matrix
+
+        # Some OCP wheels register this directly under Exception rather than
+        # Standard_Failure. The actual zero-determinant fixture above must get
+        # the same saved-byte repair path with either binding hierarchy.
+        class ConstructionError(Exception):
+            pass
+
+        failure = ConstructionError("gp_Trsf::SetValues, null determinant")
+        transform = mock.Mock()
+        transform.SetValues.side_effect = failure
+        matrix = [0.] * 12 + [0., 0., 0., 1.]
+        with mock.patch.object(Standard, "Standard_ConstructionError", ConstructionError), \
+                mock.patch.object(gp, "gp_Trsf", return_value=transform):
+            with self.assertRaisesRegex(ValueError, "invalid geometry transform") as raised:
+                _location_from_matrix(matrix)
+            self.assertIs(raised.exception.__cause__, failure)
+            with mock.patch("cadgen.store.records.tree_for_document_hash", return_value="a" * 64), \
+                    mock.patch.object(step_scene_package, "_readback_from_document_tree",
+                                      side_effect=lambda *args, **kwargs: _location_from_matrix(matrix)):
+                self.assertEqual(
+                    step_scene_package._lookup_document_readback(Path("unused.step"), step_hash="b" * 64),
+                    (None, True),
+                )
+
+    def test_unrelated_native_conversion_failures_propagate(self):
+        from OCP import gp
+        from cadgen.store.materialize import _location_from_matrix
+
+        for failure in (MemoryError("allocation"), SystemExit(17), KeyboardInterrupt(), RuntimeError("unexpected")):
+            with self.subTest(error=type(failure).__name__):
+                transform = mock.Mock()
+                transform.SetValues.side_effect = failure
+                with mock.patch.object(gp, "gp_Trsf", return_value=transform), \
+                        self.assertRaises(type(failure)) as raised:
+                    _location_from_matrix([0.] * 12)
+                self.assertIs(raised.exception, failure)
 
 
 class ObjectRepairTest(unittest.TestCase):

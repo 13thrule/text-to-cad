@@ -204,7 +204,16 @@ class _Daemon:
         self.log = daemon_client.log_path(self.address)
 
     def env(self) -> dict:
-        return {"CADGEN_DAEMON": "1", "CADGEN_DAEMON_SOCKET": str(self.address)}
+        return {
+            "CADGEN_DAEMON": "1",
+            "CADGEN_DAEMON_SOCKET": str(self.address),
+            # Compare the outputs of four small concurrent fixtures under a
+            # known, bounded budget. Host-sized defaults can legitimately
+            # reject that concurrency; memory admission has its own tests.
+            "CADGEN_MEMORY_MB": "8192",
+            "CADGEN_WORKER_MEMORY_MB": "512",
+            "CADGEN_DEPENDENCY_MEMORY_MB": "512",
+        }
 
     def __enter__(self):
         return self

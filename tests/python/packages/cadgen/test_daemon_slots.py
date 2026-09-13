@@ -178,6 +178,14 @@ class _Executor(unittest.TestCase):
             "CADGEN_CACHE_DIR": str(cls.work / "store"),
             "CADGEN_DAEMON_STATE_DIR": str(cls.work / "state"),
             "CADGEN_JOBS": str(cls.LIMIT),
+            # This fixture tests execution slots, including retained parents
+            # and overlapping child saves. Give its tiny solids an explicit
+            # bounded reservation instead of depending on host RAM and the
+            # production 2 GiB reservation for an arbitrary CAD model.
+            # Memory rejection itself is covered by test_daemon_memory.
+            "CADGEN_MEMORY_MB": "8192",
+            "CADGEN_WORKER_MEMORY_MB": "512",
+            "CADGEN_DEPENDENCY_MEMORY_MB": "512",
             "PYTHONPATH": os.pathsep.join(
                 [str(REPO_ROOT / "packages" / "cadgen" / "src")]
                 + [os.path.abspath(p) for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p]

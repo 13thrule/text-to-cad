@@ -39,7 +39,7 @@ class JobWatch(unittest.TestCase):
                 thread.join(timeout=2)
             self.assertNotEqual(before["jobsCursor"], result[0]["jobsCursor"])
             job = ledger.start(tool="run", subject="/part.py")
-        self.assertEqual(result[0]["jobs"][-1]["previews"]["/part.step"]["tree"], "tree")
+        self.assertEqual(result[0]["jobs"][-1]["previews"][os.path.realpath("/part.step")]["tree"], "tree")
 
     def test_snapshot_and_cursor_are_atomic_and_detached(self):
         ledger = JobLedger()

@@ -13,6 +13,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -359,6 +361,7 @@ def _connect_or_spawn(address: str) -> transport.Channel | None:
             process = _spawn_daemon(address)
             if process is None:
                 return None
+            _reap_detached(process)
         deadline = time.monotonic() + SPAWN_WAIT_SECONDS
         while time.monotonic() < deadline:
             try:
@@ -392,6 +395,25 @@ def _detach_kwargs() -> dict:
     return {"start_new_session": True}
 
 
+def _reap_detached(process: subprocess.Popen) -> None:
+    """Retain and eventually reap the daemon process the client started.
+
+    The daemon deliberately outlives this command, but dropping its ``Popen`` as soon as
+    the socket answers makes Python warn that the subprocess is still running.  A daemon
+    thread may wait for that detached process without keeping the client alive; it also
+    closes the Windows process handle promptly when the daemon eventually exits.
+    """
+    def wait() -> None:
+        with contextlib.suppress(OSError):
+            process.wait()
+
+    threading.Thread(
+        target=wait,
+        name=f"cadgen-daemon-{process.pid}",
+        daemon=True,
+    ).start()
+
+
 def _spawn_daemon(address: str) -> subprocess.Popen | None:
     from cadgen.daemon.executors import worker_env
 
@@ -412,6 +434,10 @@ def _spawn_daemon(address: str) -> subprocess.Popen | None:
                 stdin=subprocess.DEVNULL,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
+                # A resident daemon must not retain the project directory of the
+                # first model that happened to need it.  Windows refuses to remove a
+                # directory while any live process has it as cwd.
+                cwd=tempfile.gettempdir(),
                 env=env,
                 **_detach_kwargs(),
             )

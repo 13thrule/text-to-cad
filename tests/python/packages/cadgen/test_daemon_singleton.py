@@ -116,12 +116,14 @@ class SpawnElectionTest(unittest.TestCase):
 
         with mock.patch.object(transport, "spawn_lock", lambda key: transport.SingletonLock(lock_path)), \
                 mock.patch.object(client, "_spawn_daemon", fake_spawn), \
+                mock.patch.object(client, "_reap_detached") as reap, \
                 mock.patch.object(client, "_connect", fake_connect), \
                 mock.patch.object(client, "daemon_identity", lambda: "id"):
             with ThreadPoolExecutor(max_workers=8) as pool:
                 results = list(pool.map(lambda _: client._connect_or_spawn("/tmp/x.sock"), range(8)))
         self.assertEqual(results, ["channel"] * 8)
         self.assertEqual(len(spawns), 1, f"expected one spawn, got {len(spawns)}")
+        reap.assert_called_once_with(mock.ANY)
 
 
 if __name__ == "__main__":

@@ -17,6 +17,8 @@ import io
 import json
 import pathlib
 import sys
+import tempfile
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
@@ -109,6 +111,42 @@ class DeadWorkerMessage(unittest.TestCase):
         outcome, _out, err = self._run([{"stream": "stderr", "data": "hello\n"}, {"exit": 0}])
         self.assertEqual(outcome, 0)
         self.assertEqual(err, "hello\n")
+
+
+class ResidentProcessLifecycle(unittest.TestCase):
+    def test_the_daemon_starts_outside_the_callers_project_directory(self):
+        spawned = mock.Mock(pid=1234)
+        with tempfile.TemporaryDirectory(prefix="cadgen-daemon-launch-") as tmp, \
+                mock.patch.object(client.transport, "ensure_authkey"), \
+                mock.patch.object(client, "daemon_identity", return_value="test"), \
+                mock.patch.object(client, "log_path", return_value=pathlib.Path(tmp) / "daemon.log"), \
+                mock.patch.object(client.subprocess, "Popen", return_value=spawned) as popen:
+            # worker_env is imported inside the function, so patch its source.
+            from cadgen.daemon import executors
+
+            with mock.patch.object(executors, "worker_env", return_value={}):
+                self.assertIs(client._spawn_daemon("test-address"), spawned)
+
+        self.assertEqual(popen.call_args.kwargs["cwd"], tempfile.gettempdir())
+
+    def test_an_idle_spare_starts_outside_the_daemons_project_directory(self):
+        with io.StringIO('{"ready": 1234}\n') as stdout:
+            process = mock.Mock(stdout=stdout)
+            with mock.patch.object(pool_mod.subprocess, "Popen", return_value=process) as popen, \
+                    mock.patch.object(client, "daemon_address", return_value="test-address"):
+                worker = pool_mod.Worker()
+                worker._reader.join(timeout=1)
+                self.assertFalse(worker._reader.is_alive())
+        self.assertEqual(worker.pid, 1234)
+        self.assertEqual(popen.call_args.kwargs["cwd"], tempfile.gettempdir())
+
+    def test_the_daemon_popen_is_retained_by_an_owned_reaper(self):
+        process = mock.Mock(pid=4321)
+        finished = threading.Event()
+        process.wait.side_effect = lambda: finished.set()
+        client._reap_detached(process)
+        self.assertTrue(finished.wait(1.0), "the detached process was not handed to its reaper")
+        process.wait.assert_called_once_with()
 
 
 class ServerRelaysTheDeath(unittest.TestCase):
