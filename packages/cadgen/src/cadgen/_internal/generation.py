@@ -738,6 +738,38 @@ def _generate_step_outputs(
     logger: CliLogger | None = None,
     progress: object | None = None,
 ) -> GeneratedStepResult:
+    from cadgen._document.service import current_service
+
+    service = current_service()
+    if service is None or spec.source != "generated":
+        return _generate_step_outputs_impl(
+            spec, entries_by_step_path=entries_by_step_path,
+            force=force, logger=logger, progress=progress,
+        )
+    function = getattr(spec.generator_metadata, "entry_function", None)
+    if spec.script_path is None or not function:
+        raise RuntimeError("retained generation requires an explicit source entry")
+    outputs = tuple(str(export.path) for export in spec.mesh_exports)
+    if spec.step_output and spec.step_path is not None:
+        outputs = (str(spec.step_path), *outputs)
+    if spec.step_export_path is not None:
+        outputs = (*outputs, str(spec.step_export_path))
+    outputs = tuple(dict.fromkeys(str(Path(path).expanduser().resolve()) for path in outputs))
+    with service.build(spec.script_path, function, required_exports=outputs):
+        return _generate_step_outputs_impl(
+            spec, entries_by_step_path=entries_by_step_path,
+            force=True, logger=logger, progress=progress,
+        )
+
+
+def _generate_step_outputs_impl(
+    spec: EntrySpec,
+    *,
+    entries_by_step_path: dict[Path, EntrySpec],
+    force: bool = False,
+    logger: CliLogger | None = None,
+    progress: object | None = None,
+) -> GeneratedStepResult:
     preloaded_scene: LoadedStepScene | None = None
     # An on-demand output (mesh sidecar or --step export) must run even when the tree is
     # current, so its presence defeats the reuse fast path.
@@ -771,6 +803,14 @@ def _generate_step_outputs(
         "force": force,
         "progress": progress,
     }
+    from cadgen._document.service import current_attempt
+
+    if current_attempt() is not None:
+        # Retained execution always replays authored Python. That requirement
+        # does not invalidate exact byte-derived component or STEP readbacks.
+        # The fresh source scene still goes through normal capture, content
+        # identity, correspondence checks and complete output publication.
+        output_kwargs["force"] = False
     if logger is not None:
         output_kwargs["logger"] = logger
     if spec.source == "generated":
@@ -1329,6 +1369,12 @@ def generate_step_targets(
     logger's prose goes to stderr by design -- so without this a caller reading the streams
     apart had no machine-readable result at all.
     """
+    from cadgen._document.service import current_service
+
+    # A retained source run replays ordinary Python. Operation reuse must not
+    # let the legacy whole-program freshness gate hide source side effects.
+    if current_service() is not None:
+        force = True
     tool_name = "cadgen"
     logger = CliLogger("cadgen", verbose=verbose)
     reported: list[dict[str, object]] = []

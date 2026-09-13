@@ -1,8 +1,18 @@
 # Cadgen document engine: execution plan
 
-Status: proposed replacement architecture and implementation plan, 13 September 2026. This document does not report implemented functionality or measured future speedups. The existing runtime, including @memo, remains in place until the replacement passes its cutover gates.
+Status: implementation started, 13 September 2026. The rollback checkpoint is commit `5c4a212cae32e834fa4d805ae778ab5ee6cd71a2`, pushed and verified on `origin/codex/tendon-hand-performance` before implementation. P0/P1 are in progress; this document does not report the later phases or their target speedups as implemented. The old runtime is a temporary comparison path during development. It is deleted when the new public path lands, rather than retained as a fallback.
 
 This plan supersedes the architectural restrictions of the earlier performance plan for future work. Historical measurements remain evidence, not acceptance of this design. The user authorizes replacing the store, daemon internals and decorator-backed caching, removing @memo, and keeping the existing @step authoring interface. No old store or runtime compatibility is required.
+
+The hard cut is an implementation requirement, reaffirmed on 13 September: no compatibility aliases, old-schema readers, cache converters, migration messages, dual backend selection, or automatic retry through the retired engine. Reset incompatible derived storage and replace worker/client protocols together. Preserve durable source and exchange files. Unsupported Python/native operations execute privately within the new engine; they do not call the old cache backend. Rollback means checking out the pushed checkpoint, not maintaining another execution path in the final product.
+
+Implementation evidence so far:
+
+- P1's internal retained core, bounded build123d frontend, pinned consumers and declared-STEP integration pass 77 focused tests, including independent native-mutation review and source-independent saved-file readback. They are not yet the default execution path. The obsolete prototype occurrence channel has been deleted; the returned root is the sole scene authority.
+- The four-hole filleted plate and 24-occurrence assembly produce valid STEP files. Manual viewer review confirms component/face selection and geometric facts, complete Inspect/Render display, and successful shared snapshot output. This uses the existing downstream file/display pipeline; it does not establish the planned resident viewer-delta path.
+- A snapshot defect discovered during that review is fixed and pushed separately in `acb22f94e`: supersampling now preserves the requested output image dimensions. Shared JS tests (1,084), viewer tests (619), bundle freshness and an actual 1200×900 Final Render output passed.
+- The first matched full-build series exposed regressions and remains recorded as failed performance evidence. A native history-list traversal fix subsequently reduced a direct plate geometry diagnostic from 1.98 s to 35 ms while preserving exact history; this excludes command/export overhead. Corrected matched measurements are next. P1's performance gate and P2–P11 remain open; component counters or saved-file display success do not establish end-to-end parity.
+- The current generation bridge still materializes source geometry through the old scene/export pipeline solely to measure the same completed-output boundary. Replace that bridge with a publisher consuming a pinned returned root and the new store. Do not turn it into a cached mutable scene adapter or ship it as a fallback.
 
 ## 1. Outcome and scope
 
