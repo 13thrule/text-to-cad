@@ -220,6 +220,17 @@ test("output projection echo follows the per-output camera decision", () => {
   assert.equal(resolveOutputCameraProjection({ camera: { projection: "perspective" } }, "iso"), "perspective");
 });
 
+test("snapshot and shared CAD scene use the same appearance ink", () => {
+  for (const appearance of ["light", "dark"]) {
+    const mesh = twoPartMeshData();
+    const context = renderJobContext(mesh, { input: "part.step", kind: "step", appearance });
+    const scene = buildModel(THREE, mesh, modelOptionsForRenderJob(context));
+    assert.deepEqual(scene.runtime.edgeSettings.classes, context.edgeSettings.classes);
+    assert.equal(scene.runtime.edgeSettings.color, appearance === "dark" ? "#96a5b5" : "#253443");
+    scene.dispose();
+  }
+});
+
 test("snapshot scene policy separates normal CAD, Render quality, and technical quality", () => {
   const normal = renderJobContext(twoPartMeshData(), {});
   assert.equal(normal.sceneSettings.render.enabled, false);

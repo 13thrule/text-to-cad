@@ -501,11 +501,6 @@ function surfComponentMeshData() {
   };
 }
 
-function edgeColorAt(record, point) {
-  const color = record.edges.geometry.getAttribute("color");
-  return [0, 1, 2, 3].map((component) => color.array[point * 4 + component] / 65535);
-}
-
 function linearRgb(hex) {
   const color = new THREE.Color(hex);
   return [color.r, color.g, color.b];
@@ -542,11 +537,11 @@ test("buildModel draws a surf component's CAD edges as ONE instanced screen-spac
   assert.deepEqual(Array.from(segmentData.subarray(0, 8)), [0, 0, 0, 0, 1, 0, 0, 0], "segment 0: start + feature class, end");
   assert.deepEqual(Array.from(segmentData.subarray(24, 32)), [0, 1, 0, 1, 0, 0, 0, 0], "segment 3: the tangent edge (class 1)");
   const classColor = set.uniforms.cadClassColor.value.elements;
-  assertClose(classColor.slice(0, 3), linearRgb("#132232"), "feature class colour (linear)");
+  assertClose(classColor.slice(0, 3), linearRgb("#253443"), "feature class colour (linear)");
   assert.equal(classColor[3], 1, "feature opacity");
-  assertClose(classColor[7], 0.5, "tangent opacity");
+  assertClose(classColor[7], 1, "tangent opacity");
   // Class widths in pixels for the classes this component carries (no seams here); degenerate is off.
-  assert.deepEqual(set.uniforms.cadClassWidth.value.toArray(), [1.15, 1.15, 0, 0], "per-class thickness in pixels");
+  assert.deepEqual(set.uniforms.cadClassWidth.value.toArray(), [1, 0.65, 0, 0], "per-class thickness in pixels");
   assert.equal(set.material.glslVersion, THREE.GLSL3);
   assert.equal(set.material.transparent, true);
   assert.equal(set.material.depthTest, true);
@@ -806,18 +801,33 @@ test("a deformed tube leaves the instanced edge draw for a private, bendable lin
   assert.notDeepEqual(record.geometry.getAttribute("position").array, savedPositions);
   assert.deepEqual(sourceMesh.vertices, savedPositions);
   assert.deepEqual(sourceMesh.normals, savedNormals);
-  // The record left the instanced draw and bends a private, flattened GL_LINES
-  // copy that keeps the class colours; the shared points stay put.
+  // Each basic-only class has private segment positions and a mutable material;
+  // the component's shared points stay put.
   assert.equal(record.edgeInstance, null);
   assert.equal(set.liveCount, 0);
   assert.equal(set.geometry.instanceCount, 0);
-  assert.equal(record.edges.isLineSegments, true);
-  assert.equal(record.edgeMaterials.length, 1);
-  assert.equal(record.edgeMaterials[0].vertexColors, true);
-  const bentEdge = record.edges.geometry.getAttribute("position");
+  assert.equal(record.edges.isGroup, true);
+  assert.equal(record.edgeMaterials.length, 2);
+  assert.ok(record.edges.children.every((line) => line.isLineSegments));
+  const bentEdge = record.edges.children[0].geometry.getAttribute("position");
   assert.notEqual(bentEdge.array, sourceMesh.cadEdgePositions);
-  assert.equal(record.edges.geometry.index, null);
-  assert.equal(record.edges.geometry.getAttribute("color").count, bentEdge.count);
+  assert.notDeepEqual(Array.from(bentEdge.array).slice(0, 3), [0, 0, 0]);
+  assert.equal(record.edges.children[0].geometry.index, null);
+  const basicGeometries = record.edges.children.map((line) => line.geometry);
+  const basicMaterials = [...record.edgeMaterials];
+  const otherScene = buildModel(THREE, meshData, { appearance: "light", renderPartsIndividually: true });
+  const otherColors = [...otherScene.displayRecords[0].edgeInstance.set.uniforms.cadClassColor.value.elements];
+  scene.update({ appearance: "dark" });
+  assert.equal(scene.displayRecords[0], record);
+  assert.deepEqual(record.edges.children.map((line) => line.geometry), basicGeometries);
+  assert.deepEqual(record.edgeMaterials, basicMaterials);
+  assert.deepEqual(record.edgeMaterials.map((material) => material.color.getHexString()), ["96a5b5", "657787"]);
+  scene.update({ selection: { selectedPartIds: ["tube"] } });
+  assert.ok(record.edgeMaterials.every((material) => material.color.getHexString() === "8dc5ff"));
+  scene.update({ selection: { selectedPartIds: [] }, appearance: "light" });
+  assert.deepEqual(record.edgeMaterials.map((material) => material.color.getHexString()), ["253443", "667788"]);
+  assert.deepEqual(otherScene.displayRecords[0].edgeInstance.set.uniforms.cadClassColor.value.elements, otherColors);
+  otherScene.dispose();
   assert.deepEqual(sourceMesh.cadEdgePositions, savedEdgePositions);
   assert.deepEqual(record.edges.matrix.elements, record.mesh.matrix.elements);
   scene.dispose();
@@ -865,45 +875,43 @@ test("tube deformation writes indexed component geometry per shared vertex on th
   gpuScene.dispose();
 });
 
-test("buildModel rebuilds the instanced edge draw when edge class settings change", () => {
-  const theme = cloneThemePresetSettings("workbench-light");
-  const scene = buildModel(THREE, surfComponentMeshData(), {
-    theme,
-    displayMode: CAD_DISPLAY_MODE.SHADED_EDGES,
-    renderPartsIndividually: true
+test("appearance changes only CAD ink uniforms, retaining geometry, instance slots and segment textures", () => {
+  const source = surfComponentMeshData();
+  const scene = buildModel(THREE, source, {
+    appearance: "light", displayMode: CAD_DISPLAY_MODE.SHADED_EDGES, renderPartsIndividually: true
   });
-  const originalSet = scene.displayRecords[0].edgeInstance.set;
-  const originalSegments = originalSet.segments;
+  const original = scene.displayRecords[0];
+  const { set, slot } = original.edgeInstance;
+  const segments = set.segments;
+  const geometry = original.geometry;
+  const second = buildModel(THREE, source, { appearance: "dark", renderPartsIndividually: true });
+  assert.equal(second.displayRecords[0].edgeInstance.set.segments, segments, "separate themes share geometric segment texture");
+  for (const appearance of ["dark", "light"]) {
+    scene.update({ appearance });
+    const record = scene.displayRecords[0];
+    assert.equal(record, original);
+    assert.equal(record.geometry, geometry);
+    assert.equal(record.edgeInstance.set, set);
+    assert.equal(record.edgeInstance.slot, slot);
+    assert.equal(set.segments, segments);
+    assertClose(set.uniforms.cadClassColor.value.elements.slice(0, 3), linearRgb(appearance === "dark" ? "#96a5b5" : "#253443"), "current palette");
+    assert.deepEqual(set.uniforms.cadClassWidth.value.toArray(), [1, 0.65, 0, 0]);
+  }
+  second.dispose();
+  scene.dispose();
+});
 
-  scene.update({
-    displayMode: CAD_DISPLAY_MODE.SHADED_EDGES,
-    theme,
-    edgeSettings: {
-        ...DEFAULT_DISPLAY_EDGE_SETTINGS,
-        color: "#0055ff",
-        classes: {
-          ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes,
-          tangent: {
-            ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes.tangent,
-            thickness: 0
-          },
-          feature: {
-            ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes.feature,
-            thickness: 2.5
-          }
-        }
-      }
+test("wireframe appearance updates fixed ink without rebuilding its geometry", () => {
+  const scene = buildModel(THREE, sampleMeshData(), {
+    appearance: "light", displayMode: CAD_DISPLAY_MODE.WIREFRAME,
+    edgeRendering: { mode: "screen-space", LineSegments2, LineSegmentsGeometry, LineMaterial }
   });
-
-  const set = scene.displayRecords[0].edgeInstance.set;
-  assert.notEqual(set, originalSet);
-  assert.equal(originalSet.disposed, true, "the previous style's set is disposed with its records");
-  assert.notEqual(set.segments, originalSegments, "a new class style is a new segment texture");
-  assert.equal(set.segments.segmentCount, 3, "tangent switched off: only the three feature segments remain");
-  assert.equal(set.uniforms.cadClassWidth.value.x, 2.5, "feature thickness follows the class setting");
-  assert.equal(scene.edgesGroup.children.length, 1);
-  scene.update({ theme, edgeSettings: DEFAULT_DISPLAY_EDGE_SETTINGS });
-  assert.equal(scene.displayRecords[0].edgeInstance.set.segments, originalSegments, "the previous style's segment texture is cached");
+  const record = scene.displayRecords[0];
+  const geometry = record.edges.geometry;
+  scene.update({ appearance: "dark", edgeRendering: { mode: "screen-space", LineSegments2, LineSegmentsGeometry, LineMaterial, wireframeEdgeColor: "#96a5b5" } });
+  assert.equal(scene.displayRecords[0], record);
+  assert.equal(record.edges.geometry, geometry);
+  assert.equal(record.edges.material.color.getHexString(), "96a5b5");
   scene.dispose();
 });
 
@@ -1856,18 +1864,11 @@ test("a deformed tube's private edges keep per-class thickness", () => {
   const scene = buildModel(THREE, meshData, {
     renderPartsIndividually: true,
     edgeRendering: { LineSegments2, LineSegmentsGeometry, LineMaterial },
-    edgeSettings: {
-      ...DEFAULT_DISPLAY_EDGE_SETTINGS,
-      classes: {
-        ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes,
-        feature: { ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes.feature, thickness: 2.5 },
-        tangent: { ...DEFAULT_DISPLAY_EDGE_SETTINGS.classes.tangent, thickness: 0.75 }
-      }
-    }
+    appearance: "light"
   });
   const record = scene.displayRecords[0];
   const set = record.edgeInstance.set;
-  assert.equal(set.uniforms.cadClassWidth.value.x, 2.5, "instanced feature edges take the class width");
+  assert.equal(set.uniforms.cadClassWidth.value.x, 1, "instanced feature edges take the class width");
   record.gpuTubeDeformationAllowed = false;
   const rest = { normal: [0, 0, 1], segments: [{ kind: "line", start: [0, 0, 0], end: [3, 0, 0] }] };
   const path = { normal: [0, 0, 1], segments: [{ kind: "line", start: [0, 0, 2], end: [0, 3, 2] }] };
@@ -1878,11 +1879,14 @@ test("a deformed tube's private edges keep per-class thickness", () => {
   assert.equal(record.edgeInstance, null);
   assert.equal(record.edges.isGroup, true);
   assert.deepEqual(record.edges.children.map((line) => line instanceof LineSegments2), [true, true]);
-  assert.deepEqual(record.edgeMaterials.map((material) => material.linewidth), [2.5, 0.75]);
+  assert.deepEqual(record.edgeMaterials.map((material) => material.linewidth), [1, 0.65]);
   assert.ok(
     record.edgeMaterials.every((material) => scene.runtime.screenSpaceLineMaterials.has(material)),
     "both are resolution-synced with the viewport"
   );
+  applyPartVisualState(THREE, [record], { edgeSettings: scene.runtime.edgeSettings });
+  assert.deepEqual(record.edgeMaterials.map((material) => material.color.getHexString()), ["253443", "667788"], "ordinary visual updates preserve class colours");
+  const privateGeometry = record.edges.children.map((line) => line.geometry);
   // Deformation moves the fat lines' own endpoint attributes.
   const bent = record.edges.children[0].geometry.attributes.instanceStart;
   assert.ok(bent, "screen-space geometry carries instanceStart/instanceEnd");
@@ -1893,8 +1897,11 @@ test("a deformed tube's private edges keep per-class thickness", () => {
   // return to the component's own points at their class widths.
   applyRecordTubeDeformation(THREE, record, null);
   assert.equal(record.edges.isGroup, true);
-  assert.deepEqual(record.edgeMaterials.map((material) => material.linewidth), [2.5, 0.75]);
+  assert.deepEqual(record.edgeMaterials.map((material) => material.linewidth), [1, 0.65]);
   assert.deepEqual(Array.from(record.edges.children[0].geometry.attributes.instanceStart.data.array).slice(0, 3), [0, 0, 0]);
+  scene.update({ appearance: "dark" });
+  assert.deepEqual(record.edges.children.map((line) => line.geometry), privateGeometry);
+  assert.deepEqual(record.edgeMaterials.map((material) => material.color.getHexString()), ["96a5b5", "657787"]);
   scene.dispose();
 });
 

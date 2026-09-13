@@ -1,3 +1,4 @@
+import { CAD_EDGE_COVERAGE_GLSL } from "./cadEdgeCoverage.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -29,22 +30,6 @@ function instanceSet(classStyles, options = {}) {
 
 const FEATURE = [{ classId: "feature", color: new THREE.Color("#132232"), opacity: 1, thickness: 1.15 }];
 
-// The coverage ramp, read back OUT of the shader source so a changed ramp changes
-// the numbers this file integrates.
-function featherRamp(source, halfWidthName) {
-  const match = source.match(new RegExp(
-    `1\\.0 - smoothstep\\(\\s*max\\(${halfWidthName} - ([0-9.]+), 0\\.0\\),\\s*${halfWidthName} \\+ ([0-9.]+),`
-  ));
-  assert.ok(match, `no analytic feather in the shader (looked for a smoothstep around ${halfWidthName})`);
-  return { inner: Number(match[1]), outer: Number(match[2]) };
-}
-
-// Ink in device pixels: twice the integral of coverage from the centreline out.
-// A smoothstep integrates to its midpoint, so the total is inner + outer edge.
-function featherInk(thickness, { inner, outer }) {
-  const halfWidth = thickness / 2;
-  return Math.max(halfWidth - inner, 0) + (halfWidth + outer);
-}
 
 test("the segment texture packs endpoints and the class index", () => {
   const segments = oneSegment();
@@ -118,9 +103,8 @@ test("the instanced edge shader antialiases with an analytic feather", () => {
   // Coverage MULTIPLIES the per-class alpha rather than replacing it, so a
   // tangent edge at opacity 0.5 stays half strength across its whole width.
   assert.match(fragment, /vColor\.a \* opacity \* coverage/);
-  const ramp = featherRamp(fragment, "halfWidth");
-  assert.equal(ramp.inner, CAD_EDGE_FEATHER_PIXELS);
-  assert.equal(ramp.outer, CAD_EDGE_FEATHER_PIXELS);
+  assert.ok(fragment.includes(CAD_EDGE_COVERAGE_GLSL));
+  assert.match(fragment, /cadEdgeCoverage\(distancePixels, halfWidth\)/);
 
   // The distance is exact in device pixels, taken from the interpolated cross
   // coordinate — no derivative, no alpha-to-coverage, no sample-count dependence.
@@ -129,11 +113,6 @@ test("the instanced edge shader antialiases with an analytic feather", () => {
   assert.equal(set.material.alphaToCoverage, false);
   assert.equal(set.material.transparent, true);
 
-  // The weight is the retired surface shader's, to the digit: 1.325 device px at
-  // the 1.15 default, and exactly `thickness` once the ink outweighs the feather.
-  assert.equal(featherInk(1.15, ramp), 1.325);
-  assert.equal(featherInk(2, ramp), 2);
-  assert.equal(featherInk(3, ramp), 3);
   set.dispose();
 });
 

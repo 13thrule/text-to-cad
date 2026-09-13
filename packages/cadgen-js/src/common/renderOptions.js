@@ -1,3 +1,5 @@
+import { resolveCadGridSettings } from "./cadInk.js";
+import { buildGridConfig } from "../lib/viewer/stageGrid.js";
 import * as THREE from "three";
 import {
   RENDER_CAMERA_PRESETS,
@@ -14,8 +16,6 @@ import {
   DEFAULT_FLOOR_GRID_SETTINGS,
   DEFAULT_RIM_LIGHT_SETTINGS,
   FLOOR_AXIS_RADIUS_MULTIPLE,
-  MAX_FLOOR_GRID_DENSITY,
-  MIN_FLOOR_GRID_DENSITY,
   THEME_FLOOR_MODES,
   normalizeThemeSettings,
   resolveThemeSettingsForColorMode
@@ -367,9 +367,7 @@ export function addFloor(scene, bounds, themeSettings, sceneScale, settingsBySca
       && mode !== THEME_FLOOR_MODES.NONE
       && mode !== THEME_FLOOR_MODES.GRID
   );
-  const gridSettings = guideSettings?.grid && typeof guideSettings.grid === "object" && !Array.isArray(guideSettings.grid)
-    ? guideSettings.grid
-    : {};
+  const gridSettings = resolveCadGridSettings(guideSettings?.grid, { colorMode: themeSettings.colorMode });
   const gridEnabled = gridSettings.enabled === true;
   const axisSettings = guideSettings?.axis && typeof guideSettings.axis === "object" && !Array.isArray(guideSettings.axis)
     ? guideSettings.axis
@@ -392,18 +390,13 @@ export function addFloor(scene, bounds, themeSettings, sceneScale, settingsBySca
   // are independent scene references and always stay at the world origin.
   const followModel = floorEnabled && floor.followModel !== false;
   const minZ = followModel ? Math.min(0, boundsMinZ) : 0;
-  const gridSize = Math.max(radius * 3, settings.minFloorSize);
   if (gridEnabled) {
-    const gridDensity = clamp(
-      toFiniteNumber(gridSettings.density, DEFAULT_FLOOR_GRID_SETTINGS.density),
-      MIN_FLOOR_GRID_DENSITY,
-      MAX_FLOOR_GRID_DENSITY
-    );
+    const gridConfig = buildGridConfig(radius, sceneScale);
     const grid = new THREE.GridHelper(
-      gridSize,
-      Math.max(8, Math.round(28 * gridDensity)),
-      gridSettings.centerColor || DEFAULT_FLOOR_GRID_SETTINGS.centerColor,
-      gridSettings.cellColor || DEFAULT_FLOOR_GRID_SETTINGS.cellColor
+      gridConfig.size,
+      gridConfig.divisions,
+      gridSettings.centerColor,
+      gridSettings.cellColor
     );
     const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
     for (const material of materials) {

@@ -30,6 +30,17 @@ test("live PBR edits retain the scene build identity", () => {
   assert.equal(after, before);
 });
 
+test("CAD appearance ink does not invalidate the scene build identity", () => {
+  const before = sceneBuildStructuralKey(STRUCTURAL_SETTINGS);
+  const after = sceneBuildStructuralKey({
+    ...STRUCTURAL_SETTINGS,
+    edgeSettings: { ...STRUCTURAL_SETTINGS.edgeSettings, color: "#c5ced8", thickness: 1,
+      classes: { feature: { color: "#c5ced8", thickness: 1, opacity: 1 } } },
+    wireframeEdgeColor: "#c5ced8"
+  });
+  assert.equal(after, before);
+});
+
 test("structural edge and display changes invalidate the scene build identity", () => {
   const before = sceneBuildStructuralKey(STRUCTURAL_SETTINGS);
 
@@ -40,7 +51,7 @@ test("structural edge and display changes invalidate the scene build identity", 
   assert.notEqual(
     sceneBuildStructuralKey({
       ...STRUCTURAL_SETTINGS,
-      edgeSettings: { ...STRUCTURAL_SETTINGS.edgeSettings, thickness: 2 }
+      edgeSettings: { ...STRUCTURAL_SETTINGS.edgeSettings, enabled: true }
     }),
     before
   );

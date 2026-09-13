@@ -1,3 +1,4 @@
+import { resolveCadEdgeSettings } from "./cadInk.js";
 import { applyRecordTubeDeformation } from "./tubeDeformation.js";
 import { syncRecordBaseEmissiveColor } from "./surfaceMaterialState.js";
 import { applyColorGrading } from "./colorGrading.js";
@@ -17,7 +18,7 @@ import {
   normalizeDisplayMode
 } from "./displaySettings.js";
 import {
-  createCadEdgeLineSegments,
+  createBasicLineSegments,
   createDisplayEdgeObject,
   createScreenSpaceLineSegments,
   syncRecordEdgeMaterials,
@@ -1600,7 +1601,7 @@ function cadEdgeLinesForPart(meshData, part) {
   return { owner: sourceMesh || cacheOwnerForMeshData(meshData), positions, indices, classRanges };
 }
 
-// A drawn edge class's style from display.edges.classes: colour, opacity and
+// A drawn edge class's resolved renderer style: colour, opacity and
 // screen-space thickness in pixels. Zero thickness or opacity hides the class.
 function cadEdgeClassStyle(THREE, edgeSettings, fallbackColor, classId) {
   const classSetting = edgeSettings?.classes?.[classId] || {};
@@ -1618,50 +1619,7 @@ function drawnCadEdgeClasses(THREE, runtime, cadEdges) {
   const drawn = cadEdges.classRanges
     .map((range) => ({ range, style: cadEdgeClassStyle(THREE, edgeSettings, fallbackColor, range.classId) }))
     .filter((entry) => entry.style);
-  const styleKey = drawn.map(({ range, style }) => `${range.classId}=${style.color.getHexString()}@${style.opacity}x${style.thickness}`).join(",");
-  return { drawn, styleKey };
-}
-
-// The GL_LINES form of a component's drawn edges, used only by records that
-// bend their edges with a tube deformation (their points move per pose, so
-// they cannot ride the instanced draw): the polyline points as `position`, the
-// segment pairs as the index and a Uint16-normalized linear RGBA `color` per
-// point carrying the class style. Cached on the component.
-function cadEdgeLineGeometry(THREE, runtime, cadEdges) {
-  const { drawn, styleKey } = drawnCadEdgeClasses(THREE, runtime, cadEdges);
-  if (!drawn.length) {
-    return null;
-  }
-  const cache = cacheForOwner(cadEdges.owner);
-  const edgeKey = `cad:${styleKey}`;
-  const cached = cache.edge.get(edgeKey);
-  if (cached) {
-    return cached;
-  }
-  let indices = cadEdges.indices;
-  if (drawn.length !== cadEdges.classRanges.length) {
-    indices = new Uint32Array(drawn.reduce((sum, { range }) => sum + range.segmentCount * 2, 0));
-    let cursor = 0;
-    for (const { range } of drawn) {
-      indices.set(cadEdges.indices.subarray(range.segmentStart * 2, (range.segmentStart + range.segmentCount) * 2), cursor);
-      cursor += range.segmentCount * 2;
-    }
-  }
-  const colors = new Uint16Array((cadEdges.positions.length / 3) * 4);
-  for (const { range, style } of drawn) {
-    const rgba = [style.color.r, style.color.g, style.color.b, style.opacity].map((value) => Math.round(clamp(value, 0, 1) * 65535));
-    for (let point = range.pointStart; point < range.pointStart + range.pointCount; point += 1) {
-      colors.set(rgba, point * 4);
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(cadEdges.positions, 3));
-  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 4, true));
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-  geometry.computeBoundingSphere();
-  markCachedGeometry(geometry);
-  cache.edge.set(edgeKey, geometry);
-  return geometry;
+  return { drawn };
 }
 
 // One drawn class's segments as the flat endpoint pairs a screen-space line
@@ -1682,13 +1640,11 @@ function cadEdgeClassPositions(cadEdges, range) {
 // A private edge object for one record (a deformed tube): its points move per
 // pose, so it cannot ride the component's instanced draw. One screen-space fat
 // line PER DRAWN CLASS, because a class's width is a material property and the
-// instanced path honours `display.edges.classes[*].thickness` — a tube drawn
-// with one vertex-coloured GL_LINES would be the only geometry in the model
-// whose edges ignore the thickness control, and on this model the tubes are
-// the tendons, the thing being looked at. Deformation recurses into the group
+// instanced path uses the same fixed per-class ink. Deformation recurses into the group
 // and moves LineSegments2 instanceStart/instanceEnd exactly as it moves plain
 // positions. Without the Line2 constructors (a host that renders basic lines
-// only) the old single vertex-coloured draw still stands.
+// only), each class uses its own basic material so palette changes never
+// rewrite component geometry shared with another scene.
 function addCadEdgeObject(THREE, runtime, record, cadEdges) {
   const depthTest = runtime.edgeSettings?.depthTest !== false;
   // One bias for every class: the coplanar (seam/tangent) value, the larger.
@@ -1700,46 +1656,33 @@ function addCadEdgeObject(THREE, runtime, record, cadEdges) {
   const group = new THREE.Group();
   const materials = [];
   for (const { range, style } of drawn) {
-    const line = createScreenSpaceLineSegments(runtime, cadEdgeClassPositions(cadEdges, range), {
+    const positions = cadEdgeClassPositions(cadEdges, range);
+    const options = {
       color: style.color,
       opacity: style.opacity,
       lineWidth: style.thickness,
       renderOrder: CAD_EDGE_LINE_RENDER_ORDER,
       depthTest,
       depthBias
-    }, runtime.screenSpaceLineMaterials);
-    if (!line) {
-      materials.length = 0;
-      break;
-    }
+    };
+    const line = createScreenSpaceLineSegments(runtime, positions, options, runtime.screenSpaceLineMaterials)
+      || createBasicLineSegments(runtime, positions, options);
+    if (!line) continue;
     line.userData.partId = record.partId;
+    line.material.userData.cadEdgeClassId = range.classId;
+    line.material.userData.cadEdgeBaseColor = style.color;
+    line.material.userData.cadEdgeBaseOpacity = style.opacity;
     materials.push(line.material);
     group.add(line);
   }
-  if (materials.length) {
-    group.userData.partId = record.partId;
-    record.edges = group;
-    record.edgeMaterials = materials;
-    for (const material of materials) {
-      syncMaterialClipPlanes(material, runtime.activeClipPlanes);
-    }
-    runtime.edgesGroup.add(group);
-    return;
+  if (!materials.length) return;
+  group.userData.partId = record.partId;
+  record.edges = group;
+  record.edgeMaterials = materials;
+  for (const material of materials) {
+    syncMaterialClipPlanes(material, runtime.activeClipPlanes);
   }
-  const geometry = cadEdgeLineGeometry(THREE, runtime, cadEdges);
-  if (!geometry) {
-    return;
-  }
-  const line = createCadEdgeLineSegments(THREE, geometry, {
-    depthTest,
-    renderOrder: CAD_EDGE_LINE_RENDER_ORDER,
-    depthBias
-  });
-  line.userData.partId = record.partId;
-  record.edges = line;
-  record.edgeMaterials = [line.material];
-  syncMaterialClipPlanes(line.material, runtime.activeClipPlanes);
-  runtime.edgesGroup.add(line);
+  runtime.edgesGroup.add(group);
 }
 
 // The segment texture for a component's drawn edge classes, cached on the
@@ -1759,10 +1702,12 @@ function cadEdgeSegmentTextureEntry(THREE, cadEdges, drawn, styleKey) {
 // The instance set for a component in THIS scene: one per (component, edge
 // style), created on first use and kept in runtime.cadEdgeInstanceSets.
 function cadEdgeInstanceSet(THREE, runtime, cadEdges) {
-  const { drawn, styleKey } = drawnCadEdgeClasses(THREE, runtime, cadEdges);
+  const { drawn } = drawnCadEdgeClasses(THREE, runtime, cadEdges);
   if (!drawn.length) {
     return null;
   }
+  // Segment membership is geometric. Appearance changes only class uniforms.
+  const styleKey = drawn.map(({ range }) => range.classId).join(",");
   let byStyle = runtime.cadEdgeInstanceSetsByOwner.get(cadEdges.owner);
   if (!byStyle) {
     byStyle = new Map();
@@ -1790,6 +1735,7 @@ function cadEdgeInstanceSet(THREE, runtime, cadEdges) {
     runtime.registerScreenSpaceLineMaterial(material);
     syncMaterialClipPlanes(material, runtime.activeClipPlanes);
   }
+  set.cadEdges = cadEdges;
   byStyle.set(styleKey, set);
   segmentTextureOwners.set(segments, (segmentTextureOwners.get(segments) || 0) + 1);
   runtime.cadEdgeInstanceSets.add(set);
@@ -2238,6 +2184,7 @@ function staticMutableStateKey(settings) {
   if (settings.stepParameters || settings.callbacks?.animation) return null;
   try {
     return JSON.stringify({
+      appearance: settings.appearance || settings.theme?.colorMode,
       materialSettings: settings.materialSettings,
       materialOverrides: settings.materialOverrides,
       baseTheme: settings.baseTheme,
@@ -2265,7 +2212,7 @@ function settingsSignature(meshData, theme, settings) {
       edgeSettings.silhouette === true &&
       (edgeSettings.enabled !== false || settings.silhouette === true),
     edgeRendering: settings.edgeRendering?.mode || "basic",
-    wireframeEdgeColor: settings.edgeRendering?.wireframeEdgeColor || ""
+    depthTest: settings.edgeSettings?.depthTest
   });
 }
 
@@ -2277,8 +2224,9 @@ function normalizeSettings(settings = {}) {
   const displayMode = normalizeDisplayMode(settings.displayMode);
   const sourceTheme = settings.theme || settings.themeSettings || settings.settings || undefined;
   const normalizedTheme = normalizeThemeSettings(sourceTheme);
-  const displayEdgeSettings = normalizeDisplayEdgeSettings(
-    settings.edgeSettings || settings.display?.edges
+  const displayEdgeSettings = resolveCadEdgeSettings(
+    settings.edgeSettings || settings.display?.edges,
+    { colorMode: settings.appearance || normalizedTheme.colorMode }
   );
   const applyDisplayModeEdgePolicy = settings.applyDisplayModeEdgePolicy !== false;
   const edgeSettings = applyDisplayModeEdgePolicy
@@ -2327,6 +2275,24 @@ function setRuntimeTheme(runtime, settings) {
       ? false
       : settings.edgeSettings.depthTest
   };
+  if (runtime.cadInkColorMode !== (settings.appearance || settings.theme.colorMode)) {
+    runtime.cadInkColorMode = settings.appearance || settings.theme.colorMode;
+    for (const set of runtime.cadEdgeInstanceSets) {
+      set.setClassStyles(drawnCadEdgeClasses(runtime.THREE, runtime, set.cadEdges).drawn.map(({ style }) => style));
+    }
+    for (const record of runtime.displayRecords) {
+      for (const material of record.edgeMaterials || []) {
+        const style = runtime.edgeSettings.classes[material.userData?.cadEdgeClassId];
+        if (!style) continue;
+        material.userData.cadEdgeBaseColor = style.color;
+        material.userData.cadEdgeBaseOpacity = style.opacity;
+        material.linewidth = style.thickness;
+      }
+      if (record.silhouette?.material?.uniforms?.color) {
+        record.silhouette.material.uniforms.color.value.set(runtime.edgeSettings.color);
+      }
+    }
+  }
   runtime.materialSettings = settings.materialSettings;
   runtime.materialOverrides = settings.materialOverrides;
   runtime.receiveShadows = settings.receiveShadows === true;

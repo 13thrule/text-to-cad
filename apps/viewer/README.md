@@ -63,10 +63,11 @@ app mounts. The navbar shows the resolved Sun or Moon icon; System appears only
 as a dropdown choice. Neutral light and charcoal panel tokens remain independent from
 the model's lighting and materials.
 
-**Display** owns the CAD inspection projection, style, edges, grid, origin axes,
-part colors, clipping, and exploded view. **Shaded with edges** shows shaded
-surfaces with CAD edges; **Shaded** shows those surfaces without edges. Grid and
-origin axes remain world references.
+**Display** owns the CAD inspection projection, style, edge visibility, grid,
+origin axes, part colors, clipping, and exploded view. **Shaded with edges**
+shows shaded surfaces with CAD edges; **Shaded** shows those surfaces without
+edges. Edge colors and weights are fixed by edge type and app appearance. The
+grid is an on/off world reference; origin axes remain independently configurable.
 
 The navbar's **Viewing mode** icon menu switches between **Inspect** and
 **Render**, showing the active mode's cube or clapperboard icon. Inspect shows only
@@ -114,6 +115,15 @@ Entering Render applies its perspective camera and fixed presentation view
 selection effects are off). Animation playback remains available. Returning to
 CAD restores the CAD camera and inspection state; returning to Render restores
 the photographic view.
+Render zoom uses the subject's bounds for a stable pivot depth. Inspect zoom
+anchors to the surface under the cursor, falling back to the model center.
+Render pointer movement skips inspection hit tests and does not install CAD
+raycast accelerators.
+Mode changes keep the new canvas covered with the destination backdrop until
+geometry and lighting have drawn their first frame. This transition owns no
+second GPU scene and does not return during orbit or detail refinement. Render
+does not receive inspection selectors or DXF bend-guide overlays; STEP and
+embedded GLB animation remain independent of those inspection resources.
 These settings use sessionStorage with other per-model
 ephemeral state; they are not written beside models, into the geometry cache,
 or into global app appearance. A normal geometry rebuild preserves the

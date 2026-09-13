@@ -1,3 +1,5 @@
+import { CAD_EDGE_COVERAGE_GLSL } from "./cadEdgeCoverage.js";
+import { resolveCadEdgeSettings } from "./cadInk.js";
 import {
   buildTopologyDisplayEdgePolylines,
   buildTopologyDisplayEdgePositions
@@ -28,12 +30,7 @@ const TOPOLOGY_EDGE_CLASS_ORDER = CAD_EDGE_CLASS_ORDER;
 const MAX_TOPOLOGY_LINE_STRIP_POLYLINES = 1200;
 const MAX_TOPOLOGY_LINE_STRIP_POSITION_VALUES = 180000;
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-fA-F]{3}){1,2}$/;
-const DEFAULT_TOPOLOGY_EDGE_CLASS_SETTINGS = Object.freeze({
-  feature: Object.freeze({ color: "#132232", opacity: 1, thickness: 1.15 }),
-  tangent: Object.freeze({ color: "#132232", opacity: 0.5, thickness: 1.15 }),
-  seam: Object.freeze({ color: "#132232", opacity: 0.85, thickness: 1.15 }),
-  degenerate: Object.freeze({ color: "#132232", opacity: 1, thickness: 0 })
-});
+const DEFAULT_TOPOLOGY_EDGE_CLASS_SETTINGS = resolveCadEdgeSettings().classes;
 
 export function topologyLineDepthBiasForWidth(lineWidth = 1, { visibilityClass = "" } = {}) {
   const width = Number.isFinite(Number(lineWidth))
@@ -92,23 +89,19 @@ export function syncLineMaterialOpacity(material, opacity) {
 // — extrude with `offset *= lineWidth; offset /= resolution.y`, which lands in
 // NDC. NDC y spans the whole DRAWING BUFFER, so the ink a fragment sees is
 // `lineWidth * drawingBufferHeight / resolution.y` device pixels: whatever unit
-// `resolution` is in is the unit `display.edges.classes[*].thickness` is in.
+// `resolution` is in is the unit the resolved class width is in.
 //
 // It must be the drawing buffer, because that is the unit the retired surface
 // shader measured in (its `pixelDistance = barycentric / fwidth(barycentric)`
-// was a per-fragment derivative, so a device pixel) and therefore the unit every
-// stored theme thickness is authored in. Syncing the CSS size instead — the
+// was a per-fragment derivative, so a device pixel) and therefore the unit the fixed
+// CAD ink policy uses. Syncing the CSS size instead — the
 // same numbers handed to `renderer.setSize(w, h, false)` — leaves the buffer's
 // pixel ratio uncancelled and makes every configured thickness
 // `devicePixelRatio` times wider on screen: 2x on a Retina Mac, 3x at dpr 3.
 //
-// It applies to EVERY screen-space line, not only the instanced CAD-edge pass,
-// because they are all one authored number: `edgeSettings.thickness` (default
-// 1.15) is what styles a component's CAD edge classes, a mesh source's display
-// edges (createDisplayEdgeObject), the topology overlay, and — scaled — the
-// viewer's bend guides, drawing strokes and measure highlights. Leaving those in
-// CSS pixels would draw one setting at two weights on the same screen, which is
-// the inconsistency the surface shader's device-pixel edges never had.
+// CAD classes, topology overlays, drawing strokes and highlights share this
+// device-pixel resolution contract. Their resolved widths can differ without
+// an accidental extra devicePixelRatio multiplier in any one path.
 export function screenSpaceLineDeviceResolution(renderer, width, height) {
   const pixelRatio = Number(renderer?.getPixelRatio?.());
   const scale = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1;
@@ -388,8 +381,9 @@ function replaceShaderAnchor(source, anchor, replacement, stage) {
 // correctly. (Verified against three 0.185.1 LineMaterial.js, not assumed.)
 //
 // So the feather is analytic here, as it is in the instanced shader: widen the
-// quad by CAD_EDGE_FEATHER_PIXELS on each side and ramp coverage across the ink
-// boundary, reproducing the retired cadSurfaceEdgeCoverage curve. vUv.x is the
+// quad by CAD_EDGE_FEATHER_PIXELS on each side and apply a symmetric filtered
+// box. Unlike an opaque centre with a clamped inner feather, subpixel lines
+// retain their nominal integrated weight. vUv.x is the
 // cross coordinate (+-1 at the quad edge) and vUv.y runs along the segment with
 // the caps beyond +-1, so one radial distance covers body and caps alike.
 function applyScreenSpaceLineFeather(shader) {
@@ -400,6 +394,7 @@ function applyScreenSpaceLineFeather(shader) {
     `offset *= linewidth + ${feather} * 2.0;`,
     "vertex"
   );
+  shader.fragmentShader = CAD_EDGE_COVERAGE_GLSL + shader.fragmentShader;
   shader.fragmentShader = replaceShaderAnchor(
     shader.fragmentShader,
     "gl_FragColor = vec4( diffuseColor.rgb, alpha );",
@@ -411,7 +406,7 @@ function applyScreenSpaceLineFeather(shader) {
 		? sqrt( cadEdgeCapX * cadEdgeCapX + cadEdgeCapY * cadEdgeCapY )
 		: abs( cadEdgeCapX );
 	float cadEdgeDistance = cadEdgeCross * ( cadEdgeInkHalfWidth + ${feather} );
-	alpha *= 1.0 - smoothstep( max( cadEdgeInkHalfWidth - ${feather}, 0.0 ), cadEdgeInkHalfWidth + ${feather}, cadEdgeDistance );
+	alpha *= cadEdgeCoverage( cadEdgeDistance, cadEdgeInkHalfWidth );
 #endif
 		gl_FragColor = vec4( diffuseColor.rgb, alpha );`,
     "fragment"
@@ -580,8 +575,8 @@ export function createBasicLineSegments(context = {}, positions, {
 }
 
 // One GL_LINES object per record over a shared per-component geometry whose
-// `color` attribute carries each edge class's linear RGBA (see
-// cadScene.js cadEdgeLineGeometry). The material multiplies that by white at
+// `color` attribute carries each edge class's linear RGBA. The material
+// multiplies that by white at
 // unit opacity until a highlight or dim pass overrides it; the geometry
 // belongs to the component cache and is not disposed with the object.
 export function createCadEdgeLineSegments(THREE, geometry, {
@@ -617,8 +612,9 @@ function setLineMaterialVertexColors(material, enabled) {
 
 // A record's edge materials: the GLB-era derived line and the wireframe carry a
 // plain material (its base colour/opacity in userData.cadEdgeBaseColor /
-// cadEdgeBaseOpacity when set), CAD edge lines carry one vertex-coloured
-// material whose class styles live in the geometry. A uniform `opacity`
+// cadEdgeBaseOpacity when set). Deformed CAD edges use one such material per
+// class; externally supplied vertex-coloured lines retain their colour arrays.
+// A uniform `opacity`
 // (highlight, dim) overrides every class with `color`; otherwise
 // `opacityScale` scales the class (or base) opacities and `color`, when given,
 // recolours them (an effect edgeColor).

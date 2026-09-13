@@ -1,3 +1,4 @@
+import { resolveCadEdgeSettings } from "./cadInk.js";
 import * as THREE from "three";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
@@ -839,7 +840,9 @@ export function renderJobContext(meshData, job = {}) {
     lighting: theme.lighting || null,
     renderScale: job.output?.renderScale ?? sceneSettings.quality.renderScale
   });
-  const displayEdgeSettings = resolveDisplayEdgeSettings(displaySettings);
+  const displayEdgeSettings = resolveCadEdgeSettings(
+    resolveDisplayEdgeSettings(displaySettings), { colorMode: sceneSettings.appearance }
+  );
   const edgeSettings = {
     ...displayEdgeSettings,
     enabled: displayModeForcesEdges(displayMode) ? true : displayEdgeSettings.enabled,
@@ -907,6 +910,7 @@ export function modelOptionsForRenderJob(context, job = {}) {
     : [];
   return {
     theme: context.sceneTheme,
+    appearance: context.sceneSettings.appearance,
     edgeSettings: context.topologyDisplayEdgesVisible
       ? { ...context.edgeSettings, enabled: false }
       : context.edgesVisible
@@ -1019,7 +1023,7 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
   if (!studioRuntime) addFloor(
     scene,
     viewportOptions.floorBounds || model.bounds || context.bounds,
-    context.theme,
+    { ...context.theme, colorMode: context.sceneSettings.appearance },
     context.sceneScale,
     context.displaySettings.guides
   );

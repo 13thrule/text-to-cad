@@ -255,18 +255,26 @@ component (`cadEdgeInstances.js`): the instances are every (segment,
 occurrence) pair, decoded in the vertex shader from a per-component segment
 texture (32 B per drawn segment, cached on the component) and a per-set
 instance texture (128 B per occurrence: matrix, colour, opacity, visibility,
-highlight). `display.edges.classes` styles colour, opacity AND thickness per
-class, and a thickness is a FULL width in DEVICE pixels — every line shader
+highlight). `cadInk.js` fixes the light/dark palette and nominal widths per
+class: feature 1, tangent 0.65, seam 0.8, and degenerate 0 (hidden). Public
+`display.edges` keeps only enabled/silhouette choices; grid settings keep only
+enabled. Viewer and snapshots share the same grid spacing and fixed ink.
+Appearance updates change class uniforms while retaining geometry, segment
+textures and occurrence slots. A thickness is a FULL width in DEVICE pixels — every line shader
 normalises its extrusion by the drawing buffer, never the CSS size, and the
-fragment stage then ramps coverage across ±0.75 px either side of the ink
-boundary, so an edge is feathered rather than a hard-edged quad left to MSAA.
+fragment stage filters a box with a symmetric ±0.75 px kernel. Integrated
+coverage equals the nominal width even for subpixel lines, and zero width
+has zero coverage. Both line paths share the filter; antialiasing does not
+inflate thin lines or depend on the framebuffer sample count.
 Per-occurrence highlight, dim, hide, focus, exploded placement and
 selection are slots in that texture, written by the same record passes
 (`applyDisplayRecordTransform`, `applyPartVisualState`,
 `syncRecordEdgeMaterials`) that drive a plain line object; highlighted
 occurrences draw in a second pass at the highlight render order. A deformed
-tube leaves its slot for a private `GL_LINES` object (the component's
-polylines with per-point class colours) that bends with the surface. GPU cost
+tube leaves its slot for private screen-space lines, one per drawn class,
+that bend with the surface and preserve the same class weights and colours.
+Basic-only hosts use separate per-class materials too, so appearance changes
+retain private edge geometry and cannot recolour another scene's component. GPU cost
 per component: two textures, one 4-vertex quad, two materials, one draw call
 (+1 while any occurrence is highlighted). Geometry built from a shared
 component is cached on the component object (`part.sourceMesh`), never on the

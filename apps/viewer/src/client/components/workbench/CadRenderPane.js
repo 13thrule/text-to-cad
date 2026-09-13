@@ -29,7 +29,8 @@ import { VIEWER_SCENE_SCALE } from "cadgen-js/lib/viewer/sceneScale";
 import { VIEWER_PICK_MODE } from "cadgen-js/lib/viewer/constants";
 import { useAnimationClock } from "@/workbench/animationClockStore";
 import { useEmbeddedGlbAnimationClock } from "@/workbench/embeddedGlbAnimationClockStore";
-import { viewerPickModeForRenderPane } from "@/workbench/viewerPickMode";
+import { viewerPickModeForRenderPane, viewerSelectorRuntimeForRenderPane } from "@/workbench/viewerPickMode";
+import { viewerBendGuidesForRenderPane } from "@/workbench/renderPaneDrawing";
 
 const EMPTY_LIST = Object.freeze([]);
 function viewportInsetPx(value) {
@@ -249,6 +250,7 @@ export default function CadRenderPane({
   materialOverrides = null,
   receiveShadows = false,
   renderMode = false,
+  appearance = "light",
   renderConfiguration = null,
   quality = null,
   previewMode,
@@ -363,6 +365,7 @@ export default function CadRenderPane({
   const hasParts = capabilities.parts;
   const hasTopology = capabilities.topology;
   const inspectionEnabled = !renderMode;
+  const drawingGuides = viewerBendGuidesForRenderPane({ renderMode, bendAxisX, drawingBendLines });
   const effectivePlanMode = inspectionEnabled && planMode;
   // Render supplies one clean presentation display state to every format,
   // including plain meshes whose Inspect mode has no display-mode panel.
@@ -484,8 +487,8 @@ export default function CadRenderPane({
         renderFormat={renderFormat}
         drawingThicknessScale={drawingThicknessScale}
         planMode={effectivePlanMode}
-        bendAxisX={bendAxisX}
-        drawingBendLines={drawingBendLines}
+        bendAxisX={drawingGuides.bendAxisX}
+        drawingBendLines={drawingGuides.drawingBendLines}
         bendAnglesRad={bendAnglesRad}
         drawingBends={drawingBends}
         drawingBendStyle={drawingBendStyle}
@@ -507,6 +510,7 @@ export default function CadRenderPane({
         showEdges
         recomputeNormals={false}
         themeSettings={themeSettings}
+        appearance={appearance}
         materialOverrides={materialOverrides}
         receiveShadows={receiveShadows}
         renderMode={renderMode}
@@ -549,7 +553,7 @@ export default function CadRenderPane({
         hoveredPartId={inspectionEnabled && hasParts ? hoveredPartId : ""}
         hoveredReferenceId={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? hoveredReferenceId : ""}
         selectedReferenceIds={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? selectedReferenceIds : []}
-        selectorRuntime={hasTopology && !retainingPreviousStepMesh && (inspectionEnabled || resolvedStepAnimation?.clip) ? selectorRuntime : null}
+        selectorRuntime={viewerSelectorRuntimeForRenderPane({ renderMode, hasTopology, retainingPreviousStepMesh, selectorRuntime })}
         displayEdgeRuntime={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? displayEdgeRuntime : null}
         stepParameters={inspectionEnabled && capabilities.params === PARAMETER_SOURCE.SIDECAR ? stepParameters : null}
         stepAnimation={capabilities.params === PARAMETER_SOURCE.SIDECAR ? resolvedStepAnimation : null}

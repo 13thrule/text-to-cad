@@ -26,6 +26,7 @@ from cadgen.snapshot_core import (  # noqa: E402
     RENDER_INCOMPATIBLE_JOB_KEYS,
     SnapshotError,
     normalize_common_job,
+    load_display_option,
     validate_render_tessellation,
 )
 
@@ -37,6 +38,18 @@ def normalize(**settings: object) -> dict[str, object]:
         resolved_cwd=Path("."),
         timestamp="20260907-000000",
     )
+
+
+class CadInkSchemaTest(unittest.TestCase):
+    def test_visibility_choices_are_the_only_edge_and_grid_settings(self):
+        display = {"edges": {"enabled": True, "silhouette": False}, "guides": {"grid": {"enabled": True}}}
+        self.assertEqual(load_display_option(display, cwd=Path(".")), display)
+        for key in ("color", "thickness", "classes", "highlightColor", "highlightOpacity", "highlightThickness", "silhouetteScale", "depthTest"):
+            with self.subTest(edge=key), self.assertRaisesRegex(SnapshotError, "display edges has unknown key"):
+                load_display_option({"edges": {key: 1}}, cwd=Path("."))
+        for key in ("centerColor", "cellColor", "opacity", "density"):
+            with self.subTest(grid=key), self.assertRaisesRegex(SnapshotError, "display guides.grid has unknown key"):
+                load_display_option({"guides": {"grid": {key: 1}}}, cwd=Path("."))
 
 
 class RenderKeySchemaTest(unittest.TestCase):

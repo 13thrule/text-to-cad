@@ -4,16 +4,18 @@ export function sceneBuildStructuralKey({
   sceneScaleMode,
   edgeSettings,
   recomputeNormals,
-  silhouette,
-  wireframeEdgeColor
+  silhouette
 } = {}) {
   return JSON.stringify({
     displayMode,
     applyDisplayModeEdgePolicy,
     scale: sceneScaleMode,
-    edgeSettings,
+    edgeSettings: {
+      enabled: edgeSettings?.enabled,
+      silhouette: edgeSettings?.silhouette,
+      depthTest: edgeSettings?.depthTest
+    },
     recomputeNormals,
-    silhouette,
-    wireframeEdgeColor
+    silhouette
   });
 }

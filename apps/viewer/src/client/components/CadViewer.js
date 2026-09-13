@@ -3,7 +3,8 @@
 import { disposeViewerCadScene } from "../render/lodSceneCleanup.js";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { LoaderCircle, Minus, Plus, RotateCcw } from "lucide-react";
+import { viewerTransitionBackdrop } from "./viewer/framePresentation.js";
 import { parseCadRefToken } from "cadgen-js/lib/cadRefs";
 import {
   dxfBendGuideSegments,
@@ -60,9 +61,9 @@ import {
   displayModeForcesEdges,
   displayModeIsWireframe,
   displayModeShowsEdges,
-  displayModeShowsThroughEdges,
-  resolveDisplayEdgeSettings
+  displayModeShowsThroughEdges
 } from "cadgen-js/lib/displaySettings";
+import { resolveCadEdgeSettings, resolveCadGridSettings } from "cadgen-js/common/cadInk.js";
 import { resolveDisplayMaterialSettings } from "cadgen-js/common/sceneSettings.js";
 import {
   createEnvironmentResource,
@@ -93,7 +94,6 @@ import {
   getViewerThemeValue,
   getStageFloorSize,
   normalizeFloorMode,
-  resolveWireframeEdgeColor,
   updateSpotLightTarget
 } from "cadgen-js/lib/viewer/stageTheme";
 import {
@@ -1757,6 +1757,7 @@ const CadViewer = forwardRef(function CadViewer({
   materialOverrides = null,
   receiveShadows = false,
   renderMode = false,
+  appearance = "light",
   renderConfiguration = null,
   quality = null,
   floorModeOverride = "",
@@ -1900,6 +1901,15 @@ const CadViewer = forwardRef(function CadViewer({
   const [error, setError] = useState("");
   const [viewerReadyTick, setViewerReadyTick] = useState(0);
   const [runtimeResetToken, setRuntimeResetToken] = useState(0);
+  const presentationEpoch = useMemo(() => ({}), [renderMode, runtimeResetToken]);
+  const [presentedEpoch, setPresentedEpoch] = useState(null);
+  const handleFirstFrame = useCallback(() => setPresentedEpoch(presentationEpoch), [presentationEpoch]);
+  useLayoutEffect(() => {
+    // Hide the old canvas in the same commit as the mode control changes,
+    // before asynchronous runtime teardown/setup can expose an empty frame.
+    const canvas = runtimeRef.current?.renderer?.domElement;
+    if (canvas) canvas.style.visibility = "hidden";
+  }, [presentationEpoch]);
   const [activeViewPlaneFace, setActiveViewPlaneFace] = useState("");
   const [viewPlaneOrientation, setViewPlaneOrientation] = useState(DEFAULT_VIEW_PLANE_ORIENTATION);
   const [cameraZoomPercent, setCameraZoomPercent] = useState(100);
@@ -1974,21 +1984,13 @@ const CadViewer = forwardRef(function CadViewer({
   const shouldUseCadEdgeSource = hasCapability(renderFormat, "topology");
   const displayEdgeSettingsKey = JSON.stringify(normalizedDisplaySettings.edges);
   const displayEdgeSettings = useMemo(
-    () => resolveDisplayEdgeSettings(normalizedDisplaySettings),
-    [displayEdgeSettingsKey]
+    () => resolveCadEdgeSettings(normalizedDisplaySettings.edges, { colorMode: appearance }),
+    [displayEdgeSettingsKey, appearance]
   );
   const wireframeMode = displayModeIsWireframe(normalizedDisplayMode);
   const displayModeForceEdges = displayModeForcesEdges(normalizedDisplayMode);
   const displayModeThroughEdges = displayModeShowsThroughEdges(normalizedDisplayMode);
-  const wireframeBackgroundKey = JSON.stringify(normalizedThemeSettings.background);
-  const wireframeEdgeColor = useMemo(
-    () => resolveWireframeEdgeColor({
-      edgeColor: displayEdgeSettings?.color,
-      themeSettings: normalizedThemeSettings,
-      viewerTheme
-    }),
-    [displayEdgeSettings, wireframeBackgroundKey, viewerTheme]
-  );
+  const wireframeEdgeColor = displayEdgeSettings.color;
   const wireframeEdgeOpacity = useMemo(() => {
     const baseOpacity = Number.isFinite(Number(displayEdgeSettings?.opacity))
       ? clamp(Number(displayEdgeSettings.opacity), 0, 1)
@@ -2039,9 +2041,9 @@ const CadViewer = forwardRef(function CadViewer({
   const floorSettings = normalizedThemeSettings.floor || {};
   const guideFloorSettings = useMemo(() => ({
     ...floorSettings,
-    grid: normalizedDisplaySettings.guides.grid,
+    grid: resolveCadGridSettings(normalizedDisplaySettings.guides.grid, { colorMode: appearance }),
     axis: normalizedDisplaySettings.guides.axis
-  }), [floorSettings, normalizedDisplaySettings.guides]);
+  }), [floorSettings, normalizedDisplaySettings.guides, appearance]);
   const defaultFloorMode = floorSettings.enabled === true
     ? THEME_FLOOR_MODES.STAGE
     : THEME_FLOOR_MODES.NONE;
@@ -3537,6 +3539,7 @@ const CadViewer = forwardRef(function CadViewer({
     floorMode: resolvedFloorMode,
     renderMode,
     onInitializationError: handleRuntimeInitializationError,
+    onFirstFrame: handleFirstFrame,
     onContextLost: handleRuntimeContextLost,
     onContextRestored: handleRuntimeContextRestored,
     preserveInteractionPixelRatio,
@@ -3674,6 +3677,7 @@ const CadViewer = forwardRef(function CadViewer({
     if (runtime.cadScene) {
       runtime.cadScene.update({
         theme: normalizedThemeSettings,
+        appearance,
         materialSettings,
         materialOverrides,
         receiveShadows
@@ -3795,6 +3799,7 @@ const CadViewer = forwardRef(function CadViewer({
   }, [
     defaultGridRadius,
     normalizedDisplayMode,
+    appearance,
     materialOverrides,
     normalizedMaterialSettings,
     normalizedThemeSettings,
@@ -3822,6 +3827,7 @@ const CadViewer = forwardRef(function CadViewer({
       runtime.environmentResourceIdentity = "";
     };
     if (!renderMode || !renderConfiguration) {
+      runtime.environmentReady = true;
       clearEnvironmentResource();
       runtime.scene.environmentIntensity = 0;
       applyActiveSceneBackground(runtime, viewerTheme, normalizedThemeSettings.background);
@@ -3835,6 +3841,7 @@ const CadViewer = forwardRef(function CadViewer({
     const applyBackgroundFallback = () => {
       clearEnvironmentResource();
       applyActivePhotographicStudio(runtime);
+      runtime.environmentReady = true;
       runtime.requestRender();
     };
 
@@ -3864,6 +3871,7 @@ const CadViewer = forwardRef(function CadViewer({
       }
 
       runtime.scene.environment = runtime.environmentResource.texture;
+      runtime.environmentReady = true;
       viewerAlertChangeRef.current?.(null);
 
       applyActivePhotographicStudio(runtime);
@@ -3876,9 +3884,10 @@ const CadViewer = forwardRef(function CadViewer({
         viewerAlertChangeRef.current?.({
           severity: "warning",
           summary: "Environment unavailable",
-          title: "Environment preset could not be loaded",
-          message: "Failed to build the photographic studio environment.",
-          resolution: "The viewer fell back to the current background settings. Reload the viewer or choose another preset."
+          title: "Couldn’t prepare studio lighting",
+          message: "The reflection environment could not be created. The model is shown with the studio’s direct lighting, so reflective materials may look different.",
+          recovery: "Reload the viewer to retry the studio environment.",
+          details: String(error?.message || error)
         });
         console.error("Failed to apply environment resource", error);
       }
@@ -4027,10 +4036,10 @@ const CadViewer = forwardRef(function CadViewer({
       sceneScaleMode: normalizedSceneScaleMode,
       edgeSettings: sceneTheme.edges,
       recomputeNormals,
-      silhouette: topologyDisplayEdgesVisible && displayEdgeSettings.silhouette === true,
-      wireframeEdgeColor
+      silhouette: topologyDisplayEdgesVisible && displayEdgeSettings.silhouette === true
     });
     const sceneModelSettings = {
+      appearance,
       parts: shouldRenderParts ? renderedParts : [],
       renderPartsIndividually: effectiveRenderPartsIndividually,
       stepParameters: modelStepParameters,
@@ -4301,7 +4310,9 @@ const CadViewer = forwardRef(function CadViewer({
     };
     runtime.raycastBvhOptions = raycastBvhOptions;
     syncSelectorPickGroups(runtime, displaySelectorRuntime, modelOffset, { clearSceneGroup });
-    scheduleRuntimeRaycastBvh(runtime, raycastBvhOptions);
+    if (!renderMode) {
+      scheduleRuntimeRaycastBvh(runtime, raycastBvhOptions);
+    }
     syncRuntimeStepClipPlane(runtime, clipSettingsRef.current);
     if (typeof window !== "undefined") {
       // Byte attribution for the headless memory harness (read, never polled here).
@@ -5524,16 +5535,31 @@ const CadViewer = forwardRef(function CadViewer({
     onMeasurePick: handleMeasurePick,
     onMeasureHoverPoint: handleMeasureHoverPoint,
     viewerReadyTick,
-    suppressTopologyPicking: stepAnimationPlaying,
+    suppressTopologyPicking: renderMode || stepAnimationPlaying,
     allowMeshVertexSnap
+  });
+
+  const preparingFrame = presentedEpoch !== presentationEpoch && !error && hasViewportContent;
+  const transitionBackdrop = viewerTransitionBackdrop({
+    renderMode, renderConfiguration, background: normalizedThemeSettings.background, viewerTheme
   });
 
   return (
     <div
       ref={interactionHostRef}
       className="relative h-full w-full"
+      style={preparingFrame ? { backgroundColor: transitionBackdrop.backgroundColor } : undefined}
+      aria-busy={preparingFrame}
     >
       <div className="h-full w-full" ref={mountRef} />
+      {preparingFrame ? (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center" style={transitionBackdrop} role="status" data-viewer-transition={renderMode ? "render" : "inspect"}>
+          <span className="flex items-center gap-2 text-sm">
+            <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+            {renderMode ? "Preparing render…" : "Preparing view…"}
+          </span>
+        </div>
+      ) : null}
       <canvas
         ref={measureCanvasRef}
         className="absolute inset-0 z-10 h-full w-full touch-none"

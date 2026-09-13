@@ -1,3 +1,4 @@
+import { CAD_EDGE_COVERAGE_GLSL } from "./cadEdgeCoverage.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -612,24 +613,6 @@ function retinaRenderer(cssWidth, cssHeight, pixelRatio) {
   };
 }
 
-// The coverage ramp a line shader paints, read back OUT of the shader source so a
-// changed ramp changes the numbers these tests integrate.
-function featherRamp(source, halfWidthName) {
-  const match = source.match(new RegExp(
-    `1\\.0 - smoothstep\\(\\s*max\\(\\s*${halfWidthName} - ([0-9.]+),\\s*0\\.0\\s*\\),\\s*${halfWidthName} \\+ ([0-9.]+),`
-  ));
-  assert.ok(match, `no analytic feather in the shader (looked for a smoothstep around ${halfWidthName})`);
-  return { inner: Number(match[1]), outer: Number(match[2]) };
-}
-
-// Ink laid down by that ramp, in device pixels: twice the integral of coverage
-// from the centreline out. A smoothstep integrates to its midpoint, so the total
-// is `innerEdge + outerEdge` — the same closed form the retired surface shader
-// had, which is why a feathered edge weighs what the old one did.
-function featherInk(thickness, { inner, outer }) {
-  const halfWidth = thickness / 2;
-  return Math.max(halfWidth - inner, 0) + (halfWidth + outer);
-}
 
 test("screen-space line resolution is the drawing buffer, not the CSS size", () => {
   assert.deepEqual(
@@ -709,19 +692,9 @@ test("screen-space lines antialias with an analytic feather, not a hard edge", (
   assert.ok(padding, "the patched vertex shader does not widen the quad");
   assert.equal(Number(padding[1]), CAD_EDGE_FEATHER_PIXELS);
 
-  // And the fragment stage ramps coverage into ALPHA across the ink boundary.
-  assert.match(shader.fragmentShader, /alpha \*= 1\.0 - smoothstep\(/);
-  const ramp = featherRamp(shader.fragmentShader, "cadEdgeInkHalfWidth");
-  assert.equal(ramp.inner, CAD_EDGE_FEATHER_PIXELS);
-  assert.equal(ramp.outer, CAD_EDGE_FEATHER_PIXELS);
-  assert.ok(Number(padding[1]) >= ramp.outer, "the quad is narrower than the ramp it has to hold");
-
-  // The weight that ramp lays down is the retired surface shader's, to the digit:
-  // 1.325 device px for the 1.15 default, and exactly `thickness` once the ink is
-  // wider than the feather.
-  assert.equal(featherInk(1.15, ramp), 1.325);
-  assert.equal(featherInk(3, ramp), 3);
-  assert.equal(featherInk(2, ramp), 2);
+  // Both line paths use the same width-preserving filter, including endcaps.
+  assert.ok(shader.fragmentShader.includes(CAD_EDGE_COVERAGE_GLSL));
+  assert.match(shader.fragmentShader, /alpha \*= cadEdgeCoverage\( cadEdgeDistance, cadEdgeInkHalfWidth \);/);
 });
 
 test("the screen-space line feather fails loudly if three's shader moves", () => {

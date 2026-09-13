@@ -17,7 +17,8 @@ import {
   normalizeDisplayEdgeSettings,
   normalizeDisplaySettings,
   normalizeExplodedViewSettings,
-  resolveDisplayMode
+  resolveDisplayMode,
+  validateDisplaySettings
 } from "./displaySettings.js";
 
 test("display settings own CAD presentation fields while camera owns projection", () => {
@@ -46,37 +47,16 @@ test("display settings own CAD presentation fields while camera owns projection"
   });
 });
 
-test("display settings normalize edge styling independently from studio settings", () => {
-  assert.deepEqual(normalizeDisplayEdgeSettings({
-    enabled: false,
-    color: "#ABC",
-    thickness: 2,
-    classes: { tangent: { color: "#456", opacity: 0.25, thickness: 4 } },
-    highlightColor: "#123456",
-    highlightOpacity: 0.4,
-    highlightThickness: 4,
-    silhouette: true,
-    silhouetteScale: 0.01
-  }), {
-    enabled: false,
-    color: "#aabbcc",
-    thickness: 2,
-    classes: {
-      feature: { color: "#aabbcc", opacity: 1, thickness: 1.15 },
-      tangent: { color: "#445566", opacity: 0.25, thickness: 4 },
-      seam: { color: "#aabbcc", opacity: 0.85, thickness: 1.15 },
-      degenerate: { color: "#aabbcc", opacity: 1, thickness: 0 }
-    },
-    highlightColor: "#123456",
-    highlightOpacity: 0.4,
-    highlightThickness: 4,
-    silhouette: true,
-    silhouetteScale: 0.01
+test("display settings keep edge visibility and reject custom ink", () => {
+  assert.deepEqual(normalizeDisplayEdgeSettings({ enabled: false, silhouette: true }), {
+    enabled: false, silhouette: true
   });
-  assert.equal(normalizeDisplaySettings({
-    mode: "shaded_edges",
-    edges: { enabled: false, color: "#456" }
-  }).edges.color, "#445566");
+  for (const key of ["color", "thickness", "classes", "highlightColor", "highlightOpacity", "highlightThickness", "silhouetteScale", "depthTest"]) {
+    assert.throws(() => validateDisplaySettings({ edges: { [key]: 1 } }), /Unsupported display.edges fields/);
+  }
+  for (const key of ["centerColor", "cellColor", "opacity", "density"]) {
+    assert.throws(() => validateDisplaySettings({ guides: { grid: { [key]: 1 } } }), /Unsupported display.guides.grid fields/);
+  }
 });
 
 test("display settings normalize exploded view, guides, and part colors", () => {
@@ -90,14 +70,13 @@ test("display settings normalize exploded view, guides, and part colors", () => 
 
   const normalized = normalizeDisplaySettings({
     guides: {
-      grid: { enabled: false, centerColor: "#ABC", density: 2 },
+      grid: { enabled: false },
       axis: { enabled: false }
     },
     partColor: { mode: "by_part", color: "#123456", colors: ["#abc", "#445566"] }
   });
   assert.equal(normalized.guides.grid.enabled, false);
-  assert.equal(normalized.guides.grid.centerColor, "#aabbcc");
-  assert.equal(normalized.guides.grid.density, 2);
+  assert.deepEqual(normalized.guides.grid, { enabled: false });
   assert.equal(normalized.guides.axis.enabled, false);
   assert.deepEqual(normalized.partColor, {
     mode: "by_part",
@@ -140,8 +119,8 @@ test("display settings compare after normalization", () => {
     { mode: "shaded_edges", exploded: { enabled: false } }
   ), false);
   assert.equal(displaySettingsEqual(
-    { mode: "shaded_edges", edges: { color: "#111111" } },
-    { mode: "shaded_edges", edges: { color: "#222222" } }
+    { mode: "shaded_edges", edges: { silhouette: true } },
+    { mode: "shaded_edges", edges: { silhouette: false } }
   ), false);
   assert.equal(displaySettingsEqual(
     { guides: { grid: { enabled: false } } },

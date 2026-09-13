@@ -122,6 +122,26 @@ test("file session state ignores invalid json and version mismatches", () => {
   assert.equal(readFileSessionState("models", entry.file, entry, { storage }), null);
 });
 
+test("retired edge and grid controls cannot be restored from an older session", () => {
+  const storage = createMemoryStorage();
+  const entry = stepEntry();
+  const currentKey = fileSessionStorageKey("models", entry.file);
+  const retired = JSON.stringify({
+    version: 3,
+    fileKey: entry.file,
+    slices: {
+      display: {
+        edges: { thickness: 4, color: "#ff0000" },
+        guides: { grid: { enabled: true, density: 3, opacity: 1 } }
+      }
+    }
+  });
+  storage.setItem(currentKey.replace(":v4:", ":v3:"), retired);
+  assert.equal(readFileSessionState("models", entry.file, entry, { storage }), null);
+  storage.setItem(currentKey, retired);
+  assert.equal(readFileSessionState("models", entry.file, entry, { storage }), null);
+});
+
 test("file session state reports browser storage write failures", () => {
   const errors = [];
   const entry = stepEntry();

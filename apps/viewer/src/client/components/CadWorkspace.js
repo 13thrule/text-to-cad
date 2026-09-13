@@ -7530,6 +7530,7 @@ export default function CadWorkspace({
           projection={resolvedScene.camera.projection}
           focalLength={resolvedScene.camera.focalLength}
           themeSettings={resolvedThemeSettings}
+          appearance={resolvedScene.appearance}
           materialOverrides={resolvedMaterialOverrides}
           receiveShadows={resolvedScene.render.enabled}
           renderMode={resolvedScene.render.enabled}

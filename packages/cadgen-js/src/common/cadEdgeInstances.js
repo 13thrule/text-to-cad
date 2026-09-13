@@ -30,13 +30,8 @@
 // other's exports only inside functions, never while evaluating.
 import { applyLineDepthBias, CAD_EDGE_CLASS_ORDER } from "./renderEdges.js";
 
-// The analytic edge feather, in DEVICE pixels. An edge's coverage falls from 1
-// to 0 across +-0.75 px either side of the ink boundary: the ramp the deleted
-// surface-shader pass painted (`1.0 - smoothstep(halfWidth - 0.75, halfWidth +
-// 0.75, pixelDistance)` in cadSurfaceEdgeCoverage), moved into the line pass so
-// a 1.15 px feature edge is soft again instead of a hard-edged quad left to 4x
-// MSAA. renderEdges.js applies the same ramp to three's LineMaterial.
-export const CAD_EDGE_FEATHER_PIXELS = 0.75;
+import { CAD_EDGE_COVERAGE_GLSL, CAD_EDGE_FEATHER_PIXELS } from "./cadEdgeCoverage.js";
+export { CAD_EDGE_FEATHER_PIXELS } from "./cadEdgeCoverage.js";
 const FEATHER_GLSL = CAD_EDGE_FEATHER_PIXELS.toFixed(4);
 
 // Texels per occurrence row in the instance texture: 4 matrix columns, colour, state, 2 spare.
@@ -106,7 +101,7 @@ uniform mat4 cadClassColor;
 uniform vec4 cadClassWidth;
 // The DRAWING BUFFER size, in device pixels -- not the CSS size. The extrusion
 // below normalises by resolution.y and lands in NDC, so whatever unit this is
-// in is the unit display.edges.classes[*].thickness is in. See
+// in is the unit the resolved per-class thickness uses. See
 // screenSpaceLineDeviceResolution in renderEdges.js.
 uniform vec2 resolution;
 uniform float cadHighlightPass;
@@ -206,20 +201,17 @@ varying vec4 vColor;
 varying vec2 vCadEdge;
 layout(location = 0) out vec4 cadFragColor;
 #include <clipping_planes_pars_fragment>
+${CAD_EDGE_COVERAGE_GLSL}
 void main() {
   #include <clipping_planes_fragment>
   // The analytic feather. No derivative and no alpha-to-coverage: the distance
   // is exact in device pixels because the vertex stage already extruded in
   // them, so the ramp is the same at every zoom, every dpr and every sample
-  // count. Coverage multiplies the per-class alpha rather than replacing it —
-  // a tangent edge at opacity 0.5 stays half-strength across its whole width.
+  // count. The symmetric filter preserves nominal ink even below one pixel;
+  // coverage multiplies the class alpha rather than replacing it.
   float halfWidth = vCadEdge.y;
   float distancePixels = abs(vCadEdge.x) * (halfWidth + ${FEATHER_GLSL});
-  float coverage = 1.0 - smoothstep(
-    max(halfWidth - ${FEATHER_GLSL}, 0.0),
-    halfWidth + ${FEATHER_GLSL},
-    distancePixels
-  );
+  float coverage = cadEdgeCoverage(distancePixels, halfWidth);
   cadFragColor = linearToOutputTexel(vec4(vColor.rgb, vColor.a * opacity * coverage));
 }
 `;
@@ -304,15 +296,6 @@ export class CadEdgeInstances {
 
     const classColor = new THREE.Matrix4();
     const classWidth = new THREE.Vector4();
-    const elements = classColor.elements;
-    for (let index = 0; index < CAD_EDGE_CLASS_ORDER.length; index += 1) {
-      const style = classStyles.find((entry) => entry.classId === CAD_EDGE_CLASS_ORDER[index]) || null;
-      elements[index * 4] = style?.color?.r ?? 0;
-      elements[index * 4 + 1] = style?.color?.g ?? 0;
-      elements[index * 4 + 2] = style?.color?.b ?? 0;
-      elements[index * 4 + 3] = style ? clamp(style.opacity, 0, 1) : 0;
-      classWidth.setComponent(index, style ? clamp(style.thickness, 0, 6) : 0);
-    }
     this.uniforms = {
       cadSegmentTexture: { value: segments.texture },
       cadSegmentTexSize: { value: new THREE.Vector2(segments.width, segments.height) },
@@ -322,6 +305,7 @@ export class CadEdgeInstances {
       cadClassWidth: { value: classWidth },
       resolution: { value: new THREE.Vector2(resolution?.width || 1, resolution?.height || 1) }
     };
+    this.setClassStyles(classStyles);
     this.material = createInstancedLineMaterial(THREE, this.uniforms, { depthTest, depthBias, highlightPass: false });
     this.highlightMaterial = createInstancedLineMaterial(THREE, this.uniforms, { depthTest, depthBias, highlightPass: true });
     this.materials = [this.material, this.highlightMaterial];
@@ -340,6 +324,19 @@ export class CadEdgeInstances {
     this.highlightObject.userData.cadEdgeInstancesHighlight = true;
     this.object.add(this.highlightObject);
     this.grow(MIN_CAPACITY);
+  }
+
+  setClassStyles(classStyles) {
+    const elements = this.uniforms.cadClassColor.value.elements;
+    const widths = this.uniforms.cadClassWidth.value;
+    for (let index = 0; index < CAD_EDGE_CLASS_ORDER.length; index += 1) {
+      const style = classStyles.find((entry) => entry.classId === CAD_EDGE_CLASS_ORDER[index]) || null;
+      elements[index * 4] = style?.color?.r ?? 0;
+      elements[index * 4 + 1] = style?.color?.g ?? 0;
+      elements[index * 4 + 2] = style?.color?.b ?? 0;
+      elements[index * 4 + 3] = style ? clamp(style.opacity, 0, 1) : 0;
+      widths.setComponent(index, style ? clamp(style.thickness, 0, 6) : 0);
+    }
   }
 
   grow(capacity) {

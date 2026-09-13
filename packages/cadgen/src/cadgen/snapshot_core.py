@@ -153,14 +153,9 @@ DISPLAY_MODES = frozenset(
 PART_COLOR_MODES = frozenset({"original", "single", "by_part"})
 DISPLAY_CLIP_KEYS = frozenset({"enabled", "axis", "offset", "offsets", "invert"})
 DISPLAY_EXPLODED_KEYS = frozenset({"enabled", "amount"})
-DISPLAY_EDGE_KEYS = frozenset(
-    {"enabled", "color", "thickness", "classes", "highlightColor", "highlightOpacity",
-     "highlightThickness", "silhouette", "silhouetteScale", "depthTest"}
-)
-DISPLAY_EDGE_CLASS_IDS = frozenset({"feature", "tangent", "seam", "degenerate"})
-DISPLAY_EDGE_CLASS_KEYS = frozenset({"color", "opacity", "thickness"})
+DISPLAY_EDGE_KEYS = frozenset({"enabled", "silhouette"})
 DISPLAY_GUIDE_KEYS = frozenset({"grid", "axis"})
-DISPLAY_GRID_GUIDE_KEYS = frozenset({"enabled", "centerColor", "cellColor", "opacity", "density"})
+DISPLAY_GRID_GUIDE_KEYS = frozenset({"enabled"})
 DISPLAY_AXIS_GUIDE_KEYS = frozenset({"enabled", "color", "opacity"})
 DISPLAY_PART_COLOR_KEYS = frozenset({"mode", "color", "colors"})
 DISPLAY_MODE_ALIASES = {mode: mode for mode in DISPLAY_MODES}
@@ -377,40 +372,9 @@ def validate_display_settings_values(payload: Mapping[str, object], *, source_la
         unknown = sorted(set(edges) - DISPLAY_EDGE_KEYS)
         if unknown:
             raise SnapshotError(f"display edges has unknown key(s): {', '.join(unknown)} ({source_label})")
-        for key in ("enabled", "silhouette", "depthTest"):
+        for key in ("enabled", "silhouette"):
             if key in edges:
                 _render_boolean(edges[key], f"display.edges.{key}")
-        for key in ("color", "highlightColor"):
-            if key in edges:
-                _render_color(edges[key], f"display.edges.{key}")
-        for key in ("thickness", "highlightThickness"):
-            if key in edges:
-                _render_number(edges[key], f"display.edges.{key}", 0.5, 6)
-        if "highlightOpacity" in edges:
-            _render_number(edges["highlightOpacity"], "display.edges.highlightOpacity", 0, 1)
-        if "silhouetteScale" in edges:
-            _render_number(edges["silhouetteScale"], "display.edges.silhouetteScale", 0, 0.04)
-        if "classes" in edges:
-            classes = edges["classes"]
-            if not is_plain_object(classes):
-                raise SnapshotError(f"display edges.classes must be an object ({source_label})")
-            unknown = sorted(set(classes) - DISPLAY_EDGE_CLASS_IDS)
-            if unknown:
-                raise SnapshotError(f"display edges.classes has unknown key(s): {', '.join(unknown)} ({source_label})")
-            for class_id, class_value in classes.items():
-                if not is_plain_object(class_value):
-                    raise SnapshotError(f"display edges.classes.{class_id} must be an object ({source_label})")
-                unknown = sorted(set(class_value) - DISPLAY_EDGE_CLASS_KEYS)
-                if unknown:
-                    raise SnapshotError(
-                        f"display edges.classes.{class_id} has unknown key(s): {', '.join(unknown)} ({source_label})"
-                    )
-                if "color" in class_value:
-                    _render_color(class_value["color"], f"display.edges.classes.{class_id}.color")
-                if "opacity" in class_value:
-                    _render_number(class_value["opacity"], f"display.edges.classes.{class_id}.opacity", 0, 1)
-                if "thickness" in class_value:
-                    _render_number(class_value["thickness"], f"display.edges.classes.{class_id}.thickness", 0, 6)
     guides = payload.get("guides")
     if guides is not None:
         if not is_plain_object(guides):
@@ -434,13 +398,11 @@ def validate_display_settings_values(payload: Mapping[str, object], *, source_la
                 )
             if "enabled" in value:
                 _render_boolean(value["enabled"], f"display.guides.{name}.enabled")
-            for key in ({"centerColor", "cellColor"} if name == "grid" else {"color"}):
+            for key in (() if name == "grid" else ("color",)):
                 if key in value:
                     _render_color(value[key], f"display.guides.{name}.{key}")
             if "opacity" in value:
                 _render_number(value["opacity"], f"display.guides.{name}.opacity", 0, 1)
-            if name == "grid" and "density" in value:
-                _render_number(value["density"], "display.guides.grid.density", 0.25, 4)
     part_color = payload.get("partColor")
     if part_color is not None:
         if not is_plain_object(part_color):

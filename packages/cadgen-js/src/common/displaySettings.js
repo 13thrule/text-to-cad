@@ -27,39 +27,10 @@ export const CAD_EDGE_COLOR = "#132232";
 export const CAD_EDGE_HIGHLIGHT_COLOR = "#8dc5ff";
 export const CAD_EDGE_CLASS_IDS = Object.freeze(["feature", "tangent", "seam", "degenerate"]);
 
-export const DEFAULT_DISPLAY_EDGE_CLASS_SETTINGS = Object.freeze({
-  feature: Object.freeze({
-    color: CAD_EDGE_COLOR,
-    opacity: 1,
-    thickness: 1.15
-  }),
-  tangent: Object.freeze({
-    color: CAD_EDGE_COLOR,
-    opacity: 0.5,
-    thickness: 1.15
-  }),
-  seam: Object.freeze({
-    color: CAD_EDGE_COLOR,
-    opacity: 0.85,
-    thickness: 1.15
-  }),
-  degenerate: Object.freeze({
-    color: CAD_EDGE_COLOR,
-    opacity: 1,
-    thickness: 0
-  })
-});
-
+// Persist only CAD visibility choices; ink is a renderer policy.
 export const DEFAULT_DISPLAY_EDGE_SETTINGS = Object.freeze({
   enabled: true,
-  color: CAD_EDGE_COLOR,
-  thickness: 1,
-  classes: DEFAULT_DISPLAY_EDGE_CLASS_SETTINGS,
-  highlightColor: CAD_EDGE_HIGHLIGHT_COLOR,
-  highlightOpacity: 1,
-  highlightThickness: 3,
-  silhouette: false,
-  silhouetteScale: 0
+  silhouette: false
 });
 
 export const DISABLED_DISPLAY_EDGE_SETTINGS = Object.freeze({
@@ -77,11 +48,7 @@ export const CAD_PART_COLOR_MODE_VALUES = Object.freeze(Object.values(CAD_PART_C
 
 export const DEFAULT_DISPLAY_GUIDE_SETTINGS = Object.freeze({
   grid: Object.freeze({
-    enabled: true,
-    centerColor: "#6b7280",
-    cellColor: "#cbd5e1",
-    opacity: 0.16,
-    density: 1
+    enabled: true
   }),
   axis: Object.freeze({
     enabled: true,
@@ -145,23 +112,9 @@ export const DISPLAY_SETTINGS_KEYS = Object.freeze([
   "partColor"
 ]);
 
-export const DISPLAY_EDGE_SETTINGS_KEYS = Object.freeze([
-  "enabled",
-  "color",
-  "thickness",
-  "classes",
-  "highlightColor",
-  "highlightOpacity",
-  "highlightThickness",
-  "silhouette",
-  "silhouetteScale",
-  "depthTest"
-]);
-export const DISPLAY_EDGE_CLASS_SETTINGS_KEYS = Object.freeze(["color", "opacity", "thickness"]);
+export const DISPLAY_EDGE_SETTINGS_KEYS = Object.freeze(["enabled", "silhouette"]);
 export const DISPLAY_GUIDE_SETTINGS_KEYS = Object.freeze(["grid", "axis"]);
-export const DISPLAY_GRID_GUIDE_SETTINGS_KEYS = Object.freeze([
-  "enabled", "centerColor", "cellColor", "opacity", "density"
-]);
+export const DISPLAY_GRID_GUIDE_SETTINGS_KEYS = Object.freeze(["enabled"]);
 export const DISPLAY_AXIS_GUIDE_SETTINGS_KEYS = Object.freeze(["enabled", "color", "opacity"]);
 export const DISPLAY_PART_COLOR_SETTINGS_KEYS = Object.freeze(["mode", "color", "colors"]);
 export const DISPLAY_EXPLODED_SETTINGS_KEYS = Object.freeze(["enabled", "amount"]);
@@ -197,42 +150,12 @@ function normalizeBoolean(value, fallback = false) {
   return typeof value === "boolean" ? value : fallback;
 }
 
-export function normalizeDisplayEdgeClassSettings(
-  value = {},
-  fallback = DEFAULT_DISPLAY_EDGE_CLASS_SETTINGS,
-  colorFallback = CAD_EDGE_COLOR
-) {
-  const source = isObject(value) ? value : {};
-  const fallbackColor = normalizeColor(colorFallback, CAD_EDGE_COLOR);
-  return Object.fromEntries(CAD_EDGE_CLASS_IDS.map((classId) => {
-    const classSource = isObject(source[classId]) ? source[classId] : {};
-    const classFallback = fallback?.[classId] || DEFAULT_DISPLAY_EDGE_CLASS_SETTINGS[classId];
-    return [classId, {
-      color: normalizeColor(classSource.color, fallbackColor),
-      opacity: normalizeNumber(classSource.opacity, classFallback.opacity, 0, 1),
-      thickness: normalizeNumber(classSource.thickness, classFallback.thickness, 0, 6)
-    }];
-  }));
-}
-
 export function normalizeDisplayEdgeSettings(value = null, fallback = DEFAULT_DISPLAY_EDGE_SETTINGS) {
   const source = isObject(value) ? value : {};
-  const color = normalizeColor(source.color, fallback.color);
-  const normalized = {
+  return {
     enabled: normalizeBoolean(source.enabled, fallback.enabled),
-    color,
-    thickness: normalizeNumber(source.thickness, fallback.thickness, 0.5, 6),
-    classes: normalizeDisplayEdgeClassSettings(source.classes, fallback.classes, color),
-    highlightColor: normalizeColor(source.highlightColor, fallback.highlightColor || CAD_EDGE_HIGHLIGHT_COLOR),
-    highlightOpacity: normalizeNumber(source.highlightOpacity, fallback.highlightOpacity || 1, 0, 1),
-    highlightThickness: normalizeNumber(source.highlightThickness, fallback.highlightThickness || 3, 0.5, 6),
-    silhouette: normalizeBoolean(source.silhouette, fallback.silhouette || false),
-    silhouetteScale: normalizeNumber(source.silhouetteScale, fallback.silhouetteScale || 0, 0, 0.04)
+    silhouette: normalizeBoolean(source.silhouette, fallback.silhouette || false)
   };
-  if (typeof source.depthTest === "boolean") {
-    normalized.depthTest = source.depthTest;
-  }
-  return normalized;
 }
 
 function normalizeModeText(value) {
@@ -340,27 +263,7 @@ export function validateDisplaySettings(value) {
   if (Object.prototype.hasOwnProperty.call(source, "edges")) {
     const edges = validateStrictObject(source.edges, "display.edges");
     validateObjectKeys(edges, DISPLAY_EDGE_SETTINGS_KEYS, "display.edges");
-    validatePresent(edges, ["enabled", "silhouette", "depthTest"], validateStrictBoolean, "display.edges");
-    validatePresent(edges, ["color", "highlightColor"], validateStrictColor, "display.edges");
-    validatePresent(edges, ["thickness", "highlightThickness"],
-      (entry, fieldName) => validateStrictNumber(entry, fieldName, 0.5, 6), "display.edges");
-    validatePresent(edges, ["highlightOpacity"],
-      (entry, fieldName) => validateStrictNumber(entry, fieldName, 0, 1), "display.edges");
-    validatePresent(edges, ["silhouetteScale"],
-      (entry, fieldName) => validateStrictNumber(entry, fieldName, 0, 0.04), "display.edges");
-    if (Object.prototype.hasOwnProperty.call(edges, "classes")) {
-      const classes = validateStrictObject(edges.classes, "display.edges.classes");
-      validateObjectKeys(classes, CAD_EDGE_CLASS_IDS, "display.edges.classes");
-      for (const [classId, classValue] of Object.entries(classes)) {
-        const edgeClass = validateStrictObject(classValue, `display.edges.classes.${classId}`);
-        validateObjectKeys(edgeClass, DISPLAY_EDGE_CLASS_SETTINGS_KEYS, `display.edges.classes.${classId}`);
-        validatePresent(edgeClass, ["color"], validateStrictColor, `display.edges.classes.${classId}`);
-        validatePresent(edgeClass, ["opacity"],
-          (entry, fieldName) => validateStrictNumber(entry, fieldName, 0, 1), `display.edges.classes.${classId}`);
-        validatePresent(edgeClass, ["thickness"],
-          (entry, fieldName) => validateStrictNumber(entry, fieldName, 0, 6), `display.edges.classes.${classId}`);
-      }
-    }
+    validatePresent(edges, ["enabled", "silhouette"], validateStrictBoolean, "display.edges");
   }
   if (Object.prototype.hasOwnProperty.call(source, "guides")) {
     const guides = validateStrictObject(source.guides, "display.guides");
@@ -369,11 +272,6 @@ export function validateDisplaySettings(value) {
       const grid = validateStrictObject(guides.grid, "display.guides.grid");
       validateObjectKeys(grid, DISPLAY_GRID_GUIDE_SETTINGS_KEYS, "display.guides.grid");
       validatePresent(grid, ["enabled"], validateStrictBoolean, "display.guides.grid");
-      validatePresent(grid, ["centerColor", "cellColor"], validateStrictColor, "display.guides.grid");
-      validatePresent(grid, ["opacity"],
-        (entry, fieldName) => validateStrictNumber(entry, fieldName, 0, 1), "display.guides.grid");
-      validatePresent(grid, ["density"],
-        (entry, fieldName) => validateStrictNumber(entry, fieldName, 0.25, 4), "display.guides.grid");
     }
     if (Object.prototype.hasOwnProperty.call(guides, "axis")) {
       const axis = validateStrictObject(guides.axis, "display.guides.axis");
@@ -404,15 +302,11 @@ export function normalizeDisplayGuideSettings(value = null, fallback = DEFAULT_D
   validateObjectKeys(source, ["grid", "axis"], "display.guides");
   const grid = isObject(source.grid) ? source.grid : {};
   const axis = isObject(source.axis) ? source.axis : {};
-  validateObjectKeys(grid, ["enabled", "centerColor", "cellColor", "opacity", "density"], "display.guides.grid");
+  validateObjectKeys(grid, DISPLAY_GRID_GUIDE_SETTINGS_KEYS, "display.guides.grid");
   validateObjectKeys(axis, ["enabled", "color", "opacity"], "display.guides.axis");
   return {
     grid: {
-      enabled: normalizeBoolean(grid.enabled, fallback.grid.enabled),
-      centerColor: normalizeColor(grid.centerColor, fallback.grid.centerColor),
-      cellColor: normalizeColor(grid.cellColor, fallback.grid.cellColor),
-      opacity: normalizeNumber(grid.opacity, fallback.grid.opacity, 0, 1),
-      density: normalizeNumber(grid.density, fallback.grid.density, 0.25, 4)
+      enabled: normalizeBoolean(grid.enabled, fallback.grid.enabled)
     },
     axis: {
       enabled: normalizeBoolean(axis.enabled, fallback.axis.enabled),

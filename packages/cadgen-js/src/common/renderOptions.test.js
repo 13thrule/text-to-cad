@@ -367,7 +367,7 @@ test("output sizing and padding helpers preserve snapshot fallback semantics", (
   assert.equal(framePadding({ output: { paddingPercent: 0.13 } }), 0.13);
 });
 
-test("inspection guides use display-owned opacity and density", () => {
+test("inspection grid uses fixed ink and shared Viewer spacing", () => {
   const scene = new THREE.Scene();
   addFloor(
     scene,
@@ -383,8 +383,8 @@ test("inspection guides use display-owned opacity and density", () => {
   const grid = scene.children[0];
   const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
   assert.equal(grid.type, "GridHelper");
-  assert.equal(grid.geometry.getAttribute("position").count, 4 * (56 + 1));
-  assert.equal(materials[0].opacity, 0.37);
+  assert.equal(grid.geometry.getAttribute("position").count, 4 * (28 + 1));
+  assert.equal(materials[0].opacity, 0.16);
   assert.equal(materials[0].transparent, true);
   assert.equal(materials[0].depthWrite, false);
 });
@@ -417,7 +417,7 @@ test("display guides render independently from the studio stage floor", () => {
   assert.ok(grid);
   assert.ok(plane);
   assert.ok(shadow);
-  assert.equal(gridMaterials[0].opacity, 0.37);
+  assert.equal(gridMaterials[0].opacity, 0.16);
   assert.equal(grid.position.z, 0);
   assert.equal(plane.material.color.getHexString(), "ddeeff");
   assert.equal(plane.material.roughness, 0.36);

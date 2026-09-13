@@ -270,14 +270,6 @@ export function DisplaySettingsSection({
 
       <FileSheetSubsection title="Guides">
         <FileSheetToggleRow label="Grid" checked={display.guides.grid.enabled} onCheckedChange={(enabled) => setGuide("grid", { enabled })} />
-        {display.guides.grid.enabled ? (
-          <>
-            <FileSheetColorRow label="Center line" value={display.guides.grid.centerColor} onChange={(centerColor) => setGuide("grid", { centerColor })} />
-            <FileSheetColorRow label="Cell line" value={display.guides.grid.cellColor} onChange={(cellColor) => setGuide("grid", { cellColor })} />
-            <SettingsSlider label="Line opacity" value={display.guides.grid.opacity} min={0} max={1} onChange={(opacity) => setGuide("grid", { opacity })} />
-            <SettingsSlider label="Density" value={display.guides.grid.density} min={0.25} max={4} step={0.05} onChange={(density) => setGuide("grid", { density })} />
-          </>
-        ) : null}
         <FileSheetToggleRow label="Origin axes" checked={display.guides.axis.enabled} onCheckedChange={(enabled) => setGuide("axis", { enabled })} />
         {display.guides.axis.enabled ? (
           <>
@@ -288,8 +280,6 @@ export function DisplaySettingsSection({
       </FileSheetSubsection>
 
       <FileSheetSubsection title="Edges">
-        <FileSheetColorRow label="Color" value={display.edges.color} onChange={(color) => setEdges({ color })} />
-        <SettingsSlider label="Thickness" value={display.edges.thickness} min={0.5} max={6} step={0.05} onChange={(thickness) => setEdges({ thickness })} />
         <FileSheetToggleRow label="Silhouette" checked={display.edges.silhouette} onCheckedChange={(silhouette) => setEdges({ silhouette })} />
       </FileSheetSubsection>
 
