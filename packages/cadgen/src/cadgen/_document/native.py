@@ -8,7 +8,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from contextlib import nullcontext
+from importlib.metadata import version as _installed_version
+from types import MappingProxyType
 from typing import Any, Iterable
+
+
+_DEPENDENCY_VERSIONS = MappingProxyType({
+    name: _installed_version(name) for name in ("cadquery-ocp", "build123d")
+})
+del _installed_version
+
+
+def dependency_version(name: str) -> str:
+    """Version captured when the owner loads its engine, before authored code.
+
+    Native libraries cannot be upgraded inside a live owner. Restart that
+    worker after installation changes; repeated metadata-directory discovery
+    does not describe a different loaded kernel. Source and codec identities
+    remain separate and are checked by their consumers.
+    """
+    try:
+        return _DEPENDENCY_VERSIONS[name]
+    except KeyError:
+        raise ValueError("unknown native document dependency") from None
 
 
 @dataclass(frozen=True)
@@ -76,6 +98,52 @@ def copy_shape_with_face_map(shape: Any) -> tuple[Any, tuple[int, ...]]:
             or set(correspondence) != set(range(after.Extent()))):
         raise ValueError("native copy did not provide a complete one-to-one face correspondence")
     return retained, correspondence
+
+
+def copy_shape_with_topology_order(shape: Any, kinds: tuple[str, ...], *,
+                                  checkpoint=lambda: None, limit: int = 100_000):
+    """Copy once, with private subshapes ordered by exact source correspondence.
+
+    Only the trusted derivation owns these native values. Mesh face and edge
+    ordinals must refer back to the source prototype even when the copier's
+    traversal order differs. Missing or merged copy results cannot supply that
+    contract and fail before the derived product is published.
+    """
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+    from OCP.TopAbs import TopAbs_FACE, TopAbs_EDGE
+    from OCP.TopExp import TopExp
+    from OCP.TopTools import TopTools_IndexedMapOfShape
+
+    if type(kinds) is not tuple or kinds not in (("face",), ("face", "edge")):
+        raise ValueError("unsupported native copy topology order")
+    if shape is None or shape.IsNull():
+        raise ValueError("cannot copy null native geometry")
+    checkpoint()
+    copier = BRepBuilderAPI_Copy(shape, True, True)
+    private = copier.Shape()
+    ordered = {}
+    for kind in kinds:
+        checkpoint()
+        before, after = TopTools_IndexedMapOfShape(), TopTools_IndexedMapOfShape()
+        native_kind = TopAbs_FACE if kind == "face" else TopAbs_EDGE
+        TopExp.MapShapes_s(shape, native_kind, before)
+        TopExp.MapShapes_s(private, native_kind, after)
+        if before.Extent() > limit or after.Extent() > limit:
+            raise ValueError("native copy topology exceeds the derivation limit")
+        indices = []
+        for index in range(1, before.Extent() + 1):
+            if index % 1024 == 1:
+                checkpoint()
+            copied = copier.ModifiedShape(before.FindKey(index))
+            indices.append(after.FindIndex(copied))
+        if len(indices) != after.Extent() or set(indices) != set(range(1, after.Extent() + 1)):
+            raise ValueError("native copy lacks complete topology correspondence")
+        # Indexed maps use IsSame, which deliberately ignores orientation.
+        # A copied traversal may encounter a shared reversed member first;
+        # even ModifiedShape's binding can return a canonical orientation.
+        ordered[kind] = tuple(after.FindKey(target).Oriented(before.FindKey(source).Orientation())
+                              for source, target in enumerate(indices, 1))
+    return private, ordered
 
 
 def copy_many(shapes: Iterable[Any]) -> tuple[Any, ...]:

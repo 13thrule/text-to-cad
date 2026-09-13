@@ -77,6 +77,10 @@ def _profile_rows(profile: cProfile.Profile, *, order: str, limit: int) -> list[
 def _receipt_facts(receipt) -> dict:
     value = _closed(receipt)
     destination = Path(value["destination"])
+    if value["sha256"] is None:
+        if value["size"] != 0 or os.path.lexists(destination):
+            raise RuntimeError("publication receipt does not attest actual absence")
+        return {**value, "actualSha256": None, "actualBytes": 0}
     payload = destination.read_bytes()
     if value["sha256"] != _sha256(payload) or value["size"] != len(payload):
         raise RuntimeError("publication receipt does not attest the actual STEP bytes")
@@ -124,8 +128,9 @@ def main() -> int:
     if prime_attempt is None:
         raise RuntimeError("prime request did not expose a build attempt")
     prime_receipts = [_receipt_facts(receipt) for receipt in prime.outputs]
-    if len(prime_receipts) != 1 or Path(prime_receipts[0]["destination"]).resolve() != output:
-        raise RuntimeError("prime request did not produce exactly the required fixture STEP")
+    required_paths = {output, Path(str(output) + ".json")}
+    if len(prime_receipts) != 2 or {Path(row["destination"]).resolve() for row in prime_receipts} != required_paths:
+        raise RuntimeError("prime request did not complete exactly the required STEP pair")
     trace_before = _line_count(trace)
 
     profiler = cProfile.Profile()
@@ -146,9 +151,9 @@ def main() -> int:
                 "products": _closed(result.product_metrics),
             })
             current = [_receipt_facts(receipt) for receipt in result.outputs]
-            if len(current) != 1:
-                raise RuntimeError("profiled request did not produce exactly one required STEP")
-            receipts.append(current[0])
+            if len(current) != 2 or {Path(row["destination"]).resolve() for row in current} != required_paths:
+                raise RuntimeError("profiled request did not complete the required STEP pair")
+            receipts.append(current)
     finally:
         profiler.disable()
     elapsed = time.perf_counter() - started

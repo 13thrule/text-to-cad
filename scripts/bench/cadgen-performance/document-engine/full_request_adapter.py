@@ -141,7 +141,9 @@ class Adapter:
             if materialized_after != request["digest"]:
                 raise RuntimeError("legacy materialized entry changed during its source request")
             required = [{"destination": str(self.output), "kind": "step",
-                         "attestation": "completed-file-and-json-event"}]
+                         "attestation": "completed-file-and-json-event"},
+                        {"destination": str(self.output) + ".json", "kind": "annotations",
+                         "attestation": "actual-absence-check"}]
         else:
             captured = self.captured_type(self.source, payload, request["digest"])
             request_started = time.perf_counter()
@@ -161,8 +163,8 @@ class Adapter:
             if len(input_records) != 1:
                 raise RuntimeError("single-file fixture unexpectedly consumed helper or managed-data inputs")
             required = candidate["outputs"]
-            if len(required) != 1:
-                raise RuntimeError("fixture must complete exactly one required STEP output")
+            if len(required) != 2:
+                raise RuntimeError("fixture must complete its STEP and absent-companion obligations")
 
         if not self.output.is_file():
             raise RuntimeError(f"{request['label']}: required STEP output is absent")
@@ -171,12 +173,21 @@ class Adapter:
         output_digest = _sha256(output_payload)
         if not output_payload:
             raise RuntimeError(f"{request['label']}: required STEP output is empty")
+        companion = Path(str(self.output) + ".json")
+        if os.path.lexists(companion):
+            raise RuntimeError("these fixtures declare no annotations; the companion must be absent")
         if self.engine == "retained":
-            receipt = required[0]
+            by_destination = {Path(row["destination"]).resolve(): row for row in required}
+            if set(by_destination) != {self.output.resolve(), companion.resolve()}:
+                raise RuntimeError("current receipts do not name the required output pair")
+            receipt = by_destination[self.output.resolve()]
             if (Path(receipt["destination"]).resolve() != self.output.resolve()
                     or receipt["sha256"] != output_digest
                     or receipt["size"] != len(output_payload)):
                 raise RuntimeError("current STEP receipt does not attest the actual destination bytes")
+            absent = by_destination[companion.resolve()]
+            if absent["sha256"] is not None or absent["size"] != 0 or absent["action"] != "verified-absent":
+                raise RuntimeError("current companion receipt does not attest its actual absence")
         verification_ms = (time.perf_counter() - verify_started) * 1000.0
         completed_ns = time.perf_counter_ns()
 
@@ -227,6 +238,7 @@ class Adapter:
                 "requiredStepPresent": True,
                 "actualDestinationSha256": output_digest,
                 "actualDestinationBytes": len(output_payload),
+                "requiredCompanionAbsent": True,
                 "currentReceiptMatched": self.engine == "retained",
                 "archiveCopyExcludedFromTiming": True,
             },

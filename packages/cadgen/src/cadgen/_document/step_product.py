@@ -11,7 +11,6 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 import hashlib
-import importlib.metadata
 import json
 import math
 import os
@@ -23,16 +22,18 @@ from typing import Any
 
 from .core import Document, ExportConflict
 from .identities import normalize
-from .native import copy_shape
+from .native import copy_shape, dependency_version
 from .resources import Cancelled, ResourceRequest
 from .roots import AssemblyGroup, GeometryLeaf, IDENTITY_TRANSFORM, walk_root
 from .appearance import (appearance, copied_face_recipe, face_recipe, inherited,
                          native_faces, relocated_face_recipe, set_xcaf_physical_material,
                          xcaf_face_recipe, xcaf_physical_material)
+from .step_faces import (FaceTransferError, SavedFaceInventory, SavedFaceReader,
+                         copied_face_order, relocated_face_order, transfer_face_entities)
 
 
-_WRITER_VERSION = "pinned-root-step-v2"
-_READBACK_VERSION = "stepcaf-metadata-v2"
+_WRITER_VERSION = "pinned-root-step-v3"
+_READBACK_VERSION = "stepcaf-metadata-v3"
 _CODEC_LOCK = RLock()
 _MAX_PRODUCTS = 8
 _MAX_PRODUCT_BYTES = 64 * 1024**2
@@ -88,6 +89,7 @@ class _ExpectedNode:
     children: tuple["_ExpectedNode", ...]
     face_colors: tuple = ()
     physical_material: Any = None
+    face_definition: int | None = None
 
 
 @dataclass(frozen=True)
@@ -101,6 +103,7 @@ class StepProduct:
     returned_root_path: tuple[int, ...]
     prototype_ids: frozenset[str]
     writer_identity: tuple
+    saved_faces: SavedFaceInventory | None = None
 
     @property
     def returned_root(self) -> SavedNode:
@@ -243,13 +246,16 @@ def _matrix(location: Any) -> tuple[float, ...]:
 
 def _runtime_identity(document: Document) -> tuple:
     from cadgen import step_export
+    from . import step_faces
 
     # Writer code is part of product identity. This is library implementation
     # identity, never a source-model hash or a geometry-serialization cache key.
     writer_bytes = Path(step_export.__file__).read_bytes()
     return (_WRITER_VERSION, _READBACK_VERSION, hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            hashlib.sha256(writer_bytes).hexdigest(), platform.python_version(), platform.machine(),
-            importlib.metadata.version("cadquery-ocp"), importlib.metadata.version("build123d"),
+            hashlib.sha256(writer_bytes).hexdigest(),
+            hashlib.sha256(Path(step_faces.__file__).read_bytes()).hexdigest(),
+            platform.python_version(), platform.machine(),
+            dependency_version("cadquery-ocp"), dependency_version("build123d"),
             normalize(document.runtime), os.environ.get("CADGEN_STEP_STYLE_REORDER", ""))
 
 
@@ -443,10 +449,15 @@ class StepProductSession:
                     from cadgen.step_export import write_xcaf_doc_step_file
 
                     with _owned_xcaf_document() as document:
-                        prototypes, expected, returned_root_path = self._materialize_xcaf(document)
+                        prototypes, expected, returned_root_path, face_inputs = self._materialize_xcaf(document)
+                        transferred = ()
+                        def capture_faces(writer):
+                            nonlocal transferred
+                            transferred = transfer_face_entities(writer, face_inputs, checkpoint=self._check)
                         write_xcaf_doc_step_file(document, target,
                                                 label=self._pin.revision.root.label or Path(basename).stem,
-                                                originating_system=options.originating_system)
+                                                originating_system=options.originating_system,
+                                                _transfer_observer=capture_faces if face_inputs else None)
                     payload = target.read_bytes()
                     if not payload:
                         raise RuntimeError("STEP writer returned empty bytes")
@@ -456,11 +467,12 @@ class StepProductSession:
                     # passed to this independent saved-document parse.
                     read_path = Path(temporary) / "saved-readback.step"
                     read_path.write_bytes(payload)
-                    saved = _read_saved_metadata(read_path, digest)
+                    saved, saved_faces = _read_saved_metadata(read_path, digest, transferred=transferred,
+                                                              checkpoint=self._check)
                     self._counts["independent_parses"] += 1
-                    self._validate_saved_hierarchy(expected, saved)
+                    self._validate_saved_hierarchy(expected, saved, transferred, saved_faces)
                     product = StepProduct(identity, root_identity, basename, payload, digest,
-                                          saved, returned_root_path, frozenset(prototypes), writer_identity)
+                                          saved, returned_root_path, frozenset(prototypes), writer_identity, saved_faces)
             self._check()
             self._registry.put(product)
             self._counts["computed"] += 1
@@ -480,6 +492,7 @@ class StepProductSession:
         colors = XCAFDoc_DocumentTool.ColorTool_s(document.Main())
         materials = XCAFDoc_DocumentTool.MaterialTool_s(document.Main())
         prototypes, variants, definitions = {}, {}, {}
+        face_inputs = []
 
         def metadata(label, name, color, physical=None):
             TDataStd_Name.Set_s(label, TCollection_ExtendedString(name))
@@ -508,25 +521,38 @@ class StepProductSession:
                 variant_key = (key, color, recipe, normalize(None if physical is None else dict(physical)))
                 if variant_key not in definitions:
                     mapped_recipe = copied_face_recipe(source, native, copier, recipe)
+                    face_order = copied_face_order(source, native, copier) if recipe else None
                     base = native.Located(TopLoc_Location())
                     mapped_recipe = relocated_face_recipe(native, base, mapped_recipe)
+                    if face_order is not None:
+                        face_order = relocated_face_order(native, base, face_order)
                     if key in variants:
                         variant_copy = BRepBuilderAPI_Copy(base, False, False)
                         copied = variant_copy.Shape()
                         mapped_recipe = copied_face_recipe(base, copied, variant_copy, mapped_recipe)
+                        if face_order is not None:
+                            face_order = copied_face_order(base, copied, variant_copy, face_order)
                         base = copied
                         self._counts["appearance_copies"] += 1
                     variants.setdefault(key, []).append(base)
                     definition = shapes.AddShape(base, False)
-                    definitions[variant_key] = definition
+                    face_definition = None
+                    if face_order is not None:
+                        from .appearance import MAX_FACES
+                        if sum(map(len, face_inputs)) + len(face_order) > MAX_FACES:
+                            raise FaceTransferError("STEP face proof exceeds the face limit")
+                        face_definition = len(face_inputs)
+                        face_inputs.append(face_order)
+                    definitions[variant_key] = (definition, face_definition)
                     metadata(definition, node.label, color, physical)
                     face_map = native_faces(base) if mapped_recipe else None
                     for ordinal, rgba in mapped_recipe:
                         self._check()
                         sublabel = shapes.AddSubShape(definition, face_map.FindKey(ordinal + 1))
                         metadata(sublabel, "", rgba)
-                expected = _ExpectedNode(node.label, _matrix(local), color, (), recipe, physical)
-                return definitions[variant_key], local, color, expected
+                definition, face_definition = definitions[variant_key]
+                expected = _ExpectedNode(node.label, _matrix(local), color, (), recipe, physical, face_definition)
+                return definition, local, color, expected
             definition = shapes.NewShape()
             metadata(definition, node.label, color, physical)
             expected_children = []
@@ -550,12 +576,15 @@ class StepProductSession:
             # document container. It is distinct from the authored hierarchy.
             expected = _ExpectedNode(expected.name, IDENTITY_TRANSFORM, None, (expected,))
             returned_root_path = (1, 1)
-        return frozenset(prototypes), expected, returned_root_path
+        return frozenset(prototypes), expected, returned_root_path, tuple(face_inputs)
 
     @staticmethod
-    def _validate_saved_hierarchy(expected: _ExpectedNode, saved: tuple[SavedNode, ...]):
+    def _validate_saved_hierarchy(expected: _ExpectedNode, saved: tuple[SavedNode, ...],
+                                  transferred=(), saved_faces=None):
         if len(saved) != 1:
             raise RuntimeError("STEP readback changed the number of returned roots")
+
+        paths = {} if saved_faces is None else dict(saved_faces.occurrences)
 
         def validate(source, written):
             if source.name and source.name != written.name:
@@ -567,12 +596,25 @@ class StepProductSession:
                 raise UnsupportedStepProduct("STEP readback cannot preserve this occurrence color")
             if source.physical_material != written.physical_material:
                 raise UnsupportedStepProduct("STEP readback cannot preserve this physical material")
-            # This is a palette check, not a source-to-saved face naming map.
-            # Exact generic correspondence needs STEP transfer-entity history.
-            if any(not any(all(abs(a - b) <= 1e-6 for a, b in zip(wanted, actual))
-                           for _ordinal, actual in written.face_colors)
-                   for _ordinal, wanted in source.face_colors):
-                raise UnsupportedStepProduct("STEP readback lost a required face color")
+            if source.face_colors and source.face_definition is None:
+                raise FaceTransferError("styled source lacks exact face transfer evidence")
+            if source.face_definition is not None:
+                if not 0 <= source.face_definition < len(transferred):
+                    raise FaceTransferError("source face definition lacks transfer evidence")
+                if written.path not in paths:
+                    raise FaceTransferError("saved occurrence lacks exact transferred face membership")
+                original = transferred[source.face_definition]
+                actual = saved_faces.definitions[paths[written.path]]
+                if len(original) != len(actual) or set(original) != set(actual):
+                    raise FaceTransferError("source and saved face entities are not a complete bijection")
+                by_entity = {entity: ordinal for ordinal, entity in enumerate(actual)}
+                wanted_styles, actual_styles = dict(source.face_colors), dict(written.face_colors)
+                for ordinal, entity in enumerate(original):
+                    wanted = wanted_styles.get(ordinal, source.color)
+                    observed = actual_styles.get(by_entity[entity], written.color)
+                    if ((wanted is None) != (observed is None)
+                            or wanted is not None and any(abs(a - b) > 1e-6 for a, b in zip(wanted, observed))):
+                        raise FaceTransferError("STEP readback changed an exactly transferred face color")
             if len(source.children) != len(written.children):
                 raise RuntimeError("STEP readback changed the returned hierarchy")
             if source.children:
@@ -746,7 +788,7 @@ class StepProductSession:
         self.close()
 
 
-def _read_saved_metadata(path: Path, expected_sha256: str) -> tuple[SavedNode, ...]:
+def _read_saved_metadata(path: Path, expected_sha256: str, *, transferred=(), checkpoint=lambda: None):
     """Independent STEPCAF parse: every returned field comes from these bytes."""
     from OCP.IFSelect import IFSelect_RetDone
     from OCP.STEPCAFControl import STEPCAFControl_Reader
@@ -762,13 +804,16 @@ def _read_saved_metadata(path: Path, expected_sha256: str) -> tuple[SavedNode, .
     with _owned_xcaf_document() as document:
         if not reader.Transfer(document):
             raise ValueError("independent STEP transfer rejected the product bytes")
-        result = _saved_document_metadata(document)
+        face_reader = (SavedFaceReader(reader, (label for row in transferred for label in row), checkpoint=checkpoint)
+                       if transferred else None)
+        result = _saved_document_metadata(document, face_reader=face_reader)
+        inventory = None if face_reader is None else face_reader.finish(expected_sha256, path.stat().st_size)
     if not result or destination_digest(path) != expected_sha256:
         raise ValueError("STEP parse has no geometry or its selected bytes changed")
-    return result
+    return result, inventory
 
 
-def _saved_document_metadata(document):
+def _saved_document_metadata(document, *, face_reader=None):
     from OCP.Quantity import Quantity_ColorRGBA
     from OCP.TCollection import TCollection_AsciiString
     from OCP.TDataStd import TDataStd_Name
@@ -818,6 +863,8 @@ def _saved_document_metadata(document):
                 native = shape_tool.GetShape_s(definition).Located(TopLoc_Location())
                 geometry_definitions[key] = (native, _geometry_facts(native))
             native, geometry = geometry_definitions[key]
+            if face_reader is not None:
+                face_reader.record(key, path, native)
             definition_shape = shape_tool.GetShape_s(definition)
             styles = dict(xcaf_face_recipe(shape_tool, definition, definition_shape))
             if not label.IsEqual(definition):

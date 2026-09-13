@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from .core import Document, GeometryHandle
 from .identities import normalize
-from .native import copy_shape
+from .native import copy_shape, copy_shape_with_topology_order
 from .resources import AdmissionDenied, Cancelled, ResourceRequest
 from .roots import AssemblyGroup, GeometryLeaf, IDENTITY_TRANSFORM
 
@@ -249,16 +249,19 @@ class RevisionConsumer:
 
     def derive(self, path: OccurrencePath, kind: str, parameters: Any,
                compute: Callable[[Any], Any], *,
-               resources: ResourceRequest | None = None) -> Any:
+               resources: ResourceRequest | None = None,
+               topology_kinds: tuple[str, ...] = ()) -> Any:
         """Compute or reuse immutable prototype data from a private native copy."""
         leaf = self._resolve(path)
         if type(kind) is not str or not kind:
             raise ValueError("a consumer derivation requires a nonempty kind")
         if not callable(compute):
             raise TypeError("a consumer derivation requires a callable")
+        if type(topology_kinds) is not tuple or topology_kinds not in ((), ("face",), ("face", "edge")):
+            raise ValueError("unsupported derivation topology order")
         normalized_parameters = normalize(parameters)
         normalized_runtime = normalize(self._document.runtime)
-        key = (leaf.handle.prototype_id, "consumer-v1", kind,
+        key = (leaf.handle.prototype_id, "consumer-v2", kind, topology_kinds,
                normalized_parameters, normalized_runtime)
         cached = self._bridge.derivation(key)
         if cached is not _MISSING:
@@ -270,9 +273,13 @@ class RevisionConsumer:
         native = self._bridge.prototype_shape(leaf.handle)
         try:
             with self._document.admission.admit(request, cancellation=self._cancellation):
-                private = copy_shape(native)
+                if topology_kinds:
+                    private, ordered = copy_shape_with_topology_order(
+                        native, topology_kinds, checkpoint=self.checkpoint)
+                else:
+                    private = copy_shape(native)
                 self._native_copies += 1
-                result = _freeze_value(compute(private))
+                result = _freeze_value(compute(private, ordered) if topology_kinds else compute(private))
         except AdmissionDenied:
             self._admission_denied += 1
             raise

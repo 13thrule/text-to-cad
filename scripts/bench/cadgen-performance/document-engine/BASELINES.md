@@ -337,6 +337,43 @@ Candidate runtime archive: 229 files, tree SHA-256
 Profiles are `models/tmp/performance-document-profile-20260913-v2-plate.json`
 and `models/tmp/performance-document-profile-20260913-v2-assembly24.json`.
 
+## Paired STEP-companion contract smoke
+
+Checkpoint `abc5b7bf0` adds required publication receipts for both STEP and the
+sole companion, including verified absence when the model needs no companion.
+The harness therefore uses a new common boundary,
+`captured-entry-to-attested-step-pair-full-request-v2`. Both engines check the
+actual STEP bytes and actual companion absence before the timer ends. The
+older v1 measurements above keep their original qualification; these series
+must not be combined into a speedup ratio.
+
+A short serial run on 2026-09-13 used two measured unchanged requests per
+fixture/engine, following an unmeasured prime. All eight measured requests and
+the four primes passed their output and saved-geometry checks. The plate
+medians were 9.943 ms baseline and 15.711 ms candidate; Assembly24 was 12.106 ms
+and 18.009 ms. This is a functional smoke with too few samples for a performance
+claim. It still shows the unresolved unchanged-request regression.
+
+Five-call owner-process profiles of the same frozen candidate attribute remaining
+warm costs to import-session bookkeeping, repeated package metadata discovery,
+and frontend eligibility checks. Profiling ran alongside other development
+checks and excludes worker IPC; its instrumented elapsed times are not request
+benchmarks.
+
+Ignored local reports and SHA-256:
+
+- `models/tmp/performance-document-unchanged-paired-20260913-v3-baseline.json`:
+  `f0e174f038d7d574048642d16726ef9d5480ef8bad58e65c77ab90c2446c6f4b`
+- `models/tmp/performance-document-unchanged-paired-20260913-v3-candidate.json`:
+  `b87802b031989943530e9f179056798155dd67af3bc46ae7c5bc328f3dec03bb`
+- `models/tmp/performance-document-unchanged-paired-20260913-v3-comparison.json`:
+  `cfcd707f15095a53365299bf5e98df54c4b9f4137c31329e3242ce396491d0a8`
+
+Candidate runtime archive: 230 files, tree SHA-256
+`a63dda2d8aa6f68ee906b5c752efabb880185e9cf0beaac0b07b703c5f9434d3`.
+Profiles are `models/tmp/performance-document-profile-20260913-v3-plate.json`
+and `models/tmp/performance-document-profile-20260913-v3-assembly24.json`.
+
 ## FreeCAD probe qualification
 
 On 2026-09-13, a sandboxed `FreeCADCmd --version` probe aborted with exit 134

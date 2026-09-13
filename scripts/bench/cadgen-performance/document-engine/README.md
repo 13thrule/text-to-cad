@@ -185,7 +185,12 @@ the headline and is also reported as `adapterWriteMs`; no stage is silently
 subtracted to manufacture a kernel comparison.
 
 The versioned boundary is
-`captured-entry-to-attested-step-full-request-v1`. Cold begins before launching
+`captured-entry-to-attested-step-pair-full-request-v2`. The paired output
+contract now verifies both the required STEP bytes and actual absence of its
+companion for these annotation-free fixtures. Candidate receipts must attest
+both obligations; frozen legacy receives the same actual-absence check inside
+the timed boundary. Historical v1 reports remain valid for their own boundary
+and are never mixed with v2 ratios. Cold begins before launching
 the adapter process and includes adapter/bootstrap setup. Warm begins before
 engine input delivery inside a persistent adapter after one unmeasured prime.
 `acceptedBufferReadHashMs` records the transport-buffer read and digest: it is

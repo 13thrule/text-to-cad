@@ -12,7 +12,6 @@ from collections import OrderedDict
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 import hashlib
-import importlib.metadata
 import json
 import math
 from pathlib import Path
@@ -23,6 +22,7 @@ from typing import Any
 
 from .core import Document, GeometryHandle, Revision
 from .identities import normalize
+from .native import dependency_version
 from .resources import AdmissionDenied, Cancelled, ResourceRequest
 from .roots import AssemblyGroup, GeometryLeaf, RootNode
 from .sources import CapturedInput
@@ -141,7 +141,7 @@ def _runtime_identity(runtime: Any) -> tuple:
         hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         platform.python_version(),
         platform.machine(),
-        importlib.metadata.version("cadquery-ocp"),
+        dependency_version("cadquery-ocp"),
         normalize(runtime),
     )
 

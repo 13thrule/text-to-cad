@@ -258,7 +258,7 @@ class FrontendSemanticsTest(unittest.TestCase):
                     self.assertIs(result.children[0], result.children[0].children[0].parent)
                     self.assertEqual(_facts(result), _facts(copy.deepcopy(result)))
 
-    def test_flat_group_placements_cross_private_boundary_before_copying(self):
+    def test_flat_group_placements_retain_validated_wrapper_trees(self):
         def group():
             return bd.Compound(children=(bd.Box(2, 3, 4),), label="group")
 
@@ -266,13 +266,103 @@ class FrontendSemanticsTest(unittest.TestCase):
             with self.subTest(operation=operation):
                 expected = getattr(group(), operation)(bd.Pos(10, 2, 1))
                 document = Document(f"flat-group-{operation}")
-                with document.begin() as transaction:
-                    with FrontendSession(transaction) as frontend:
-                        result = getattr(group(), operation)(bd.Pos(10, 2, 1))
-                        self.assertEqual(1, frontend._fallback_counts[f"{operation}-wrapper-copy"])
-                        result = frontend.materialize(result)
-                    transaction.commit()
-                self.assertEqual(_facts(expected), _facts(result))
+                for turn in range(2):
+                    with document.begin() as transaction:
+                        with FrontendSession(transaction) as frontend:
+                            result = getattr(group(), operation)(bd.Pos(10, 2, 1))
+                            self.assertEqual({}, frontend._fallback_counts)
+                            if turn:
+                                self.assertEqual(0, transaction.stats.computed)
+                            result = frontend.materialize(result)
+                        transaction.commit()
+                    self.assertEqual(_facts(expected), _facts(result))
+
+    def test_assembly_copy_isolates_wrappers_allocations_and_appearance(self):
+        from cadgen._document.frontend import _state
+        from cadgen._document.returned import bind_returned_shape
+
+        red = (1., 0., 0., .5)
+        location = bd.Pos(10, 2, 1) * bd.Rot(0, 0, 25)
+
+        def group():
+            source = bd.Box(2, 3, 4)
+            source.label = "leaf"
+            source.color = bd.Color(.1, .2, .3, .4)
+            source.material = "steel"
+            source.cad_material = {"roughness": .2}
+            source.cad_face_ordinal_colors = {1: red}
+            first = bd.Pos(0, 0, 0) * source
+            second = bd.Pos(7, 0, 0) * source
+            result = bd.Compound(children=(first, second), label="assembly", material="wood")
+            result.cad_material = {"metalness": .7}
+            return result
+
+        for operation in ("moved", "located"):
+            with self.subTest(operation=operation):
+                expected_source = group()
+                expected = getattr(expected_source, operation)(location)
+                expected.children[0].label = "changed"
+                expected.children[0].cad_material["roughness"] = .6
+
+                document = Document(f"assembly-copy-appearance-{operation}")
+                for turn in range(2):
+                    with document.begin() as transaction:
+                        with FrontendSession(transaction) as frontend:
+                            source = group()
+                            result = getattr(source, operation)(location)
+                            self.assertEqual({}, frontend._fallback_counts)
+                            self.assertIsNot(source, result)
+                            self.assertIsNot(source.children[0], result.children[0])
+                            self.assertIs(source, source.children[0].parent)
+                            self.assertIs(result, result.children[0].parent)
+                            self.assertIsNot(source.cad_material, result.cad_material)
+                            self.assertIsNot(source.children[0].cad_material,
+                                             result.children[0].cad_material)
+                            self.assertIsNot(source.children[0].cad_face_ordinal_colors,
+                                             result.children[0].cad_face_ordinal_colors)
+                            first = _state(result.children[0]).handle
+                            second = _state(result.children[1]).handle
+                            self.assertEqual(first.prototype_id, second.prototype_id)
+                            self.assertNotEqual(first.allocation_id, second.allocation_id)
+
+                            result.children[0].label = "changed"
+                            result.children[0].cad_material["roughness"] = .6
+                            self.assertEqual("leaf", source.children[0].label)
+                            self.assertEqual(.2, source.children[0].cad_material["roughness"])
+                            root = bind_returned_shape(frontend, result)
+                            self.assertEqual(.7, root.appearance["pbr"]["metalness"])
+                            self.assertEqual(.6, root.children[0].appearance["pbr"]["roughness"])
+                            self.assertEqual(((0, red),), root.children[0].appearance["face_colors"])
+                            if turn:
+                                self.assertEqual(0, transaction.stats.computed)
+                            result = frontend.materialize(result)
+                        transaction.commit()
+                    self.assertEqual(_facts(expected), _facts(result))
+                    self.assertFalse(result.children[0].wrapped.IsPartner(
+                        result.children[1].wrapped
+                    ))
+
+    def test_callback_bearing_appearance_mapping_uses_private_copy_once(self):
+        copied = []
+
+        class ObservedMapping(dict):
+            def __deepcopy__(self, memo):
+                copied.append("copied")
+                result = type(self)(self)
+                memo[id(self)] = result
+                return result
+
+        document = Document("appearance-mapping-private-copy")
+        with document.begin() as transaction:
+            with FrontendSession(transaction) as frontend:
+                source = bd.Box(2, 3, 4)
+                source.cad_material = ObservedMapping(roughness=.2)
+                result = source.moved(bd.Pos(4, 0, 0))
+                self.assertEqual(["copied"], copied)
+                self.assertEqual(1, frontend._fallback_counts["moved-wrapper-copy"])
+                self.assertIsNot(source.cad_material, result.cad_material)
+                frontend.materialize(result)
+            transaction.commit()
 
     def test_reparenting_managed_children_preserves_ordinary_group_mutation(self):
         def reparent():

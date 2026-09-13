@@ -49,7 +49,9 @@ def mesh_for_occurrence(consumer, path, options: MeshOptions = MeshOptions()) ->
     if type(options) is not MeshOptions:
         raise TypeError("meshing requires MeshOptions")
     return consumer.derive(path, f"native-mesh-{VERSION}", asdict(options),
-                           lambda shape: _mesh_private(shape, options, consumer.checkpoint),
+                           lambda shape, ordered: _mesh_private(
+                               shape, options, consumer.checkpoint, topology_order=ordered),
+                           topology_kinds=("face", "edge") if options.edges else ("face",),
                            resources=ResourceRequest(kind="mesh", native_bytes=64 * 1024**2,
                                                      derived_bytes=2 * MAX_PACKET_BYTES))
 
@@ -193,7 +195,7 @@ def _validate_ranges(rows, vertex_count, index_count=None):
         raise ValueError("incomplete mesh topology coverage")
 
 
-def _mesh_private(shape, options, checkpoint=lambda: None):
+def _mesh_private(shape, options, checkpoint=lambda: None, *, topology_order=None):
     """Mesh an exclusively owned shape, checking cancellation between native calls.
 
     Deflection is an absolute OCCT target derived from the world bounding
@@ -244,6 +246,8 @@ def _mesh_private(shape, options, checkpoint=lambda: None):
     TopExp.MapShapes_s(shape, TopAbs_FACE, faces)
     if faces.Extent() > MAX_TOPOLOGY_ROWS:
         raise ValueError("mesh exceeds the topology limit")
+    face_order = (tuple(faces.FindKey(index) for index in range(1, faces.Extent() + 1))
+                  if topology_order is None else topology_order["face"])
     buffers = {name: array(code) for name, code, _ in _LAYOUT}
     positions, normals, indices = (buffers[key] for key in ("positions", "normals", "indices"))
     def reserve(byte_count):
@@ -253,9 +257,9 @@ def _mesh_private(shape, options, checkpoint=lambda: None):
 
     face_ranges = []
     discarded_zero_area = 0
-    for ordinal in range(faces.Extent()):
+    for ordinal, native_face in enumerate(face_order):
         checkpoint()
-        face = TopoDS.Face_s(faces.FindKey(ordinal + 1))
+        face = TopoDS.Face_s(native_face)
         location = TopLoc_Location()
         triangles = BRep_Tool.Triangulation_s(face, location)
         if triangles is None or not triangles.NbTriangles():
@@ -332,10 +336,12 @@ def _mesh_private(shape, options, checkpoint=lambda: None):
         TopExp.MapShapesAndUniqueAncestors_s(shape, TopAbs_EDGE, TopAbs_FACE, adjacent)
         if edges.Extent() > MAX_TOPOLOGY_ROWS:
             raise ValueError("mesh exceeds the topology limit")
+        edge_order = (tuple(edges.FindKey(index) for index in range(1, edges.Extent() + 1))
+                      if topology_order is None else topology_order["edge"])
         lines = buffers["edgePositions"]
-        for ordinal in range(edges.Extent()):
+        for ordinal, native_edge in enumerate(edge_order):
             checkpoint()
-            edge = TopoDS.Edge_s(edges.FindKey(ordinal + 1))
+            edge = TopoDS.Edge_s(native_edge)
             start = len(lines) // 3
             if BRep_Tool.Degenerated_s(edge):
                 edge_ranges.append([ordinal, start, 0, "degenerate"])

@@ -40,8 +40,8 @@ GEOMETRY_LINE = "HOLE_RADIUS = 3.0  # BENCH_GEOMETRY"
 PLACEMENT_LINE = "PLACEMENT_Z = 0.0  # BENCH_PLACEMENT"
 TRACE_SCHEMA = 1
 INPROCESS_BOUNDARY_WITH_SETUP = "in-process-run-model-argv-with-first-call-engine-setup-v2"
-FULL_REQUEST_BOUNDARY = "captured-entry-to-attested-step-full-request-v1"
-FULL_OUTPUT_CONTRACT = "one-required-step-actual-byte-receipt-v1"
+FULL_REQUEST_BOUNDARY = "captured-entry-to-attested-step-pair-full-request-v2"
+FULL_OUTPUT_CONTRACT = "required-step-and-absent-companion-receipts-v2"
 FULL_ADAPTER = Path(__file__).resolve().with_name("full_request_adapter.py")
 
 
@@ -1255,7 +1255,7 @@ def full_request_report(*, engine: str, python: Path, package: Path,
         "timingBoundary": (
             "fullRequestMs begins before a cold adapter process launch or, for warm rows, immediately "
             "before input delivery inside a primed persistent adapter. It ends only after source and "
-            "native work, the one required STEP publication, and an actual destination byte/hash check. "
+            "native work, required STEP publication and companion absence, and actual destination checks. "
             "Cold includes adapter bootstrap and engine setup. Frozen legacy's adapter materialization "
             "is included and also exposed as adapterWriteMs; candidate includes DocumentWorker IPC. "
             "Archive copying, resident display, lease release/shutdown, independent saved-byte readback, "

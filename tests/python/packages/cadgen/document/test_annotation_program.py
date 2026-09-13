@@ -70,26 +70,28 @@ class AnnotationProgramTests(unittest.TestCase):
         self.assertEqual({"roughness": .6, "opacity": .8}, value["occurrences"][0]["pbr"])
         self.assertEqual("paint", value["occurrences"][0]["material"])
 
-    def test_located_assembly_private_execution_preserves_actual_saved_paths(self):
+    def test_located_assembly_reuses_step_and_preserves_actual_saved_paths(self):
         self.write()
         self.service.generate(self.source)
+        native = self.step_path.read_bytes()
         self.write(roughness=.6)
         result = self.service.generate(self.source)
-        # Hierarchy placement currently crosses the ordinary private-copy path.
-        # Its saved semantics are covered without claiming retained reuse.
-        self.assertGreater(self.service.last_attempt.stats.computed, 0)
-        self.assertEqual(1, result.product_metrics.computed)
+        self.assertEqual(0, self.service.last_attempt.stats.computed)
+        self.assertEqual(1, result.product_metrics.reused)
+        self.assertEqual(native, self.step_path.read_bytes())
         value = json.loads(self.annotation_path.read_bytes())
         self.assertEqual([1, 1, 1], value["occurrences"][0]["path"])
         self.assertEqual(.6, value["occurrences"][0]["pbr"]["roughness"])
 
-    def test_pbr_before_leaf_placement_uses_private_copy_and_preserves_saved_values(self):
+    def test_pbr_before_leaf_placement_reuses_step_and_preserves_saved_values(self):
         self.write(located=False)
         self.service.generate(self.source)
+        native = self.step_path.read_bytes()
         self.write(roughness=.6, located=False)
-        self.service.generate(self.source)
-        # The current copy guard does not admit authored PBR dictionaries.
-        self.assertGreater(self.service.last_attempt.stats.computed, 0)
+        result = self.service.generate(self.source)
+        self.assertEqual(0, self.service.last_attempt.stats.computed)
+        self.assertEqual(1, result.product_metrics.reused)
+        self.assertEqual(native, self.step_path.read_bytes())
         saved = self.service.load_step(CapturedInput.read(self.step_path), work_directory=self.directory)
         root = saved.document._revisions[saved.revision_id].root
         self.assertEqual(.6, root.children[0].appearance["pbr"]["roughness"])

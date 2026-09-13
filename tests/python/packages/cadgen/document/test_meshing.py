@@ -3,6 +3,7 @@ import json
 import math
 import struct
 import unittest
+from unittest.mock import patch
 
 from cadgen._document import Document, GeometryLeaf, AssemblyGroup, IDENTITY_TRANSFORM
 from cadgen._document.core import OperatorSpec, Mutation
@@ -56,6 +57,136 @@ def assert_closed_oriented(test, header, values, points):
 
 
 class MeshingTests(unittest.TestCase):
+    def test_copy_reordering_preserves_source_face_and_edge_references(self):
+        from OCP.BRep import BRep_Builder
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator
+        from OCP.gp import gp_Pnt
+        from cadgen._document.inspection import _bounds, _map
+
+        builder = BRep_Builder()
+        native = TopoDS_Compound(); builder.MakeCompound(native)
+        builder.Add(native, BRepPrimAPI_MakeBox(2., 3., 4.).Shape())
+        builder.Add(native, BRepPrimAPI_MakeBox(gp_Pnt(10., 0., 0.), 5., 6., 7.).Shape())
+        document = Document("mesh-copy-order")
+        with document.begin() as transaction:
+            handle = transaction.evaluate(OperatorSpec("two-boxes", mutation=Mutation.READ_ONLY),
+                                          (), (), lambda *_: NativeResult(native))
+            transaction.bind_root(GeometryLeaf("part", handle))
+            revision = transaction.commit()
+
+        permutations = []
+        def reordered(*args):
+            copier = BRepBuilderAPI_Copy(*args)
+            iterator = TopoDS_Iterator(copier.Shape()); children = []
+            while iterator.More():
+                children.append(iterator.Value()); iterator.Next()
+            private = TopoDS_Compound(); builder.MakeCompound(private)
+            for child in reversed(children):
+                builder.Add(private, child)
+            faces = _map(private, "face")
+            original = _map(args[0], "face")
+            permutations.append(tuple(faces.FindIndex(copier.ModifiedShape(original.FindKey(i))) - 1
+                                      for i in range(1, original.Extent() + 1)))
+            class Copy:
+                def Shape(self): return private
+                def ModifiedShape(self, shape): return copier.ModifiedShape(shape)
+            return Copy()
+
+        with RevisionConsumer(document, revision.revision_id) as consumer:
+            path = consumer.occurrences()[0].path
+            def source_bounds(shape, _):
+                result = {}
+                for kind in ("face", "edge"):
+                    mapping = _map(shape, kind)
+                    result[kind] = [_bounds(mapping.FindKey(i)) for i in range(1, mapping.Extent() + 1)]
+                return result
+            expected = consumer.query_value(path, source_bounds)
+            with patch("OCP.BRepBuilderAPI.BRepBuilderAPI_Copy", side_effect=reordered):
+                header, values, points = decoded(mesh_for_occurrence(consumer, path))
+            edge_points = [tuple(values["edgePositions"][i + axis] + header["origin"][axis]
+                                 for axis in range(3))
+                           for i in range(0, len(values["edgePositions"]), 3)]
+            self.assertEqual([tuple(range(6, 12)) + tuple(range(6))], permutations)
+            for kind, ranges, coordinates in (("face", header["faces"], points),
+                                               ("edge", header["edges"], edge_points)):
+                self.assertEqual(len(expected[kind]), len(ranges))
+                for row in ranges:
+                    ordinal, first, count = row[:3]
+                    samples = coordinates[first:first + count]
+                    actual = (tuple(min(point[axis] for point in samples) for axis in range(3)),
+                              tuple(max(point[axis] for point in samples) for axis in range(3)))
+                    for bounds, wanted in zip(actual, (expected[kind][ordinal]["min"],
+                                                       expected[kind][ordinal]["max"])):
+                        for value, target in zip(bounds, wanted):
+                            self.assertAlmostEqual(value, target, places=5)
+            self.assertEqual(1, consumer.metrics.native_copies)
+            with patch("OCP.BRepBuilderAPI.BRepBuilderAPI_Copy", side_effect=AssertionError("warm mesh copied")):
+                self.assertEqual(header, decoded(mesh_for_occurrence(consumer, path))[0])
+
+    def test_ambiguous_copy_correspondence_never_publishes_mesh(self):
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+        from cadgen._document.inspection import _map
+
+        document = Document("ambiguous-mesh-copy")
+        with document.begin() as transaction:
+            handle = transaction.evaluate(OperatorSpec("box", mutation=Mutation.READ_ONLY),
+                                          (), (), lambda *_: NativeResult(BRepPrimAPI_MakeBox(2., 3., 4.).Shape()))
+            transaction.bind_root(GeometryLeaf("part", handle))
+            revision = transaction.commit()
+        def merged(*args):
+            copier = BRepBuilderAPI_Copy(*args)
+            first = _map(copier.Shape(), "face").FindKey(1)
+            class Copy:
+                def Shape(self): return copier.Shape()
+                def ModifiedShape(self, shape): return first
+            return Copy()
+        with RevisionConsumer(document, revision.revision_id) as consumer:
+            with patch("OCP.BRepBuilderAPI.BRepBuilderAPI_Copy", side_effect=merged):
+                with self.assertRaisesRegex(ValueError, "complete topology correspondence"):
+                    mesh_for_occurrence(consumer, consumer.occurrences()[0].path)
+            self.assertEqual(0, consumer.metrics.derivations_computed)
+            self.assertEqual({}, document._derivations)
+
+    def test_reordered_shared_reversed_members_keep_source_orientation(self):
+        from OCP.BRep import BRep_Builder
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator
+        from cadgen._document.native import copy_shape
+
+        builder = BRep_Builder()
+        native = TopoDS_Compound(); builder.MakeCompound(native)
+        box = BRepPrimAPI_MakeBox(2., 3., 4.).Shape()
+        builder.Add(native, box); builder.Add(native, box.Reversed())
+        expected_header, expected, _ = decoded(_mesh_private(copy_shape(native), MeshOptions()))
+        document = Document("mesh-reversed-member-copy")
+        with document.begin() as transaction:
+            handle = transaction.evaluate(OperatorSpec("shared-reversed-box", mutation=Mutation.READ_ONLY),
+                                          (), (), lambda *_: NativeResult(native))
+            transaction.bind_root(GeometryLeaf("part", handle))
+            revision = transaction.commit()
+        def reordered(*args):
+            copier = BRepBuilderAPI_Copy(*args)
+            iterator = TopoDS_Iterator(copier.Shape()); children = []
+            while iterator.More():
+                children.append(iterator.Value()); iterator.Next()
+            private = TopoDS_Compound(); builder.MakeCompound(private)
+            for child in reversed(children):
+                builder.Add(private, child)
+            class Copy:
+                def Shape(self): return private
+                def ModifiedShape(self, shape): return copier.ModifiedShape(shape)
+            return Copy()
+        with RevisionConsumer(document, revision.revision_id) as consumer:
+            with patch("OCP.BRepBuilderAPI.BRepBuilderAPI_Copy", side_effect=reordered):
+                header, actual, _ = decoded(mesh_for_occurrence(consumer, consumer.occurrences()[0].path))
+        self.assertEqual(expected_header["faces"], header["faces"])
+        self.assertEqual(expected["normals"], actual["normals"])
+        self.assertEqual(expected["indices"], actual["indices"])
+
     def test_box_has_all_faces_outward_normals_and_separate_sharp_edges(self):
         from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
 

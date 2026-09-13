@@ -160,10 +160,10 @@ class SourceSession:
             }
             self._path_before = list(sys.path)
             self._meta_path_before = list(sys.meta_path)
-            for name in tuple(sys.modules):
-                top = name.partition(".")[0]
-                if top in relevant and top not in _PROTECTED_TOP_LEVEL:
-                    sys.modules.pop(name, None)
+            # The captured table already identifies every managed module;
+            # do not scan all installed packages a second time to remove them.
+            for name in self._modules_before:
+                sys.modules.pop(name, None)
             sys.meta_path.insert(0, self._finder)
             self._active = True
             return self
@@ -180,10 +180,11 @@ class SourceSession:
 
     def _restore(self) -> None:
         if self._modules_before is not None:
+            prefixes = tuple(prefix + "." for prefix in self._owned_module_prefixes)
             for name in tuple(sys.modules):
                 if (name.partition(".")[0] in self._owned_top_levels
-                        or any(name == prefix or name.startswith(prefix + ".")
-                               for prefix in self._owned_module_prefixes)):
+                        or name in self._owned_module_prefixes
+                        or prefixes and name.startswith(prefixes)):
                     sys.modules.pop(name, None)
             sys.modules.update(self._modules_before)
         if self._path_before is not None:
@@ -315,10 +316,16 @@ class SourceSession:
         self._check_active()
         if self._modules_before is None or self._initial_modules is None:
             raise RuntimeError("source session import state is not initialized")
+        # Entry captured the entire top-level subtree, including modules not
+        # imported again this time. Both restoration and removal are already
+        # covered; only a newly discovered managed subtree needs another claim.
+        if name.partition(".")[0] in self._owned_top_levels:
+            return
         if name not in self._owned_module_prefixes:
             self._owned_module_prefixes.add(name)
+            prefix = name + "."
             for existing, module in self._initial_modules.items():
-                if (existing == name or existing.startswith(name + ".")):
+                if existing == name or existing.startswith(prefix):
                     self._modules_before.setdefault(existing, module)
 
     def _record(self, captured: CapturedInput) -> None:

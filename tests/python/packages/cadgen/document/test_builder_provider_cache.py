@@ -11,7 +11,9 @@ from cadgen import build123d as bd
 from cadgen._document import Document
 from cadgen._document import builder_effects
 from cadgen._document.builder_effects import StockBuilderEffects
-from cadgen._document.frontend import FrontendSession, _EFFECT_PROOFS
+from cadgen._document.frontend import (
+    FrontendSession, _EFFECT_PROOFS, _HIERARCHY_CODE_PROOFS,
+)
 from cadgen._document.sketch_effects import SketchNativeEffects
 
 
@@ -19,8 +21,49 @@ class BuilderProviderCacheTest(unittest.TestCase):
     def setUp(self):
         builder_effects._PROVIDER_PLANS.clear()
         _EFFECT_PROOFS.clear()
+        _HIERARCHY_CODE_PROOFS.clear()
         self.addCleanup(builder_effects._PROVIDER_PLANS.clear)
         self.addCleanup(_EFFECT_PROOFS.clear)
+        self.addCleanup(_HIERARCHY_CODE_PROOFS.clear)
+
+    def test_warm_hierarchy_reuses_pre_author_code_inventory_with_live_hooks(self):
+        original = SourceFileLoader.get_code
+        calls = []
+
+        def counted(loader, fullname):
+            calls.append(fullname)
+            return original(loader, fullname)
+
+        document = Document("hierarchy-code-inventory")
+        # Establish the independent builder/sketch proof first so this test
+        # counts only hierarchy inventory discovery.
+        with document.begin() as transaction:
+            with FrontendSession(transaction):
+                pass
+            transaction.commit()
+        _HIERARCHY_CODE_PROOFS.clear()
+        with patch.object(SourceFileLoader, "get_code", counted):
+            with document.begin() as transaction:
+                with FrontendSession(transaction):
+                    pass
+                transaction.commit()
+            discovered = tuple(calls)
+            self.assertEqual(3, sum(name in {
+                "build123d.topology.composite",
+                "build123d.topology.shape_core",
+                "anytree.node.nodemixin",
+            } for name in discovered))
+
+            with document.begin() as transaction:
+                with FrontendSession(transaction) as frontend:
+                    parent = object.__new__(bd.Compound)
+                    self.assertTrue(frontend._can_defer_hierarchy(parent, ()))
+                    original_hook = bd.Compound._pre_attach_children
+                    with patch.object(bd.Compound, "_pre_attach_children", lambda shape, children: None):
+                        self.assertFalse(frontend._can_defer_hierarchy(parent, ()))
+                    self.assertIs(original_hook, bd.Compound._pre_attach_children)
+                transaction.commit()
+        self.assertEqual(discovered, tuple(calls))
 
     def test_warm_algebra_installs_interceptors_without_constructing_unused_auditors(self):
         document = Document("provider-lazy-unused")

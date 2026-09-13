@@ -20,10 +20,11 @@ import inspect
 import math
 import sys
 import threading
-from types import FunctionType
+from types import FunctionType, MappingProxyType, ModuleType
 from typing import Any, Iterable, Iterator
 
 from .core import GeometryHandle, Mutation, OperatorSpec, RevisionTransaction
+from .appearance import appearance, authored_face_recipe, native_faces
 from .native import NativeResult, copy_shape, history_from_builder
 from .resources import ResourceRequest
 
@@ -34,6 +35,12 @@ _ACTIVE: ContextVar["FrontendSession | None"] = ContextVar(
 _PATCH_LOCK = threading.RLock()
 _EFFECT_PROOF_LIMIT = 8
 _EFFECT_PROOFS = OrderedDict()
+_HIERARCHY_CODE_PROOFS = OrderedDict()
+_HIERARCHY_MODULES = (
+    "build123d.topology.composite",
+    "build123d.topology.shape_core",
+    "anytree.node.nodemixin",
+)
 _IDENTITY = (
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
@@ -60,6 +67,16 @@ class _ManagedState:
         # private execution arena and is recaptured at its next managed edge.
         return _ManagedState(self.session, self.handle, self.logical_id,
                              self.location, self.transform, self.children, True)
+
+
+@dataclass(frozen=True)
+class _WrapperCopyPlan:
+    shape: Any
+    state: _ManagedState
+    children: tuple["_WrapperCopyPlan", ...]
+    color: tuple[float, float, float, float] | None
+    cad_material: dict[str, float] | None
+    face_colors: tuple[tuple[int, tuple[float, float, float, float]], ...] | None
 
 
 def _state(shape: Any) -> _ManagedState | None:
@@ -196,6 +213,7 @@ class FrontendSession:
         "bounding_box", "volume", "is_valid", "moved", "located", "__dict__",
         "_NodeMixin__children", "_NodeMixin__parent",
         "_NodeMixin__children_or_empty",
+        "cad_material", "cad_face_ordinal_colors",
     })
 
     def __init__(self, transaction: RevisionTransaction) -> None:
@@ -285,6 +303,12 @@ class FrontendSession:
     def _install(self) -> None:
         bd, topology = self._bd, self._topology
         session = self
+
+        # Establish the installed provider's immutable code inventory before
+        # authored Python can run. Once a process baseline exists, an unknown
+        # replacement module generation deopts instead of teaching the cache
+        # from process state that earlier author code could have changed.
+        self._hierarchy_provider_code = self._canonical_hierarchy_code()
 
         original_getattribute = inspect.getattr_static(bd.Shape, "__getattribute__")
         original_wrapped = inspect.getattr_static(bd.Shape, "wrapped")
@@ -721,6 +745,39 @@ class FrontendSession:
             "Polygon", "Wire", "WorkplaneList",
         )), *modules)))
 
+    @staticmethod
+    def _canonical_hierarchy_code():
+        from importlib.machinery import SourceFileLoader
+
+        providers = tuple(sys.modules.get(name) for name in _HIERARCHY_MODULES)
+        if any(type(provider) is not ModuleType for provider in providers):
+            return None
+        loaders = tuple(vars(provider).get("__loader__") for provider in providers)
+        if any(type(loader) is not SourceFileLoader for loader in loaders):
+            return None
+        key = tuple((id(provider), id(loader), vars(provider).get("__file__"))
+                    for provider, loader in zip(providers, loaders))
+        cached = _HIERARCHY_CODE_PROOFS.get(key)
+        if cached is not None:
+            return cached
+        if _HIERARCHY_CODE_PROOFS:
+            # One installed build123d/anytree generation is canonical for this
+            # owner process. A later module replacement stays ordinary/private.
+            return None
+        expected = {}
+        for name, loader in zip(_HIERARCHY_MODULES, loaders):
+            pending = [loader.get_code(name)]
+            codes = set()
+            while pending:
+                code = pending.pop()
+                if inspect.iscode(code):
+                    codes.add(code)
+                    pending.extend(value for value in code.co_consts if inspect.iscode(value))
+            expected[name] = frozenset(codes)
+        frozen = MappingProxyType(expected)
+        _HIERARCHY_CODE_PROOFS[key] = frozen
+        return frozen
+
     def _finalize_effect_guards(self):
         for effects in (self._builder_effects, self._sketch_effects):
             if effects.stock is not None:
@@ -1040,11 +1097,15 @@ class FrontendSession:
             location = location.location
         state = _state(shape)
         assert state is not None
-        if not self._can_copy_managed_wrapper(shape):
+        plan = self._managed_wrapper_copy_plan(shape)
+        if plan is None:
             return self._private_placement(shape, location, absolute=absolute)
-        assert state.handle is not None
         logical = self._logical("located" if absolute else "moved")
-        clone = self._copy_managed_wrapper(shape, logical, state.handle)
+        if plan.children:
+            clone = self._copy_managed_tree(plan, logical)
+        else:
+            assert state.handle is not None
+            clone = self._copy_managed_wrapper(shape, logical, state.handle, plan=plan)
         clone_state = _state(clone)
         assert clone_state is not None
         clone_state.location = location if absolute else location * state.location
@@ -1055,22 +1116,24 @@ class FrontendSession:
         """Preserve build123d's deep-copying absolute placement semantics."""
         state = _state(shape)
         assert state is not None
-        if not self._can_copy_managed_wrapper(shape):
+        plan = self._managed_wrapper_copy_plan(shape)
+        if plan is None:
             return self._private_placement(shape, location, absolute=True)
-        assert state.handle is not None
         logical = self._logical("located")
-        transform = _matrix(location)
-        def compute(native_inputs, _arena):
-            wrapper = self._wrap_native(native_inputs[0])
-            result = self._inside_compute(
-                self._native_originals["located"], wrapper, location
-            )
-            return NativeResult(self._native_originals["wrapped"].fget(result))
-        handle = self.transaction.evaluate(
-            OperatorSpec("build123d.located", "1", Mutation.READ_ONLY),
-            transform, (state.handle,), compute, logical_id=logical,
+        if plan.children:
+            clone = self._copy_managed_tree(plan, logical)
+            clone_state = _state(clone)
+            assert clone_state is not None
+            clone_state.location = location
+            clone_state.transform = _matrix(location)
+            return clone
+        assert state.handle is not None
+        handle, correspondence = self._copy_geometry_handle(
+            state.handle, logical, location=location
         )
-        return self._copy_managed_wrapper(shape, logical, handle)
+        return self._copy_managed_wrapper(
+            shape, logical, handle, plan=plan, correspondence=correspondence
+        )
 
     def _record_fallback(self, reason: str) -> None:
         self._fallback_counts[reason] = self._fallback_counts.get(reason, 0) + 1
@@ -1080,25 +1143,11 @@ class FrontendSession:
                for child in children):
             return False
         # Metadata names are not provenance: functools.wraps deliberately copies
-        # them. Compare actual code with installed provider code, without running
-        # another module or accepting author-controlled function globals. Cache
-        # only expected code; inspect live hooks on every constructor invocation.
-        if not hasattr(self, "_hierarchy_provider_code"):
-            from importlib.machinery import SourceFileLoader
-            expected = {}
-            for module in ("build123d.topology.composite", "build123d.topology.shape_core", "anytree.node.nodemixin"):
-                provider = sys.modules[module]
-                if type(provider.__loader__) is not SourceFileLoader:
-                    return False
-                pending = [provider.__loader__.get_code(module)]
-                codes = set()
-                while pending:
-                    code = pending.pop()
-                    if inspect.iscode(code):
-                        codes.add(code)
-                        pending.extend(value for value in code.co_consts if inspect.iscode(value))
-                expected[module] = codes
-            self._hierarchy_provider_code = expected
+        # them. Compare actual code with the pre-author canonical inventory,
+        # without running another module or accepting author-controlled globals.
+        # All mutable hooks below remain live checks on every constructor use.
+        if self._hierarchy_provider_code is None:
+            return False
 
         def stock(hook, owners, name):
             if isinstance(hook, staticmethod):
@@ -1152,55 +1201,250 @@ class FrontendSession:
                     return False
         return True
 
-    def _can_copy_managed_wrapper(self, shape: Any) -> bool:
-        state = _state(shape)
-        if state is None or state.handle is None or state.children is not None:
-            return False
-        attributes = object.__getattribute__(shape, "__dict__")
-        supported = {
+    def _strict_color(self, value: Any) -> tuple[float, float, float, float] | None:
+        if value is None:
+            return None
+        from OCP.Quantity import Quantity_ColorRGBA, Quantity_TypeOfColor
+        if type(value) is not self._bd.Color:
+            raise ValueError("unsupported wrapper color")
+        raw = object.__getattribute__(value, "__dict__")
+        if set(raw) != {"wrapped"} or type(raw["wrapped"]) is not Quantity_ColorRGBA:
+            raise ValueError("unsupported wrapper color")
+        red, green, blue = raw["wrapped"].GetRGB().Values(
+            Quantity_TypeOfColor.Quantity_TOC_sRGB
+        )
+        return tuple(appearance({"color": (
+            float(red), float(green), float(blue), float(raw["wrapped"].Alpha())
+        )})["color"])
+
+    def _new_color(self, channels: tuple[float, float, float, float] | None) -> Any:
+        if channels is None:
+            return None
+        from OCP.Quantity import Quantity_Color, Quantity_ColorRGBA, Quantity_TypeOfColor
+        color = object.__new__(self._bd.Color)
+        rgb = Quantity_Color(*channels[:3], Quantity_TypeOfColor.Quantity_TOC_sRGB)
+        object.__setattr__(color, "wrapped", Quantity_ColorRGBA(rgb, channels[3]))
+        return color
+
+    def _copy_location(self, transform: tuple[float, ...]) -> Any:
+        from OCP.TopLoc import TopLoc_Location
+        from OCP.gp import gp_Trsf
+        native = gp_Trsf()
+        native.SetValues(*transform[:12])
+        location = object.__new__(self._bd.Location)
+        object.__setattr__(location, "location_index", 0)
+        object.__setattr__(location, "_wrapped", TopLoc_Location(native))
+        return location
+
+    def _managed_wrapper_copy_plan(self, shape: Any) -> _WrapperCopyPlan | None:
+        """Validate a callback-free wrapper tree before retaining its copy."""
+        common = {
             "_wrapped", "_cadgen_document_state", "for_construction", "label",
             "_color", "topo_parent", "material", "joints",
-            "_NodeMixin__children", "_NodeMixin__parent", "length", "width",
-            "box_height", "radius", "cylinder_height", "arc_size", "align",
+            "_NodeMixin__children", "_NodeMixin__parent",
         }
-        # Native references, arbitrary deepcopy hooks, parent relationships and
-        # joints need build123d's full copy traversal. Decide before invoking
-        # any user copying code so an opaque operation executes only once.
-        if type(shape) not in (self._bd.Box, self._bd.Cylinder, self._bd.Part):
-            return False
-        if attributes.keys() - supported:
-            return False
-        if (type(attributes.get("joints")) is not dict
-                or type(attributes.get("_NodeMixin__children")) is not list):
-            return False
-        if (attributes.get("topo_parent") is not None or attributes.get("joints")
-                or attributes.get("_NodeMixin__children")
-                or attributes.get("_NodeMixin__parent") is not None):
-            return False
-        scalar_types = (str, bool, int, float, type(None))
-        for key, value in attributes.items():
-            if key in {"_wrapped", "_cadgen_document_state", "joints",
-                       "_NodeMixin__children", "_NodeMixin__parent", "topo_parent"}:
-                continue
-            if key == "_color" and type(value) in (self._bd.Color, type(None)):
-                continue
-            if key == "align" and (isinstance(value, self._bd.Align)
-                    or type(value) in (tuple, list)
-                    and all(isinstance(item, self._bd.Align) for item in value)):
-                continue
-            if type(value) not in scalar_types:
-                return False
-        return True
+        dimensions = {
+            self._bd.Box: {"length", "width", "box_height"},
+            self._bd.Cylinder: {"radius", "cylinder_height", "arc_size", "align"},
+            self._bd.Part: set(),
+            self._bd.Compound: set(),
+        }
+        metadata = {"cad_material", "cad_face_ordinal_colors"}
+        seen = set()
 
-    def _copy_managed_wrapper(self, shape: Any, logical: str,
-                              handle: GeometryHandle) -> Any:
+        def visit(value: Any, parent: Any | None) -> _WrapperCopyPlan:
+            if id(value) in seen or type(value) not in dimensions:
+                raise ValueError("unsupported wrapper tree")
+            seen.add(id(value))
+            state = _state(value)
+            if (type(state) is not _ManagedState or state.session is not self or state.private
+                    or type(state.logical_id) is not str or type(state.transform) is not tuple
+                    or len(state.transform) != 16
+                    or any(type(item) is not float or not math.isfinite(item)
+                           for item in state.transform)
+                    or type(state.location) is not self._bd.Location
+                    or _matrix(state.location) != state.transform):
+                raise ValueError("unsupported managed wrapper state")
+            raw = object.__getattribute__(value, "__dict__")
+            required = common - {"_NodeMixin__parent"}
+            if (required - raw.keys() or raw.keys() - common - dimensions[type(value)] - metadata
+                    or raw["_wrapped"] is not None
+                    or raw["_cadgen_document_state"] is not state
+                    or type(raw["for_construction"]) is not bool
+                    or type(raw["label"]) is not str or type(raw["material"]) is not str
+                    or raw["topo_parent"] is not None or type(raw["joints"]) is not dict
+                    or raw["joints"] or type(raw["_NodeMixin__children"]) is not list
+                    or raw.get("_NodeMixin__parent") is not parent):
+                raise ValueError("unsupported wrapper attributes")
+            for field in metadata:
+                if any(field in cls.__dict__ for cls in type(value).__mro__):
+                    raise ValueError("appearance descriptors require private copying")
+            for field in dimensions[type(value)] - {"align"}:
+                item = raw[field]
+                if type(item) not in (int, float) or not math.isfinite(item):
+                    raise ValueError("unsupported constructor metadata")
+            if "align" in raw:
+                align = raw["align"]
+                if not (type(align) is self._bd.Align
+                        or type(align) is tuple and len(align) == 3
+                        and all(type(item) is self._bd.Align for item in align)):
+                    raise ValueError("unsupported alignment metadata")
+
+            color = self._strict_color(raw["_color"])
+            cad_material = None
+            if "cad_material" in raw:
+                if type(raw["cad_material"]) is not dict:
+                    raise ValueError("PBR metadata requires a plain mapping")
+                cad_material = dict(appearance({"pbr": raw["cad_material"]})["pbr"])
+            face_colors = None
+            if "cad_face_ordinal_colors" in raw:
+                if type(raw["cad_face_ordinal_colors"]) is not dict:
+                    raise ValueError("face metadata requires a plain mapping")
+                if state.handle is None or state.children is not None:
+                    raise ValueError("face metadata requires a geometry leaf")
+                count = self.transaction.query(
+                    state.handle, lambda native: native_faces(native).Extent()
+                )
+                face_colors = authored_face_recipe(
+                    raw["cad_face_ordinal_colors"], face_count=count
+                )
+
+            declared = state.children
+            actual = raw["_NodeMixin__children"]
+            if declared is None:
+                if state.handle is None or actual:
+                    raise ValueError("unsupported geometry wrapper")
+                self.transaction._validate_handle(state.handle)
+                children = ()
+            else:
+                if (type(value) is not self._bd.Compound or state.handle is not None
+                        or type(declared) is not tuple or not declared
+                        or len(actual) != len(declared)
+                        or any(left is not right for left, right in zip(actual, declared))):
+                    raise ValueError("unsupported assembly wrapper")
+                children = tuple(visit(child, value) for child in declared)
+            return _WrapperCopyPlan(value, state, children, color, cad_material, face_colors)
+
+        try:
+            return visit(shape, None)
+        except (AttributeError, KeyError, TypeError, ValueError, OverflowError):
+            return None
+
+    def _can_copy_managed_wrapper(self, shape: Any) -> bool:
+        return self._managed_wrapper_copy_plan(shape) is not None
+
+    def _copy_geometry_handle(self, handle: GeometryHandle, logical: str,
+                              *, location: Any | None = None
+                              ) -> tuple[GeometryHandle, tuple[int, ...]]:
+        transform = None if location is None else _matrix(location)
+        def compute(native_inputs, _arena):
+            from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+            copier = BRepBuilderAPI_Copy(native_inputs[0], True, True)
+            result = copier.Shape()
+            source_faces, target_faces = native_faces(native_inputs[0]), native_faces(result)
+            correspondence = tuple(
+                target_faces.FindIndex(copier.ModifiedShape(source_faces.FindKey(index))) - 1
+                for index in range(1, source_faces.Extent() + 1)
+            )
+            if (source_faces.Extent() != target_faces.Extent()
+                    or set(correspondence) != set(range(target_faces.Extent()))):
+                raise ValueError("wrapper copy did not preserve exact face correspondence")
+            history = history_from_builder(copier, native_inputs, result)
+            if not history.complete:
+                raise ValueError("wrapper copy did not provide complete topology history")
+            if location is not None:
+                result.Location(location.wrapped)
+            return NativeResult(result, history, correspondence)
+        output = self.transaction.evaluate(
+            OperatorSpec("build123d.wrapper-copy", "1", Mutation.READ_ONLY),
+            ("absolute" if location is not None else "tree", transform),
+            (handle,), compute, logical_id=logical,
+        )
+        prototype = self.transaction.document._get(output)
+        correspondence = prototype.auxiliary
+        if (type(correspondence) is not tuple
+                or set(correspondence) != set(range(len(correspondence)))):
+            raise ValueError("retained wrapper copy has invalid face correspondence")
+        return output, correspondence
+
+    def _copy_managed_wrapper(self, shape: Any, logical: str, handle: GeometryHandle,
+                              *, plan: _WrapperCopyPlan | None = None,
+                              correspondence: tuple[int, ...] | None = None) -> Any:
+        plan = self._managed_wrapper_copy_plan(shape) if plan is None else plan
+        if plan is None or plan.children:
+            raise ValueError("managed leaf copy requires a validated leaf")
         clone = object.__new__(type(shape))
         self._init_empty(clone, logical, handle)
-        memo = {id(shape): clone}
-        for key, value in object.__getattribute__(shape, "__dict__").items():
-            if key not in {"_wrapped", "_cadgen_document_state"}:
-                object.__setattr__(clone, key, copy.deepcopy(value, memo))
+        clone_state = _state(clone)
+        assert clone_state is not None
+        clone_state.location = self._copy_location(plan.state.transform)
+        clone_state.transform = plan.state.transform
+        raw = object.__getattribute__(shape, "__dict__")
+        clone.for_construction = raw["for_construction"]
+        clone.label = raw["label"]
+        clone._color = self._new_color(plan.color)
+        clone.material = raw["material"]
+        for key in ("length", "width", "box_height", "radius",
+                    "cylinder_height", "arc_size", "align"):
+            if key in raw:
+                object.__setattr__(clone, key, raw[key])
+        if plan.cad_material is not None:
+            object.__setattr__(clone, "cad_material", dict(plan.cad_material))
+        if plan.face_colors is not None:
+            object.__setattr__(clone, "cad_face_ordinal_colors", {
+                (ordinal if correspondence is None else correspondence[ordinal]) + 1: tuple(color)
+                for ordinal, color in plan.face_colors
+            })
         return clone
+
+    def _copy_managed_tree(self, plan: _WrapperCopyPlan, logical: str) -> Any:
+        if not plan.children:
+            raise ValueError("managed tree copy requires an assembly")
+
+        def build(node: _WrapperCopyPlan, path: tuple[int, ...], parent: Any | None) -> Any:
+            child_logical = logical + "".join(f":{index}" for index in path)
+            correspondence = None
+            if node.children:
+                handle = None
+            else:
+                assert node.state.handle is not None
+                handle, correspondence = self._copy_geometry_handle(
+                    node.state.handle, child_logical
+                )
+            clone = object.__new__(type(node.shape))
+            self._init_empty(clone, child_logical, handle,
+                             children=() if node.children else None)
+            clone_state = _state(clone)
+            assert clone_state is not None
+            clone_state.location = self._copy_location(node.state.transform)
+            clone_state.transform = node.state.transform
+            raw = object.__getattribute__(node.shape, "__dict__")
+            clone.for_construction = raw["for_construction"]
+            clone.label = raw["label"]
+            clone._color = self._new_color(node.color)
+            clone.material = raw["material"]
+            for key in ("length", "width", "box_height", "radius",
+                        "cylinder_height", "arc_size", "align"):
+                if key in raw:
+                    object.__setattr__(clone, key, raw[key])
+            if node.cad_material is not None:
+                object.__setattr__(clone, "cad_material", dict(node.cad_material))
+            if node.face_colors is not None:
+                assert correspondence is not None
+                object.__setattr__(clone, "cad_face_ordinal_colors", {
+                    correspondence[ordinal] + 1: tuple(color)
+                    for ordinal, color in node.face_colors
+                })
+            if parent is not None:
+                object.__setattr__(clone, "_NodeMixin__parent", parent)
+            if node.children:
+                children = tuple(build(child, (*path, index), clone)
+                                 for index, child in enumerate(node.children))
+                clone_state.children = children
+                object.__setattr__(clone, "_NodeMixin__children", list(children))
+            return clone
+
+        return build(plan, (), None)
 
     def _private_placement(self, shape: Any, location: Any, *, absolute: bool) -> Any:
         operation = "located" if absolute else "moved"
@@ -1438,11 +1682,15 @@ class FrontendSession:
             label=shape.label, color=shape._color, material=shape.material,
             joints=shape.joints,
         )
+        wrapped = self._native_originals["wrapped"].fget(native)
+        if state.transform != _IDENTITY:
+            # The retained occurrence transform belongs to this assembly root.
+            # Moved creates a new location header; it never mutates the private
+            # child copies or any retained geometry prototype.
+            wrapped = wrapped.Moved(state.location.wrapped)
         self._native_originals["wrapped"].fset(
             shape,
-            self._native_for_wrapper(
-                shape, self._native_originals["wrapped"].fget(native)
-            ),
+            self._native_for_wrapper(shape, wrapped),
         )
         # The Python hierarchy was attached at construction. Building from
         # obj= avoids temporarily reparenting those exact child wrappers and

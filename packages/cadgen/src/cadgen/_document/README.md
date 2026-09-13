@@ -59,14 +59,12 @@ Their immutable results are keyed by prototype and explicit derivation options.
 A placement-only revision can reuse both its native prototype and its mesh.
 Located queries preserve this separation: their native view does not replace
 the returned occurrence's canonical prototype.
-Moving a whole authored assembly currently takes the ordinary private-copy
-path. Its hierarchy and saved placement remain correct, but even a subsequent
-PBR-only edit recaptures its geometry; retained assembly placement is still a
-frontend coverage gap.
-The current wrapper-copy guard also takes private execution when authored PBR
-or face-style dictionaries are attached before placing a leaf. Assigning those
-styles after placement keeps the supported retained path; both execution paths
-preserve saved appearance values.
+Validated authored assembly trees retain their prototypes across rigid placement
+and later PBR-only edits. The wrapper-copy guard also admits strictly validated
+PBR and face-style dictionaries attached before placing a leaf, with independent
+metadata containers in each copied tree. Unsupported author values still take
+ordinary private execution. Saved hierarchy paths and appearance are verified
+for both execution paths.
 
 `RevisionConsumer` pins an exact committed root and resolves occurrence paths
 within that owner and revision. Trusted read-only queries return immutable
@@ -82,6 +80,11 @@ travel with centered float32 positions and a double-precision origin. Triangles
 that collapse to exactly zero area in the transported coordinates are removed;
 remaining face coverage, orientation, welded closure and sampled trimmed-surface
 error are tested. This is sampled quality evidence, not a global Hausdorff bound.
+The derivation's private copy carries exact copier correspondence for every
+requested face and edge. Packet ordinals follow the retained source order and
+orientation, including when copying changes traversal order or first encounters
+a shared reversed face. Missing or ambiguous correspondence prevents mesh
+publication. Render derivations omit the edge correspondence work with edges.
 
 `build_display` publishes complete immutable hierarchy/appearance data and
 content-addressed mesh packets for an exact revision. The shared JavaScript
@@ -138,6 +141,11 @@ module/package/namespace ordering and tracks each function's exact compiled
 buffer through reloads. Source reads are captured as consumed; this is not an
 atomic snapshot of a whole project. Ordinary authored Python always replays.
 Only session-owned modules and model declarations are restored at teardown.
+Import bookkeeping reuses its captured ownership sets rather than repeatedly
+scanning all installed modules. Native dependency versions are captured when
+the worker initializes its engine, before authored Python; upgrading those
+dependencies requires a worker restart. Codec source hashes, document runtime
+configuration and writer settings remain separate live identity inputs.
 
 Called model bodies execute in the same native transaction. `publish_result`
 pins their returned roots without replacing the parent's root or detaching
@@ -157,9 +165,15 @@ digest, stages privately and verifies final bytes. Exact copier history maps
 authored per-face colors onto retained prototypes; root relocation maps the same
 topology without assuming enumeration order. Native STEP colors and physical
 materials have independent readback checks. A translator dropping a physical
-material field fails explicitly. Generic source-to-saved face correspondence
-remains open: current readback verifies the palette, with actual face-placement
-checks on the bounded native fixtures.
+material field fails explicitly. Styled definitions require a complete face
+bijection through the live writer's STEP entity identities and the independent
+reader's actual native face membership. Saved entity labels are resolved by the
+reader rather than assumed to equal model or face ordinals. Color checks follow
+those identities, so retaining a palette while moving its colors onto different
+faces fails. The immutable saved-face inventory contains only byte-bound entity
+labels, actual native ordinals and saved occurrence paths. Split, merged or
+otherwise ambiguous transfer results fail explicitly; this bounded producer
+does not infer missing correspondence from geometric similarity.
 
 Intrinsic PBR fields and material tags use the sole `<part>.step.json`
 companion. Its strict versioned schema binds the exact STEP digest and byte
