@@ -42,6 +42,8 @@ _BUILDER_FIELD_NAMES = (
     "_part", "lasts", "pending_edges", "pending_faces", "pending_face_planes",
     "pending_planes", "obj_before", "to_combine",
 )
+_TYPE_DICT_GET = type.__dict__["__dict__"].__get__
+_TYPE_MRO_GET = type.__dict__["__mro__"].__get__
 
 
 def _closed_runtime_value(value, *, _seen=None, _budget=None, _depth=0):
@@ -54,12 +56,14 @@ def _closed_runtime_value(value, *, _seen=None, _budget=None, _depth=0):
     if _budget[0] > _RUNTIME_VALUE_LIMIT:
         raise ValueError("provider default state exceeds the item limit")
     kind = type(value)
-    scalar = any(kind is allowed for allowed in (bool, int, float, str, bytes))
+    scalar = (kind is bool or kind is int or kind is float
+              or kind is str or kind is bytes)
     if value is None or scalar:
-        if any(kind is allowed for allowed in (str, bytes)) and len(value) > _RUNTIME_VALUE_LIMIT:
+        if (kind is str or kind is bytes) and len(value) > _RUNTIME_VALUE_LIMIT:
             raise ValueError("provider default scalar exceeds the size limit")
         return ("value", id(kind), value)
-    container = any(kind is allowed for allowed in (tuple, list, dict, set, frozenset))
+    container = (kind is tuple or kind is list or kind is dict
+                 or kind is set or kind is frozenset)
     if not container:
         # Identity is deliberately plain numeric data. Looking up attributes on
         # an arbitrary class or comparing the object could call author code.
@@ -69,7 +73,7 @@ def _closed_runtime_value(value, *, _seen=None, _budget=None, _depth=0):
         return ("reference", marker)
     marker = len(_seen)
     _seen[id(value)] = marker
-    if any(kind is allowed for allowed in (tuple, list)):
+    if kind is tuple or kind is list:
         children = tuple(_closed_runtime_value(item, _seen=_seen, _budget=_budget,
                                                _depth=_depth + 1) for item in value)
     elif kind is dict:
@@ -84,6 +88,172 @@ def _closed_runtime_value(value, *, _seen=None, _budget=None, _depth=0):
         children = tuple(_closed_runtime_value(item, _seen=_seen, _budget=_budget,
                                                _depth=_depth + 1) for item in value)
     return ("container", id(kind), marker, children)
+
+
+def _mutable_runtime_state(value, *, _seen=None, _budget=None, _depth=0):
+    """Snapshot only graphs that can change without replacing their root."""
+    if _depth > _RUNTIME_VALUE_DEPTH:
+        raise ValueError("provider default state exceeds the depth limit")
+    if _seen is None:
+        _seen, _budget = set(), [0]
+    _budget[0] += 1
+    if _budget[0] > _RUNTIME_VALUE_LIMIT:
+        raise ValueError("provider default state exceeds the item limit")
+    kind = type(value)
+    if (value is None or kind is bool or kind is int or kind is float
+            or kind is str or kind is bytes):
+        if ((kind is str or kind is bytes)
+                and len(value) > _RUNTIME_VALUE_LIMIT):
+            raise ValueError("provider default scalar exceeds the size limit")
+        return None
+    if kind is not tuple and kind is not frozenset:
+        return (_closed_runtime_value(value)
+                if kind is list or kind is dict or kind is set else None)
+    marker = id(value)
+    if marker in _seen:
+        return None
+    _seen.add(marker)
+    for item in value:
+        state = _mutable_runtime_state(item, _seen=_seen, _budget=_budget,
+                                       _depth=_depth + 1)
+        if state is not None:
+            return _closed_runtime_value(value)
+    return None
+
+
+def _same_identity_tuple(actual, expected):
+    return (len(actual) == len(expected)
+            and all(left is right for left, right in zip(actual, expected)))
+
+
+@dataclass(frozen=True)
+class _StaticProviderGuard:
+    """Callback-free exact lookup for class providers, generic fallback otherwise."""
+
+    owner: Any
+    name: str
+    expected: Any
+    mros: tuple
+    cells: tuple
+    shadow_cells: tuple
+
+    @classmethod
+    def capture(cls, owner, name, expected, *, missing=False):
+        missing = missing or expected is _MISSING
+        if (inspect.getattr_static(owner, name, _MISSING) is not
+                (_MISSING if missing else expected)):
+            return None
+        if missing:
+            expected = _MISSING
+        if not inspect.isclass(owner):
+            return cls(owner, name, expected, (), (), ())
+        mros, cells, shadow_cells = [], [], []
+        mro_values, cell_seen = {}, set()
+        def exact_mro(target):
+            prior = mro_values.get(id(target))
+            if prior is not None:
+                return prior
+            mro = _TYPE_MRO_GET(target)
+            if type(mro) is not tuple:
+                raise TypeError("provider owner has no exact MRO")
+            mro_values[id(target)] = mro
+            mros.append((target, type(target), mro))
+            return mro
+        shadow_targets = []
+        for target in (owner, type(owner)):
+            mro = exact_mro(target)
+            for base in mro:
+                namespace = _TYPE_DICT_GET(base)
+                if not all(type(key) is str for key in namespace):
+                    return None
+                cell_key = (id(base), name)
+                if cell_key not in cell_seen:
+                    cell_seen.add(cell_key)
+                    cells.append((base, namespace, name,
+                                  namespace.get(name, _MISSING)))
+                shadow_targets.append(type(base))
+        for target in shadow_targets:
+            for base in exact_mro(target):
+                namespace = _TYPE_DICT_GET(base)
+                if not all(type(key) is str for key in namespace):
+                    return None
+                shadow_key = (id(base), "__dict__")
+                if shadow_key not in cell_seen:
+                    cell_seen.add(shadow_key)
+                    shadow_cells.append(
+                        (base, namespace, "__dict__",
+                         namespace.get("__dict__", _MISSING)))
+        return cls(owner, name, expected, tuple(mros), tuple(cells),
+                   tuple(shadow_cells))
+
+    def matches(self, common=None):
+        if not self.mros:
+            return inspect.getattr_static(self.owner, self.name, _MISSING) is self.expected
+        try:
+            shared = _MISSING if common is None else common.get(id(self.owner), _MISSING)
+            if shared is _MISSING:
+                shared = (
+                    all(type(target) is expected_type
+                        and _same_identity_tuple(_TYPE_MRO_GET(target), expected_mro)
+                    for target, expected_type, expected_mro in self.mros)
+                    and all(namespace.get(name, _MISSING) is expected
+                            for _base, namespace, name, expected in self.shadow_cells)
+                )
+                if common is not None:
+                    common[id(self.owner)] = shared
+            return (shared and all(namespace.get(name, _MISSING) is expected
+                                   for _base, namespace, name, expected in self.cells))
+        except Exception:
+            return False
+
+
+@dataclass(frozen=True)
+class _StaticProviderSet:
+    """One invocation's exact provider inventory, flattened for live checks."""
+
+    mros: tuple
+    cells: tuple
+    generic: tuple
+
+    @classmethod
+    def from_guards(cls, guards):
+        mros, cells, generic = {}, {}, {}
+        for guard in guards:
+            if not guard.mros:
+                key = (id(guard.owner), guard.name)
+                prior = generic.get(key)
+                if prior is not None and prior.expected is not guard.expected:
+                    return None
+                generic[key] = guard
+                continue
+            for target, expected_type, expected_mro in guard.mros:
+                prior = mros.get(id(target))
+                if (prior is not None
+                        and (prior[1] is not expected_type
+                             or not _same_identity_tuple(prior[2], expected_mro))):
+                    return None
+                mros[id(target)] = (target, expected_type, expected_mro)
+            for base, namespace, name, expected in (*guard.shadow_cells, *guard.cells):
+                key = (id(base), name)
+                prior = cells.get(key)
+                if prior is not None and prior[2] is not expected:
+                    return None
+                cells[key] = (namespace, name, expected)
+        return cls(tuple(mros.values()), tuple(cells.values()),
+                   tuple(generic.values()))
+
+    def matches(self):
+        try:
+            return (
+                all(type(target) is expected_type
+                    and _same_identity_tuple(_TYPE_MRO_GET(target), expected_mro)
+                    for target, expected_type, expected_mro in self.mros)
+                and all(namespace.get(name, _MISSING) is expected
+                        for namespace, name, expected in self.cells)
+                and all(guard.matches() for guard in self.generic)
+            )
+        except Exception:
+            return False
 
 
 def _canonical_cache_value(value, *, _seen=None, _budget=None):
@@ -135,11 +305,11 @@ class _CallableGuard:
             wrapped = getattr(function, "__wrapped__", _MISSING)
             closure = function.__closure__
             closure_values = tuple((cell, cell.cell_contents,
-                                    _closed_runtime_value(cell.cell_contents))
+                                    _mutable_runtime_state(cell.cell_contents))
                                    for cell in closure or ())
             return cls(function, function.__module__, function.__globals__, function.__code__, defaults,
-                       _closed_runtime_value(defaults), kwdefaults,
-                       _closed_runtime_value(kwdefaults), wrapped, closure, closure_values)
+                       _mutable_runtime_state(defaults), kwdefaults,
+                       _mutable_runtime_state(kwdefaults), wrapped, closure, closure_values)
         except Exception:
             return None
 
@@ -152,13 +322,16 @@ class _CallableGuard:
                     and function.__globals__ is self.namespace
                     and function.__code__ is self.code
                     and function.__defaults__ is self.defaults
-                    and _closed_runtime_value(function.__defaults__) == self.defaults_state
+                    and (self.defaults_state is None
+                         or _closed_runtime_value(function.__defaults__) == self.defaults_state)
                     and function.__kwdefaults__ is self.kwdefaults
-                    and _closed_runtime_value(function.__kwdefaults__) == self.kwdefaults_state
+                    and (self.kwdefaults_state is None
+                         or _closed_runtime_value(function.__kwdefaults__) == self.kwdefaults_state)
                     and getattr(function, "__wrapped__", _MISSING) is self.wrapped
                     and function.__closure__ is self.closure
                     and all(cell.cell_contents is value
-                            and _closed_runtime_value(cell.cell_contents) == state
+                            and (state is None
+                                 or _closed_runtime_value(cell.cell_contents) == state)
                             for cell, value, state in self.closure_values))
         except Exception:
             return False
@@ -478,6 +651,9 @@ class StockBuilderEffects:
         self._callable_guards = []
         self._callable_ids = set()
         self._provider_codes = {}
+        self._binding_guards = None
+        self._global_bindings = ()
+        self._cell_bindings = ()
         self._canonical_plan = None
         self._stock = True
         provider_functions = []
@@ -698,12 +874,67 @@ class StockBuilderEffects:
         self._wrapped = original.get((bd.Shape, "wrapped"), inspect.getattr_static(bd.Shape, "wrapped"))
 
     def _provider_bindings_match(self):
-        return (all(inspect.getattr_static(owner, name, _MISSING) is provider
-                    for owner, name, provider in self._guards)
+        if self._binding_guards is None:
+            self._compile_provider_bindings()
+        return (self._binding_guards is not None
+                and self._binding_guards.matches()
                 and all(namespace.get(name) is value
-                        for namespace, name, value in self._globals)
-                and all(cell.cell_contents is value for cell, value in self._cells)
+                        for namespace, name, value in self._global_bindings)
+                and all(cell.cell_contents is value for cell, value in self._cell_bindings)
                 and all(guard.matches() for guard in self._callable_guards))
+
+    def _compile_provider_bindings(self):
+        """Compile exact live checks; never retain a successful check result."""
+        providers = {}
+        compiled = []
+        for owner, name, expected in self._guards:
+            key = (id(owner), name)
+            prior = providers.get(key, _MISSING)
+            if prior is not _MISSING:
+                if prior is not expected:
+                    self._binding_guards = None
+                    self._stock = False
+                    return
+                continue
+            providers[key] = expected
+            guard = _StaticProviderGuard.capture(owner, name, expected)
+            if guard is None:
+                self._binding_guards = None
+                self._stock = False
+                return
+            compiled.append(guard)
+        globals_ = {}
+        for namespace, name, expected in self._globals:
+            key = (id(namespace), name)
+            prior = globals_.get(key, _MISSING)
+            if prior is not _MISSING and prior is not expected:
+                self._binding_guards = None
+                self._stock = False
+                return
+            globals_[key] = expected
+        cells = {}
+        for cell, expected in self._cells:
+            prior = cells.get(id(cell), _MISSING)
+            if prior is not _MISSING and prior is not expected:
+                self._binding_guards = None
+                self._stock = False
+                return
+            cells[id(cell)] = expected
+        self._binding_guards = _StaticProviderSet.from_guards(compiled)
+        if self._binding_guards is None:
+            self._stock = False
+            return
+        seen = set()
+        self._global_bindings = tuple(
+            row for row in self._globals
+            if (id(row[0]), row[1]) not in seen
+            and not seen.add((id(row[0]), row[1]))
+        )
+        seen = set()
+        self._cell_bindings = tuple(
+            row for row in self._cells
+            if id(row[0]) not in seen and not seen.add(id(row[0]))
+        )
 
     def _adopt_frontend_interceptors(self):
         """Translate a cold plan to exact closures installed before this replay.
@@ -714,6 +945,7 @@ class StockBuilderEffects:
         """
         if self.frontend is None:
             return
+        self._binding_guards = None
         for patched_owner, patched_name, original, replacement in self.frontend._installed:
             self._guards = [
                 (owner, name, replacement)
@@ -734,6 +966,7 @@ class StockBuilderEffects:
 
     def finalize_frontend_guards(self):
         """Freeze installed internal interceptors after all frontend patches."""
+        self._binding_guards = None
         for owner, name, expected in self._guards:
             provider = inspect.getattr_static(owner, name, _MISSING)
             if provider is not expected:

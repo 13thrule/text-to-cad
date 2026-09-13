@@ -100,6 +100,10 @@ subshape and is cleared at escape and session exit. Exact Edge geometry type,
 radius, arc center and circle/ellipse normal queries return fresh scalar/vector
 values without copying geometry. Provider code, mutable lookup tables and native
 methods remain guarded on use, including after a warm session's lazy admission.
+Provider checks compile live class-namespace and MRO inventories, deduplicating
+shared base-class bindings. Immutable function defaults need identity checks;
+mutable descendants and closure contents remain checked on every invocation.
+No successful check is cached across authored execution.
 Custom index/filter callbacks, changed providers and unsupported normal paths
 execute privately. Filtered iteration remains outside this selection adapter.
 Plain lists, tuples and stock ShapeLists of unmodified projected edges can feed

@@ -14,7 +14,10 @@ from typing import Any, Iterable
 from .builder_effects import (
     _CallableGuard,
     _closed_runtime_value,
+    _mutable_runtime_state,
     _provider_plans_live,
+    _StaticProviderGuard,
+    _StaticProviderSet,
 )
 
 
@@ -33,8 +36,8 @@ def _functions(value: Any) -> tuple[Any, ...]:
 
 
 def _state(value: Any) -> Any:
-    return (_closed_runtime_value(value)
-            if any(type(value) is kind for kind in _CONTAINERS) else None)
+    return (_mutable_runtime_state(value)
+            if type(value) in _CONTAINERS else None)
 
 
 @dataclass(frozen=True)
@@ -42,7 +45,8 @@ class OperationProviderProof:
     """Exact, callback-safe live proof for one stock operation family."""
 
     plan: Any
-    descriptors: tuple[tuple[Any, str, Any, Any], ...]
+    descriptors: _StaticProviderSet
+    descriptor_states: tuple[tuple[Any, Any], ...]
     globals: tuple[tuple[dict, str, Any, Any], ...]
     callables: tuple[_CallableGuard, ...]
 
@@ -252,7 +256,19 @@ class OperationProviderProof:
                     if key not in descriptor_seen:
                         descriptor_seen.add(key)
                         descriptor_rows.append((meta, name, provider, None))
-            return cls(plan, tuple(descriptor_rows), tuple(global_rows),
+            compiled = []
+            for owner, name, expected, state in descriptor_rows:
+                guard = _StaticProviderGuard.capture(
+                    owner, name, expected, missing=expected is _MISSING)
+                if guard is None:
+                    return None
+                compiled.append((guard, state))
+            provider_set = _StaticProviderSet.from_guards(
+                guard for guard, _state in compiled)
+            if provider_set is None:
+                return None
+            states = tuple((guard.expected, state) for guard, state in compiled)
+            return cls(plan, provider_set, states, tuple(global_rows),
                        tuple(callable_rows))
         except Exception:
             return None
@@ -262,11 +278,10 @@ class OperationProviderProof:
         try:
             return (
                 _provider_plans_live((self.plan,))
-                and all(
-                    inspect.getattr_static(owner, name, _MISSING) is expected
-                    and (state is None or _closed_runtime_value(expected) == state)
-                    for owner, name, expected, state in self.descriptors
-                )
+                and self.descriptors.matches()
+                and all(state is None
+                        or _closed_runtime_value(expected) == state
+                        for expected, state in self.descriptor_states)
                 and all(
                     namespace.get(name, _MISSING) is expected
                     and (state is None or _closed_runtime_value(expected) == state)

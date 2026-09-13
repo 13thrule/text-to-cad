@@ -260,6 +260,109 @@ class BuilderProviderCacheTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "depth limit"):
             builder_effects._closed_runtime_value(too_deep)
 
+    def test_compiled_class_lookup_rechecks_mro_cells_without_descriptors(self):
+        calls = []
+
+        def read_dict(cls):
+            calls.append(("dict", cls))
+            raise AssertionError("metaclass __dict__ callback entered")
+
+        class ShadowMeta(type):
+            __dict__ = property(read_dict)
+
+        class Meta(type):
+            pass
+
+        provider = object()
+        class Base:
+            value = provider
+        class Other:
+            value = provider
+        class Child(Base, metaclass=Meta):
+            pass
+
+        guard = builder_effects._StaticProviderGuard.capture(
+            Child, "value", provider)
+        self.assertIsNotNone(guard)
+        self.assertTrue(guard.matches())
+        self.assertEqual([], calls)
+
+        class AlternateMeta(type):
+            pass
+        Child.__class__ = AlternateMeta
+        try:
+            self.assertFalse(guard.matches())
+            self.assertEqual([], calls)
+        finally:
+            Child.__class__ = Meta
+        self.assertTrue(guard.matches())
+
+        Meta.__bases__ = (ShadowMeta,)
+        try:
+            self.assertFalse(guard.matches())
+            self.assertEqual([], calls)
+        finally:
+            Meta.__bases__ = (type,)
+        self.assertTrue(guard.matches())
+
+        Child.value = object()
+        try:
+            self.assertFalse(guard.matches())
+            self.assertEqual([], calls)
+        finally:
+            del Child.value
+        self.assertTrue(guard.matches())
+
+        Child.__bases__ = (Other,)
+        try:
+            self.assertFalse(guard.matches())
+            self.assertEqual([], calls)
+        finally:
+            Child.__bases__ = (Base,)
+        self.assertTrue(guard.matches())
+
+        Meta.value = object()
+        try:
+            self.assertFalse(guard.matches())
+            self.assertEqual([], calls)
+        finally:
+            del Meta.value
+
+    def test_callable_guard_rechecks_only_mutable_descendants(self):
+        mutable_default = [["default"]]
+        mutable_closure = [["closure"]]
+
+        def provider(value=(mutable_default,)):
+            return value, mutable_closure
+
+        guard = builder_effects._CallableGuard.capture(provider)
+        self.assertIsNotNone(guard)
+        self.assertTrue(guard.matches())
+        mutable_default[0].append("changed")
+        self.assertFalse(guard.matches())
+        mutable_default[0].pop()
+        self.assertTrue(guard.matches())
+        mutable_closure[0].append("changed")
+        self.assertFalse(guard.matches())
+        mutable_closure[0].pop()
+        self.assertTrue(guard.matches())
+
+        def immutable_provider(value=(1, ("fixed", frozenset({2})))):
+            return value
+
+        immutable = builder_effects._CallableGuard.capture(immutable_provider)
+        self.assertIsNotNone(immutable)
+        with patch.object(
+                builder_effects, "_closed_runtime_value",
+                side_effect=AssertionError("immutable state was traversed")):
+            self.assertTrue(immutable.matches())
+
+        oversized = "x" * (builder_effects._RUNTIME_VALUE_LIMIT + 1)
+        def oversized_provider(value=oversized):
+            return value
+        self.assertIsNone(
+            builder_effects._CallableGuard.capture(oversized_provider))
+
     def test_noncanonical_inventory_is_not_retained_and_cache_is_bounded(self):
         class Foreign:
             def provider(self):
