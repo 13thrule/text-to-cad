@@ -10,6 +10,7 @@ from unittest.mock import patch
 from cadgen import build123d as bd
 from cadgen._document import Document
 from cadgen._document import builder_effects
+from cadgen._document import modifiers, selection
 from cadgen._document.builder_effects import StockBuilderEffects
 from cadgen._document.frontend import (
     FrontendSession, _EFFECT_PROOFS, _HIERARCHY_CODE_PROOFS,
@@ -19,12 +20,23 @@ from cadgen._document.sketch_effects import SketchNativeEffects
 
 class BuilderProviderCacheTest(unittest.TestCase):
     def setUp(self):
-        builder_effects._PROVIDER_PLANS.clear()
-        _EFFECT_PROOFS.clear()
-        _HIERARCHY_CODE_PROOFS.clear()
-        self.addCleanup(builder_effects._PROVIDER_PLANS.clear)
-        self.addCleanup(_EFFECT_PROOFS.clear)
-        self.addCleanup(_HIERARCHY_CODE_PROOFS.clear)
+        caches = (
+            builder_effects._PROVIDER_PLANS,
+            _EFFECT_PROOFS,
+            _HIERARCHY_CODE_PROOFS,
+            selection._PROOFS,
+            modifiers._PROOFS,
+        )
+        snapshots = tuple(tuple(cache.items()) for cache in caches)
+        for cache in caches:
+            cache.clear()
+
+        def restore():
+            for cache, snapshot in zip(caches, snapshots):
+                cache.clear()
+                cache.update(snapshot)
+
+        self.addCleanup(restore)
 
     def test_warm_hierarchy_reuses_pre_author_code_inventory_with_live_hooks(self):
         original = SourceFileLoader.get_code
