@@ -9,6 +9,7 @@ derivations and private STEP-import registry descriptors are never persisted.
 """
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import dataclass
 import hashlib
 from io import BytesIO
@@ -23,7 +24,7 @@ from .core import (Document, GeometryHandle, Revision, RevisionState,
                    _Prototype, _freeze_auxiliary)
 from .identities import EvaluationIdentity, EvaluationKey, LogicalIdentity, allocation_provenance, normalize
 from .native import SubelementRef, TopologyHistory, TopologyRelation, topology_map
-from .resources import ResourceAdmission, ResourceRequest
+from .resources import AdmissionDenied, ResourceAdmission, ResourceRequest
 from .roots import AssemblyGroup, GeometryLeaf, root_handles, validate_root
 from .storage import Catalog, ExportReceipt, Stage
 from . import consumers as _consumers
@@ -42,7 +43,7 @@ _MESH_CACHE_VERSION = 1
 _MESH_PRODUCER_SEMANTICS = "cadgen-native-mesh-v2.consumer-v2.copier-order-v1"
 MAX_MESH_CACHE_ENTRIES = 128
 MAX_MESH_CACHE_INDEX_BYTES = 1024 * 1024
-MAX_MESH_CACHE_BYTES = 128 * 1024**2
+MAX_MESH_CACHE_BYTES = 120 * 1024**2
 
 
 class CheckpointError(ValueError):
@@ -100,6 +101,9 @@ def _implementation_digest() -> str:
         _consumers._DocumentBridge.prototype_shape,
         _consumers._DocumentBridge.derivation,
         _consumers._DocumentBridge.save_derivation,
+        Document._is_native_mesh_key,
+        Document._native_mesh_derivation,
+        Document._save_native_mesh_derivation,
         _consumers.RevisionConsumer.derive,
         _native.copy_shape_with_topology_order,
     )
@@ -146,6 +150,11 @@ _MESH_FUNCTION_PROOFS = (
      _function_proof(_consumers._DocumentBridge.derivation)),
     (_consumers._DocumentBridge, "save_derivation",
      _function_proof(_consumers._DocumentBridge.save_derivation)),
+    (Document, "_is_native_mesh_key", _function_proof(Document._is_native_mesh_key)),
+    (Document, "_native_mesh_derivation",
+     _function_proof(Document._native_mesh_derivation)),
+    (Document, "_save_native_mesh_derivation",
+     _function_proof(Document._save_native_mesh_derivation)),
     (_consumers.RevisionConsumer, "derive", _function_proof(_consumers.RevisionConsumer.derive)),
     (_native, "copy_shape_with_topology_order",
      _function_proof(_native.copy_shape_with_topology_order)),
@@ -819,17 +828,29 @@ def _mesh_bindings(manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return result
 
 
-def _mesh_cache_payload(document: Document, manifest: dict[str, Any], cancellation) -> bytes | None:
-    """Pack bounded, already-computed native mesh derivations without callbacks."""
+@dataclass(frozen=True)
+class _MeshCachePlan:
+    encoded_index: bytes
+    packets: tuple[bytes, ...]
+    payload_size: int
+
+
+def _mesh_cache_plan(document: Document, manifest: dict[str, Any], cancellation
+                     ) -> _MeshCachePlan | None:
+    """Validate a bounded MRU packet inventory without copying packet bodies."""
     if not _mesh_producer_is_current():
+        return None
+    retained_keys = document._retained_native_mesh_keys(MAX_MESH_CACHE_ENTRIES)
+    if not retained_keys:
         return None
     bindings = _mesh_bindings(manifest)
     expected_runtime = normalize(document.runtime)
     candidates = []
     candidate_bytes = 0
     body_limit = MAX_MESH_CACHE_BYTES - MAX_MESH_CACHE_INDEX_BYTES - 12
-    for key, packet in document._derivations.items():
+    for key in retained_keys:
         _cancel_checkpoint(cancellation)
+        packet = document._derivations.get(key)
         try:
             if (type(key) is not tuple or len(key) != 6
                     or type(key[0]) is not str or key[0] not in bindings
@@ -860,18 +881,18 @@ def _mesh_cache_payload(document: Document, manifest: dict[str, Any], cancellati
                 "size": len(packet),
                 "sha256": hashlib.sha256(packet).hexdigest(),
             }
-            if len(candidates) >= MAX_MESH_CACHE_ENTRIES:
-                break
             if candidate_bytes + len(packet) > body_limit:
                 continue
-            candidates.append((_manifest_bytes(descriptor), descriptor, packet))
+            candidates.append((descriptor, packet))
             candidate_bytes += len(packet)
         except (CheckpointError, TypeError, ValueError, KeyError, OverflowError,
                 RecursionError):
             continue
     selected = []
     body_bytes = 0
-    for _, descriptor, packet in sorted(candidates, key=lambda item: item[0]):
+    # Selection above prioritizes MRU packets; encode the chosen subset from
+    # LRU to MRU so recovery insertion reconstructs the same access order.
+    for descriptor, packet in reversed(candidates):
         selected.append((dict(descriptor, offset=body_bytes), packet))
         body_bytes += len(packet)
     if not selected:
@@ -889,10 +910,17 @@ def _mesh_cache_payload(document: Document, manifest: dict[str, Any], cancellati
     size = 12 + len(encoded) + padding + body_bytes
     if size > MAX_MESH_CACHE_BYTES:
         return None
+    return _MeshCachePlan(encoded, tuple(packet for _, packet in selected), size)
+
+
+def _pack_mesh_cache(plan: _MeshCachePlan, cancellation) -> bytes:
     _cancel_checkpoint(cancellation)
+    encoded = plan.encoded_index
     payload = b"".join((_MESH_CACHE_MAGIC, struct.pack("<I", len(encoded)), encoded,
-                        b" " * padding, *(packet for _, packet in selected)))
+                        b" " * ((-len(encoded)) % 4), *plan.packets))
     _cancel_checkpoint(cancellation)
+    if len(payload) != plan.payload_size:
+        raise CheckpointError("mesh cache plan size changed before packing")
     return payload
 
 
@@ -981,7 +1009,7 @@ def _install_mesh_cache(document: Document, payload: bytes,
                 continue
         except (TypeError, ValueError, KeyError, OverflowError, RecursionError):
             continue
-        document._derivations[key] = packet
+        document._save_native_mesh_derivation(key, packet)
 
 
 class CheckpointCodec:
@@ -1015,27 +1043,51 @@ class CheckpointCodec:
         self._check_runtime()
         if normalize(document.runtime) != self._normalized_runtime:
             raise CheckpointIncompatible("document runtime differs from checkpoint codec runtime")
-        request = resources or ResourceRequest(
-            kind="checkpoint", derived_bytes=MAX_MESH_CACHE_BYTES)
+        request = resources or ResourceRequest(kind="checkpoint")
         if request.kind != "checkpoint":
             raise ValueError("checkpoint staging requires checkpoint resource admission")
-        with document.admission.admit(request, cancellation=cancellation):
-            with document.pin(revision_id) as pin:
+        with document.pin(revision_id) as pin:
+            with document.admission.admit(request, cancellation=cancellation):
                 manifest, native = _manifest(document, pin.revision)
-                mesh_cache = _mesh_cache_payload(document, manifest, cancellation)
-                metadata = {
-                    "version": CHECKPOINT_VERSION,
-                    "kind": _MAGIC,
-                    "evaluation_semantics": EVALUATION_SEMANTICS,
-                    "native_runtime": _native_fingerprint(),
-                    "runtime": _encode_value(self._normalized_runtime),
-                }
-                payloads = {_MANIFEST_ROLE: _manifest_bytes(manifest),
-                            _NATIVE_ROLE: native}
-                if mesh_cache is not None:
-                    payloads[_MESH_ROLE] = mesh_cache
-                return self.catalog.stage(document.document_id, metadata, payloads,
-                                          seconds=seconds)
+                has_mesh = bool(document._retained_native_mesh_keys(1))
+                planning_bytes = (_meshing.MAX_HEADER_BYTES + MAX_MESH_CACHE_INDEX_BYTES
+                                  if has_mesh else 0)
+                if resources is not None and request.derived_bytes < planning_bytes:
+                    raise AdmissionDenied(
+                        "checkpoint mesh validation exceeds declared derived-byte resources")
+                if resources is None and planning_bytes:
+                    planning_request = ResourceRequest(
+                        kind="checkpoint", cpu_slots=0, derived_bytes=planning_bytes)
+                    with document.admission.admit(planning_request,
+                                                  cancellation=cancellation):
+                        mesh_plan = _mesh_cache_plan(document, manifest, cancellation)
+                else:
+                    mesh_plan = _mesh_cache_plan(document, manifest, cancellation)
+                payload_size = 0 if mesh_plan is None else mesh_plan.payload_size
+                if resources is not None and request.derived_bytes < payload_size:
+                    raise AdmissionDenied(
+                        "checkpoint mesh payload exceeds declared derived-byte resources")
+                final_request = (None if resources is not None or not payload_size else
+                                 ResourceRequest(kind="checkpoint", cpu_slots=0,
+                                                 derived_bytes=payload_size))
+                context = (document.admission.admit(final_request, cancellation=cancellation)
+                           if final_request is not None else nullcontext())
+                with context:
+                    mesh_cache = (None if mesh_plan is None else
+                                  _pack_mesh_cache(mesh_plan, cancellation))
+                    metadata = {
+                        "version": CHECKPOINT_VERSION,
+                        "kind": _MAGIC,
+                        "evaluation_semantics": EVALUATION_SEMANTICS,
+                        "native_runtime": _native_fingerprint(),
+                        "runtime": _encode_value(self._normalized_runtime),
+                    }
+                    payloads = {_MANIFEST_ROLE: _manifest_bytes(manifest),
+                                _NATIVE_ROLE: native}
+                    if mesh_cache is not None:
+                        payloads[_MESH_ROLE] = mesh_cache
+                    return self.catalog.stage(document.document_id, metadata, payloads,
+                                              seconds=seconds)
 
     def commit(self, stage: Stage, *, expected_head: str | None) -> bool:
         if not isinstance(stage, Stage):
@@ -1055,47 +1107,56 @@ class CheckpointCodec:
         if type(selected) is not str or not selected:
             raise TypeError("checkpoint recovery requires an exact catalog revision")
         owner_admission = admission or ResourceAdmission()
-        request = resources or ResourceRequest(
-            kind="checkpoint", derived_bytes=2 * MAX_MESH_CACHE_BYTES)
-        if request.kind != "checkpoint":
+        if resources is not None and resources.kind != "checkpoint":
             raise ValueError("checkpoint recovery requires checkpoint resource admission")
-        with owner_admission.admit(request, cancellation=cancellation):
-            with self.catalog.lease(selected, seconds=seconds) as lease:
-                checkpoint = self.catalog.read_partitioned(
-                    lease,
-                    required_roles=frozenset({_MANIFEST_ROLE, _NATIVE_ROLE}),
-                    optional_role_limits={_MESH_ROLE: MAX_MESH_CACHE_BYTES},
-                )
+        with self.catalog.lease(selected, seconds=seconds) as lease:
+            read_plan = self.catalog.plan_partitioned_read(
+                lease,
+                required_roles=frozenset({_MANIFEST_ROLE, _NATIVE_ROLE}),
+                optional_role_limits={_MESH_ROLE: MAX_MESH_CACHE_BYTES},
+            )
+            optional_size = read_plan.optional_size(_MESH_ROLE)
+            derived_demand = (2 * optional_size
+                              + (_meshing.MAX_HEADER_BYTES if optional_size else 0))
+            request = resources or ResourceRequest(
+                kind="checkpoint", derived_bytes=derived_demand)
+            if request.derived_bytes < derived_demand:
+                raise AdmissionDenied(
+                    "checkpoint mesh recovery exceeds declared derived-byte resources")
+            with owner_admission.admit(request, cancellation=cancellation):
+                checkpoint = self.catalog.read_partitioned(lease, read_plan)
                 receipts = self.catalog.exports(lease)
-            if checkpoint.document_id != document_id:
-                raise CheckpointCorrupt("catalog checkpoint belongs to another document")
-            expected_metadata = {
-                "version": CHECKPOINT_VERSION,
-                "kind": _MAGIC,
-                "evaluation_semantics": EVALUATION_SEMANTICS,
-                "native_runtime": _native_fingerprint(),
-                "runtime": _encode_value(self._normalized_runtime),
-            }
-            if checkpoint.metadata != expected_metadata:
-                raise CheckpointIncompatible("checkpoint metadata runtime or schema is incompatible")
-            if not {_MANIFEST_ROLE, _NATIVE_ROLE} <= set(checkpoint.payloads):
-                raise CheckpointCorrupt("checkpoint payload roles are invalid")
-            document = Document(document_id, runtime=self.runtime, admission=owner_admission)
-            if resources is None:
-                native_request = ResourceRequest(
-                    kind="checkpoint", cpu_slots=0,
-                    native_bytes=len(checkpoint.payloads[_NATIVE_ROLE]))
-                with owner_admission.admit(native_request, cancellation=cancellation):
+                if checkpoint.document_id != document_id:
+                    raise CheckpointCorrupt("catalog checkpoint belongs to another document")
+                expected_metadata = {
+                    "version": CHECKPOINT_VERSION,
+                    "kind": _MAGIC,
+                    "evaluation_semantics": EVALUATION_SEMANTICS,
+                    "native_runtime": _native_fingerprint(),
+                    "runtime": _encode_value(self._normalized_runtime),
+                }
+                if checkpoint.metadata != expected_metadata:
+                    raise CheckpointIncompatible(
+                        "checkpoint metadata runtime or schema is incompatible")
+                if not {_MANIFEST_ROLE, _NATIVE_ROLE} <= set(checkpoint.payloads):
+                    raise CheckpointCorrupt("checkpoint payload roles are invalid")
+                document = Document(document_id, runtime=self.runtime,
+                                    admission=owner_admission)
+                if resources is None:
+                    native_request = ResourceRequest(
+                        kind="checkpoint", cpu_slots=0,
+                        native_bytes=len(checkpoint.payloads[_NATIVE_ROLE]))
+                    with owner_admission.admit(native_request, cancellation=cancellation):
+                        revision, historical_state, completed, bindings = self._install(
+                            document, checkpoint.payloads[_MANIFEST_ROLE],
+                            checkpoint.payloads[_NATIVE_ROLE])
+                else:
                     revision, historical_state, completed, bindings = self._install(
                         document, checkpoint.payloads[_MANIFEST_ROLE],
                         checkpoint.payloads[_NATIVE_ROLE])
-            else:
-                revision, historical_state, completed, bindings = self._install(
-                    document, checkpoint.payloads[_MANIFEST_ROLE],
-                    checkpoint.payloads[_NATIVE_ROLE])
-            mesh_cache = checkpoint.payloads.get(_MESH_ROLE)
-            if mesh_cache is not None:
-                _install_mesh_cache(document, mesh_cache, bindings, cancellation)
+                mesh_cache = checkpoint.payloads.get(_MESH_ROLE)
+                if mesh_cache is not None:
+                    _install_mesh_cache(document, mesh_cache, bindings, cancellation)
         return RecoveredCheckpoint(document, revision, selected, historical_state,
                                    completed, receipts)
 

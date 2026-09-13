@@ -19,14 +19,15 @@ from cadgen._document import (AssemblyGroup, Document, GeometryLeaf, LogicalIden
                               SubelementRef, TopologyHistory, TopologyRelation)
 from cadgen._document.checkpoint import (CHECKPOINT_VERSION, CheckpointCodec,
                                         CheckpointCorrupt, CheckpointIncompatible,
-                                        _MESH_ROLE,
+                                        MAX_MESH_CACHE_BYTES, _MESH_ROLE,
                                         _native_topology_attestation, _shape_digest,
                                         _write_native, checkpoint_engine_version)
 from cadgen._document.display import build_display
 from cadgen._document.meshing import MeshOptions
 from cadgen._document import meshing
 from cadgen._document.native import topology_map
-from cadgen._document.resources import Cancelled
+from cadgen._document.resources import (AdmissionDenied, Cancelled,
+                                        ResourceAdmission, ResourceRequest)
 from cadgen._document.roots import IDENTITY_TRANSFORM, walk_root
 from cadgen._document.storage import Catalog
 from tests.python.packages.cadgen.document.test_core import BOX, box, volume
@@ -158,6 +159,9 @@ class CheckpointTests(unittest.TestCase):
         recovered = self.codec.recover(source.document_id, catalog_revision)
         document = recovered.document
         self.assertEqual(expected, document._derivations)
+        self.assertEqual(tuple(expected), tuple(document._native_mesh_lru))
+        self.assertEqual(sum(map(len, expected.values())),
+                         document._retained_native_mesh_bytes)
         with patch("cadgen._document.meshing._mesh_private",
                    side_effect=AssertionError("same-quality restart remeshed")):
             reopened = build_display(document, recovered.revision.revision_id)
@@ -177,6 +181,56 @@ class CheckpointTests(unittest.TestCase):
         with patch("cadgen._document.meshing._mesh_private", wraps=original) as remesh:
             build_display(document, view_revision.revision_id, options=changed)
         self.assertEqual(1, remesh.call_count)
+
+    def test_native_only_checkpoint_uses_zero_derived_budget(self):
+        admission = ResourceAdmission(derived_bytes=0)
+        document = Document("native-only-budget", runtime=self.runtime,
+                            admission=admission)
+        with document.begin("native-only") as tx:
+            handle = box(tx)
+            tx.bind_root(GeometryLeaf("part", handle), unrepresented_metadata=())
+            revision = tx.commit()
+        staged = self.codec.stage(document, revision.revision_id)
+        self.assertTrue(self.codec.commit(staged, expected_head=None))
+        recovery_admission = ResourceAdmission(derived_bytes=0)
+        recovered = self.codec.recover(document.document_id,
+                                       admission=recovery_admission)
+        self.assertEqual({}, recovered.document._derivations)
+        self.assertEqual((0, 0, 0), admission.used)
+        self.assertEqual((0, 0, 0), recovery_admission.used)
+
+    def test_mesh_checkpoint_requires_actual_declared_stage_and_recovery_bytes(self):
+        source, revision = self.mesh_revision("mesh-resource-budget")
+        build_display(source, revision.revision_id)
+        with self.assertRaises(AdmissionDenied):
+            self.codec.stage(
+                source, revision.revision_id,
+                resources=ResourceRequest(kind="checkpoint", derived_bytes=0))
+        catalog_revision = self.publish(source, revision)
+        recovery_admission = ResourceAdmission()
+        with self.assertRaises(AdmissionDenied):
+            self.codec.recover(
+                source.document_id, catalog_revision, admission=recovery_admission,
+                resources=ResourceRequest(kind="checkpoint", derived_bytes=0))
+        self.assertEqual((0, 0, 0), recovery_admission.used)
+
+        with self.catalog.lease(catalog_revision) as lease:
+            plan = self.catalog.plan_partitioned_read(
+                lease,
+                required_roles=frozenset({"document-manifest", "document-native"}),
+                optional_role_limits={_MESH_ROLE: MAX_MESH_CACHE_BYTES})
+        mesh_bytes = plan.optional_size(_MESH_ROLE)
+        native_bytes = next(size for role, _digest, size in plan.rows
+                            if role == "document-native")
+        demand = 2 * mesh_bytes + meshing.MAX_HEADER_BYTES
+        exact = ResourceRequest(kind="checkpoint", native_bytes=native_bytes,
+                                derived_bytes=demand)
+        recovered = self.codec.recover(
+            source.document_id, catalog_revision,
+            admission=ResourceAdmission(native_bytes=native_bytes,
+                                        derived_bytes=demand),
+            resources=exact)
+        self.assertEqual(1, len(recovered.document._derivations))
 
     def test_optional_mesh_blob_corruption_recovers_native_and_rebuilds(self):
         source, revision = self.mesh_revision("corrupt-mesh")

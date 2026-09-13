@@ -7,6 +7,7 @@ native access belong in the transaction's private escape arena.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
 import math
@@ -20,6 +21,10 @@ from .native import (NativeEscapeArena, NativeResult, TopologyHistory,
                      copy_many, copy_shape, copy_shape_with_face_map)
 from .resources import Cancelled, ResourceAdmission, ResourceRequest
 from .roots import RootNode, root_handles, validate_root
+
+
+MAX_RETAINED_NATIVE_MESH_VARIANTS_PER_PROTOTYPE = 4
+MAX_RETAINED_NATIVE_MESH_BYTES = 256 * 1024**2
 
 
 class Mutation(Enum):
@@ -205,6 +210,8 @@ class Document:
         self._output_claims: dict[str, tuple[int, int]] = {}
         self._active: dict[int, RevisionTransaction] = {}
         self._derivations: dict[tuple, Any] = {}
+        self._native_mesh_lru: OrderedDict[tuple, None] = OrderedDict()
+        self._retained_native_mesh_bytes = 0
 
     def _assert_owner(self) -> None:
         if get_ident() != self._owner_thread:
@@ -221,6 +228,75 @@ class Document:
         lower = min((self._allocations[parent.allocation_id].ancestry_interval[0]
                      for parent in inputs), default=rank)
         self._allocations[handle.allocation_id] = _Allocation(handle, inputs, (lower, rank))
+
+    @staticmethod
+    def _is_native_mesh_key(key: Any) -> bool:
+        return (type(key) is tuple and len(key) == 6
+                and type(key[0]) is str and key[0]
+                and key[1] == "consumer-v2" and key[2] == "native-mesh-2"
+                and type(key[3]) is tuple and type(key[4]) is tuple
+                and type(key[5]) is tuple)
+
+    def _native_mesh_derivation(self, key: tuple, missing: Any) -> Any:
+        """Return a retained packet and update recency only after exact admission."""
+        self._assert_owner()
+        if not self._is_native_mesh_key(key):
+            return missing
+        if key not in self._native_mesh_lru:
+            return missing
+        value = self._derivations.get(key, missing)
+        if value is missing or type(value) is not bytes:
+            return missing
+        self._native_mesh_lru.move_to_end(key)
+        return value
+
+    def _save_native_mesh_derivation(self, key: tuple, packet: bytes) -> bool:
+        """Retain one immutable packet under bounded per-prototype/global LRU."""
+        self._assert_owner()
+        if not self._is_native_mesh_key(key) or type(packet) is not bytes:
+            raise TypeError("native mesh retention requires an exact key and immutable bytes")
+        if len(packet) > MAX_RETAINED_NATIVE_MESH_BYTES:
+            return False
+        previous = self._derivations.get(key)
+        if key in self._native_mesh_lru:
+            if type(previous) is not bytes:
+                raise RuntimeError("native mesh retention accounting is inconsistent")
+            self._retained_native_mesh_bytes -= len(previous)
+        self._derivations[key] = packet
+        self._native_mesh_lru[key] = None
+        self._native_mesh_lru.move_to_end(key)
+        self._retained_native_mesh_bytes += len(packet)
+
+        prototype = key[0]
+        prototype_keys = [candidate for candidate in self._native_mesh_lru
+                          if candidate[0] == prototype]
+        while len(prototype_keys) > MAX_RETAINED_NATIVE_MESH_VARIANTS_PER_PROTOTYPE:
+            self._drop_native_mesh_derivation(prototype_keys.pop(0))
+        while self._retained_native_mesh_bytes > MAX_RETAINED_NATIVE_MESH_BYTES:
+            oldest = next(iter(self._native_mesh_lru))
+            self._drop_native_mesh_derivation(oldest)
+        return key in self._native_mesh_lru
+
+    def _drop_native_mesh_derivation(self, key: tuple) -> None:
+        if key not in self._native_mesh_lru:
+            return
+        self._native_mesh_lru.pop(key)
+        packet = self._derivations.pop(key)
+        if type(packet) is not bytes:
+            raise RuntimeError("native mesh retention accounting is inconsistent")
+        self._retained_native_mesh_bytes -= len(packet)
+
+    def _retained_native_mesh_keys(self, limit: int) -> tuple[tuple, ...]:
+        """Return most-recently-used keys for deterministic checkpoint selection."""
+        self._assert_owner()
+        if type(limit) is not int or limit < 0:
+            raise ValueError("native mesh key limit must be a nonnegative integer")
+        result = []
+        for key in reversed(self._native_mesh_lru):
+            if len(result) >= limit:
+                break
+            result.append(key)
+        return tuple(result)
 
     @property
     def head(self) -> Revision | None:
@@ -371,6 +447,12 @@ class Document:
             self._allocations = {k: a for k, a in self._allocations.items()
                                  if k in reachable_allocations}
             self._derivations = {k: v for k, v in self._derivations.items() if k[0] in reachable}
+            self._native_mesh_lru = OrderedDict(
+                (key, None) for key in self._native_mesh_lru
+                if key in self._derivations and type(self._derivations[key]) is bytes
+            )
+            self._retained_native_mesh_bytes = sum(
+                len(self._derivations[key]) for key in self._native_mesh_lru)
             products = getattr(self, "_step_products", None)
             if products is not None:
                 products.prune(self)

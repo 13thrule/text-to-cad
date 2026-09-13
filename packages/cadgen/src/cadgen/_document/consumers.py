@@ -89,9 +89,14 @@ class _DocumentBridge:
         return self.document._get(handle).shape
 
     def derivation(self, key: tuple) -> Any:
+        if self.document._is_native_mesh_key(key):
+            return self.document._native_mesh_derivation(key, _MISSING)
         return self.document._derivations.get(key, _MISSING)
 
     def save_derivation(self, key: tuple, value: Any) -> None:
+        if self.document._is_native_mesh_key(key) and type(value) is bytes:
+            self.document._save_native_mesh_derivation(key, value)
+            return
         self.document._derivations[key] = value
 
 

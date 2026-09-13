@@ -178,6 +178,25 @@ class Checkpoint:
 
 
 @dataclass(frozen=True)
+class PartitionReadPlan:
+    """Verified immutable row inventory for one live-lease partitioned read."""
+
+    revision_id: str
+    rows: tuple[tuple[str, str, int], ...]
+    required_roles: frozenset[str]
+    optional_role_limits: tuple[tuple[str, int], ...]
+
+    def optional_size(self, role: str) -> int:
+        limits = dict(self.optional_role_limits)
+        if role not in limits:
+            raise KeyError(role)
+        for candidate, _digest, size in self.rows:
+            if candidate == role and size <= limits[role]:
+                return size
+        return 0
+
+
+@dataclass(frozen=True)
 class ExportReceipt:
     product: str
     digest: str
@@ -607,16 +626,10 @@ class Catalog:
             for _, _, _, fd in opened:
                 os.close(fd)
 
-    def read_partitioned(self, lease: Lease, *, required_roles: frozenset[str],
-                         optional_role_limits: Mapping[str, int]) -> Checkpoint:
-        """Read required payloads strictly and bounded optional payloads best-effort.
-
-        The caller supplies both partitions from its engine schema; payload data
-        cannot reclassify a required role.  The complete immutable row manifest
-        is verified before opening any blob.  Optional blob absence or content
-        corruption is a cache miss, while required-role and catalog integrity
-        failures remain fatal.
-        """
+    @staticmethod
+    def _partition_schema(required_roles: frozenset[str],
+                          optional_role_limits: Mapping[str, int]
+                          ) -> tuple[frozenset[str], dict[str, int]]:
         if (type(required_roles) is not frozenset
                 or any(type(role) is not str or not role for role in required_roles)):
             raise TypeError("required payload roles require a frozenset of names")
@@ -625,21 +638,57 @@ class Catalog:
                        or type(limit) is not int or limit < 0
                        for role, limit in optional_role_limits.items())):
             raise TypeError("optional payload roles require exact nonnegative byte limits")
-        optional_roles = frozenset(optional_role_limits)
-        if required_roles & optional_roles:
+        optional = dict(optional_role_limits)
+        if required_roles & frozenset(optional):
             raise ValueError("required and optional payload roles must be disjoint")
+        return required_roles, optional
+
+    def plan_partitioned_read(self, lease: Lease, *, required_roles: frozenset[str],
+                              optional_role_limits: Mapping[str, int]
+                              ) -> PartitionReadPlan:
+        """Verify roles and sizes under a live lease without opening payloads."""
+        required_roles, optional = self._partition_schema(
+            required_roles, optional_role_limits)
+        with self._transaction(write=False):
+            self._check_lease(lease)
+            _document, _metadata, rows = self._verified_manifest(lease.revision_id)
+            actual = frozenset(role for role, _digest, _size in rows)
+            if not required_roles <= actual:
+                raise StorageCorrupt("checkpoint required payload is missing")
+            if not actual <= required_roles | frozenset(optional):
+                raise StorageCorrupt("checkpoint payload role is outside the engine schema")
+        return PartitionReadPlan(
+            lease.revision_id, tuple(rows), required_roles,
+            tuple(sorted(optional.items())))
+
+    def read_partitioned(self, lease: Lease, plan: PartitionReadPlan) -> Checkpoint:
+        """Read required payloads strictly and bounded optional payloads best-effort.
+
+        Planning and reading both verify the complete immutable row manifest
+        under the same live lease. Optional blob absence or content corruption
+        is a cache miss, while required-role and catalog integrity failures are
+        fatal.
+        """
+        if type(plan) is not PartitionReadPlan or plan.revision_id != lease.revision_id:
+            raise TypeError("partitioned payload read requires its verified lease plan")
+        required_roles, optional_role_limits = self._partition_schema(
+            plan.required_roles, dict(plan.optional_role_limits))
+        optional_roles = frozenset(optional_role_limits)
         opened_required = []
         opened_optional = []
         try:
             with self._transaction():
                 self._check_lease(lease)
                 document, metadata, rows = self._verified_manifest(lease.revision_id)
+                if tuple(rows) != plan.rows:
+                    raise StorageCorrupt("checkpoint payload manifest changed after read planning")
                 by_role = {role: (digest, size) for role, digest, size in rows}
                 actual = frozenset(by_role)
                 if not required_roles <= actual:
                     raise StorageCorrupt("checkpoint required payload is missing")
                 if not actual <= required_roles | optional_roles:
-                    raise StorageCorrupt("checkpoint payload role is outside the engine schema")
+                    raise StorageCorrupt(
+                        "checkpoint payload role is outside the engine schema")
                 opened_required = self._open_payloads(
                     [(role, *by_role[role]) for role in sorted(required_roles)])
                 for role in sorted(actual & optional_roles):

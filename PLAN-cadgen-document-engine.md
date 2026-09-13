@@ -309,6 +309,27 @@ Exit: warm repeated commands avoid process/import overhead; results match fresh-
 
 Owner: runtime/resource agent, gpt-5.6-sol / high. Independent lifecycle reviewer: gpt-6-astra / high.
 
+Bounded native-mesh retention implemented, 13 September 2026: a document keeps
+at most four quality variants per prototype and 256 MiB of owned mesh-packet
+bytes, evicting least recently used packets. Existing immutable display products
+remain valid after eviction. Checkpoint admission uses the verified optional
+payload size instead of reserving a maximum-size mesh cache for every document;
+native-only checkpoints require no derived-mesh budget. The root integration
+gate passes 102 frontend, builder, mesh, checkpoint and storage tests. These
+limits cover owned packet bytes, not process RSS, caller-owned display products,
+or the broader scheduling and memory gates below.
+
+The first larger-workload probe exposes a performance failure that blocks
+cutover: the 118-occurrence mechanical iris takes about 19.7 seconds cold and
+73 milliseconds unchanged in the frozen old engine, versus 22.1 seconds cold
+and 20.7 seconds unchanged in the current internal engine. These are single
+diagnostic samples, not a repeated performance baseline. The old unchanged
+gate skips source execution; the new engine executes source and should reuse
+managed CAD operations. A stock Cone insertion currently triggers private
+execution for subsequent operations. Fixing real-model frontend coverage and
+running repeated geometry/placement edits are required before claiming gains
+at this scale.
+
 - Profile Python capture, kernel work, import, export, meshes and browser startup separately. Prewarming may improve an interactive request but must not be presented as an empty-process cold improvement.
 - Remove duplicate frontend work, combine suitable kernel operations, batch IPC and persist useful checkpoints. Optimize expensive modeling algorithms where the corpus reveals them; a feature graph cannot skip genuinely new geometry.
 - Coordinate document workers, meshing, exact queries, bulk exports and snapshot jobs under one resource policy. Give short interactive work priority without starving required saves.

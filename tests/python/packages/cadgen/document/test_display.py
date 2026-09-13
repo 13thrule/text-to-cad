@@ -60,6 +60,22 @@ class DisplayTests(unittest.TestCase):
         self.assertEqual(first.assets.keys(), second.assets.keys())
         self.assertTrue(all(first.assets[key] is value for key, value in second.assets.items()))
 
+    def test_evicted_quality_packet_remains_owned_by_returned_display_product(self):
+        from cadgen._document.meshing import MeshOptions, unpack_mesh
+
+        document = Document("display-quality-lru")
+        revision_id = revision(document)
+        with patch("cadgen._document.core.MAX_RETAINED_NATIVE_MESH_VARIANTS_PER_PROTOTYPE", 1):
+            first = build_display(document, revision_id,
+                                  options=MeshOptions(relative_chord=.01))
+            retained = tuple(asset.payload for asset in first.assets.values())
+            build_display(document, revision_id,
+                          options=MeshOptions(relative_chord=.02))
+        self.assertTrue(all(payload not in document._derivations.values()
+                            for payload in retained))
+        self.assertTrue(all(unpack_mesh(payload)[0]["version"] == 2
+                            for payload in retained))
+
     def test_constructed_previous_is_not_validation_provenance(self):
         document = Document("provenance")
         first = build_display(document, revision(document))

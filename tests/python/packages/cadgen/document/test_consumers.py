@@ -5,6 +5,7 @@ from dataclasses import FrozenInstanceError
 from threading import Event, Thread, get_ident
 from types import MappingProxyType
 import unittest
+from unittest.mock import patch
 
 from cadgen._document import (AssemblyGroup, Document, GeometryLeaf,
                               IDENTITY_TRANSFORM, ResourceAdmission,
@@ -134,6 +135,48 @@ def transformed_bounds(shape, transform):
 
 
 class RevisionConsumerTests(unittest.TestCase):
+    def test_native_mesh_retention_uses_bounded_lru_and_exact_byte_accounting(self):
+        document = Document("mesh-lru", runtime={"fixture": "lru"})
+        runtime = normalize(document.runtime)
+
+        def key(prototype, quality):
+            return (prototype, "consumer-v2", "native-mesh-2", ("face",),
+                    normalize({"quality": quality}), runtime)
+
+        first, second, third = (key("prototype-a", value) for value in range(3))
+        other = key("prototype-b", 0)
+        invalid = ("not", "a", "mesh")
+        missing = object()
+        with patch("cadgen._document.core.MAX_RETAINED_NATIVE_MESH_VARIANTS_PER_PROTOTYPE", 2), \
+             patch("cadgen._document.core.MAX_RETAINED_NATIVE_MESH_BYTES", 9):
+            self.assertTrue(document._save_native_mesh_derivation(first, b"111"))
+            self.assertTrue(document._save_native_mesh_derivation(second, b"222"))
+            self.assertEqual(b"111", document._native_mesh_derivation(first, missing))
+            recency = tuple(document._native_mesh_lru)
+            self.assertIs(missing, document._native_mesh_derivation(invalid, missing))
+            self.assertEqual(recency, tuple(document._native_mesh_lru),
+                             "a validation miss must not change recency")
+            untracked = ("prototype-u", "consumer-v2", "native-mesh-2",
+                         ("face",), (), runtime)
+            document._derivations[untracked] = b"outside-retention-policy"
+            self.assertIs(missing, document._native_mesh_derivation(untracked, missing))
+            self.assertEqual(recency, tuple(document._native_mesh_lru))
+            self.assertTrue(document._save_native_mesh_derivation(third, b"333"))
+            self.assertNotIn(second, document._derivations)
+            self.assertEqual((third, first), document._retained_native_mesh_keys(10))
+
+            self.assertTrue(document._save_native_mesh_derivation(other, b"4444"))
+            self.assertNotIn(first, document._derivations)
+            self.assertEqual(7, document._retained_native_mesh_bytes)
+            self.assertFalse(document._save_native_mesh_derivation(
+                key("prototype-c", 0), b"x" * 10))
+            self.assertEqual(7, document._retained_native_mesh_bytes)
+
+        document.collect(keep_revisions=0)
+        self.assertEqual({}, document._derivations)
+        self.assertEqual((), tuple(document._native_mesh_lru))
+        self.assertEqual(0, document._retained_native_mesh_bytes)
+
     def test_real_plate_24_instances_reuse_one_mesh_across_scene_only_edits(self):
         document = Document("consumer-assembly", runtime={"occt": "test-runtime"})
         with document.begin("geometry") as tx:

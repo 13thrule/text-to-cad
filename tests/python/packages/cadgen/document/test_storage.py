@@ -72,16 +72,21 @@ class CatalogTests(unittest.TestCase):
                 ).fetchone()
             (catalog._objects / optional_digest).unlink()
             with catalog.lease(staged.revision_id) as lease:
-                result = catalog.read_partitioned(
-                    lease, required_roles=frozenset({"manifest"}),
-                    optional_role_limits={"mesh-cache": 1024})
+                with patch.object(catalog, "_open_blob",
+                                  side_effect=AssertionError("planning opened payload")):
+                    plan = catalog.plan_partitioned_read(
+                        lease, required_roles=frozenset({"manifest"}),
+                        optional_role_limits={"mesh-cache": 1024})
+                self.assertEqual(len(b"optional"), plan.optional_size("mesh-cache"))
+                result = catalog.read_partitioned(lease, plan)
                 self.assertEqual({"manifest": b"required"}, result.payloads)
                 with self.assertRaises(StorageCorrupt):
                     catalog.read(lease)
                 with self.assertRaises(StorageCorrupt):
-                    catalog.read_partitioned(
+                    required_optional = catalog.plan_partitioned_read(
                         lease, required_roles=frozenset({"mesh-cache"}),
                         optional_role_limits={"manifest": 1024})
+                    catalog.read_partitioned(lease, required_optional)
 
     def test_lease_gc_and_export_receipts_are_revision_bound(self):
         with Catalog(self.root) as catalog:

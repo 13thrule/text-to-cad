@@ -57,6 +57,11 @@ There is no second occurrence ledger or compatibility scene channel.
 Derivations receive private copies, since OCCT meshing attaches triangulation.
 Their immutable results are keyed by prototype and explicit derivation options.
 A placement-only revision can reuse both its native prototype and its mesh.
+Native mesh references use access-order retention: at most four quality variants
+per prototype and 256 MiB across one document owner. Eviction drops only the
+document's cache reference; an already returned display product continues to own
+its immutable packet. The byte counter bounds retained references and is separate
+from operation admission, which reserves temporary copy/validation demand.
 Located queries preserve this separation: their native view does not replace
 the returned occurrence's canonical prototype.
 An absolute `located()` replaces prior occurrence placement and normalizes the
@@ -212,11 +217,14 @@ sharing classes and the allocation-provenance DAG before installing a new owner.
 Auxiliary values are closed, immutable and bounded in their expanded form;
 builder layouts cannot live only in a disposable mesh/derivation cache. Codec
 version 5 is a hard cut, with no earlier-version reader. It may additionally
-carry one bounded optional blob of already-produced native mesh packets. Each
+carry one optional blob of already-produced native mesh packets, bounded to 120
+MiB and 128 entries. Each
 packet is bound to the exact prototype topology attestation, runtime, loaded
 producer and quality options and is fully validated before reuse. Missing,
 corrupt or incompatible optional data is a cache miss while the required native
-checkpoint remains usable. Disjoint allocation
+checkpoint remains usable. Recovery verifies the immutable catalog row inventory
+under a live lease before reserving and opening the optional payload, so a
+native-only checkpoint requires no derived-cache budget. Disjoint allocation
 graphs use compact evaluation provenance. Local ancestry intervals accelerate
 the proof but never enter identity; overlapping intervals use exact traversal,
 so reordered checkpoint reconstruction produces the same keys.
