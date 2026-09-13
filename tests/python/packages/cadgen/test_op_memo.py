@@ -743,21 +743,24 @@ class TShapeDigestPurityTest(unittest.TestCase):
     def _digest(self, wrapped) -> str:
         return op_memo._tshape_digest(wrapped)
 
-    def test_the_mesh_on_a_shape_is_not_in_its_digest(self):
-        """Re-tessellating finer must not move the digest.
+    def test_digest_and_placed_key_are_tessellation_independent(self):
+        """Re-tessellating finer must not move the digest or placed key.
 
         The strongest statement available: if any triangulation reached the
         hashed bytes, two different mesh densities on the same solid could not
-        agree. Sphere rather than box because a box's mesh is two triangles a
-        face at any tolerance.
+        agree. ``placed_shape_key`` is what the measurement memo keys on, so it
+        must inherit the same property. Sphere rather than box because a box's
+        mesh is two triangles a face at any tolerance.
         """
         from build123d.topology import Solid
 
         sphere = Solid.make_sphere(10).wrapped
         self._mesh(sphere, linear=0.05, angular=0.2)
-        coarse = self._digest(sphere)
+        coarse_digest = self._digest(sphere)
+        coarse_key = op_memo.placed_shape_key(sphere)
         self._mesh(sphere, linear=0.005, angular=0.05)
-        self.assertEqual(coarse, self._digest(sphere))
+        self.assertEqual(coarse_digest, self._digest(sphere))
+        self.assertEqual(coarse_key, op_memo.placed_shape_key(sphere))
 
     def test_removing_a_tessellation_does_not_move_the_digest(self):
         """The other direction, and the one that says the bytes are geometry:
@@ -771,19 +774,6 @@ class TShapeDigestPurityTest(unittest.TestCase):
         meshed = self._digest(sphere)
         BRepTools.Clean_s(sphere)
         self.assertEqual(meshed, self._digest(sphere))
-
-    def test_placed_shape_key_is_tessellation_independent(self):
-        """``placed_shape_key`` is what the measurement memo keys on -- and a
-        measurement is exactly the thing that tessellates its own input, so a
-        second measurement of the same shape must reach the same entry."""
-        from build123d.topology import Solid
-
-        sphere = Solid.make_sphere(10).wrapped
-        self._mesh(sphere, linear=0.05, angular=0.2)
-        reference = op_memo.placed_shape_key(sphere)
-
-        self._mesh(sphere, linear=0.005, angular=0.05)
-        self.assertEqual(reference, op_memo.placed_shape_key(sphere))
 
     def test_the_location_is_still_out_of_the_digest_and_in_the_key(self):
         from build123d.geometry import Location

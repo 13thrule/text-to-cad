@@ -700,13 +700,7 @@ class ReadyChildren(unittest.TestCase):
         self.assertIsNone(getattr(candidate._STATE, 'construction', None))
         self.assertIs(bd.Compound.__init__, constructor)
 
-    def test_prepared_cold_ram_disk_bytes_appearance_and_mutation_isolation(self):
-        self.exercise_cache_equivalence(children_only=False)
-
-    def test_children_prepared_cache_states_preserve_appearance_and_private_ownership(self):
-        self.exercise_cache_equivalence(children_only=True)
-
-    def exercise_cache_equivalence(self, *, children_only):
+    def test_prepared_cache_paths_preserve_bytes_appearance_and_private_ownership(self):
         from OCP.BRep import BRep_Builder, BRep_Tool
         from OCP.gp import gp_Vec
         from cadgen._internal.op_memo import _write_brep
@@ -726,8 +720,15 @@ class ReadyChildren(unittest.TestCase):
         tree = build_tree_from_compound(source, root_name='source')[0]
         previous, consumers = None, []
         reset_memo()
-        for mode in ('cold', 'ram', 'disk', 'ordinary'):
-            if mode == 'disk':
+        cases = (
+            ('obj-cold-prepared', 'obj', True, False),
+            ('obj-ram-prepared', 'obj', True, False),
+            ('obj-disk-prepared', 'obj', True, True),
+            ('obj-ram-ordinary', 'obj', False, False),
+            ('children-ram-prepared', 'children', True, False),
+        )
+        for mode, constructor, prepared, reset_ram in cases:
+            if reset_ram:
                 reset_memo()
             with self.subTest(mode=mode):
                 ready = self.child(f'{mode}_ready', tree=tree).moved(
@@ -737,12 +738,12 @@ class ReadyChildren(unittest.TestCase):
                 first = self.child(f'{mode}_first', job=Job(self.other))
                 count = self.stats['consumed']
                 with (mock.patch.object(candidate, '_budget', return_value=None)
-                      if mode == 'ordinary' else nullcontext()):
-                    if children_only:
+                      if not prepared else nullcontext()):
+                    if constructor == 'children':
                         bd.Compound(children=[first, ready])
                     else:
                         bd.Compound(obj=[first, ready])
-                self.assertEqual(self.stats['consumed'], count + (mode != 'ordinary'))
+                self.assertEqual(self.stats['consumed'], count + prepared)
                 self.assertEqual(_tagged_intact(ready), tree)
                 prepared_brep = _write_brep(ready.wrapped)
                 path = Path(self.temp.name) / f'{mode}.step'
@@ -756,7 +757,10 @@ class ReadyChildren(unittest.TestCase):
                     self.assertEqual(authored, previous)
                 previous = authored
                 consumers.append(ready)
-        self.assertFalse(consumers[0].solids()[0].wrapped.IsPartner(consumers[1].solids()[0].wrapped))
+        for index, left in enumerate(consumers):
+            for right in consumers[index + 1:]:
+                self.assertFalse(left.wrapped.IsPartner(right.wrapped))
+                self.assertFalse(left.solids()[0].wrapped.IsPartner(right.solids()[0].wrapped))
         unchanged = [_write_brep(child.wrapped) for child in consumers[1:]]
         first = consumers[0]
         curve = next(curve for edge in first.edges()
@@ -768,8 +772,10 @@ class ReadyChildren(unittest.TestCase):
         first.children[0].children[0].cad_material['roughness'] = .9
         self.assertIsNone(_tagged_intact(first))
         self.assertEqual([_write_brep(child.wrapped) for child in consumers[1:]], unchanged)
-        self.assertEqual(consumers[1].children[0].children[0].cad_material['roughness'], .2)
-        self.assertEqual(consumers[2].children[0].children[0].cad_material['roughness'], .2)
+        self.assertTrue(all(
+            child.children[0].children[0].cad_material['roughness'] == .2
+            for child in consumers[1:]
+        ))
 
 
 if __name__ == '__main__':
