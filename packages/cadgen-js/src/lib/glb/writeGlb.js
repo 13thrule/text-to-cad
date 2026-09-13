@@ -76,6 +76,10 @@ import {
   typedArrayBytes,
 } from "./bytes.js";
 
+// Final GLB bytes, independent of tessellation: v2 canonicalizes material RGB to
+// Float32. Mirrored by cadgen._internal.mesh_export for final-output freshness.
+export const GLB_SERIALIZATION_VERSION = 2;
+
 const COMPONENT_FLOAT = 5126;
 const COMPONENT_SHORT = 5122;
 const COMPONENT_BYTE = 5120;
@@ -244,7 +248,11 @@ function finishChannel(finish, key) {
 function materialFor(color, name, opacity = null, finish = null) {
   // sRGB in, LINEAR out: baseColorFactor is a linear quantity per the glTF spec, and the
   // authored hex is sRGB. Without the conversion every generated GLB renders too bright.
-  const rgb = hexToRgb01(color).map(clamp01).map(srgbToLinear);
+  // Canonical Float32 precision: exponentiation can differ by a Float64 ULP across JS
+  // engines. Serializing that extra precision made identical colours produce different
+  // GLB hashes on Node 22 and 26. The input has only 256 values per channel; Float32
+  // preserves every one on an sRGB round trip and matches the renderer's precision.
+  const rgb = hexToRgb01(color).map(clamp01).map(srgbToLinear).map(Math.fround);
   // Alpha is NOT an sRGB quantity, so it rides through unconverted. A material below
   // fully opaque also needs alphaMode: importers ignore baseColorFactor[3] in the
   // default OPAQUE mode, which would render a half-faded part solid.

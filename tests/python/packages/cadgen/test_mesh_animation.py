@@ -234,7 +234,10 @@ class TheFreshnessVariant(unittest.TestCase):
         from cadgen._internal.source_sidecar import appearance_digest
 
         static = mesh_variant_key("glb", None, None)
-        self.assertEqual(f"glb|default|default|appearance:{appearance_digest(None)}", static)
+        self.assertEqual(
+            f"glb|default|default|serializer:2|appearance:{appearance_digest(None)}",
+            static,
+        )
         animated = mesh_variant_key("glb", None, None, "deadbeef")
         self.assertNotEqual(static, animated)
         self.assertTrue(animated.startswith(static))

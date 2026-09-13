@@ -27,6 +27,9 @@ from cadgen._internal.mesh_animation import RenderModuleSnapshot
 
 MESH_EXPORT_BUILDER = "mesh-export.mjs"
 MESH_EXPORT_RECORD_KIND = "mesh-export"
+# Mirrored by cadgen-js/glb/writeGlb.js. This is the final GLB serializer's
+# revision, not the glTF container version and not a tessellation-cache salt.
+GLB_SERIALIZATION_VERSION = 2
 
 # Declarable formats, and the decorator that declares each (the digit rule
 # forbids ``@3mf``, so 3MF's decorator is ``@threemf``).
@@ -192,7 +195,7 @@ def record_mesh_export(
         if digest is None:
             return
         outputs = dict(record.get("outputs") or {})
-        outputs[str(Path(output_path).expanduser().resolve())] = {
+        output_entry = {
             "sha256": digest,
             "declared": fmt,
             "document": str(document_hash),
@@ -201,6 +204,10 @@ def record_mesh_export(
             "anim": animation_key,
             "appearance": _appearance_key(appearance_key),
         }
+        serialization_version = _serialization_version(fmt)
+        if serialization_version is not None:
+            output_entry["serializer"] = serialization_version
+        outputs[str(Path(output_path).expanduser().resolve())] = output_entry
         record["outputs"] = outputs
         write_record(model, record)
     except Exception:  # noqa: BLE001 - a failed record only costs a re-export
@@ -223,6 +230,10 @@ def _appearance_key(value: str | None) -> str:
     return value if value is not None else appearance_digest(None)
 
 
+def _serialization_version(fmt: str) -> int | None:
+    return GLB_SERIALIZATION_VERSION if str(fmt) == "glb" else None
+
+
 def mesh_variant_key(
     fmt: str,
     mesh_tolerance: float | None,
@@ -230,20 +241,22 @@ def mesh_variant_key(
     animation_key: str | None = None,
     appearance_key: str | None = None,
 ) -> str:
-    """One mesh variant of a document — format × chord × angle × clip — the key
+    """One mesh variant of a document — format × serializer × chord × angle × clip — the key
     of the ARTIFACT-side ledger (``index/document/<sha256(bytes)>.meshes``).
 
-    A static export has no ``animation_key`` and keys exactly as it always did.
-    An ANIMATED one appends the clip request folded with the render module's
+    Only GLB carries a serializer revision; STL/3MF variants stay unchanged.
+    An ANIMATED GLB appends the clip request folded with the render module's
     bytes (mesh_animation.animation_variant_token), so it can never be satisfied
     by the static file at the same path, nor by a GLB of a clip since edited."""
+    serialization_version = _serialization_version(fmt)
     return "|".join(
         (
             str(fmt),
             _tolerance_token(mesh_tolerance),
             _tolerance_token(mesh_angular_tolerance),
-            f"appearance:{_appearance_key(appearance_key)}",
         )
+        + (() if serialization_version is None else (f"serializer:{serialization_version}",))
+        + (f"appearance:{_appearance_key(appearance_key)}",)
         + (() if animation_key is None else (f"anim:{animation_key}",))
     )
 
@@ -324,5 +337,6 @@ def mesh_export_current(
         and entry.get("angle") == _tolerance_token(mesh_angular_tolerance)
         and entry.get("anim") == animation_key
         and entry.get("appearance") == _appearance_key(appearance_key)
+        and entry.get("serializer") == _serialization_version(entry.get("declared"))
         and _sha256_of(path) == entry.get("sha256")
     )

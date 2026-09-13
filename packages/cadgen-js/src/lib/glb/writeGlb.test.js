@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import test from "node:test";
 
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -233,6 +234,34 @@ function glbJson(bytes) {
   const jsonLength = view.getUint32(12, true);
   return JSON.parse(new TextDecoder().decode(bytes.subarray(20, 20 + jsonLength)));
 }
+
+test("all 256 sRGB channels have canonical GLB material bytes in both presets", async () => {
+  const primitives = Array.from({ length: 256 }, (_, channel) => ({
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    color: `#${channel.toString(16).padStart(2, "0").repeat(3)}`,
+  }));
+  await MeshoptEncoder.ready;
+  for (const preset of ["export", "render"]) {
+    const bytes = writeGlb({ primitives }, { preset, encoder: MeshoptEncoder });
+    const colors = glbJson(bytes).materials.map((material) => material.pbrMetallicRoughness.baseColorFactor);
+    assert.equal(colors.length, 256);
+    assert.deepEqual(colors[0], [0, 0, 0, 1]);
+    assert.deepEqual(colors[255], [1, 1, 1, 1]);
+    // This channel exposed the cross-engine Float64 difference in the package golden.
+    assert.deepEqual(colors[170], [0.4019777774810791, 0.4019777774810791, 0.4019777774810791, 1]);
+    assert.equal(
+      crypto.createHash("sha256").update(JSON.stringify(colors)).digest("hex"),
+      "dcce961daf08b9b699ae7bef09d9188961978ab66b817ef5f91781ceef5a0f7f",
+      preset,
+    );
+    const loaded = await parseGlb(bytes, { withMeshopt: preset === "render" });
+    assert.deepEqual(
+      collectMeshes(loaded).map((mesh) => `#${mesh.material.color.getHexString()}`),
+      primitives.map((primitive) => primitive.color),
+      `${preset}: every encoded channel round-trips without losing an sRGB byte`,
+    );
+  }
+});
 
 test("primitives sharing a node key become ONE node with several primitives", () => {
   const gltf = glbJson(writeGlb({

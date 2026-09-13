@@ -67,6 +67,9 @@ immutable artifact inputs. `index/document` is the document lookup: `sha256(file
 tree describing those bytes (plus a mesh ledger keyed by format × tolerances
 × pose × appearance — the bare mesh doors read and write it, and a script run notes its
 declared meshes there too, so the two front doors never redo each other's work).
+GLB variants and model output entries also carry the final serializer revision.
+A change to GLB encoding invalidates final GLB exports without discarding
+geometry or tessellation results, or affecting STL/3MF freshness.
 Animated exports capture the render module's text before mesh preparation;
 the animation variant and the Node builder consume that same immutable text.
 Three properties, each enforced by a

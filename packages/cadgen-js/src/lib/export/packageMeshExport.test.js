@@ -401,13 +401,12 @@ test("an occurrence with no material collapses with its same-colour neighbours a
   assert.equal("material" in mesh.primitives[0], false);
 });
 
-// The byte-identity pin. The digest below was taken from the exporter BEFORE finishes
-// were threaded through it: a source that authors no `cad_material` must serialize to
-// the same bytes it always did, or every content-addressed artifact keyed on those
-// bytes is invalidated by a feature it does not use.
-const MATERIALLESS_GLB_SHA256 = "9c8eb710b9b953f50e8694008ff4aa88c4abf4ecf7c4c0c1c3e42cf8d4d1e38d";
+// Whole-file byte identity, including colour grouping, mirrored geometry, and defaults
+// for an unauthored finish. Linear RGB is serialized at canonical Float32 precision;
+// the previous Float64 pin varied with the JS engine's exponentiation implementation.
+const MATERIALLESS_GLB_SHA256 = "4c699fd6a2cdf5e8b24231ec2a09d5be72c61aa84607f11b2afc1cc4c557f064";
 
-test("a materialless package is byte-identical to what it produced before finishes existed", () => {
+test("a materialless package has canonical deterministic GLB bytes", () => {
   const tessellation = () => triangleTessellation({
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]),
     normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0]),

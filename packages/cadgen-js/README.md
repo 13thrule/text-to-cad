@@ -139,6 +139,11 @@ snapshot renderer and the node builders in `bin/`).
   old cached meshes cannot masquerade as current output. Meshing preserves
   shared trim references and treats Float32 transport precision explicitly,
   including periodic seams and primitive poles/apices.
+  GLB material RGB decoded from sRGB hex is serialized at Float32 precision,
+  so differences in JavaScript exponentiation do not change the output bytes.
+  Every 8-bit sRGB channel survives the round trip; authored opacity and PBR
+  values keep their precision. `GLB_SERIALIZATION_VERSION` and its Python
+  mirror invalidate final GLB exports independently of cached tessellations.
 - **Loud failure**: unresolved refs, unknown labels, and unknown presets
   throw with the known set listed; nothing renders a plausible wrong frame.
 
