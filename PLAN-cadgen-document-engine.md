@@ -198,9 +198,14 @@ adapters. Selected edges must belong to the exact current parent allocation;
 regular profiles use the stock constructor's actual point loop. Independent
 review found and fixed a constructor callback that could bind its unrelated
 face to the returned profile. Regression tests cover that callback and ordinary
-geometry, errors, provider changes and replay. These changes and topology-map
-reuse still require a frozen iris performance run after scalar-query provider
-checks are narrowed; the large-assembly gate remains open.
+geometry, errors, provider changes and replay. Frozen revision `408e7c8b9`
+now executes the complete 118-occurrence iris without a native escape. Two
+internal diagnostic replays took 5.978 and 5.989 seconds despite zero geometry
+recomputations and 28,196 reused operations. Profiling attributes most replay
+time to live provider checks, rather than evaluation-key construction. These
+are internal diagnostics, not complete-request ratios. The repeated matched
+STEP-build/edit benchmark and a callback-safe provider-check optimization are
+in progress; the large-assembly performance gate remains open.
 
 - Route the common algebra and builder APIs through the operator registry. Trace numeric/topology queries and builder state explicitly.
 - Reconcile edited source, helper changes, inserted/reordered loops, changed branches, defaults and external data. Debug provenance is separate from evaluation identity.
@@ -386,23 +391,16 @@ gate passes 102 frontend, builder, mesh, checkpoint and storage tests. These
 limits cover owned packet bytes, not process RSS, caller-owned display products,
 or the broader scheduling and memory gates below.
 
-The first larger-workload probe exposes a performance failure that blocks
-cutover: the 118-occurrence mechanical iris takes about 19.7 seconds cold and
-73 milliseconds unchanged in the frozen old engine, versus 22.1 seconds cold
-and 20.7 seconds unchanged in the current internal engine. These are single
-diagnostic samples, not a repeated performance baseline. The old unchanged
-gate skips source execution; the new engine executes source and should reuse
-managed CAD operations. A stock Cone insertion currently triggers private
-execution for subsequent operations. Fixing real-model frontend coverage and
-running repeated geometry/placement edits are required before claiming gains
-at this scale. Cone now has guarded retained construction and builder insertion;
-the same iris still escapes at the second Polygon in a multi-polygon sketch, so
-warm performance remains about 18 seconds in an in-process diagnostic. That
-diagnostic excludes worker startup and is not interchangeable with the complete
-request times above. Three old-engine mounting-hole edits measured 5.893, 5.943
-and 5.960 seconds, with all 118 saved occurrences independently checked and only
-the intended base ring changed. The repeatable full-request harness now includes
-this real source as an opt-in `iris118` fixture.
+The [larger-workload comparison](scripts/bench/cadgen-performance/document-engine/IRIS-20260913.md)
+at frozen `408e7c8b9` passes all 24 measured saved-file checks and fails the
+performance gate. The 118-occurrence iris measures old/replacement medians of
+19.407/26.005 s cold, 0.076/6.224 s unchanged, 6.144/9.784 s for a mounting-hole
+edit and 7.310/9.725 s for placement. Each scenario has three samples with
+observed ranges and explicit desktop-interference qualifications. Unchanged
+and placement calls now reuse all 28,196 operations, yet provider-check replay
+dominates their source time. A callback-safe check optimization is in review;
+required STEP product completion is another separately visible cost. This
+real-source fixture remains opt-in as `iris118` in the full-request harness.
 
 - Profile Python capture, kernel work, import, export, meshes and browser startup separately. Prewarming may improve an interactive request but must not be presented as an empty-process cold improvement.
 - Remove duplicate frontend work, combine suitable kernel operations, batch IPC and persist useful checkpoints. Optimize expensive modeling algorithms where the corpus reveals them; a feature graph cannot skip genuinely new geometry.

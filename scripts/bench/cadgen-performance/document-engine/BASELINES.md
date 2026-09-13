@@ -3,6 +3,17 @@
 This record distinguishes existing trustworthy observations from runs produced
 by the P0 harness. It does not invent percentile or memory evidence.
 
+## Larger-model checkpoint
+
+The [118-occurrence iris comparison](IRIS-20260913.md) at frozen `408e7c8b9`
+passes all 24 measured saved-file geometry checks but fails the performance
+gate. Old/replacement medians are 19.407/26.005 s cold, 0.076/6.224 s unchanged,
+6.144/9.784 s for a mounting-hole edit and 7.310/9.725 s for placement. Three
+samples per scenario establish observed medians and ranges, not p95. The
+report records desktop interference, stage boundaries and raw evidence hashes.
+Live provider-check overhead is the immediate optimization target; this result
+does not support extrapolating the small-fixture wins to larger assemblies.
+
 ## Historic serial source-command evidence
 
 `../FULL-REVIEW-20260912.md` measured public `python model.py --json` from
