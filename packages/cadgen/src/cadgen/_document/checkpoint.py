@@ -40,7 +40,7 @@ _NATIVE_ROLE = "document-native"
 _MESH_ROLE = "document-native-mesh-cache"
 _MESH_CACHE_MAGIC = b"CGDMCHE\x00"
 _MESH_CACHE_VERSION = 1
-_MESH_PRODUCER_SEMANTICS = "cadgen-native-mesh-v2.consumer-v2.copier-order-v1"
+_MESH_PRODUCER_SEMANTICS = "cadgen-native-mesh-v2.normal-retry-v1.consumer-v2.copier-order-v1"
 MAX_MESH_CACHE_ENTRIES = 128
 MAX_MESH_CACHE_INDEX_BYTES = 1024 * 1024
 MAX_MESH_CACHE_BYTES = 120 * 1024**2
@@ -95,6 +95,8 @@ def _implementation_digest() -> str:
         _meshing.MeshOptions.__post_init__,
         _meshing.mesh_for_occurrence,
         _meshing._mesh_private,
+        _meshing._math_inputs_are_current,
+        _meshing._native_algorithms,
         _meshing._pack,
         _meshing.unpack_mesh,
         _meshing._validate_ranges,
@@ -141,6 +143,8 @@ _MESH_FUNCTION_PROOFS = (
      _function_proof(_meshing.MeshOptions.__post_init__)),
     (_meshing, "mesh_for_occurrence", _function_proof(_meshing.mesh_for_occurrence)),
     (_meshing, "_mesh_private", _function_proof(_meshing._mesh_private)),
+    (_meshing, "_math_inputs_are_current", _function_proof(_meshing._math_inputs_are_current)),
+    (_meshing, "_native_algorithms", _function_proof(_meshing._native_algorithms)),
     (_meshing, "_pack", _function_proof(_meshing._pack)),
     (_meshing, "unpack_mesh", _function_proof(_meshing.unpack_mesh)),
     (_meshing, "_validate_ranges", _function_proof(_meshing._validate_ranges)),
@@ -160,6 +164,10 @@ _MESH_FUNCTION_PROOFS = (
      _function_proof(_native.copy_shape_with_topology_order)),
 )
 _MESH_GLOBAL_PROOFS = (
+    (_meshing, "math", _meshing.math),
+    (_meshing, "_BUILTIN_FUNCTION_TYPE", _meshing._BUILTIN_FUNCTION_TYPE),
+    *((_meshing, "_math_" + name, getattr(_meshing, "_math_" + name))
+      for name in ("cos", "dist", "hypot", "isfinite", "sqrt")),
     (_consumers, "copy_shape_with_topology_order", _consumers.copy_shape_with_topology_order),
     (_consumers, "normalize", _consumers.normalize),
     (_consumers, "_freeze_value", _consumers._freeze_value),
@@ -170,6 +178,7 @@ _MESH_GLOBAL_PROOFS = (
     (_meshing, "asdict", _meshing.asdict),
 )
 _MESH_VALUE_PROOFS = (
+    (_meshing, "MESH_DERIVATION_KIND", _default_proof(_meshing.MESH_DERIVATION_KIND)),
     (_meshing, "VERSION", _default_proof(_meshing.VERSION)),
     (_meshing, "MAGIC", _default_proof(_meshing.MAGIC)),
     (_meshing, "MAX_PACKET_BYTES", _default_proof(_meshing.MAX_PACKET_BYTES)),
@@ -201,7 +210,7 @@ def _mesh_producer_is_current() -> bool:
             return False
         if name != "_EDGE_CLASSES" and _default_proof(current) != proof:
             return False
-    return True
+    return _meshing._math_inputs_are_current()
 
 
 def checkpoint_engine_version() -> str:
@@ -855,7 +864,7 @@ def _mesh_cache_plan(document: Document, manifest: dict[str, Any], cancellation
             if (type(key) is not tuple or len(key) != 6
                     or type(key[0]) is not str or key[0] not in bindings
                     or key[1] != "consumer-v2"
-                    or key[2] != f"native-mesh-{_meshing.VERSION}"
+                    or key[2] != _meshing.MESH_DERIVATION_KIND
                     or type(key[3]) is not tuple
                     or key[3] not in (("face",), ("face", "edge"))
                     or type(key[4]) is not tuple or type(key[5]) is not tuple
@@ -982,7 +991,7 @@ def _install_mesh_cache(document: Document, payload: bytes,
                     or raw["faces"] != binding["faces"]
                     or raw["edges"] != (binding["edges"] if topology[-1] == "edge" else 0)):
                 return
-            key = (prototype, "consumer-v2", f"native-mesh-{_meshing.VERSION}",
+            key = (prototype, "consumer-v2", _meshing.MESH_DERIVATION_KIND,
                    topology, parameters, normalize(document.runtime))
             if key in keys:
                 return

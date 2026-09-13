@@ -140,7 +140,7 @@ class RevisionConsumerTests(unittest.TestCase):
         runtime = normalize(document.runtime)
 
         def key(prototype, quality):
-            return (prototype, "consumer-v2", "native-mesh-2", ("face",),
+            return (prototype, "consumer-v2", "native-mesh-v2.normal-retry-v1", ("face",),
                     normalize({"quality": quality}), runtime)
 
         first, second, third = (key("prototype-a", value) for value in range(3))
@@ -156,7 +156,7 @@ class RevisionConsumerTests(unittest.TestCase):
             self.assertIs(missing, document._native_mesh_derivation(invalid, missing))
             self.assertEqual(recency, tuple(document._native_mesh_lru),
                              "a validation miss must not change recency")
-            untracked = ("prototype-u", "consumer-v2", "native-mesh-2",
+            untracked = ("prototype-u", "consumer-v2", "native-mesh-v2.normal-retry-v1",
                          ("face",), (), runtime)
             document._derivations[untracked] = b"outside-retention-policy"
             self.assertIs(missing, document._native_mesh_derivation(untracked, missing))

@@ -231,9 +231,10 @@ class Document:
 
     @staticmethod
     def _is_native_mesh_key(key: Any) -> bool:
+        from .meshing import MESH_DERIVATION_KIND
         return (type(key) is tuple and len(key) == 6
                 and type(key[0]) is str and key[0]
-                and key[1] == "consumer-v2" and key[2] == "native-mesh-2"
+                and key[1] == "consumer-v2" and key[2] == MESH_DERIVATION_KIND
                 and type(key[3]) is tuple and type(key[4]) is tuple
                 and type(key[5]) is tuple)
 

@@ -57,6 +57,12 @@ There is no second occurrence ledger or compatibility scene channel.
 Derivations receive private copies, since OCCT meshing attaches triangulation.
 Their immutable results are keyed by prototype and explicit derivation options.
 A placement-only revision can reuse both its native prototype and its mesh.
+A Float32 facet-to-mean-surface-normal check accepts an explicit Watson pass or
+at most three finer Delabella retries. Nonfinite coordinates, invalid normals
+and reversed winding never use the small-area angular exemption. Exhausted
+retries publish no packet. Requested options, copied topology order and separate
+edge sampling remain fixed. Producer identity is versioned independently of the
+mesh codec; incompatible optional checkpoint meshes are discarded.
 Native mesh references use access-order retention: at most four quality variants
 per prototype and 256 MiB across one document owner. Eviction drops only the
 document's cache reference; an already returned display product continues to own

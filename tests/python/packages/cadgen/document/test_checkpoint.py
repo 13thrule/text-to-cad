@@ -336,7 +336,7 @@ class CheckpointTests(unittest.TestCase):
             catalog_revision = self.publish(document, revision)
         recovered = self.codec.recover(document.document_id, catalog_revision)
         self.assertEqual(1, len(recovered.document._derivations))
-        self.assertTrue(all(key[1:3] == ("consumer-v2", "native-mesh-2")
+        self.assertTrue(all(key[1:3] == ("consumer-v2", meshing.MESH_DERIVATION_KIND)
                             for key in recovered.document._derivations))
 
     def test_changed_live_mesh_producer_is_not_persisted(self):

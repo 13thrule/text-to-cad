@@ -111,3 +111,56 @@ This completes the bounded six-fixture comparison. The full P7 quality and
 performance gate remains open: sphere has an unmatched quality target, two JS
 fixtures retain structural failures, and native torus production regresses in
 this measured boundary. No production mesher or render behavior was changed.
+
+## Native quality correction follow-up
+
+The subsequent native correction preserves the original acceptance gate. The
+sphere's bad facets already exist in OCCT's double-precision Watson output;
+copying and Float32 transport do not explain them. The producer now checks
+facet direction against the mean native vertex normal during extraction. Only
+failed meshes retry OCCT's Delabella algorithm at bounded finer settings.
+This internal check is narrower than the independent numerical oracle above;
+it does not establish a global surface-distance bound.
+
+All six default native fixtures now pass that unchanged oracle. Only the sphere
+retries: its 3,936 triangles have a maximum analytic normal error of 0.1010224
+radians and sampled radial error of 0.0311385 mm. The other five fixtures keep
+their original triangle counts and use one native pass.
+
+Five alternating pairs measured the prior and corrected native producers, with
+private copying, tessellation and extraction/packing included. The new internal
+quality checks are included; the independent oracle and artifact I/O are excluded
+on both sides. These warm medians are milliseconds:
+
+| Fixture | Prior native | Corrected native |
+| --- | ---: | ---: |
+| Plate | 9.427 | 10.218 |
+| Cylinder | 2.111 | 2.033 |
+| Torus | 32.468 | 35.808 |
+| Trimmed cut | 18.740 | 20.294 |
+| Curved boolean | 13.794 | 15.788 |
+| Sphere | 25.834, fails quality | 50.253, passes quality |
+
+The correction costs about 8–14% on four already passing fixtures; the cylinder
+difference is too small to claim an improvement. The sphere has no valid speed
+ratio because the prior output fails the common quality gate. This is a quality
+correction with a measured cost, not an assembly performance improvement.
+
+The local report is `models/tmp/p7-sphere-investigation/retry-final.json`, SHA-256
+`abfdda2fd9f5c99bd2c33561dc2a93277266017eb6153f9c50c5d5d66ac374e6`.
+It identifies the measured new mesher by source SHA-256
+`1256e4bd5cd0aae10fefad69946c42698e4bb017403a1e57f46ae08849a9758f`.
+Subsequent dependency hardening authenticates held native math inputs and the
+actual OCCT algorithm enum, and freezes producer proofs before source execution.
+The final mesher source is
+`9a88153ce33e5f924fad30fe80ed968df867c6eaa0e6c1fa1d98e439c8e40197`.
+All six fixture packets are byte-identical to the quality-checked correction;
+the equivalence report is
+`models/tmp/p7-sphere-investigation/hardening-byte-equivalence.json`, SHA-256
+`674db5496925f15b47fa3df92d4b37ca6be24b4cd1226d1e44b1deef9ff2ca44`.
+The focused meshing, dependency, consumer and checkpoint gate passes 64 tests.
+The timing table predates that hardening and is not a remeasurement of it.
+
+The earlier native/JS comparison remains unchanged historical evidence. A new
+quality-qualified native/JS series and broader assembly/browser checks remain
+open; fixing the native sphere does not resolve the JS failures.

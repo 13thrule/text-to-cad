@@ -260,6 +260,10 @@ class FrontendSession:
                 )
             import build123d as bd
             from build123d import topology
+            # Freeze the kernel-free mesh/checkpoint producer proofs before
+            # authored code can replace dependencies, including when this
+            # document service has no checkpoint catalog configured.
+            from . import checkpoint as _mesh_checkpoint
             self._bd, self._topology = bd, topology
             self._token = _ACTIVE.set(self)
             self.active = True
