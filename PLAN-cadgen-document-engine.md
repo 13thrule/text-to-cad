@@ -193,6 +193,15 @@ real iris now reaches its first chamfer without escaping; its remaining
 private replay is still a performance regression, so this coverage milestone
 does not satisfy the full-request performance exit gate.
 
+Edge-list modifiers and RegularPolygon construction now have bounded retained
+adapters. Selected edges must belong to the exact current parent allocation;
+regular profiles use the stock constructor's actual point loop. Independent
+review found and fixed a constructor callback that could bind its unrelated
+face to the returned profile. Regression tests cover that callback and ordinary
+geometry, errors, provider changes and replay. These changes and topology-map
+reuse still require a frozen iris performance run after scalar-query provider
+checks are narrowed; the large-assembly gate remains open.
+
 - Route the common algebra and builder APIs through the operator registry. Trace numeric/topology queries and builder state explicitly.
 - Reconcile edited source, helper changes, inserted/reordered loops, changed branches, defaults and external data. Debug provenance is separate from evaluation identity.
 - Preserve child-model declarations and output obligations even when geometry is reused or a returned value is discarded.

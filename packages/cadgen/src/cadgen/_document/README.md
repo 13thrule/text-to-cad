@@ -74,8 +74,12 @@ metadata containers in each copied tree. Unsupported author values still take
 ordinary private execution. Saved hierarchy paths and appearance are verified
 for both execution paths.
 
-Sequential stock Polygon additions retain their sketch result and complete
-builder effects, including overlapping unions. Pending transfer preserves the
+Sequential stock Polygon and RegularPolygon additions retain their sketch
+result and complete builder effects, including overlapping unions. RegularPolygon
+executes its original radius, rotation and alignment calculations on every call;
+the kernel consumes the actual final point loop. Constructor callbacks cannot
+bind an unrelated face to the returned profile, and a private native escape
+prevents deferred publication. Pending transfer preserves the
 ordered faces and plane references; bounded multi-face extrusion reuses native
 results while executing the ordinary constructor and builder lifecycle. Changed
 builder state or provider drift enters private execution. Only a fully admitted

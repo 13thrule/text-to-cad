@@ -173,7 +173,9 @@ class SketchNativeEffects:
         self.bd = bd
         self.frontend = frontend
         self.kernel = PolygonKernel(frontend, extra_providers=(
-            (bd.Polygon, "__init__"), (objects_sketch.BaseSketchObject, "__init__"),
+            (bd.Polygon, "__init__"), (bd.RegularPolygon, "__init__"),
+            (bd.ShapeList, "sort_by"),
+            (objects_sketch.BaseSketchObject, "__init__"),
             (bd.BuildSketch, "_obj"), (bd.BuildSketch, "_add_to_pending"),
             (bd.Sketch, "__init__"), (bd.Sketch, "cast"),
             *((bd.Face, name) for name in ("is_coplanar", "_uv_bounds", "normal_at", "__neg__")),
@@ -181,7 +183,8 @@ class SketchNativeEffects:
                                            "origin", "to_local_coords", "from_local_coords", "_to_from_local_coords",
                                            "reverse_transform", "forward_transform", "to_gp_ax3", "wrapped")),
             (type(bd.Plane), "XY"),
-            *((owner, name) for owner in (bd.BuildSketch, bd.Sketch, bd.Polygon, bd.Wire, bd.Plane, bd.Vector)
+            *((owner, name) for owner in (bd.BuildSketch, bd.Sketch, bd.Polygon, bd.RegularPolygon,
+                                         bd.Wire, bd.Plane, bd.Vector)
               for name in ("__getattribute__", "__setattr__")),
             (bd.Builder, "_get_context"), (bd.BuildSketch, "_get_context"),
             *((bd.LocationList, name) for name in ("_get_context", "__getattribute__", "__setattr__")),
@@ -324,7 +327,7 @@ class SketchNativeEffects:
 class _PolygonFrame:
     shape: Any
     builder: Any
-    points: tuple
+    points: tuple | None
     logical_id: str
     previous: "_SketchState | None" = None
     seed: PolygonSeed | None = None
@@ -377,7 +380,7 @@ class _ExtrudeFrame:
 
 
 class SketchEffectsFrontend:
-    """Provenance for sequential stock Polygon construction sequences."""
+    """Provenance for sequential stock polygon construction sequences."""
 
     def __init__(self, frontend, *, deferred=False):
         import contextvars
@@ -401,28 +404,36 @@ class SketchEffectsFrontend:
             self.stock._guards.extend(((bd.Builder, "_current", self.context),
                                        (bd.LocationList, "_current", self.locations)))
         self.polygon_init = bd.Polygon.__init__
+        self.regular_polygon_init = bd.RegularPolygon.__init__
         original_wire = inspect.getattr_static(bd.Wire, "make_polygon")
         original_face = two_d._make_topods_face_from_wires
 
-        def polygon(shape, *points, **kwargs):
+        def construct(shape, original, args, kwargs, regular):
             if f._compute_depth:
-                return self.polygon_init(shape, *points, **kwargs)
+                return original(shape, *args, **kwargs)
             if self.stock is None:
                 self.activate(require_cached=True)
-            admitted = self._admit(shape, points, kwargs)
+            admitted = (self._admit_regular(shape, args, kwargs) if regular
+                        else self._admit(shape, args, kwargs))
             old = self.current
             self.current = (_PolygonFrame(
                 shape, self.context.get(None), admitted[0], f._logical("polygon-input"),
                 admitted[1]) if admitted is not None else None)
             succeeded = False
             try:
-                self.polygon_init(shape, *points, **kwargs)
+                original(shape, *args, **kwargs)
                 succeeded = True
             finally:
                 frame = self.current
                 self.current = old
                 if frame is not None:
                     self._finish(frame, succeeded)
+
+        def polygon(shape, *points, **kwargs):
+            return construct(shape, self.polygon_init, points, kwargs, False)
+
+        def regular_polygon(shape, *args, **kwargs):
+            return construct(shape, self.regular_polygon_init, args, kwargs, True)
 
         def wire(cls, vertices, close=True):
             frame = self.current
@@ -432,8 +443,14 @@ class SketchEffectsFrontend:
                     or not self.stock.providers_match()):
                 return original_wire.__func__(cls, vertices, close)
             actual = tuple((v.X, v.Y) for v in vertices)
-            if actual != frame.points or any(v.Z != 0 for v in vertices):
+            if ((frame.points is not None and actual != frame.points)
+                    or len(actual) < 3 or any(v.Z != 0 for v in vertices)
+                    or any(not math.isfinite(value) for point in actual for value in point)):
                 return original_wire.__func__(cls, vertices, close)
+            # RegularPolygon's ordinary body computes rotation, radius and
+            # alignment. Capture its actual numeric points; never duplicate
+            # those calculations or skip the constructor on a warm request.
+            frame.points = actual
             frame.seed = self.effects.kernel.own(
                 f.transaction, self.effects.kernel.evaluate(f.transaction, frame.points),
                 logical_id=frame.logical_id)
@@ -450,6 +467,7 @@ class SketchEffectsFrontend:
             return original_face(outer_wire, inner_wires)
 
         self._patch(bd.Polygon, "__init__", polygon)
+        self._patch(bd.RegularPolygon, "__init__", regular_polygon)
         self._patch(bd.Wire, "make_polygon", classmethod(wire))
         self._patch(two_d, "_make_topods_face_from_wires", face)
         self._install_extrude(operations_part)
@@ -590,6 +608,34 @@ class SketchEffectsFrontend:
             return None
         return pending, direction_values
 
+    def _admit_regular(self, shape, args, kwargs):
+        f, bd = self.frontend, self.frontend._bd
+        if (not self.contexts_stock or not self.stock.providers_match()
+                or type(shape) is not bd.RegularPolygon or f.transaction.escape_arena.active
+                or not f._can_defer_hierarchy(shape, ())):
+            return None
+        names = ("radius", "side_count", "major_radius", "rotation", "align", "mode")
+        if len(args) > len(names) or set(kwargs) - set(names) or set(names[:len(args)]) & set(kwargs):
+            return None  # The ordinary constructor owns argument errors.
+        values = dict(zip(names, args))
+        values.update(kwargs)
+        radius, sides = values.get("radius"), values.get("side_count")
+        rotation = values.get("rotation", 0)
+        align = values.get("align", (bd.Align.CENTER, bd.Align.CENTER))
+        try:
+            if (type(radius) not in (int, float) or not math.isfinite(radius) or radius <= 0
+                    or type(sides) is not int or not 3 <= sides <= 4096
+                    or type(values.get("major_radius", True)) is not bool
+                    or type(rotation) not in (int, float) or not math.isfinite(rotation)
+                    or type(align) is not tuple or len(align) != 2
+                    or any(type(value) is not bd.Align for value in align)
+                    or values.get("mode", bd.Mode.ADD) is not bd.Mode.ADD):
+                return None
+        except OverflowError:
+            return None
+        context = self._admit_context()
+        return None if context is None else (None, context[1])
+
     def _patch(self, owner, name, replacement):
         old = inspect.getattr_static(owner, name)
         self.frontend._patch(owner, name, replacement)
@@ -615,6 +661,22 @@ class SketchEffectsFrontend:
                 or type(kwargs.get("rotation", 0)) not in (int, float)
                 or kwargs.get("rotation", 0) != 0 or kwargs.get("mode", bd.Mode.ADD) is not bd.Mode.ADD):
             return None
+        context = self._admit_context()
+        if context is None:
+            return None
+        _builder, previous = context
+        if len(points) == 1 and type(points[0]) in (list, tuple):
+            points = points[0]
+        try:
+            if (len(points) < 3 or any(type(p) not in (tuple, list) or len(p) != 2
+                    or any(type(v) not in (int, float) or not math.isfinite(v) for v in p) for p in points)):
+                return None
+            return tuple(tuple(float(v) for v in p) for p in points), previous
+        except OverflowError:
+            return None
+
+    def _admit_context(self):
+        bd = self.frontend._bd
         builder = self.context.get(None)
         if type(builder) is not bd.BuildSketch:
             return None
@@ -640,15 +702,7 @@ class SketchEffectsFrontend:
                 or type(object.__getattribute__(backing[0], "__dict__").get("_wrapped")) is not TopLoc_Location
                 or backing[0] != bd.Location()):
             return None
-        if len(points) == 1 and type(points[0]) in (list, tuple):
-            points = points[0]
-        try:
-            if (len(points) < 3 or any(type(p) not in (tuple, list) or len(p) != 2
-                    or any(type(v) not in (int, float) or not math.isfinite(v) for v in p) for p in points)):
-                return None
-            return tuple(tuple(float(v) for v in p) for p in points), previous
-        except OverflowError:
-            return None
+        return builder, previous
 
     def add(self, builder, objects, kwargs):
         if self.stock is None:
@@ -953,13 +1007,15 @@ class SketchEffectsFrontend:
         return True
 
     def _finish(self, frame, succeeded):
-        if not succeeded or frame.bundle is None:
+        captured_shape = any(shape is frame.shape for shape in frame.wrappers)
+        if (not succeeded or frame.bundle is None or not captured_shape
+                or self.frontend.transaction.escape_arena.active):
             self.revoke(frame.builder)
             return
         for shape, handle in frame.pending:
             self._manage(shape, handle, frame.builder)
         tool = self.stock.project(self.frontend.transaction, frame.bundle, WrapperRef("tool", 0))
-        for shape in (*frame.wrappers, frame.shape):
+        for shape in frame.wrappers:
             self._manage(shape, tool, frame.builder)
         state = self.builders.get(id(frame.builder))
         if state is not None and state.bundle is frame.bundle:
