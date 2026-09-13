@@ -4259,7 +4259,7 @@ const CadViewer = forwardRef(function CadViewer({
     if (typeof window !== "undefined") {
       // Read-only debug/test seam (like __CAD_VIEWER_LOD__): the true-pose
       // contract — model at authored coordinates, grid pinned per the floor
-      // coupling — is asserted by scripts/e2e-model-placement.mjs through this.
+      // coupling — is asserted by tests/browser/viewer-e2e.mjs through this.
       window.__cadModelPlacement = {
         modelKey: modelKey || "",
         position: modelGroup.position.toArray(),

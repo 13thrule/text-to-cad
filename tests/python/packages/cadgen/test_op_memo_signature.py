@@ -295,11 +295,11 @@ class SignatureCacheStateParityTest(unittest.TestCase):
         import hashlib
         import os
         import shutil
-        import tempfile
         from pathlib import Path
         from unittest import mock
 
         from build123d import Box, BuildPart, Cylinder, Location, Mode, Select, Solid
+        from tests.python.support.tmp_root import generated_cad_directory
 
         def build():
             with BuildPart() as builder:
@@ -321,14 +321,12 @@ class SignatureCacheStateParityTest(unittest.TestCase):
                 "selections": selections,
             }
 
-        scratch_root = Path(__file__).resolve().parents[4] / "models" / "tmp"
-        scratch_root.mkdir(parents=True, exist_ok=True)
         optimized = op_memo._signature
         outcomes = []
         op_memo.install()
         try:
             for implementation in (_reference_signature, optimized):
-                with tempfile.TemporaryDirectory(prefix="signature-parity-", dir=scratch_root) as scratch:
+                with generated_cad_directory(prefix="signature-parity-") as scratch:
                     with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": scratch, "CADGEN_OP_MEMO": "1", "CADGEN_OP_MEMO_DISK": "1"}), mock.patch.object(op_memo, "_signature", implementation):
                         op_memo.clear()
                         consumers = []

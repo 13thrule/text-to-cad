@@ -99,28 +99,12 @@ every artifact-managed kind.
 
 ## Standing gate
 
-`scripts/e2e-format-sweep.mjs` loads one fixture per format against a running
-viewer and asserts each draws something with no page errors:
-
-```bash
-npm run start -- --port 3245 --host 127.0.0.1   # from the models root
-node scripts/e2e-format-sweep.mjs --dir <abs-models-root> [--out <dir>]
-```
-
-Run it for any change to shared viewer code. It uses `page.screenshot()` against a
-Metal-backed context on purpose: a blank-but-error-free viewport is the signature failure
-mode here (a shader that fails to compile, a gate that hides the geometry), sampling the
-canvas with `drawImage` reports every format blank because the drawing buffer is not
-preserved, and the software rasteriser hides real GPU failures. It has already earned its
-keep — it caught a temporal-dead-zone crash that blanked all six formats and that the
-build and unit tests both passed.
-
-**Method warning: do not run large sweeps back to back.** Chaining full runs (or launching
-several browsers in quick succession) exhausts GPU
-contexts and reports large numbers of *false* blanks — a run that reported 33 blank models
-reported zero on a clean run of the same build, twice. Let the previous run's browser fully
-exit before starting another, and treat any mass-blank result as suspect until reproduced
-from a cold start. Isolate a single suspect model rather than trusting one bulk run.
+The repository's self-contained browser gate loads generated test inputs for every
+format and asserts non-empty model bounds, real-framebuffer foreground coverage, toolbar
+and context-menu capabilities, and no page errors. It uses Metal on macOS and SwiftShader
+on Linux. See the
+[repository contribution guide](https://github.com/earthtojake/text-to-cad/blob/main/CONTRIBUTING.md#viewer-development-in-this-repo)
+for the command.
 
 ## Known non-uniformities
 
@@ -137,17 +121,7 @@ its fixed shaded, authored-color view policy; CAD selection, clipping,
 visibility, edges, guides, and exploded transforms never enter that path.
 Shared cadgen-js scene settings are the single public schema.
 
-### Conformance harness
-
-```bash
-node scripts/e2e-theme-conformance.mjs --dir <abs-models-root> [--out <dir>] [--baseline <file>]
-```
-
-Loads one mesh scene through the real global Appearance menu and Render controls.
-It checks CAD light/dark, adaptive Render, and pinned Light/Dark studios, then
-asserts **surface response**: the model's pixels must actually differ across the
-settings. A renderer that drops lighting fields still starts and draws while
-rendering every pass identically.
-
-Pass `--baseline <file>` to write the measured means when a visual review needs a
-before/after artifact in addition to the pass/fail result.
+The repository browser gate loads one mesh scene through the real Appearance and Render
+controls. It checks that CAD light/dark and the Light/Dark Render backdrops produce
+distinct framebuffers after the model's non-empty bounds and foreground draw have been
+established independently.

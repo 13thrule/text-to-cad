@@ -272,21 +272,6 @@ class _Executor(unittest.TestCase):
         self.assertLessEqual(peak, self.LIMIT, f"running exceeded the limit: peak {peak}")
         self.assertGreaterEqual(peak, 1)
 
-    def test_two_parents_needing_one_stale_child_build_it_once(self):
-        # Both parents in ONE top-level build so they share an executor: a root that
-        # calls both. Here: two separate top-level runs started together, which for the
-        # daemon share the daemon and for the transient executor each have their own
-        # broker -- so the daemon proves coalescing across roots, the transient one within.
-        a = subprocess.Popen([sys.executable, "parent_a.py", "--json"], cwd=str(self.src), env=self.env,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        b = subprocess.Popen([sys.executable, "parent_b.py", "--json"], cwd=str(self.src), env=self.env,
-                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        outs = [p.communicate(timeout=900) for p in (a, b)]
-        for proc, (out, err) in zip((a, b), outs):
-            self.assertEqual(proc.returncode, 0, err)
-            self.assertIn('"outcome":"built"', out)
-        self.check_pin_built_once(outs)
-
 
 class DaemonExecutor(_Executor):
     server: subprocess.Popen | None = None
@@ -355,11 +340,19 @@ class DaemonExecutor(_Executor):
         self.assertEqual(jobs.get("limit"), self.LIMIT, status)
         return int(jobs.get("peakRunning") or 0)
 
-    def check_pin_built_once(self, outs) -> None:
+    def test_two_parents_needing_one_stale_child_build_it_once(self):
         # Two roots started together share the daemon. Whether the second root's ask for
         # pin coalesces onto the first's job or finds it already current depends on which
         # process reaches the daemon first; the invariant is that pin's body ran ONCE.
         # (Coalescing itself is proven deterministically by the broker unit tests.)
+        a = subprocess.Popen([sys.executable, "parent_a.py", "--json"], cwd=str(self.src), env=self.env,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        b = subprocess.Popen([sys.executable, "parent_b.py", "--json"], cwd=str(self.src), env=self.env,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        outs = [p.communicate(timeout=900) for p in (a, b)]
+        for proc, (out, err) in zip((a, b), outs):
+            self.assertEqual(proc.returncode, 0, err)
+            self.assertIn('"outcome":"built"', out)
         built = 0
         for _out, err in outs:
             built += sum(1 for e in self._events(err) if Path(e["model"]).stem == "pin" and e["state"] == "done")
@@ -417,14 +410,6 @@ class TransientExecutor(_Executor):
         stats = json.loads(self.stats.read_text(encoding="utf-8"))
         self.assertEqual(stats["limit"], self.LIMIT, stats)
         return int(stats["peakRunning"])
-
-    def check_pin_built_once(self, outs) -> None:
-        # Two roots, two private brokers: coalescing here is within a root. The child was
-        # built by whichever parent got there first; the second found it current.
-        built = 0
-        for _out, err in outs:
-            built += sum(1 for e in self._events(err) if Path(e["model"]).stem == "pin" and e["state"] == "done")
-        self.assertGreaterEqual(built, 1)
 
     def test_a_one_slot_transient_build_finishes_the_three_level_tree(self):
         env = dict(self.env)

@@ -111,15 +111,23 @@ prunes empty destination directories unless `--keep-empty-dirs` is passed.
 
 ## Test From This Repository
 
-Run development and test prompts from inside this repository instead of a
-separate project checkout. The skills assume this workbench layout while you are
-iterating: `models/` contains fixtures and generated CAD artifacts, `apps/viewer/`
-contains the editable CAD Viewer source, and repo-relative validation commands
-live under `scripts/`.
+Automated tests are self-contained. They must not read, enumerate, build, or
+import sample models from this repository's `models/` directory. Generate the
+smallest fixture needed in a fresh temporary directory, or use a tiny fixture
+committed with the tests; do not rely on existing outputs or LFS downloads.
+Repo `tmp/` and system temporary directories are both fine. Give builds their
+own cache store and clean up their processes and files. The shared
+temporary-directory helper retains the Windows cleanup retries used by the suite.
 
-Write test, sample, and durable CAD/robot-description artifacts under `models/`;
-do not create ad hoc artifact directories elsewhere. When you need a scratch
-project, create it under the fixture bucket it belongs in: a standalone part
+Keep regression tests focused on observable behavior. Reuse setup within a test
+when several assertions concern the same result; do not repeatedly build the
+same geometry to test unrelated metadata or duplicate an existing integration
+case. Real kernel and browser tests remain necessary for geometry fidelity,
+cache reuse, rendering, and process-lifecycle behavior.
+
+For manual skill prompts and model review, work inside this repository and keep
+samples and CAD/robot-description artifacts under `models/`. Create a scratch
+project in the fixture bucket it belongs in: a standalone part
 goes in the `models/examples/` cad-project, an assembly gets its own group in
 `models/assemblies/` (`src/<assembly>/`, outputs in `STEP/<assembly>/`), a
 drawing goes in `models/drawings/` — script in `src/`, artifact declared into a
@@ -131,9 +139,9 @@ python models/examples/src/my_test.py
 ```
 
 Then start your agent with `/path/to/text-to-cad` as the working directory and
-ask it to write files under that scratch path. This keeps skill scripts,
-fixtures, generated sidecars, and Viewer links using the same repo-relative
-paths that CI and local checks expect.
+ask it to write files under that scratch path. This keeps manual model sources,
+generated artifacts, and Viewer links together, independently of the automated
+test suite.
 
 Review media such as snapshot PNGs are not model artifacts:
 render them under `/tmp` and attach them to the pull request instead. `.gitignore`
@@ -205,13 +213,14 @@ PYTHONPATH=<worktree>/packages/cadgen/src \
 <main>/.venv/bin/python -m cadgen.viewer --host 127.0.0.1 --json
 ```
 
-For a browser regression check of Inspect/Render switching, Studio quality, and
-orbit settling, point this command at a running viewer with a moderate STEP
-assembly. It uses Playwright Chromium from the development requirements and
-does not build the model:
+The self-contained browser regression suite checks supported formats, picking,
+placement, and Inspect/Render quality transitions. It creates tiny inputs and
+starts its own viewer with an isolated cache; no sample builds are needed.
+Bundle the client first and install Playwright Chromium from the development
+requirements:
 
 ```bash
-python scripts/test/viewer-render-quality.py 'http://127.0.0.1:3259/?file=assembly.step'
+scripts/test/test-viewer-browser.sh
 ```
 
 Mesh exports (`@stl`/`@3mf`/`@glb`) and DXF previews run the checkout's live

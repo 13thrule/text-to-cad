@@ -101,9 +101,15 @@ fi
 echo "    interpreter: $PYTHON"
 # Cold: a smoke test spawns no build daemon.
 export CADGEN_DAEMON=0
+unset CADGEN_BROKER CADGEN_BROKER_KEY CADGEN_BROKER_STATS CADGEN_ROOT_ID
 # Isolated store: content keying would otherwise resolve the fixture against
 # the developer's real cache and skip the import this smoke test exists to run.
 export CADGEN_CACHE_DIR="$(mktemp -d)"
+# The instance registry lives in the process temp directory, outside the store.
+# Keep reuse/list/stop checks independent of other viewers on this machine.
+registry_tmp="$("$PYTHON" -c 'import tempfile; print(tempfile.mkdtemp(prefix="cv-"))')"
+export TMPDIR="$registry_tmp" TEMP="$registry_tmp" TMP="$registry_tmp"
+export CADGEN_DAEMON_STATE_DIR="$registry_tmp/daemon"
 # The launcher has no directory flag: the cwd IS the served directory, so the
 # launch cd's there first — exactly as SKILL.md instructs. `exec` makes the
 # subshell BECOME the python process, so $! is the server's pid.
@@ -113,7 +119,9 @@ disown "$server_pid" 2>/dev/null || true
 
 cleanup() {
   kill "$server_pid" 2>/dev/null || true
-  rm -rf "$serve_root" "$CADGEN_CACHE_DIR"
+  wait "$server_pid" 2>/dev/null || true
+  rm -rf "$serve_root" "$CADGEN_CACHE_DIR" "$registry_tmp"
+  rm -f "$log"
 }
 trap cleanup EXIT
 
@@ -180,13 +188,14 @@ fi
 # End-to-end display FROM THE BUNDLE: a raw STEP in the served root goes
 # not-compiled -> POST (cadgen's compile entry point, a job in the pool)
 # -> compiled geometry -> a real browser load that derives and fetches its
-# display surface. The fixture is deliberately non-LFS (CI checks out without
-# LFS). Geometry completion and display readiness are separate contracts: the
-# artifact endpoint must stay "compiled" after the geometry tree lands, while
+# display surface. Its small STEP fixture belongs to this test rather than the
+# repository's shared model workspace. Geometry completion and display readiness
+# are separate contracts: the artifact endpoint must stay "compiled" after the
+# geometry tree lands, while
 # the bundled client drives missing SURF work through /__cad/surfaces.
-FIXTURE="$REPO_ROOT/models/examples/imported/import-smoke.step"
+FIXTURE="$REPO_ROOT/tests/fixtures/cad/import-smoke.step"
 if ! head -1 "$FIXTURE" | grep -q "ISO-10303-21"; then
-  echo "FAIL: import fixture is not STEP text (LFS pointer?): $FIXTURE" >&2
+  echo "FAIL: import fixture is not STEP text: $FIXTURE" >&2
   exit 1
 fi
 cp "$FIXTURE" "$serve_root/smoke.step"

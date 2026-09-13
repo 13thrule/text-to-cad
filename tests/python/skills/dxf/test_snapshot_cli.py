@@ -86,8 +86,11 @@ class DxfSnapshotCliTests(unittest.TestCase):
             snapshot.drawing_mesh_path(Path("/models/part.step"), force=False)
 
     def test_reports_a_missing_input(self) -> None:
-        with self.assertRaises(snapshot.SnapshotError):
-            snapshot.drawing_mesh_path(Path("/models/definitely-absent.dxf"), force=False)
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(snapshot.SnapshotError):
+                snapshot.drawing_mesh_path(Path(tmp) / "definitely-absent.dxf", force=False)
 
     def test_section_mode_is_rejected_for_a_drawing(self) -> None:
         # Drawings have no CAD topology, so section has nothing to work with.

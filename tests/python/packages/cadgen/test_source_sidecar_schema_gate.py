@@ -15,7 +15,6 @@ the sidecar for it.
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -29,6 +28,7 @@ from cadgen._internal.source_sidecar import (
     source_sidecar_path,
     write_source_sidecar,
 )
+from tests.python.support.tmp_root import generated_cad_directory
 
 CURRENT_SIDECAR = {
     "kinematics": {
@@ -48,9 +48,7 @@ CURRENT_SIDECAR = {
 
 class SidecarSchemaGate(unittest.TestCase):
     def setUp(self) -> None:
-        models_tmp = Path(__file__).resolve().parents[4] / "models" / "tmp"
-        models_tmp.mkdir(parents=True, exist_ok=True)
-        self._temp = tempfile.TemporaryDirectory(prefix="sidecar-gate-", dir=models_tmp)
+        self._temp = generated_cad_directory(prefix="sidecar-gate-")
         self.addCleanup(self._temp.cleanup)
         self.root = Path(self._temp.name)
         self.document = self.root / "hinge.step"

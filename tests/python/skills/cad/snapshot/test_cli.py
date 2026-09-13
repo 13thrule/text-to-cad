@@ -2035,8 +2035,9 @@ class RenderOptionResolutionTests(unittest.TestCase):
             self._job_for(Path.cwd(), {"appearance": "dark"})
 
     def test_missing_render_file_raises(self):
-        with self.assertRaisesRegex(snapshot_main.SnapshotError, "does not exist"):
-            self._job_for(Path.cwd(), "models/no_such_render.json")
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaisesRegex(snapshot_main.SnapshotError, "does not exist"):
+                self._job_for(Path(tmp), "models/no_such_render.json")
 
     def test_a_job_render_is_already_an_object(self):
         with tempfile.TemporaryDirectory() as tmp:

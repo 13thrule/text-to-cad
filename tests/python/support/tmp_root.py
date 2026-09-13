@@ -7,7 +7,6 @@ from tests.python.support.paths import REPO_ROOT
 
 TMP_ROOT = REPO_ROOT / "tmp"
 CAD_TEST_TMP_ROOT = TMP_ROOT / "cad-skill-tests"
-GENERATED_CAD_ROOT = REPO_ROOT / "models" / "tmp"
 
 
 def temporary_directory(*, prefix: str) -> tempfile.TemporaryDirectory[str]:
@@ -24,13 +23,12 @@ def temporary_directory(*, prefix: str) -> tempfile.TemporaryDirectory[str]:
 
 
 def generated_cad_directory(*, prefix: str) -> tempfile.TemporaryDirectory[str]:
-    """A fresh models/tmp directory for a test that generates CAD artifacts.
+    """A fresh test scratch directory for generated CAD artifacts.
 
-    The directory is only an allocation root: callers create every input they
-    read, and the retrying cleanup retains the normal Windows handle policy.
+    Callers create every input they read, and the retrying cleanup retains the
+    normal Windows handle policy.
     """
-    GENERATED_CAD_ROOT.mkdir(parents=True, exist_ok=True)
-    return RetryingTemporaryDirectory(prefix=prefix, dir=GENERATED_CAD_ROOT)
+    return temporary_directory(prefix=prefix)
 
 
 def named_tmp_root(name: str) -> Path:

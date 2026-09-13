@@ -339,7 +339,7 @@ the build — detection only; it keeps serving.
 src/client/ # React app: CadWorkspace (state root), CadViewer (scene +
             #   effects application), workbench/ (tabs, sections, session
             #   state, playback), render/ (viewport)
-scripts/    # app tooling incl. e2e helpers and selfContained.test.mjs
+scripts/    # app tooling incl. selfContained.test.mjs
             #   (the boundary fence) and the dev-backend spawn helpers
 docs/       # subsystem docs; settings-ui.md is the CURATED design-system
             #   reference for all settings UI work — binding, read it
