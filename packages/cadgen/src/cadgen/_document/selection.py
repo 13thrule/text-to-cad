@@ -41,6 +41,7 @@ class SelectionAdapter:
         self._carrier = None
         self._kind = None
         self._members = ()
+        self._origins = {}
         mixin = frontend._topology.Mixin1D
         self.extra = (
             (bd.Shape, "geom_type"), (bd.Edge, "arc_center"),
@@ -184,6 +185,12 @@ class SelectionAdapter:
 
     def clear(self):
         self._carrier, self._kind, self._members = None, None, ()
+        self._origins.clear()
+
+    def origin(self, handle):
+        """Exact current-execution parent of an unmodified stock projection."""
+        record = self._origins.get(handle.allocation_id)
+        return record if record is not None and record[0] == handle else None
 
     def _slots(self, native, kind):
         private = self.frontend.transaction.escape_arena.active
@@ -237,6 +244,7 @@ class SelectionAdapter:
                 OperatorSpec("build123d.selection.member", "1", Mutation.READ_ONLY),
                 (kind, ordinal, self.stock._context_key), (handle,), compute,
             )
+            self._origins[output.allocation_id] = (output, handle, kind, ordinal)
             def metadata(native, _ordinal=ordinal):
                 member = self._slots(native, kind)[_ordinal]
                 if type(member) is self.bd.Vertex:

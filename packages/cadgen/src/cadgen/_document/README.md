@@ -91,8 +91,15 @@ radius, arc center and circle/ellipse normal queries return fresh scalar/vector
 values without copying geometry. Provider code, mutable lookup tables and native
 methods remain guarded on use, including after a warm session's lazy admission.
 Custom index/filter callbacks, changed providers and unsupported normal paths
-execute privately. Filtered iteration and ordinary-list fillet/chamfer retention
-remain outside this bounded selection adapter.
+execute privately. Filtered iteration remains outside this selection adapter.
+Plain lists, tuples and stock ShapeLists of unmodified projected edges can feed
+3D fillet and symmetric chamfer. Every edge must retain the exact current parent
+allocation; equal independent geometry or a reassigned topology parent is not
+membership evidence. The adapter runs stock validation, target conversion and
+native error handling, preserving private source/result aliases on later escape.
+Custom iterables/providers, active builders, moved edges and asymmetric/reference
+chamfers keep ordinary execution. Lazy proxy functions are restored to their
+prior presence or absence, so no closed session callable survives through them.
 
 `RevisionConsumer` pins an exact committed root and resolves occurrence paths
 within that owner and revision. Trusted read-only queries return immutable

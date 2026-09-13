@@ -33,6 +33,7 @@ _ACTIVE: ContextVar["FrontendSession | None"] = ContextVar(
     "cadgen_document_frontend", default=None
 )
 _PATCH_LOCK = threading.RLock()
+_MISSING_ATTRIBUTE = object()
 _EFFECT_PROOF_LIMIT = 8
 _EFFECT_PROOFS = OrderedDict()
 _HIERARCHY_CODE_PROOFS = OrderedDict()
@@ -239,6 +240,7 @@ class FrontendSession:
         self._builder_effects = None
         self._sketch_effects = None
         self._selection = None
+        self._modifiers = None
 
     @classmethod
     def current(cls) -> "FrontendSession | None":
@@ -295,7 +297,11 @@ class FrontendSession:
         failure = None
         for owner, name, original in reversed(self._originals):
             try:
-                setattr(owner, name, original)
+                if original is _MISSING_ATTRIBUTE:
+                    if inspect.getattr_static(owner, name, _MISSING_ATTRIBUTE) is not _MISSING_ATTRIBUTE:
+                        delattr(owner, name)
+                else:
+                    setattr(owner, name, original)
             except BaseException as error:  # finish restoring the process-global surface
                 failure = failure or error
         self._originals.clear()
@@ -304,7 +310,7 @@ class FrontendSession:
             raise failure
 
     def _patch(self, owner: Any, name: str, replacement: Any) -> None:
-        original = inspect.getattr_static(owner, name)
+        original = inspect.getattr_static(owner, name, _MISSING_ATTRIBUTE)
         self._originals.append((owner, name, original))
         setattr(owner, name, replacement)
         self._installed.append((owner, name, original, replacement))
@@ -721,6 +727,8 @@ class FrontendSession:
             )
 
         def fillet_method(shape: Any, radius: float, edge_list: Iterable[Any]) -> Any:
+            if session._compute_depth:
+                return original_fillet_method(shape, radius, edge_list)
             if isinstance(edge_list, ManagedSelection) and edge_list._owner is shape:
                 return session._fillet(shape, edge_list, radius)
             if _state(shape) is not None:
@@ -729,8 +737,21 @@ class FrontendSession:
             return session._capture_private(result, "opaque-fillet-method")
 
         def fillet_function(objects: Any, radius: float) -> Any:
+            if session._modifiers is not None:
+                retained = session._modifiers.attempt("fillet", objects, radius)
+                if retained is not None:
+                    return retained
             if isinstance(objects, ManagedSelection):
-                return session._fillet(objects._owner, objects, radius)
+                if (session._modifiers is not None
+                        and original_fillet_function is session._modifiers.original["fillet"]
+                        and session._modifiers.providers_match()):
+                    return session._fillet(objects._owner, objects, radius)
+                # A direct selector represents stock ShapeList values. Preserve
+                # that argument and the authored callable when provider proof
+                # fails, rather than bypassing it through the native adapter.
+                objects = objects._private_value()
+            if session._modifiers is not None:
+                session._modifiers.private_inputs(objects)
             result = original_fillet_function(objects, radius)
             return (session._capture_private(result, "opaque-fillet")
                     if isinstance(result, bd.Shape) else result)
@@ -773,7 +794,7 @@ class FrontendSession:
         self._patch(bd, "fillet", fillet_function)
         # The lazy proxy may already have cached this function before entry.
         import cadgen.build123d as proxy
-        if "fillet" in vars(proxy):
+        if "fillet" not in vars(proxy) or vars(proxy)["fillet"] is original_fillet_function:
             self._patch(proxy, "fillet", fillet_function)
         self._prepare_primitive_guards(
             original_box_init, original_cone_init, original_cylinder_init,
@@ -781,6 +802,24 @@ class FrontendSession:
         from .selection import SelectionAdapter
         self._selection = SelectionAdapter(self)
         self._selection.prepare()
+        from .modifiers import EdgeModifiers
+        self._modifiers = EdgeModifiers(self)
+        self._modifiers.prepare()
+        def chamfer_function(objects, length, length2=None, angle=None, reference=None):
+            retained = session._modifiers.attempt(
+                "chamfer", objects, length, length2=length2, angle=angle, reference=reference)
+            if retained is not None:
+                return retained
+            session._modifiers.private_inputs(objects)
+            result = session._modifiers.public["chamfer"](
+                objects, length, length2=length2, angle=angle, reference=reference)
+            return (session._capture_private(result, "opaque-chamfer")
+                    if not session._compute_depth and isinstance(result, bd.Shape) else result)
+        original_chamfer = self._modifiers.public["chamfer"]
+        if _stock_function(original_chamfer, "build123d.operations_generic", "chamfer"):
+            self._patch(bd, "chamfer", chamfer_function)
+            if "chamfer" not in vars(proxy) or vars(proxy)["chamfer"] is original_chamfer:
+                self._patch(proxy, "chamfer", chamfer_function)
         # Install the small entry interceptors on every replay.  A runtime is
         # proven only after one session has discovered and finalized both full
         # transitive provider inventories before any authored code can run.
@@ -814,6 +853,7 @@ class FrontendSession:
                 while len(_EFFECT_PROOFS) > _EFFECT_PROOF_LIMIT:
                     _EFFECT_PROOFS.popitem(last=False)
         self._selection.finalize()
+        self._modifiers.finalize()
 
     def _effect_proof_key(self):
         """Identity-only key for one installed provider runtime generation."""
