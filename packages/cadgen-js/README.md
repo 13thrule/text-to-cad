@@ -210,7 +210,10 @@ perspective camera defaults to a 50 mm focal length. Quality is independent from
 the existing standard scene policy and `final` maps to high. High uses the
 bounded L3 rung, a 0.25px viewport target, 4096px shadows, a 512px procedural
 environment, and 2x snapshot render scale. Explicit
-`output.renderScale` remains authoritative. `quality.tessellation` is a
+`output.renderScale` remains authoritative for the internal drawing buffer.
+PNG and video-frame output keeps the requested pixel dimensions: supersampled
+frames are downsampled in full before encoding, with labels drawn afterward.
+`quality.tessellation` is a
 normal-CAD-only technical override; Render derives its bounded mesh rung only
 from `render.quality`. Snapshot job validation rejects a Render envelope combined
 with explicit top-level `camera`, `display`, `selection`, `kinematics`,
