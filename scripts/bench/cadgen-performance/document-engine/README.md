@@ -189,6 +189,26 @@ trees, byte-attested outputs, complete independent saved-file oracles, and a
 timing-qualified environment. The harness reports medians and observed ranges,
 never p95.
 
+`profile_unchanged.py` is a diagnostic for unexplained warm overhead. Run it
+with `PYTHONPATH` pointing at the exact archived candidate runtime, once for
+each fixture and one process at a time. It primes a direct `DocumentService`,
+then profiles ordinary captured-source replay and STEP publication inside the
+native owner process:
+
+```sh
+PYTHONPATH="$CANDIDATE_ARCHIVE/packages/cadgen/src" "$CAD_PYTHON" \
+  scripts/bench/cadgen-performance/document-engine/profile_unchanged.py \
+  --model plate --source models/performance_document/plate.py \
+  --scratch models/tmp/performance-document-profile-plate \
+  --report models/tmp/performance-document-profile-plate.json \
+  --candidate-revision "$CANDIDATE_REVISION"
+```
+
+The helper requires one exact source execution and one actual-byte STEP receipt
+per profiled call. It excludes `DocumentWorker` IPC, and cProfile changes the
+elapsed cost, so its timings are attribution evidence only. Do not combine them
+with `fullRequestMs` or use them in engine ratios.
+
 The runtime archive contains only `packages/cadgen/src` from the named commit
 and lives under `/private/tmp`. `full-paired` archives current HEAD there too;
 both engines and the common readback use those immutable archives, so later

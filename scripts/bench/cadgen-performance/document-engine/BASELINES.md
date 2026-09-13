@@ -187,7 +187,7 @@ source-tree SHA-256
 The first v1 attempt stopped before a usable sample because the sandbox denied
 the worker's private Unix socket; its incomplete journals are diagnostic only.
 
-## Full-request boundary awaiting measurement
+## Full-request boundary functional smoke
 
 The in-process series above remains valid evidence for
 `in-process-run-model-argv-with-first-call-engine-setup-v2`. It is now an
@@ -208,13 +208,73 @@ code-only runtime archives before dispatch; the common source-hidden readback
 uses that candidate archive too. A later checkout edit cannot change either
 runtime during the series.
 
-No observation exists for this boundary yet. A functional one-cold/two-warm
-smoke and the bounded five-cold/ten-warm series require a newly reserved serial
-window after both runtime trees are frozen. A report becomes comparable only
-after every row completes the required STEP, attests the actual destination
-bytes, passes the common source-hidden saved-byte geometry oracle, and matches
-the exact captured entry digest across engines. Resident display and saved STEP
-reopen remain separate diagnostics with no ratio between them.
+The isolated functional smoke on 2026-09-13 froze baseline
+`5c4a212cae32e834fa4d805ae778ab5ee6cd71a2` and candidate
+`834a0818b9bee347286cbb4f29b6721b969428db`. All 28 measured requests, 28
+saved-byte oracles, exact-entry checks, STEP byte receipts, and owner shutdowns
+passed. The comparison admitted all 14 paired rows at the same boundary. With
+only one cold and two warm samples, these medians validate the harness and
+request contract only; they are not percentile evidence or performance claims.
+
+| Fixture / scenario | Frozen baseline | Candidate |
+| --- | ---: | ---: |
+| Plate cold | 2511.254 ms | 2408.360 ms |
+| Plate unchanged | 9.355 ms | 31.056 ms |
+| Plate local geometry | 76.433 ms | 69.035 ms |
+| Plate placement | 58.061 ms | 49.825 ms |
+| Assembly24 cold | 2624.698 ms | 2446.010 ms |
+| Assembly24 unchanged | 10.588 ms | 32.832 ms |
+| Assembly24 local geometry | 115.349 ms | 75.918 ms |
+| Assembly24 placement | 93.765 ms | 54.852 ms |
+
+The ignored local reports and SHA-256 values are:
+
+- `models/tmp/performance-document-full-paired-smoke-20260913-v1-baseline.json`:
+  `6cc4867419bdff4be78c853f573d7b85c7bb6cb5d989f9cb2e71132b27997aa1`
+- `models/tmp/performance-document-full-paired-smoke-20260913-v1-candidate.json`:
+  `e4c10236a2702228b450e172807e54fac98b8c60a5f95130eba965306be344ff`
+- `models/tmp/performance-document-full-paired-smoke-20260913-v1-comparison.json`:
+  `2107acc78a18748609f5794918c0f69fd4a027939db7737dc357f30f9ca6a5be`
+
+The full five-cold/ten-warm matrix still requires a new serial window after the
+unchanged-source overhead is addressed or accepted explicitly. Resident
+display and saved STEP reopen remain separate diagnostics with no ratio.
+
+The unchanged current path reported zero computed geometry, zero native
+copies, 14 reused operations, zero STEP writes/parses, and one verified product
+reuse. A bounded owner-process cProfile diagnostic then replayed each fixture
+five times against the same frozen candidate. It excludes worker IPC and
+profiler overhead makes its wall values unsuitable for ratios. The dominant
+five-call cumulative attribution was:
+
+| Function | Plate | Assembly24 | Observation |
+| --- | ---: | ---: | --- |
+| `StockBuilderEffects.__init__` | 156.825 ms | 160.806 ms | Reconstructed the provider proof every replay. |
+| `inspect.getattr_static` | 111.993 ms | 117.930 ms | 25,340 / 26,260 calls within that proof. |
+| `SourceSession` enter + restore | 29.052 ms | 29.275 ms | Module isolation scans and restoration. |
+| STEP `_runtime_identity` | 12.800 ms | 13.466 ms | Rehashed loaded writer/runtime identity. |
+| STEP product prune | 2.772 ms | 27.690 ms | Two live-root traversals per request; Assembly24 scales with its tree. |
+
+Cumulative rows overlap and must not be summed. The largest non-recursive
+`tottime` rows were `inspect._shadowed_dict` (61.996 / 64.887 ms),
+`inspect.getattr_static` (25.087 / 26.263 ms), and `inspect._check_class`
+(24.681 / 26.203 ms) for plate / Assembly24. Assembly24's recursive
+`build123d.geometry.Location.__init__` row reports 217.669 ms total against
+46.688 ms cumulative; that cProfile recursion artifact is retained in the raw
+report and is not used to allocate wall time. Safe follow-up work can split
+the immutable stock provider discovery from per-request live identity guards,
+while still checking every author-visible hook on every replay. It can also
+track only modules actually evicted or loaded by `SourceSession`, retain a
+process-stable identity for already-loaded STEP implementation code, and avoid
+duplicating a live-root digest/prune traversal within one request. None of
+these changes may skip authored Python, provider-hook validation, captured
+input semantics, or actual destination-byte verification. The ignored local
+diagnostic reports are
+`models/tmp/performance-document-profile-unchanged-20260913-v1-plate.json`
+(SHA-256 `f62c35dcc694207dea505182063711d4a06067c6fbb376c44d6ad0bb735a11f6`)
+and
+`models/tmp/performance-document-profile-unchanged-20260913-v1-assembly24.json`
+(SHA-256 `de30aa9385fe6767721113253d48dae801ec78b3b4080ce07707ee3515a1a78a`).
 
 ## FreeCAD probe qualification
 

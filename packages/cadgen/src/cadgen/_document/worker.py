@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import socket
 import tempfile
 import threading
 import time
@@ -46,6 +47,32 @@ class WorkerTimeout(TimeoutError):
 
 class WorkerCancelled(WorkerError):
     pass
+
+
+class _Transfer:
+    """One bounded-lifetime I/O thread; it never owns document/native state.
+
+    Connection.poll only promises the start of a frame is readable. A stopped
+    peer can still block recv_bytes halfway through that frame, or send_bytes
+    while it is not reading. The client thread watches the entire exchange and
+    tears down the peer/transport on expiry, including those blocked syscalls.
+    """
+
+    def __init__(self, action):
+        self.done = threading.Event()
+        self.result = None
+        self.error = None
+
+        def run():
+            try:
+                self.result = action()
+            except BaseException as error:
+                self.error = error
+            finally:
+                self.done.set()
+
+        self.thread = threading.Thread(target=run, name="cadgen-document-io", daemon=True)
+        self.thread.start()
 
 
 def _duration(value, name, maximum, *, allow_zero=False):
@@ -244,6 +271,7 @@ class _Owner:
                                         "bytes": len(item.data)} for item in result.inputs],
                             "sourceSeconds": attempt.source_seconds,
                             "evaluations": asdict(attempt.stats),
+                            "frontendFallbacks": dict(attempt.fallback_counts),
                             "products": asdict(result.product_metrics)}
                 response = {"revision": self._retain(result.document, result.revision_id),
                             **prepared}
@@ -367,6 +395,8 @@ class DocumentWorker:
         self._thread = threading.get_ident()
         self._next = 0
         self._closed = False
+        self._transfer = None
+        self._control_transfer = None
         context = multiprocessing.get_context("spawn")
         self.connection, child = context.Pipe(duplex=True)
         child_control, self.control = context.Pipe(duplex=False)
@@ -377,9 +407,7 @@ class DocumentWorker:
             self.process.start()
             child.close()
             child_control.close()
-            value, payloads = wire.receive(
-                self.connection,
-                before_read=lambda: self._wait(started + startup_timeout, cancellation))
+            value, payloads = self._exchange(started + startup_timeout, cancellation)
             if (payloads or type(value) is not dict or set(value) != {"ready", "pid"}
                     or type(value["ready"]) is not int or value["ready"] != wire.PROTOCOL
                     or type(value["pid"]) is not int or value["pid"] != self.process.pid):
@@ -409,6 +437,53 @@ class DocumentWorker:
                 return
             if not self.process.is_alive():
                 raise WorkerError("document owner exited before completing the request")
+
+    def _exchange(self, deadline, cancellation=None, message=None):
+        def transfer():
+            if message is not None:
+                wire.send_prepared(self.connection, message)
+            return wire.receive(self.connection, before_read=lambda: (
+                self._wait(deadline) if cancellation is None
+                else self._wait(deadline, cancellation)))
+
+        self._transfer = exchange = _Transfer(transfer)
+        while True:
+            # Check acceptance limits even when the final frame became ready
+            # at the same time: a late response may own an unreported lease.
+            if cancellation is not None and cancellation.is_set():
+                raise WorkerCancelled("document request was cancelled")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise WorkerTimeout("document request exceeded its time limit")
+            if exchange.done.wait(min(.025, remaining)):
+                if cancellation is not None and cancellation.is_set():
+                    raise WorkerCancelled("document request was cancelled")
+                if time.monotonic() >= deadline:
+                    raise WorkerTimeout("document request exceeded its time limit")
+                exchange.thread.join()
+                if exchange.error is not None:
+                    raise exchange.error
+                self._transfer = None
+                return exchange.result
+            if not self.process.is_alive():
+                raise WorkerError("document owner exited before completing the request")
+
+    def _cancel_transfer(self, grace):
+        message = wire.prepare({"cancel": self._next})
+        self._control_transfer = _Transfer(
+            lambda: wire.send_prepared(self.control, message))
+        if grace and self._transfer is not None:
+            self._transfer.done.wait(grace)
+
+    def _abort_transfer(self, grace):
+        try:
+            self._cancel_transfer(grace)
+        except BaseException:
+            # Even resource exhaustion while starting a control writer must
+            # not strand a possibly-running operation or an unreported lease.
+            pass
+        finally:
+            self.close(force=True)
 
     def _validate_response(self, response):
         common = {"id", "ok", "seconds", "log", "logTruncated"}
@@ -452,43 +527,20 @@ class DocumentWorker:
         request = {**parameters, "id": self._next, "operation": operation,
                    **context}
         deadline = time.monotonic() + timeout
+        # Invalid caller values must not touch the live protocol stream.
+        message = wire.prepare(request, payloads)
         try:
-            wire.send(self.connection, request, payloads)
-        except wire.WireError:
-            raise
-        except (EOFError, OSError):
-            self.close(force=True)
-            raise WorkerError("document owner connection failed") from None
-        try:
-            response, buffers = wire.receive(
-                self.connection, before_read=lambda: (
-                    self._wait(deadline) if cancellation is None
-                    else self._wait(deadline, cancellation)))
+            response, buffers = self._exchange(deadline, cancellation, message)
         except (WorkerTimeout, WorkerCancelled):
             # Give supported native/Python boundaries a short cancellation
             # interval, then always destroy this owner. A late successful
             # response may already contain a newly-created revision lease.
-            try:
-                wire.send(self.control, {"cancel": self._next})
-            except BaseException:
-                pass
-            try:
-                if cancellation_grace:
-                    grace_deadline = time.monotonic() + cancellation_grace
-                    wire.receive(self.connection,
-                                 before_read=lambda: self._wait(grace_deadline))
-            except BaseException:
-                pass
-            self.close(force=True)
+            self._abort_transfer(cancellation_grace)
             raise
         except wire.WireStreamInterrupted as error:
             # Once any payload frame has been consumed, neither the current
             # response nor a later one can be identified safely.
-            try:
-                wire.send(self.control, {"cancel": self._next})
-            except BaseException:
-                pass
-            self.close(force=True)
+            self._abort_transfer(0)
             if isinstance(error.__cause__, (WorkerTimeout, WorkerCancelled)):
                 raise error.__cause__
             raise WorkerError("document owner payload stream failed") from None
@@ -498,6 +550,11 @@ class DocumentWorker:
         except (EOFError, OSError, wire.WireError):
             self.close(force=True)
             raise WorkerError("document owner connection failed") from None
+        except BaseException:
+            # No unexpected in-flight error (including allocation failure) can
+            # leave a partly transmitted/consumed stream available for reuse.
+            self.close(force=True)
+            raise
         try:
             self._validate_response(response)
         except WorkerError:
@@ -554,16 +611,32 @@ class DocumentWorker:
             if force and self.process.is_alive():
                 self.process.terminate()
             elif self.process.is_alive():
-                try:
-                    wire.send(self.connection, {"shutdown": True})
-                except (OSError, EOFError):
-                    pass
+                # A peer which stopped reading must not block even shutdown.
+                if self._transfer is None:
+                    message = wire.prepare({"shutdown": True})
+                    self._transfer = _Transfer(
+                        lambda: wire.send_prepared(self.connection, message))
             self.process.join(timeout=2)
             if self.process.is_alive():
                 self.process.kill()
                 self.process.join(timeout=2)
+        # POSIX duplex Pipe is a socketpair. shutdown also wakes a syscall if
+        # an authored fork inherited the remote descriptor after owner death;
+        # closing this thread's fd alone does not reliably wake such a read.
+        if os.name == "posix" and not self.connection.closed:
+            try:
+                with socket.socket(fileno=os.dup(self.connection.fileno())) as endpoint:
+                    endpoint.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
         self.connection.close()
         self.control.close()
+        for exchange in (self._transfer, self._control_transfer):
+            if exchange is not None:
+                exchange.thread.join(timeout=2)
+                if exchange.thread.is_alive():
+                    raise WorkerError("document transport did not stop after owner teardown")
+        self._transfer = self._control_transfer = None
 
     def __enter__(self):
         self._check()

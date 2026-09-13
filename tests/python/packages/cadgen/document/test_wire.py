@@ -109,6 +109,21 @@ class WireTests(unittest.TestCase):
             wire.receive(self.right, before_read=wait)
         self.assertIsInstance(failure.exception.__cause__, TimeoutError)
 
+    def test_payload_list_is_captured_before_metadata_encoding(self):
+        buffers = [b"original"]
+        original_value = wire._value
+
+        def mutate_and_encode(*args, **kwargs):
+            buffers[:] = [b"replacement", b"extra"]
+            return original_value(*args, **kwargs)
+
+        with patch.object(wire, "_value", side_effect=mutate_and_encode):
+            prepared = wire.prepare(None, buffers)
+        wire.send_prepared(self.left, prepared)
+        value, received = wire.receive(self.right)
+        self.assertIsNone(value)
+        self.assertEqual((b"original",), received)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -22,13 +22,13 @@ jobs. Two independent identical constructors share one immutable prototype but
 receive distinct allocations; assigning a wrapper to another variable preserves
 that wrapper's allocation.
 
-Multi-input evaluations also encode the canonical allocation-provenance DAG:
-input roots and their dependencies receive local indices in traversal order.
-The hashed payload contains no execution UUIDs. Repeated references and shared
-ancestry distinguish `(a, a)` from independent equal `(a, b)`, and a root with
-its face from that root with another allocation's equal face. Replaying the
-same relationships reuses the result. This conservative P1 encoding traverses
-the relevant dependency graph; provenance reuse is a future profiling target.
+Multi-input evaluations distinguish repeated references and shared ancestry:
+`(a, a)` differs from independent equal `(a, b)`, as does a root with its own
+face versus another allocation's equal face. Disjoint input graphs use a compact
+tag; local ancestry intervals prove the common fresh-input case without walking
+history. Overlapping intervals use exact canonical DAG traversal. Neither local
+ranks nor execution UUIDs enter the key, so replay and checkpoint reconstruction
+produce the same identities.
 
 The document's native pointers are private to trusted engine adapters. The
 default mutation contract copies inputs. An adapter may opt into `READ_ONLY`
@@ -186,9 +186,21 @@ The private `DocumentWorker` bridge owns the kernel in a spawned process and
 accepts captured source or saved STEP buffers. Display returns a revision manifest
 and only missing immutable binary meshes; exact inspection uses typed occurrence
 references. Value framing bounds both encoded bytes and expanded metadata.
-Request timeout or an interrupted stream destroys the owner without replaying
-authored work; parent loss also has bounded cleanup. This bridge is tested across
-real process restart, but is not yet the public daemon or live viewer transport.
+The client watches the whole transfer, including blocked writes and incomplete
+frame reads. Request timeout or an interrupted stream destroys the owner without
+replaying authored work; parent loss also has bounded cleanup. I/O threads carry
+only framed values and bytes and are joined during teardown.
+
+`DocumentDispatcher` owns that client on one dedicated thread. Its active and
+queued requests share bounded input bytes, count and acceptance deadlines.
+Parameters and environment are captured when submitted. Exact revision leases
+are checked before dispatch and invalidated on release or owner loss; only a new
+explicit source/open request may start another owner. Expired queued work is
+removed when observed by a waiter, submitter or dispatcher, with retained inputs
+remaining within the queue budget meanwhile. These boundaries pass real process
+and concurrent-client tests, but are not yet the public daemon or live viewer
+transport. STEP product pruning reuses immutable revision root digests and drops
+them with their owning revisions.
 
 Permanent topology naming, complete builder effects, format fidelity,
 cross-process service integration, actual memory accounting and end-to-end

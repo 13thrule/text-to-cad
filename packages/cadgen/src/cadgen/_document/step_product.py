@@ -288,14 +288,30 @@ class _StepProductRegistry:
     def __init__(self):
         self.entries: OrderedDict[str, StepProduct] = OrderedDict()
         self.total_bytes = 0
+        self._root_identities = {}
+
+    def root_identity(self, revision):
+        # Revisions and their closed roots are immutable owner-created values.
+        # A digest belongs to that exact revision, never to an authored Shape
+        # or a mutable source object. Keep at most the owner's live revisions.
+        cached = self._root_identities.get(revision.revision_id)
+        if cached is not None and cached[0] is revision:
+            return cached[1]
+        identity = _digest(_root_value(revision.root))
+        self._root_identities[revision.revision_id] = (revision, identity)
+        return identity
 
     def prune(self, document: Document):
+        self._root_identities = {
+            key: value for key, value in self._root_identities.items()
+            if document._revisions.get(key) is value[0]
+        }
         live_roots = set()
         for revision in document._revisions.values():
             if revision.root is None or revision.unrepresented_metadata != ():
                 continue
             try:
-                live_roots.add(_digest(_root_value(revision.root)))
+                live_roots.add(self.root_identity(revision))
             except UnsupportedStepProduct:
                 # Other retained roots need not be eligible for this product.
                 continue
@@ -346,16 +362,16 @@ class StepProductSession:
                 raise UnsupportedStepProduct("returned metadata coverage is unknown")
             if coverage:
                 raise UnsupportedStepProduct("unrepresented returned metadata: " + ", ".join(coverage))
-            self._root_value = _root_value(revision.root)
-            for _path, node in walk_root(revision.root):
-                if type(node) is GeometryLeaf:
-                    document._get(node.geometry)
             registry = getattr(document, "_step_products", None)
             if registry is None:
                 registry = _StepProductRegistry()
                 document._step_products = registry
             if type(registry) is not _StepProductRegistry:
                 raise TypeError("document STEP product registry has an invalid type")
+            self._root_identity = registry.root_identity(revision)
+            for _path, node in walk_root(revision.root):
+                if type(node) is GeometryLeaf:
+                    document._get(node.geometry)
             self._registry = registry
         except BaseException:
             self._pin.release()
@@ -382,7 +398,7 @@ class StepProductSession:
         if type(options) is not StepOptions:
             raise TypeError("STEP product options require StepOptions")
         self._registry.prune(self.document)
-        root_identity = _digest(self._root_value)
+        root_identity = self._root_identity
         with _CODEC_LOCK, _writer_settings(options) as settings:
             writer_identity = (*_runtime_identity(self.document), settings,
                                options.schema, options.originating_system, basename)

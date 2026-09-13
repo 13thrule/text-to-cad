@@ -14,6 +14,7 @@ from cadgen._document.resources import Cancelled
 from cadgen._document.roots import AssemblyGroup, GeometryLeaf, IDENTITY_TRANSFORM
 from cadgen._document.step_product import (StepOptions, StepProductSession, UnsupportedStepProduct,
                                           _owned_xcaf_document, destination_digest)
+from cadgen._document import step_product
 from tests.python.support.tmp_root import generated_cad_directory
 
 
@@ -365,6 +366,21 @@ class StepProductTests(unittest.TestCase):
             oversized = session.prepare("oversized.step")
             self.assertNotIn(oversized.identity, self.doc._step_products.entries)
             self.assertTrue(oversized.payload)
+
+    def test_root_digests_are_reused_only_for_exact_live_revisions(self):
+        first, _ = self.revision(required_exports=())
+        with patch.object(step_product, "_root_value", wraps=step_product._root_value) as encode:
+            with self.session(first) as session:
+                original = session.prepare(self.target.name)
+                self.assertIs(original, session.prepare(self.target.name))
+                self.doc.collect(keep_revisions=0)
+                self.assertEqual(1, encode.call_count)
+                second, _ = self.revision(size=(6., 3., 2.), required_exports=())
+                with self.session(second) as changed:
+                    self.assertNotEqual(original.identity, changed.prepare(self.target.name).identity)
+                self.assertEqual(2, encode.call_count)
+            self.doc.collect(keep_revisions=0)
+            self.assertEqual({second.revision_id}, set(self.doc._step_products._root_identities))
 
     def test_independent_documents_emit_identical_bytes_without_allocation_ids(self):
         def assembly(handle):

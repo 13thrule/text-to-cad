@@ -64,8 +64,12 @@ def _constant(value):
     raise WireError(f"document metadata contains a non-finite constant: {value}")
 
 
-def send(connection, value, payloads=()):
-    if type(payloads) not in (list, tuple) or len(payloads) > MAX_PAYLOADS:
+def prepare(value, payloads=()):
+    """Validate and freeze a message before any bytes reach its connection."""
+    if type(payloads) not in (list, tuple):
+        raise WireError("document payload count exceeds the protocol limit")
+    payloads = tuple(payloads)
+    if len(payloads) > MAX_PAYLOADS:
         raise WireError("document payload count exceeds the protocol limit")
     if any(type(payload) is not bytes for payload in payloads):
         raise WireError("document payloads require immutable bytes")
@@ -82,11 +86,21 @@ def send(connection, value, payloads=()):
         raise WireError("document metadata cannot be encoded") from error
     if len(header) > MAX_HEADER:
         raise WireError("document metadata exceeds the protocol limit")
+    return header, payloads
+
+
+def send_prepared(connection, message):
+    """Send a private result of prepare; the caller owns the whole exchange."""
+    header, payloads = message
     connection.send_bytes(header)
     for payload in payloads:
         view = memoryview(payload)
         for offset in range(0, len(view), CHUNK_BYTES):
             connection.send_bytes(view[offset:offset + CHUNK_BYTES])
+
+
+def send(connection, value, payloads=()):
+    send_prepared(connection, prepare(value, payloads))
 
 
 def receive(connection, *, before_read=lambda: None):

@@ -7,12 +7,14 @@ import multiprocessing
 import os
 from pathlib import Path
 import signal
+import struct
 import threading
 import time
 import unittest
 from unittest.mock import patch
 
 from cadgen._document import wire
+from cadgen._document import worker as worker_module
 from cadgen._document.sources import CapturedInput
 from cadgen._document.worker import DocumentWorker, WorkerCancelled, WorkerError, WorkerTimeout
 from tests.python.support.paths import REPO_ROOT
@@ -70,6 +72,27 @@ def _pid_alive(pid):
     except PermissionError:
         return True
     return True
+
+
+def _stalled_protocol_owner(connection, control, root, max_documents):
+    """Real blocked pipe syscalls, without a CAD import or injected timeout."""
+    path = Path(root)
+    mode = path.name
+    if mode == "partial-startup":
+        os.write(connection.fileno(), struct.pack("!i", 200) + b"{")
+        path.with_suffix(".started").write_text(str(os.getpid()))
+    else:
+        wire.send(connection, {"ready": wire.PROTOCOL, "pid": os.getpid()})
+        if mode != "blocked-send":
+            request, _ = wire.receive(connection)
+            if mode == "partial-payload":
+                header, _ = wire.prepare({"id": request["id"]}, (b"data",))
+                connection.send_bytes(header)
+                os.write(connection.fileno(), struct.pack("!i", 4) + b"d")
+            else:
+                os.write(connection.fileno(), struct.pack("!i", 200) + b"{")
+        path.with_suffix(".started").write_text(str(os.getpid()))
+    time.sleep(30)
 
 
 class WorkerTests(unittest.TestCase):
@@ -360,6 +383,58 @@ def model():
             self.assertTrue(worker._closed)
             self.assertFalse(worker.process.is_alive())
         self.assertEqual("run\n", marker.read_text())
+
+    def test_deadline_covers_incomplete_header_payload_and_blocked_send(self):
+        for mode in ("partial-header", "partial-payload", "blocked-send"):
+            with self.subTest(mode=mode), patch.object(
+                    worker_module, "_serve", _stalled_protocol_owner):
+                path = self.directory / mode
+                worker = DocumentWorker(path, startup_timeout=10)
+                self.addCleanup(worker.close)
+                payloads = (b"x" * (16 * 1024 * 1024),) if mode == "blocked-send" else ()
+                started = time.monotonic()
+                with self.assertRaises(WorkerTimeout):
+                    worker.request("release", lease="unused", payloads=payloads,
+                                   timeout=.2, cancellation_grace=0)
+                self.assertLess(time.monotonic() - started, 3)
+                self.assertTrue(path.with_suffix(".started").exists())
+                self.assertTrue(worker._closed)
+                self.assertFalse(worker.process.is_alive())
+                self.assertIsNone(worker._transfer)
+                self.assertIsNone(worker._control_transfer)
+
+    def test_startup_deadline_covers_an_incomplete_ready_frame(self):
+        path = self.directory / "partial-startup"
+        with patch.object(worker_module, "_serve", _stalled_protocol_owner):
+            started = time.monotonic()
+            with self.assertRaises(WorkerTimeout):
+                DocumentWorker(path, startup_timeout=2)
+        self.assertLess(time.monotonic() - started, 5)
+        marker = path.with_suffix(".started")
+        self.assertTrue(marker.exists(), "peer must have entered its incomplete frame")
+        self.assertFalse(_pid_alive(int(marker.read_text())))
+
+    def test_failed_cancellation_signal_still_stops_uncertain_owner(self):
+        with patch.object(worker_module, "_serve", _stalled_protocol_owner):
+            worker = DocumentWorker(self.directory / "partial-header", startup_timeout=10)
+            self.addCleanup(worker.close)
+            with patch.object(worker, "_cancel_transfer", side_effect=RuntimeError("no threads")):
+                with self.assertRaises(WorkerTimeout):
+                    worker.request("release", lease="unused", timeout=.1, cancellation_grace=0)
+        self.assertTrue(worker._closed)
+        self.assertFalse(worker.process.is_alive())
+        self.assertIsNone(worker._transfer)
+
+    def test_unexpected_in_flight_error_destroys_owner(self):
+        with patch.object(worker_module, "_serve", _stalled_protocol_owner):
+            worker = DocumentWorker(self.directory / "partial-header", startup_timeout=10)
+            self.addCleanup(worker.close)
+            with patch.object(wire, "receive", side_effect=MemoryError("allocation failed")):
+                with self.assertRaises(MemoryError):
+                    worker.request("release", lease="unused", timeout=1)
+        self.assertTrue(worker._closed)
+        self.assertFalse(worker.process.is_alive())
+        self.assertIsNone(worker._transfer)
 
 
 if __name__ == "__main__":
