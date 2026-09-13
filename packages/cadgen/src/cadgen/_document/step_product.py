@@ -122,7 +122,7 @@ class PublishReceipt:
     revision_id: int
     destination: str
     product_identity: str
-    sha256: str
+    sha256: str | None
     size: int
     previous_sha256: str | None
     action: str
@@ -137,6 +137,19 @@ class StepProductMetrics:
     independent_parses: int
     writes: int
     verified_existing: int
+    annotation_writes: int
+    annotation_deletions: int
+    annotation_verified: int
+
+
+@dataclass(frozen=True)
+class _StagedOutput:
+    destination: Path
+    staged_path: Path | None
+    identity: str
+    sha256: str | None
+    size: int
+    kind: str
 
 
 def _digest(value: Any) -> str:
@@ -155,8 +168,6 @@ def _color(appearance: Any) -> tuple[float, ...] | None:
     material = appearance.get("material", "")
     if type(material) is not str:
         raise UnsupportedStepProduct("build123d material tags must be strings")
-    if appearance.get("pbr"):
-        raise UnsupportedStepProduct("viewer PBR requires a separately bound annotation product")
     value = appearance.get("color")
     if value is None:
         return None
@@ -366,8 +377,10 @@ class StepProductSession:
         self._cancellation = cancellation or Event()
         self.work_directory = Path(work_directory).resolve()
         self._product: StepProduct | None = None
+        self._staged_outputs = {}
         self._counts = dict(computed=0, reused=0, prototype_copies=0,
-                            appearance_copies=0, independent_parses=0, writes=0, verified_existing=0)
+                            appearance_copies=0, independent_parses=0, writes=0, verified_existing=0,
+                            annotation_writes=0, annotation_deletions=0, annotation_verified=0)
         try:
             revision = self._pin.revision
             if revision.root is None:
@@ -570,55 +583,153 @@ class StepProductSession:
 
         validate(expected, saved[0])
 
-    def publish(self, destination: Path, *, expected_prior_digest: str | None) -> PublishReceipt:
+    def prepare_annotations(self):
+        """Bind this revision's effective finishes to the verified saved paths.
+
+        Native STEP identity excludes PBR and material tags. Matching that exact
+        identity proves the cached product has the same validated hierarchy;
+        only its independently read SavedNode paths address the companion.
+        """
+        from .annotations import paths_from_product, prepare_annotations
         self._check()
         if self._product is None:
-            raise RuntimeError("prepare the STEP product before publication")
-        target = Path(destination).expanduser().resolve()
-        product = self._product
-        if target.name != product.basename:
-            raise ValueError("destination basename differs from the prepared STEP product")
+            raise RuntimeError("prepare the STEP product before its annotations")
+        if self._product.root_identity != self._root_identity:
+            raise RuntimeError("annotation source and saved hierarchy identities differ")
+        rows = []
+        def visit(source, saved, parent):
+            effective = inherited(parent, source.appearance)
+            if type(source) is GeometryLeaf:
+                if saved.children or saved.geometry is None:
+                    raise RuntimeError("saved annotation path does not address this geometry leaf")
+                own = {key: effective[key] for key in ("pbr", "material") if effective.get(key)}
+                if own:
+                    rows.append({"path": saved.path, **own})
+            else:
+                if len(source.children) != len(saved.children):
+                    raise RuntimeError("saved annotation hierarchy does not match the source root")
+                for child, actual in zip(source.children, saved.children):
+                    visit(child, actual, effective)
+        visit(self._pin.revision.root, self._product.returned_root, {})
+        return prepare_annotations(self._product.payload, paths_from_product(self._product), rows)
+
+    @contextmanager
+    def _stage(self, products):
+        staged = []
+        try:
+            for target, payload, digest, identity, kind in products:
+                self._check()
+                target.parent.mkdir(parents=True, exist_ok=True)
+                path = None
+                if payload is not None:
+                    try:
+                        existing = (target.stat().st_size == len(payload)
+                                    and destination_digest(target) == digest)
+                    except FileNotFoundError:
+                        existing = False
+                    if existing:
+                        # Retain only the immutable expected output facts. The
+                        # final claim rechecks these bytes before acknowledging.
+                        staged.append(_StagedOutput(target, None, identity, digest, len(payload), kind))
+                        continue
+                    with tempfile.NamedTemporaryFile(prefix=f".{target.name}-", suffix=".stage",
+                                                     dir=target.parent, delete=False) as output:
+                        path = Path(output.name)
+                        # Register before writing so a disk failure is cleaned.
+                        staged.append(_StagedOutput(target, path, identity, digest, len(payload), kind))
+                        output.write(payload)
+                        output.flush()
+                        os.fsync(output.fileno())
+                    if destination_digest(path) != digest:
+                        raise RuntimeError("staged output bytes failed verification")
+                else:
+                    staged.append(_StagedOutput(target, None, identity, None, 0, kind))
+            self._staged_outputs = {id(item): item for item in staged}
+            yield tuple(staged)
+        finally:
+            self._staged_outputs.clear()
+            for item in staged:
+                if item.staged_path is not None:
+                    item.staged_path.unlink(missing_ok=True)
+
+    @contextmanager
+    def stage_outputs(self, destinations):
+        """Stage both products before acquiring the coordinator's final claims."""
+        from .annotations import companion_path
+        self._check()
+        if self._product is None:
+            raise RuntimeError("prepare the STEP product before staging outputs")
+        targets = tuple(Path(path).resolve() for path in destinations)
+        if (len(targets) != 2 or targets[0] == targets[1]
+                or targets[0].name != self._product.basename
+                or targets[1] != companion_path(targets[0]).resolve()):
+            raise ValueError("STEP publication requires its exact STEP and companion destinations")
+        if not set(map(str, targets)) <= set(self._pin.revision.required_exports):
+            raise ValueError("STEP and companion must both be declared output obligations")
+        annotations = self.prepare_annotations()
+        products = ((targets[0], self._product.payload, self._product.sha256, self._product.identity, "step"),
+                    (targets[1], annotations.payload, annotations.sha256,
+                     _digest(("annotations", annotations.step_sha256, annotations.sha256)), "annotations"))
+        with self._stage(products) as staged:
+            yield staged
+
+    def publish_staged(self, staged, *, expected_prior_digest, completed=None):
+        """Complete one staged filesystem effect; caller owns the group claim."""
+        self._check()
+        if self._staged_outputs.get(id(staged)) is not staged:
+            raise ValueError("publication requires this session's live staged output")
         if (expected_prior_digest is not None and
                 (type(expected_prior_digest) is not str or len(expected_prior_digest) != 64
                  or any(c not in "0123456789abcdef" for c in expected_prior_digest))):
             raise ValueError("expected prior digest must be lowercase SHA-256 or None")
-
+        target = staged.destination
         def write():
             self._check()
             current = destination_digest(target)
             if current != expected_prior_digest:
-                raise ExportConflict("STEP destination changed since the expected prior bytes")
-            if current == product.sha256:
-                action = "verified-existing"
-                self._counts["verified_existing"] += 1
+                raise ExportConflict("output destination changed since the expected prior bytes")
+            if current == staged.sha256:
+                action = "verified-absent" if current is None else "verified-existing"
+                metric = "verified_existing" if staged.kind == "step" else "annotation_verified"
+            elif staged.sha256 is None:
+                target.unlink()
+                action, metric = "deleted", "annotation_deletions"
             else:
-                target.parent.mkdir(parents=True, exist_ok=True)
-                temporary = None
-                try:
-                    with tempfile.NamedTemporaryFile(prefix=f".{target.stem}-", suffix=target.suffix,
-                                                     dir=target.parent, delete=False) as output:
-                        temporary = Path(output.name)
-                        output.write(product.payload)
-                        output.flush()
-                        os.fsync(output.fileno())
-                    self._check()
-                    if destination_digest(target) != expected_prior_digest:
-                        raise ExportConflict("STEP destination changed during publication")
-                    if destination_digest(temporary) != product.sha256:
-                        raise RuntimeError("staged STEP bytes failed verification")
-                    os.replace(temporary, target)
-                    temporary = None
-                finally:
-                    if temporary is not None:
-                        temporary.unlink(missing_ok=True)
-                if destination_digest(target) != product.sha256:
-                    raise ExportConflict("STEP destination changed at publication")
+                if staged.staged_path is None:
+                    raise ExportConflict("unstaged output changed before publication")
+                if destination_digest(staged.staged_path) != staged.sha256:
+                    raise RuntimeError("staged output bytes changed before publication")
+                if destination_digest(target) != expected_prior_digest:
+                    raise ExportConflict("output destination changed during publication")
+                os.replace(staged.staged_path, target)
                 action = "written"
-                self._counts["writes"] += 1
-            return PublishReceipt(self.document.owner_id, self._pin.revision_id, str(target),
-                                  product.identity, product.sha256, len(product.payload), current, action)
-
+                metric = "writes" if staged.kind == "step" else "annotation_writes"
+            self._counts[metric] += 1
+            receipt = PublishReceipt(self.document.owner_id, self._pin.revision_id, str(target),
+                                     staged.identity, staged.sha256, staged.size, current, action)
+            # The rename/delete (or matching-state observation) is already a
+            # historical completed effect. Preserve its receipt even if final
+            # verification, external replacement or cancellation now fails.
+            if completed is not None:
+                completed(receipt)
+            if destination_digest(target) != staged.sha256:
+                raise ExportConflict("output destination changed at publication")
+            return receipt
         return self.document.publish_export(self._pin, str(target), write)
+
+    def publish(self, destination: Path, *, expected_prior_digest: str | None) -> PublishReceipt:
+        """Publish a native-only product; annotated programs use stage_outputs."""
+        self._check()
+        if self._product is None:
+            raise RuntimeError("prepare the STEP product before publication")
+        if self.prepare_annotations().payload is not None:
+            raise UnsupportedStepProduct("intrinsic finishes require paired STEP and annotation publication")
+        target = Path(destination).expanduser().resolve()
+        if target.name != self._product.basename:
+            raise ValueError("destination basename differs from the prepared STEP product")
+        with self._stage(((target, self._product.payload, self._product.sha256,
+                           self._product.identity, "step"),)) as staged:
+            return self.publish_staged(staged[0], expected_prior_digest=expected_prior_digest)
 
     def close(self):
         self.document._assert_owner()

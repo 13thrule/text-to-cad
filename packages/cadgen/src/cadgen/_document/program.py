@@ -88,6 +88,15 @@ def _definition(module, source: Path, function: str | None):
     return next(iter(unique.values()))
 
 
+def _output_paths(destination):
+    from .annotations import companion_path
+    destination = Path(destination).resolve()
+    companion = companion_path(destination).resolve()
+    if destination == companion:
+        raise ValueError("STEP and annotation destinations must be different files")
+    return destination, companion
+
+
 class _ProgramScope:
     def __init__(self):
         self.frontend = None
@@ -142,53 +151,71 @@ class _ProgramScope:
         self.validate(definition)
         destination = definition.output_path.resolve()
         source = self.sources.input_for_function(definition.func)
-        with self.job.child(source, definition.name, outputs=(destination,)):
+        with self.job.child(source, definition.name, outputs=_output_paths(destination)):
             return self._child_result(definition, destination)
 
     def _child_result(self, definition, destination):
         from .returned import capture_returned_shape
         from .step_product import destination_digest
 
-        previous = destination_digest(destination)
+        destinations = _output_paths(destination)
+        previous = tuple(destination_digest(path) for path in destinations)
         publication_start = len(self.outputs)
         result = self.body(definition)
         returned = capture_returned_shape(self.frontend, result)
         transaction = self.frontend.transaction
         revision = transaction.publish_result(
             definition.ref, returned.root, source_identity=self.source_identity(),
-            required_exports=(str(destination),),
+            required_exports=tuple(map(str, destinations)),
             unrepresented_metadata=returned.unrepresented_metadata)
         try:
             self.job.geometry_ready(f"{transaction.document.owner_id}:{revision.revision_id}")
-            previous = self.expected_after_children(destination, previous, publication_start)
-            receipt, _ = _publish(transaction.document, revision, destination, previous, self.job)
+            previous = tuple(self.expected_after_children(path, prior, publication_start)
+                             for path, prior in zip(destinations, previous))
+            receipts, _ = _publish(transaction.document, revision, destinations, previous, self.job)
         except BaseException:
             transaction.document.fail(revision.revision_id)
             raise
-        self.outputs.append(receipt)
+        self.outputs.extend(receipts)
         # The same authored wrapper stays in the execution arena. Snapshotting
         # and saving a child neither serializes it back into the parent nor
         # detaches its aliases. Its completed outputs survive a later failure.
         return result
 
 
-def _publish(document, revision, destination, previous, job):
+def _publish(document, revision, destinations, previous, job):
+    from .core import ExportConflict
     from .step_product import StepProductSession, destination_digest
 
     with StepProductSession(document, revision.revision_id,
-                            work_directory=destination.parent,
+                            work_directory=destinations[0].parent,
                             cancellation=job.cancellation) as publisher:
-        publisher.prepare(destination.name)
-        with job.publication(destination) as publication:
-            receipt = publisher.publish(publication.path, expected_prior_digest=previous)
-            if (receipt.owner_id != document.owner_id
-                    or receipt.revision_id != revision.revision_id
-                    or receipt.destination != str(publication.path)
-                    or destination_digest(publication.path) != receipt.sha256):
-                raise RuntimeError("STEP publication receipt does not match this build")
-            publication.acknowledge(receipt.sha256)
+        publisher.prepare(destinations[0].name)
+        receipts = []
+        with publisher.stage_outputs(destinations) as staged:
+            with job.publications(destinations) as publications:
+                # Refuse every known external conflict before changing either
+                # path. The coordinator serializes competing family claims.
+                for path, expected in zip(destinations, previous):
+                    if destination_digest(path) != expected:
+                        raise ExportConflict("output destination changed before paired publication")
+                for item, publication, expected in zip(staged, publications, previous):
+                    def completed(receipt):
+                        if (receipt.owner_id != document.owner_id
+                                or receipt.revision_id != revision.revision_id
+                                or receipt.destination != str(publication.path)
+                                or receipt.sha256 != item.sha256 or receipt.size != item.size):
+                            raise RuntimeError("output publication receipt does not match this build")
+                        publication.acknowledge(receipt.sha256)
+                        receipts.append(receipt)
+                    publisher.publish_staged(item, expected_prior_digest=expected, completed=completed)
+                # Two renames are not atomic. If a later effect fails, receipts
+                # remain truthful historical facts and the build fails. A stale
+                # companion is rejected by its STEP binding on saved-file open.
+                if any(destination_digest(item.destination) != item.sha256 for item in staged):
+                    raise ExportConflict("output pair changed during publication")
         metrics = publisher.metrics
-    return receipt, metrics
+    return tuple(receipts), metrics
 
 
 def generate(service, path: Path, function: str | None = None) -> ProgramResult:
@@ -257,10 +284,11 @@ def _execute(service, job, function):
                     definition = _definition(module, source_path, function)
                     scope.validate(definition)
                     destination = definition.output_path.resolve()
-                    job.bind_outputs((destination,))
-                    previous = destination_digest(destination)
+                    destinations = _output_paths(destination)
+                    job.bind_outputs(destinations)
+                    previous = tuple(destination_digest(path) for path in destinations)
                     publication_start = len(scope.outputs)
-                    attempt.required_exports = (str(destination),)
+                    attempt.required_exports = tuple(map(str, destinations))
                     frontend.transaction.required_exports = attempt.required_exports
                     result = scope.body(definition)
                     if scope.child_failures:
@@ -269,12 +297,14 @@ def _execute(service, job, function):
                     inputs = tuple(sources.inputs)
                     frontend.transaction.source_identity = scope.source_identity()
             job.geometry_ready(f"{attempt.document.owner_id}:{attempt.revision.revision_id}")
-            previous = scope.expected_after_children(destination, previous, publication_start)
-            receipt, metrics = _publish(attempt.document, attempt.revision, destination, previous, job)
+            previous = tuple(scope.expected_after_children(path, prior, publication_start)
+                             for path, prior in zip(destinations, previous))
+            receipts, metrics = _publish(attempt.document, attempt.revision, destinations, previous, job)
+            attempt.output_receipts = receipts
             # Success is an attested actual-byte publication, not merely the
             # existence of a file left by an earlier call.
             output = ProgramResult(attempt.document, attempt.revision.revision_id,
-                                   (*scope.outputs, receipt), inputs, metrics)
+                                   (*scope.outputs, *receipts), inputs, metrics)
         return output
     finally:
         _PROGRAM.reset(token)

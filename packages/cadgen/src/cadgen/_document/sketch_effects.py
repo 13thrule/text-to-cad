@@ -88,7 +88,7 @@ class PolygonKernel:
     wire or face and never borrows a native input from another alias family.
     """
 
-    def __init__(self, frontend=None, *, extra_providers=()):
+    def __init__(self, frontend=None, *, extra_providers=(), require_cached=False):
         import build123d as bd
         from build123d.topology import two_d
         self.bd = bd
@@ -101,7 +101,7 @@ class PolygonKernel:
                                             "length", "to_pnt", "wrapped", "X", "Y", "Z")),
             (two_d, "_make_topods_face_from_wires"),
             *extra_providers,
-        ))
+        ), require_cached=require_cached)
 
     def evaluate(self, tx, points: tuple[tuple[float, float], ...]) -> PolygonSeed:
         if not self.providers.providers_match():
@@ -158,7 +158,7 @@ class PolygonKernel:
 class SketchNativeEffects:
     """First ADD of one closed Polygon, retaining all local sketch effects."""
 
-    def __init__(self, frontend=None):
+    def __init__(self, frontend=None, *, require_cached=False):
         import build123d as bd
         from build123d import objects_sketch, operations_part
         self.bd = bd
@@ -183,7 +183,7 @@ class SketchNativeEffects:
             *((bd.Matrix, name) for name in ("__init__", "__new__", "__getattribute__", "__setattr__")),
             (bd.Solid, "extrude"), (operations_part, "extrude"),
             *((bd.Vector, name) for name in ("dot", "normalized", "__mul__", "__add__", "__sub__")),
-        ))
+        ), require_cached=require_cached)
         self.stock = self.kernel.providers
         self.solid_extrude = inspect.getattr_static(bd.Solid, "extrude")
         self.clean = inspect.getattr_static(bd.Shape, "clean")
@@ -334,14 +334,15 @@ class _ExtrudeFrame:
 class SketchEffectsFrontend:
     """Provenance for the single stock Polygon construction sequence."""
 
-    def __init__(self, frontend):
+    def __init__(self, frontend, *, deferred=False):
         import contextvars
         from build123d import operations_part
         from build123d.topology import two_d
         f, bd = frontend, frontend._bd
         self.frontend = f
-        self.effects = SketchNativeEffects(f)
-        self.stock = self.effects.stock
+        self.effects = (None if deferred else
+                        SketchNativeEffects(f, require_cached=False))
+        self.stock = None if self.effects is None else self.effects.stock
         self.current = None
         self.extruding = None
         self.builders = {}
@@ -351,8 +352,9 @@ class SketchEffectsFrontend:
         self.locations = inspect.getattr_static(bd.LocationList, "_current")
         self.contexts_stock = (type(self.context) is contextvars.ContextVar
                                and type(self.locations) is contextvars.ContextVar)
-        self.stock._guards.extend(((bd.Builder, "_current", self.context),
-                                   (bd.LocationList, "_current", self.locations)))
+        if self.stock is not None:
+            self.stock._guards.extend(((bd.Builder, "_current", self.context),
+                                       (bd.LocationList, "_current", self.locations)))
         self.polygon_init = bd.Polygon.__init__
         original_wire = inspect.getattr_static(bd.Wire, "make_polygon")
         original_face = two_d._make_topods_face_from_wires
@@ -360,6 +362,8 @@ class SketchEffectsFrontend:
         def polygon(shape, *points, **kwargs):
             if f._compute_depth:
                 return self.polygon_init(shape, *points, **kwargs)
+            if self.stock is None:
+                self.activate(require_cached=True)
             normalized = self._admit(shape, points, kwargs)
             old = self.current
             self.current = (_PolygonFrame(shape, self.context.get(None), normalized)
@@ -402,6 +406,18 @@ class SketchEffectsFrontend:
         self._patch(two_d, "_make_topods_face_from_wires", face)
         self._install_extrude(operations_part)
 
+    def activate(self, *, require_cached=True, finalize=True):
+        if self.stock is not None:
+            return self
+        bd = self.frontend._bd
+        self.effects = SketchNativeEffects(self.frontend, require_cached=require_cached)
+        self.stock = self.effects.stock
+        self.stock._guards.extend(((bd.Builder, "_current", self.context),
+                                   (bd.LocationList, "_current", self.locations)))
+        if finalize:
+            self.frontend._finalize_effect_guards()
+        return self
+
     def _install_extrude(self, operations_part):
         f, bd = self.frontend, self.frontend._bd
         original = operations_part.extrude
@@ -410,10 +426,12 @@ class SketchEffectsFrontend:
         # interceptor. Otherwise the proxy's first lookup could retain this
         # session's closure after all native attributes have been restored.
         vars(proxy).setdefault("extrude", original)
-        solid_extrude = self.effects.solid_extrude
-        clean_shape = self.effects.clean
+        solid_extrude = inspect.getattr_static(bd.Solid, "extrude")
+        clean_shape = inspect.getattr_static(bd.Shape, "clean")
         def extrude(to_extrude=None, amount=None, dir=None, until=None, target=None,
                     both=False, taper=0., clean=True, mode=bd.Mode.ADD):
+            if self.stock is None:
+                self.activate(require_cached=True)
             old = self.extruding
             pending = self._admit_extrude(to_extrude, amount, dir, until, target, both, taper, clean, mode)
             self.extruding = (_ExtrudeFrame(self.context.get(None), pending, clean, mode)
@@ -498,6 +516,8 @@ class SketchEffectsFrontend:
         # This is our own installed interceptor, after validating the original
         # provider. Runtime comparisons still reject subsequent authored edits.
         for audit in (self.stock, self.frontend._builder_effects.stock):
+            if audit is None:
+                continue
             audit._guards = [(o, n, replacement if n == name and v is old
                              and inspect.getattr_static(o, n) is replacement else v)
                              for o, n, v in audit._guards]
@@ -545,6 +565,8 @@ class SketchEffectsFrontend:
             return None
 
     def add(self, builder, objects, kwargs):
+        if self.stock is None:
+            return False
         f, bd, frame = self.frontend, self.frontend._bd, self.current
         if not f._compute_depth and self.extruding is not None:
             return self._extrude_add(builder, objects, kwargs)
@@ -600,7 +622,7 @@ class SketchEffectsFrontend:
                 or (frame.clean and not frame.cleaned) or f.transaction.escape_arena.active
                 or not self.stock.providers_match()):
             return False
-        solid = f._builder_effects
+        solid = f._builder_effects.activate(require_cached=True)
         raw = vars(builder)
         if (any(name in raw for name in ("_add_to_context", "_add_to_pending", "_obj", "_shapes"))
                 or type(raw.get("lasts")) is not dict
@@ -644,7 +666,7 @@ class SketchEffectsFrontend:
                 or any(type(raw.get(name)) is not list or raw[name] for name in
                        ("pending_faces", "pending_face_planes", "pending_edges"))):
             return False
-        solid = f._builder_effects
+        solid = f._builder_effects.activate(require_cached=True)
         previous = solid.builders.get(id(builder))
         if previous is not None:
             if not previous.eligible or builder._part is not previous.part or not solid._part_unchanged(previous):

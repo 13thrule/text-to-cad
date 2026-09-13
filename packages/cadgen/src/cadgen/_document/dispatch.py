@@ -24,7 +24,7 @@ from .worker import DocumentWorker, RemoteRevision, WorkerError, WorkerCancelled
 _SOURCE = frozenset({"generate", "open_step"})
 _FIELDS = {
     "generate": frozenset({"path", "digest", "function"}),
-    "open_step": frozenset({"path", "digest"}),
+    "open_step": frozenset({"path", "digest", "annotations"}),
     "display": frozenset({"lease", "options", "known"}),
     "query": frozenset({"lease", "references", "space"}),
     "checkpoint": frozenset({"lease"}),
@@ -162,8 +162,10 @@ class DocumentDispatcher:
         buffers = tuple(payloads)
         if len(buffers) > wire.MAX_PAYLOADS or any(type(value) is not bytes for value in buffers):
             raise TypeError("dispatcher payloads must be immutable bytes")
-        if len(buffers) != int(operation in _SOURCE):
-            raise ValueError("source/open requests require one payload; other requests require none")
+        expected_payloads = (1 + int(parameters.get("annotations") is not None)
+                             if operation == "open_step" else int(operation == "generate"))
+        if len(buffers) != expected_payloads:
+            raise ValueError("source/open requests require their exact captured buffers; other requests require none")
         payload_bytes = sum(map(len, buffers))
         if payload_bytes > min(wire.MAX_BYTES, self.max_buffered_bytes):
             raise DispatchFull("document request exceeds buffered-byte capacity")

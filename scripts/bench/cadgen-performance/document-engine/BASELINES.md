@@ -236,9 +236,9 @@ The ignored local reports and SHA-256 values are:
 - `models/tmp/performance-document-full-paired-smoke-20260913-v1-comparison.json`:
   `2107acc78a18748609f5794918c0f69fd4a027939db7737dc357f30f9ca6a5be`
 
-The full five-cold/ten-warm matrix still requires a new serial window after the
-unchanged-source overhead is addressed or accepted explicitly. Resident
-display and saved STEP reopen remain separate diagnostics with no ratio.
+The five-cold/ten-warm matrix below supersedes this smoke for performance
+assessment. Resident display and saved STEP reopen remain separate diagnostics
+with no ratio.
 
 The unchanged current path reported zero computed geometry, zero native
 copies, 14 reused operations, zero STEP writes/parses, and one verified product
@@ -275,6 +275,67 @@ diagnostic reports are
 and
 `models/tmp/performance-document-profile-unchanged-20260913-v1-assembly24.json`
 (SHA-256 `de30aa9385fe6767721113253d48dae801ec78b3b4080ce07707ee3515a1a78a`).
+
+## Full-request paired series at 801057d1b
+
+The 2026-09-13 series froze baseline
+`5c4a212cae32e834fa4d805ae778ab5ee6cd71a2` and candidate
+`801057d1b4d10667bfe23d42f9fdc720f4a1e31e`. Both code-only archives remained
+unchanged throughout the run. This uses the same
+`captured-entry-to-attested-step-full-request-v1` boundary as the smoke above:
+startup on cold requests, source replay, native work, required STEP save and
+actual destination-byte verification. No stage is subtracted from the headline.
+
+All 140 measured requests passed their byte receipts and independent saved-file
+geometry checks. Each fixture has five cold samples and ten samples per warm
+scenario, with an unmeasured warm prime. Native execution was serial, and the
+first engine alternated by cold sample or complete warm scenario. JavaScript
+unit checks and source review also ran on this development host during parts
+of the series; these are exploratory medians and observed ranges, not controlled
+lab or p95 evidence.
+
+| Fixture / scenario | Baseline median (range), ms | Candidate median (range), ms | Candidate / baseline |
+| --- | ---: | ---: | ---: |
+| Plate cold | 2677.719 (2634.000–2749.900) | 2637.128 (2567.565–2764.365) | 0.985× |
+| Plate unchanged | 9.297 (8.620–10.822) | 20.143 (19.298–21.125) | 2.167× |
+| Plate local geometry | 79.248 (77.610–82.317) | 59.603 (58.949–60.769) | 0.752× |
+| Plate placement | 57.818 (56.157–59.548) | 40.348 (39.549–42.152) | 0.698× |
+| Assembly24 cold | 2691.798 (2610.297–2988.191) | 2638.687 (2585.303–2831.505) | 0.980× |
+| Assembly24 unchanged | 11.221 (10.826–12.709) | 22.500 (21.820–24.373) | 2.005× |
+| Assembly24 local geometry | 120.888 (118.898–123.616) | 74.020 (70.039–80.709) | 0.612× |
+| Assembly24 placement | 95.312 (92.389–97.668) | 45.697 (44.950–47.907) | 0.479× |
+
+Geometry and placement edits improve on these two bounded fixtures. Cold time
+is similar; unchanged calls remain about twice as slow and fail the performance
+gate. This is not evidence for large-assembly or FreeCAD parity. Assembly24's
+placement case changes one occurrence while reusing its prototype: the candidate
+reports zero computed geometry, 14 reused operations and two queries. It still
+encodes, independently parses and writes a new STEP product. Unchanged calls
+report zero geometry computations/native copies, zero STEP writes/parses and one
+verified product reuse; ordinary Python still executes once per request.
+
+A subsequent owner-process cProfile diagnostic replayed each fixture five times
+against the same frozen candidate. Frontend installation accounted for about
+92 ms cumulative per five calls; provider construction about 40.5 ms and final
+guard installation about 43 ms, including eager unused builder/sketch auditors.
+These overlapping profiler rows are attribution only, not request benchmarks.
+The safe next target is deferred validation of unused providers, with canonical
+proof discovery before authored execution and validation before every used
+provider. The benchmark does not authorize skipping Python or mutable hooks.
+
+Ignored local reports and SHA-256:
+
+- `models/tmp/performance-document-full-paired-20260913-v2-baseline.json`:
+  `e145f95d92594722f8873ea5e91a17ab3f592f60f68cb88f9b1b0bee98e19efd`
+- `models/tmp/performance-document-full-paired-20260913-v2-candidate.json`:
+  `a987e8cb54d1f06453bd99c627474c8e07c8a044c8a10f3657a9dbe8861bdafe`
+- `models/tmp/performance-document-full-paired-20260913-v2-comparison.json`:
+  `7202c0e92bfa6c49ffa12295c29c2452374eca0807c04a0040806b9e02601481`
+
+Candidate runtime archive: 229 files, tree SHA-256
+`b37ed2410798a6357fc30f69a264be84aba294f82c5928fabe7e335718563514`.
+Profiles are `models/tmp/performance-document-profile-20260913-v2-plate.json`
+and `models/tmp/performance-document-profile-20260913-v2-assembly24.json`.
 
 ## FreeCAD probe qualification
 

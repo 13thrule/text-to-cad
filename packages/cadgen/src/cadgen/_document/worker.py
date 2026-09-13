@@ -33,6 +33,7 @@ MAX_STARTUP_SECONDS = 120
 PARENT_DEATH_GRACE_SECONDS = 2
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _OPERATIONS = {"generate", "open_step", "release", "checkpoint", "display", "query"}
+_ABSENT = object()
 
 
 class WorkerError(RuntimeError):
@@ -217,7 +218,7 @@ class _Owner:
         common = {"id", "operation", "cwd", "environment"}
         allowed = {
             "generate": common | {"path", "digest", "function"},
-            "open_step": common | {"path", "digest"},
+            "open_step": common | {"path", "digest", "annotations"},
             "release": common | {"lease"},
             "checkpoint": common | {"lease"},
             "display": common | {"lease", "options", "known"},
@@ -231,12 +232,23 @@ class _Owner:
             _text(request["path"], "document input path")
             if type(request["digest"]) is not str or _SHA256.fullmatch(request["digest"]) is None:
                 raise ValueError("document input digest must be a SHA-256")
-            if len(payloads) != 1:
-                raise ValueError("document inputs require exactly one captured buffer")
             if operation == "generate":
+                if len(payloads) != 1:
+                    raise ValueError("source inputs require exactly one captured buffer")
                 function = request["function"]
                 if function is not None:
                     _text(function, "document function", maximum=1024)
+            else:
+                from .annotations import MAX_BYTES
+                metadata = request["annotations"]
+                if metadata is None:
+                    if len(payloads) != 1:
+                        raise ValueError("absent STEP annotations require one captured STEP buffer")
+                elif (type(metadata) is not dict or set(metadata) != {"digest", "bytes"}
+                      or type(metadata["digest"]) is not str or _SHA256.fullmatch(metadata["digest"]) is None
+                      or type(metadata["bytes"]) is not int or not 0 < metadata["bytes"] <= MAX_BYTES
+                      or len(payloads) != 2 or len(payloads[1]) != metadata["bytes"]):
+                    raise ValueError("STEP annotations require exact bounded metadata and captured bytes")
         elif payloads:
             raise ValueError("this document operation takes no binary input")
         if operation in {"release", "checkpoint", "display", "query"}:
@@ -276,11 +288,17 @@ class _Owner:
                 response = {"revision": self._retain(result.document, result.revision_id),
                             **prepared}
             else:
+                from .annotations import companion_path
+                annotation = request["annotations"]
+                companion = (None if annotation is None else CapturedInput(
+                    companion_path(captured.path), payloads[1], annotation["digest"]))
                 result = self.service.load_step(captured, work_directory=captured.path.parent,
-                                                 cancellation=cancellation)
+                                                 annotations=companion, cancellation=cancellation)
                 prepared = {"input": {"path": result.input_path,
                                       "digest": result.input_sha256,
-                                      "bytes": result.input_size}, "reused": result.reused}
+                                      "bytes": result.input_size}, "reused": result.reused,
+                            "annotations": {"digest": result.annotation_sha256,
+                                            "bytes": result.annotation_size}}
                 response = {"revision": self._retain(result.document, result.revision_id),
                             **prepared}
             return response, ()
@@ -569,9 +587,20 @@ class DocumentWorker:
         return self.request("generate", path=str(source.path), digest=source.digest,
                             function=function, payloads=(source.data,), **limits)
 
-    def open_step(self, source, **limits):
+    def open_step(self, source, *, annotations=_ABSENT, **limits):
+        from .annotations import capture_companion, companion_path, MAX_BYTES
+        from .sources import CapturedInput
+        if annotations is _ABSENT:
+            annotations = capture_companion(source.path)
+        if annotations is not None and (type(annotations) is not CapturedInput
+                or annotations.path != companion_path(source.path).resolve()
+                or not 0 < len(annotations.data) <= MAX_BYTES):
+            raise ValueError("saved annotations require the exact bounded captured STEP companion")
+        metadata = (None if annotations is None else
+                    {"digest": annotations.digest, "bytes": len(annotations.data)})
+        payloads = (source.data,) if annotations is None else (source.data, annotations.data)
         return self.request("open_step", path=str(source.path), digest=source.digest,
-                            payloads=(source.data,), **limits)
+                            annotations=metadata, payloads=payloads, **limits)
 
     @staticmethod
     def _lease_token(revision):

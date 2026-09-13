@@ -145,8 +145,8 @@ def model():
             result = self.service.generate(self.source, "model")
             first_bytes = (self.root / "model.step").read_bytes()
             repeated = self.service.generate(self.source, "model")
-        self.assertEqual(4, len(result.outputs))
-        self.assertEqual(4, len(repeated.outputs))
+        self.assertEqual(8, len(result.outputs))
+        self.assertEqual(8, len(repeated.outputs))
         self.assertEqual(6, len(self.source.with_suffix(".calls").read_text().splitlines()))
         self.assertEqual(first_bytes, (self.root / "model.step").read_bytes())
         self.assertEqual(0, self.service.last_attempt.stats.computed)
@@ -208,7 +208,7 @@ def model():
         self.service.generate(self.source)
         old = self.source.with_suffix(".step").read_bytes()
         self.write(radius=3)
-        with patch("cadgen._document.step_product.StepProductSession.publish", side_effect=OSError("disk failed")), \
+        with patch("cadgen._document.step_product.StepProductSession.publish_staged", side_effect=OSError("disk failed")), \
              self.assertRaisesRegex(OSError, "disk failed"):
             self.service.generate(self.source)
         self.assertEqual(old, self.source.with_suffix(".step").read_bytes())
@@ -237,15 +237,15 @@ def model():
         previous = None
         for _ in range(2):
             result = self.service.generate(self.source, "model")
-            self.assertEqual(3, len(result.outputs))
-            for receipt in result.outputs:
+            self.assertEqual(6, len(result.outputs))
+            for receipt in result.outputs[::2]:
                 self.assertEqual(previous, receipt.previous_sha256)
                 previous = receipt.sha256
             self.assertAlmostEqual(336, import_step(self.root / "shared.step").volume)
             request = self.service.last_request
             self.assertEqual("exports_complete", request.state.value)
-            self.assertEqual((2, 1, 0), tuple(receipt.sequence for receipt in request.receipts))
-            self.assertEqual((1, 2, 3), tuple(receipt.publication_sequence for receipt in request.receipts))
+            self.assertEqual((2, 2, 1, 1, 0, 0), tuple(receipt.sequence for receipt in request.receipts))
+            self.assertEqual((1, 2, 3, 4, 5, 6), tuple(receipt.publication_sequence for receipt in request.receipts))
             self.assertEqual((0, 1, 2), request.completed_invocations)
             self.assertTrue(all(receipt.ticket == request.request.ticket for receipt in request.receipts))
             self.assertEqual(tuple(receipt.sha256 for receipt in result.outputs),
@@ -262,7 +262,7 @@ def model():
         self.assertAlmostEqual(120, import_step(self.root / "shared.step").volume)
         request = self.service.last_request
         self.assertEqual("failed", request.state.value)
-        self.assertEqual((2, 1), tuple(receipt.sequence for receipt in request.receipts))
+        self.assertEqual((2, 2, 1, 1), tuple(receipt.sequence for receipt in request.receipts))
         self.assertEqual((1, 2), request.completed_invocations)
         self.assertFalse(request.exports_complete)
         self.assertEqual("failed", self.service.last_attempt.state)
@@ -352,7 +352,7 @@ def model():
         self.assertEqual("failed", attempt.state)
         self.assertIn("later accepted", attempt.error)
         self.assertEqual("failed", self.service.last_request.state.value)
-        self.assertEqual(1, len(self.service.last_request.receipts))
+        self.assertEqual(2, len(self.service.last_request.receipts))
         self.assertEqual("failed", attempt.document.state(attempt.revision.revision_id).value)
         self.assertIsNot(attempt.job.admission, attempt.document.admission)
         self.assertEqual((0, 0, 0), self.service.coordinator.admission.used)
@@ -370,7 +370,7 @@ def model():
         self.assertEqual("collection failed", attempt.error)
         self.assertIsNot(attempt.job.admission, attempt.document.admission)
         self.assertEqual("failed", self.service.last_request.state.value)
-        self.assertEqual(1, len(self.service.last_request.receipts))
+        self.assertEqual(2, len(self.service.last_request.receipts))
         self.assertEqual((0, 0, 0), self.service.coordinator.admission.used)
 
     def test_registry_restores_owned_definitions_and_keeps_unrelated_changes(self):

@@ -122,7 +122,7 @@ class DispatchTests(unittest.TestCase):
         context["cwd"] = "/after"; context["environment"]["TOKEN"] = "after"
         known[0] = "b" * 64; options["relative_chord"] = .5
         payloads = [b"captured"]
-        source = dispatcher.submit("open_step", path="another", digest="c" * 64, payloads=payloads, context=CONTEXT)
+        source = dispatcher.submit("open_step", annotations=None, path="another", digest="c" * 64, payloads=payloads, context=CONTEXT)
         payloads[0] = b"changed"
         worker.release.set(); active.result(); queued.result(); source.result()
         _, params, _, captured, _ = worker.calls[2]
@@ -162,7 +162,7 @@ class DispatchTests(unittest.TestCase):
         with self.assertRaises(WorkerCancelled):
             pending.result()
         with self.assertRaises(DispatchFull):
-            dispatcher.submit("open_step", path="oversized", digest="a" * 64,
+            dispatcher.submit("open_step", annotations=None, path="oversized", digest="a" * 64,
                               payloads=(b"x" * 1500,), context=CONTEXT)
         replacement = generate(dispatcher)
         worker.release.set(); active.result(); replacement.result()
@@ -259,7 +259,7 @@ class DispatchTests(unittest.TestCase):
         worker = _FakeWorker.instances[0]
         self.assertTrue(worker.started.wait(1))
         with patch.object(dispatch.os, "getcwd", return_value="/caller"), patch.dict(os.environ, {"EXACT": "captured"}, clear=True):
-            queued = dispatcher.submit("open_step", path="part.step", digest="a" * 64, payloads=(b"step",))
+            queued = dispatcher.submit("open_step", annotations=None, path="part.step", digest="a" * 64, payloads=(b"step",))
         worker.release.set(); active.result(); queued.result()
         self.assertEqual({"cwd": "/caller", "environment": {"EXACT": "captured"}}, worker.calls[1][3])
 
@@ -349,7 +349,7 @@ class DispatchTests(unittest.TestCase):
         self.assertFalse(active._request.cancellation.is_set())
         for invalid in (bytearray(b"x"), memoryview(b"x")):
             with self.assertRaises(TypeError):
-                dispatcher.submit("open_step", path="invalid", digest="a" * 64, payloads=(invalid,))
+                dispatcher.submit("open_step", annotations=None, path="invalid", digest="a" * 64, payloads=(invalid,))
         with self.assertRaises(ValueError):
             dispatcher.submit(lambda: None)
         with self.assertRaises(ValueError):

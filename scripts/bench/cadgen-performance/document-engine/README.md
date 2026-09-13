@@ -1,5 +1,48 @@
 # Retained-document P0 benchmark
 
+## Resident browser integration review
+
+`resident_viewer.py` is a bounded internal integration harness for the plate
+and 24-part fixtures. It owns one dispatcher, executes captured source, requests
+revision-bound prototype meshes and renders through the shared scene runtime.
+Run it with this checkout's CAD Python and JavaScript dependencies:
+
+```sh
+PYTHONPATH=packages/cadgen/src .venv/bin/python \
+  scripts/bench/cadgen-performance/document-engine/resident_viewer.py \
+  --scratch models/tmp/document-resident-review
+```
+
+Open the printed localhost URL. Rebuild unchanged, change holes and move one
+part exercise separate invalidations. Click a visible face in Inspect to query
+the exact native revision; Render requests no CAD edges and installs no picker.
+The view selector reloads the test page with the same native owner, rather than
+claiming to test the public viewer's mode-switch lifecycle. Both modes use the
+same explicitly reported native mesh defaults; the Render choice exercises
+Final lighting, with capture scale fixed to one. It does not yet test the
+planned screen-error detail ladder.
+
+Diagnostics separate source generation/save, native display derivation,
+transfer/adoption and scene/GPU completion. `acceptedToGpuMs` ends after
+`gl.finish()` and excludes compositor presentation; it is a live diagnostic,
+not a paired benchmark. `retainedGeometryRecords` counts occurrence records
+whose geometry was reused, while `uniqueGeometries` counts actual geometry
+objects. Twenty-four occurrences can share one geometry. A model choice
+reloads the page and therefore transfers its mesh even if the native owner is
+warm. The harness has no public catalog, file watching, naming reconciliation
+or authentication beyond a per-process local capability token.
+
+The 2026-09-13 manual review against frozen native `801057d1b` and the current
+JS path verified unchanged, placement and hole edits on the assembly, plus
+the small plate and light/dark photographic views. Unchanged and placement
+updates transferred no mesh bytes and retained geometry for all 24 records;
+the hole edit transferred one 31,588-byte shared mesh. Exact picking on the
+moved top face reported z=12 mm; increasing the hole radius from 3 to 3.5 mm
+changed its reported area from 585.537619 to 544.696914 mm². These checks do not
+establish the public resident-viewer or large-assembly gate.
+
+## Serial engine benchmark
+
 `harness.py` prepares code-only frozen runtime archives, runs the two bounded
 fixtures serially, validates every completed STEP with an independent cold
 readback, and records command stages, optional engine counters, source side

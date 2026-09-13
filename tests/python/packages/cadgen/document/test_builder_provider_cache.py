@@ -11,14 +11,62 @@ from cadgen import build123d as bd
 from cadgen._document import Document
 from cadgen._document import builder_effects
 from cadgen._document.builder_effects import StockBuilderEffects
-from cadgen._document.frontend import FrontendSession
+from cadgen._document.frontend import FrontendSession, _EFFECT_PROOFS
 from cadgen._document.sketch_effects import SketchNativeEffects
 
 
 class BuilderProviderCacheTest(unittest.TestCase):
     def setUp(self):
         builder_effects._PROVIDER_PLANS.clear()
+        _EFFECT_PROOFS.clear()
         self.addCleanup(builder_effects._PROVIDER_PLANS.clear)
+        self.addCleanup(_EFFECT_PROOFS.clear)
+
+    def test_warm_algebra_installs_interceptors_without_constructing_unused_auditors(self):
+        document = Document("provider-lazy-unused")
+        with document.begin() as transaction:
+            with FrontendSession(transaction) as frontend:
+                self.assertIsNotNone(frontend._builder_effects.stock)
+                self.assertIsNotNone(frontend._sketch_effects.stock)
+            transaction.commit()
+
+        with patch.object(builder_effects, "_remember_provider_plan",
+                          side_effect=AssertionError("warm rediscovery")):
+            with document.begin() as transaction:
+                with FrontendSession(transaction) as frontend:
+                    first, second = bd.Box(2, 3, 4), bd.Box(1, 1, 1)
+                    combined = first + bd.Pos(5, 0, 0) * second
+                    self.assertAlmostEqual(25., combined.volume)
+                    self.assertIsNone(frontend._builder_effects.stock)
+                    self.assertIsNone(frontend._sketch_effects.stock)
+                transaction.commit()
+
+    def test_post_entry_provider_mutation_deopts_without_warm_rediscovery(self):
+        document = Document("provider-lazy-mutated")
+        with document.begin() as transaction:
+            with FrontendSession(transaction):
+                pass
+            transaction.commit()
+
+        callbacks = []
+        original_cut = bd.Shape.cut
+        def cut(shape, *others):
+            callbacks.append(len(others))
+            return original_cut(shape, *others)
+        with document.begin() as transaction:
+            with FrontendSession(transaction) as frontend:
+                self.assertIsNone(frontend._builder_effects.stock)
+                with patch.object(builder_effects, "_remember_provider_plan",
+                                  side_effect=AssertionError("warm rediscovery")), \
+                     patch.object(bd.Shape, "cut", cut):
+                    with bd.BuildPart() as builder:
+                        bd.Box(4, 4, 4)
+                        bd.Box(1, 1, 6, mode=bd.Mode.SUBTRACT)
+                self.assertAlmostEqual(60., builder.part.volume)
+                self.assertEqual([1], callbacks)
+                self.assertFalse(frontend._builder_effects.stock.providers_match())
+                self.assertEqual(0, frontend._fallback_counts.get("builder-effects-retained", 0))
+            transaction.commit()
 
     def test_warm_discovery_reuses_code_plan_with_independent_live_lists(self):
         original = SourceFileLoader.get_code

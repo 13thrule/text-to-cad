@@ -361,7 +361,7 @@ test("buildModel honors zero-valued source-color grading without rebuilding reco
   scene.dispose();
 });
 
-test("buildModel keeps source-mesh color buffers immutable across material refreshes", () => {
+test("source-color geometry variants stay immutable, shared by style, and bounded by owners", () => {
   const sourceColors = new Float32Array([
     0.2, 0.4, 0.6,
     0.8, 0.45, 0.2,
@@ -400,49 +400,91 @@ test("buildModel keeps source-mesh color buffers immutable across material refre
     ]
   };
   const theme = cloneThemePresetSettings("workbench-light");
-  const scene = buildModel(THREE, meshData, {
+  const settings = {
     theme,
+    materialSettings: { ...theme.materials },
     renderPartsIndividually: true
+  };
+  const first = buildModel(THREE, meshData, settings);
+  const sameStyle = buildModel(THREE, meshData, settings);
+  const dark = buildModel(THREE, meshData, {
+    ...settings,
+    materialSettings: { ...theme.materials, brightness: 0 }
   });
-  const record = scene.displayRecords[0];
-  const colorAttribute = record.geometry.getAttribute("color");
+  const defaultGeometry = first.displayRecords[0].geometry;
+  const defaultColorAttribute = defaultGeometry.getAttribute("color");
+  const defaultColors = Array.from(defaultColorAttribute.array);
+  const darkGeometry = dark.displayRecords[0].geometry;
 
-  assert.equal(record.rawColors, sourceColors, "the immutable color baseline shares the component allocation");
-  assert.notEqual(colorAttribute.array, sourceColors);
-  assert.deepEqual(Array.from(sourceColors), originalColors);
-
-  scene.update({
-    materialSettings: {
-      ...theme.materials,
-      brightness: 0
-    }
-  });
-
-  assert.ok(
-    Array.from(colorAttribute.array).every((channel) => Math.abs(channel) < 1e-6),
-    "zero brightness is applied to the live vertex-color buffer"
+  assert.equal(sameStyle.displayRecords[0].geometry, defaultGeometry, "identical grading shares one geometry variant");
+  assert.notEqual(darkGeometry, defaultGeometry, "different grading receives an immutable geometry variant");
+  assert.notEqual(
+    darkGeometry.getAttribute("position"),
+    defaultGeometry.getAttribute("position"),
+    "separate geometries do not share BufferAttribute lifetime"
   );
+  assert.equal(
+    darkGeometry.getAttribute("position").array,
+    defaultGeometry.getAttribute("position").array,
+    "immutable component CPU positions can still be wrapped without another copy"
+  );
+  assert.equal(first.displayRecords[0].rawColors, sourceColors, "the immutable color baseline shares the component allocation");
+  assert.notEqual(defaultColorAttribute.array, sourceColors);
+  assert.ok(
+    Array.from(darkGeometry.getAttribute("color").array).every((channel) => Math.abs(channel) < 1e-6),
+    "zero brightness is isolated to its geometry variant"
+  );
+  assert.deepEqual(Array.from(defaultColorAttribute.array), defaultColors, "building another style does not rewrite a live scene");
+  assert.deepEqual(Array.from(sourceColors), originalColors);
 
-  scene.update({
+  first.update({
     materialSettings: {
       ...theme.materials,
-      saturation: 0,
-      contrast: 1,
-      brightness: 1
+      brightness: 0.5
     }
   });
+  const halfGeometry = first.displayRecords[0].geometry;
+  const halfColorAttribute = halfGeometry.getAttribute("color");
 
-  for (let index = 0; index < colorAttribute.array.length; index += 3) {
-    assertClose(
-      Array.from(colorAttribute.array.subarray(index, index + 3)),
-      [colorAttribute.array[index], colorAttribute.array[index], colorAttribute.array[index]],
-      `zero saturation removes vertex ${index / 3}'s hue`
-    );
-  }
+  assert.notEqual(halfGeometry, defaultGeometry, "changing active vertex-color grading swaps variants");
+  assert.deepEqual(Array.from(defaultColorAttribute.array), defaultColors, "a shared old variant remains unchanged");
 
-  assert.deepEqual(Array.from(sourceColors), originalColors);
-  assert.deepEqual(Array.from(record.rawColors), originalColors);
-  scene.dispose();
+  first.update({
+    materialSettings: {
+      ...theme.materials,
+      brightness: 0.5
+    }
+  });
+  assert.equal(first.displayRecords[0].geometry, halfGeometry, "an unchanged appearance keeps its geometry");
+  assert.equal(first.displayRecords[0].geometry.getAttribute("color"), halfColorAttribute, "no per-update color buffer rewrite occurs");
+
+  const sameHalfStyle = buildModel(THREE, meshData, {
+    ...settings,
+    materialSettings: { ...theme.materials, brightness: 0.5 }
+  });
+  assert.equal(sameHalfStyle.displayRecords[0].geometry, halfGeometry, "matching live styles share their variant");
+
+  let defaultDisposals = 0;
+  let halfDisposals = 0;
+  let darkDisposals = 0;
+  defaultGeometry.addEventListener("dispose", () => { defaultDisposals += 1; });
+  halfGeometry.addEventListener("dispose", () => { halfDisposals += 1; });
+  darkGeometry.addEventListener("dispose", () => { darkDisposals += 1; });
+
+  first.dispose();
+  assert.equal(halfDisposals, 0, "a shared style survives one scene's disposal");
+  sameHalfStyle.dispose();
+  assert.equal(halfDisposals, 1, "the final style owner releases its upload once");
+  sameStyle.dispose();
+  assert.equal(defaultDisposals, 1, "the final default-style owner releases its upload once");
+  dark.dispose();
+  assert.equal(darkDisposals, 1);
+
+  const returned = buildModel(THREE, meshData, settings);
+  assert.notEqual(returned.displayRecords[0].geometry, defaultGeometry, "released styled variants leave the cache");
+  returned.dispose();
+
+  assert.deepEqual(Array.from(sourceColors), originalColors, "all variants leave the provider buffer immutable");
 });
 
 test("buildModel selection can focus and hide subassembly occurrence descendants", () => {

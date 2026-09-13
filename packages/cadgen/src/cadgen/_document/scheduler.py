@@ -70,7 +70,7 @@ class Receipt:
     ticket: int
     sequence: int
     path: Path
-    digest: str
+    digest: str | None
     publication_sequence: int
 
 
@@ -129,12 +129,12 @@ class Publication:
         self._active = True
         self.receipt: Receipt | None = None
 
-    def acknowledge(self, digest: str) -> Receipt:
+    def acknowledge(self, digest: str | None) -> Receipt:
         self._job._check_owner()
         if not self._active or self.receipt is not None:
             raise RequestStateError("publication acknowledgement is no longer available")
-        if type(digest) is not str or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
-            raise ValueError("publication acknowledgement requires an exact SHA-256")
+        if digest is not None and (type(digest) is not str or re.fullmatch(r"[0-9a-f]{64}", digest) is None):
+            raise ValueError("publication acknowledgement requires an exact SHA-256 or verified absence")
         entry = self._job._entry
         self.receipt = Receipt(self._job.request.ticket, self.sequence, self.path, digest,
                                len(entry.receipts) + 1)
@@ -230,38 +230,48 @@ class Job:
 
     @contextmanager
     def publication(self, path) -> Iterator[Publication]:
-        """Guard a producer's short publication and SHA acknowledgement.
+        """Guard one completed output; grouped products use publications()."""
+        with self.publications((path,)) as publications:
+            yield publications[0]
 
-        Encoding belongs before this scope. Acceptance and competing bindings
-        cannot interleave with the final write. Direct cancellation signals may
-        arrive during a write; a completed receipt is then retained while the
-        overall request becomes cancelled instead of reporting export success.
+    @contextmanager
+    def publications(self, paths) -> Iterator[tuple[Publication, ...]]:
+        """Claim a complete output group before any final filesystem effects.
+
+        Encoding and staging happen before this scope. All claims are checked
+        while holding one coordinator lock. Each completed file or absence is
+        acknowledged immediately; partial failures retain those historical facts
+        and fail the invocation. This is not a multi-file filesystem transaction.
         """
         self._check_owner()
-        path, = _paths((path,))
+        paths = _paths(paths)
+        if not paths or len(paths) > 1024:
+            raise ValueError("publication requires a bounded nonempty output group")
         coordinator = self._coordinator
         with coordinator._lock:
             self.checkpoint()
             sequence = self.invocation.sequence
-            if path not in self._entry.outputs[sequence]:
+            if any(path not in self._entry.outputs[sequence] for path in paths):
                 raise RequestStateError("publication path was not bound to this invocation")
             if sequence not in self._entry.geometry:
                 raise RequestStateError("publication requires invocation geometry")
             if coordinator._publishing:
                 raise RequestStateError("publication scopes cannot be nested")
-            publication = Publication(self, sequence, path)
+            publications = tuple(Publication(self, sequence, path) for path in paths)
             try:
-                coordinator._check_claim(self._entry, sequence, path)
+                for path in paths:
+                    coordinator._check_claim(self._entry, sequence, path)
                 coordinator._publishing = True
-                yield publication
-                if publication.receipt is None:
-                    raise RequestStateError("producer did not acknowledge completed output bytes")
+                yield publications
+                if any(publication.receipt is None for publication in publications):
+                    raise RequestStateError("producer did not acknowledge every completed output")
                 self.checkpoint()
             except BaseException as error:
                 self._entry.problem = self._entry.problem or error
                 raise
             finally:
-                publication._active = False
+                for publication in publications:
+                    publication._active = False
                 coordinator._publishing = False
 
     def finish(self) -> Facts:

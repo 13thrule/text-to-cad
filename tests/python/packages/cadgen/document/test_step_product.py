@@ -113,6 +113,7 @@ class StepProductTests(unittest.TestCase):
         with self.session(second) as session, \
              patch("cadgen._document.step_product.copy_shape", side_effect=AssertionError("native copy on byte hit")), \
              patch("cadgen.step_export.write_xcaf_doc_step_file", side_effect=AssertionError("STEP rewrite on byte hit")), \
+             patch("cadgen._document.step_product.tempfile.NamedTemporaryFile", side_effect=AssertionError("STEP staged on byte hit")), \
              patch("cadgen._document.step_product._read_saved_metadata", side_effect=AssertionError("readback on byte hit")):
             reused = session.prepare(self.target.name)
             self.assertIs(reused, original)
@@ -122,6 +123,18 @@ class StepProductTests(unittest.TestCase):
             receipt = session.publish(self.target, expected_prior_digest=original.sha256)
             self.assertEqual(receipt.action, "verified-existing")
             self.assertEqual(self.target.stat().st_mtime_ns, before)
+
+    def test_unstaged_product_cannot_replace_drift_even_with_changed_expectation(self):
+        revision, _ = self.revision()
+        with self.session(revision) as session:
+            product = session.prepare(self.target.name)
+            self.target.write_bytes(product.payload)
+            with session._stage(((self.target, product.payload, product.sha256, product.identity, "step"),)) as staged:
+                self.assertIsNone(staged[0].staged_path)
+                self.target.write_bytes(b"external replacement")
+                with self.assertRaisesRegex(ExportConflict, "unstaged output"):
+                    session.publish_staged(staged[0], expected_prior_digest=destination_digest(self.target))
+            self.assertEqual(b"external replacement", self.target.read_bytes())
 
     def test_24_repeated_occurrences_copy_and_parse_one_definition(self):
         def assembly(handle):

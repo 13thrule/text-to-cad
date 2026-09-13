@@ -41,6 +41,7 @@ class BuildAttempt:
     source_seconds: float | None = None
     fallback_counts: dict[str, int] | None = None
     job: Any = None
+    output_receipts: tuple[Any, ...] | None = None
 
     @contextmanager
     def source_execution(self) -> Iterator[Any]:
@@ -72,9 +73,21 @@ class BuildAttempt:
     def complete_exports(self) -> None:
         if self.state != "geometry_ready":
             raise RuntimeError("exports cannot complete before document geometry")
-        missing = [path for path in self.required_exports if not Path(path).is_file()]
-        if missing:
-            raise RuntimeError(f"build returned without declared exports: {', '.join(missing)}")
+        if self.output_receipts is None:
+            missing = [path for path in self.required_exports if not Path(path).is_file()]
+            if missing:
+                raise RuntimeError(f"build returned without declared exports: {', '.join(missing)}")
+        else:
+            from .step_product import destination_digest
+            receipts = {receipt.destination: receipt for receipt in self.output_receipts}
+            if (len(receipts) != len(self.output_receipts)
+                    or set(receipts) != set(self.required_exports)):
+                raise RuntimeError("build returned without every declared output receipt")
+            for path, receipt in receipts.items():
+                if (receipt.owner_id != self.document.owner_id
+                        or receipt.revision_id != self.revision.revision_id
+                        or destination_digest(Path(path)) != receipt.sha256):
+                    raise RuntimeError("declared output no longer matches its publication receipt")
         self.document.complete_exports(self.revision.revision_id, self.required_exports)
         self.state = "exports_complete"
 
@@ -100,6 +113,8 @@ class SavedDocument:
     input_sha256: str
     input_size: int
     reused: bool
+    annotation_sha256: str | None
+    annotation_size: int
 
 
 @dataclass(frozen=True)
@@ -294,18 +309,31 @@ class DocumentService:
         return CheckpointPublication(document.document_id, selected, staged.revision_id, published)
 
     def load_step(self, source: CapturedInput, *, work_directory: Path,
-                  cancellation=None) -> SavedDocument:
+                  annotations=_ABSENT, cancellation=None) -> SavedDocument:
         """Open the actual captured file in a saved-artifact owner.
 
-        Identical bytes can share this owner across paths. Capturing a replaced
-        file selects another owner; neither case executes model source.
+        Identical STEP bytes share native ownership across paths. Annotation
+        revisions share those native prototypes and remain distinct from the
+        STEP-only revision. Supplied None attests captured companion absence;
+        omitted annotations are captured here, before any native work.
         """
         self._check_owner()
         from .resources import Cancelled
-        from .step_import import StepImportSession, step_input_identity
+        from .step_import import (StepImportSession, step_input_identity,
+                                  saved_annotation_paths, apply_saved_annotations,
+                                  native_saved_root)
+        from .annotations import (MAX_BYTES, capture_companion, companion_path,
+                                  read_annotations)
 
         if cancellation is not None and cancellation.is_set():
             raise Cancelled("STEP import was cancelled")
+        if annotations is _ABSENT:
+            annotations = capture_companion(source.path)
+        if annotations is not None:
+            if (type(annotations) is not CapturedInput
+                    or annotations.path != companion_path(source.path).resolve()
+                    or len(annotations.data) > MAX_BYTES):
+                raise ValueError("saved annotations require the bounded captured STEP companion")
         runtime = () if self._codec is None else self._codec.runtime
         identity = step_input_identity(source, runtime=runtime)
         key = ("saved-step", identity)
@@ -314,18 +342,63 @@ class DocumentService:
         document = self._document_for(key, f"saved-step:{identity}", cancellation=cancellation)
         self._active.add(key)
         try:
-            head = document.head
-            reused = (head is not None and head.source_identity == f"step:{source.digest}"
-                      and head.unrepresented_metadata == ())
-            if not reused:
-                imported = StepImportSession(document, work_directory=work_directory,
-                                             cancellation=cancellation).load(source)
-                revision_id = imported.revision_id
-            else:
-                revision_id = head.revision_id
-            document.collect(keep_revisions=2)
+            native_identity = f"step:{source.digest}"
+            selected_identity = (native_identity if annotations is None else
+                                 f"step-annotations:{source.digest}:{annotations.digest}")
+            revisions = tuple(document._revisions.values())
+            native = next((revision for revision in reversed(revisions)
+                           if revision.source_identity == native_identity
+                           and revision.unrepresented_metadata == ()), None)
+            prior = next((revision for revision in reversed(revisions)
+                          if revision.source_identity == selected_identity
+                          and revision.unrepresented_metadata == ()), None)
+            if native is None:
+                head = document.head
+                if (head is not None and head.unrepresented_metadata == ()
+                        and head.source_identity.startswith(f"step-annotations:{source.digest}:")):
+                    # Checkpoints retain one selected root. Its only companion
+                    # fields are PBR/tag overrides; removing those reconstructs
+                    # the actual STEP-native root without copying its geometry.
+                    root = native_saved_root(head.root)
+                    with document.begin(native_identity) as transaction:
+                        transaction.cancellation = cancellation or transaction.cancellation
+                        transaction.bind_root(root, unrepresented_metadata=())
+                        native = transaction.commit()
+                else:
+                    imported = StepImportSession(document, work_directory=work_directory,
+                                                 cancellation=cancellation).load(source)
+                    native = document._revisions[imported.revision_id]
+            with document.pin(native.revision_id):
+                paths = saved_annotation_paths(source, native.root)
+                product = read_annotations(source.data, paths, None if annotations is None else annotations.data)
+                if cancellation is not None and cancellation.is_set():
+                    raise Cancelled("STEP annotations were cancelled")
+                reused = prior is not None
+                if annotations is None:
+                    selected = native
+                elif prior is not None:
+                    selected = prior
+                else:
+                    root = apply_saved_annotations(native.root, product)
+                    with document.begin(selected_identity) as transaction:
+                        transaction.cancellation = cancellation or transaction.cancellation
+                        transaction.bind_root(root, unrepresented_metadata=())
+                        selected = transaction.commit()
+                if selected is not document.head:
+                    # Selecting a retained view still establishes the current
+                    # saved-document head, so its normal checkpoint contract
+                    # remains available without changing any native geometry.
+                    with document.begin(selected_identity) as transaction:
+                        transaction.cancellation = cancellation or transaction.cancellation
+                        transaction.bind_root(selected.root, unrepresented_metadata=())
+                        selected = transaction.commit()
+                revision_id = selected.revision_id
+                with document.pin(revision_id):
+                    document.collect(keep_revisions=2)
             return SavedDocument(document, revision_id, str(source.path), source.digest,
-                                 len(source.data), reused)
+                                 len(source.data), reused,
+                                 None if annotations is None else annotations.digest,
+                                 0 if annotations is None else len(annotations.data))
         finally:
             self._active.remove(key)
 

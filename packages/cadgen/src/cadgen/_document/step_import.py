@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import importlib.metadata
 import json
@@ -239,6 +239,73 @@ def _root_from(record: _ImportRecord) -> RootNode:
     if len(roots) == 1:
         return roots[0]
     return AssemblyGroup("step-document", roots, label="STEP document")
+
+
+def _map_imported_root(root, leaf):
+    """Traverse only the exact hierarchy vocabulary emitted by this importer.
+
+    Native importer roots and their verified checkpoints are trusted callers.
+    This is not a correspondence inference for arbitrary source model roots.
+    """
+    from .annotations import MAX_DEPTH, MAX_NODES
+    visits = 0
+    def visit(node, path):
+        nonlocal visits
+        visits += 1
+        if visits > MAX_NODES or len(path) > MAX_DEPTH:
+            raise ValueError("saved annotation hierarchy exceeds the limit")
+        if (type(node) not in (GeometryLeaf, AssemblyGroup)
+                or node.node_id.value != f"n{path[-1]}"):
+            raise ValueError("saved root does not carry the imported occurrence hierarchy")
+        if type(node) is GeometryLeaf:
+            return leaf(node, path)
+        if not node.children:
+            raise ValueError("saved root contains an empty imported assembly")
+        children = tuple(visit(child, path + (index,))
+                         for index, child in enumerate(node.children, 1))
+        return node if all(a is b for a, b in zip(children, node.children)) else replace(node, children=children)
+    if type(root) is AssemblyGroup and root.node_id.value == "step-document":
+        children = tuple(visit(child, (index,)) for index, child in enumerate(root.children, 1))
+        return root if all(a is b for a, b in zip(children, root.children)) else replace(root, children=children)
+    return visit(root, (1,))
+
+
+def saved_annotation_paths(captured, root):
+    """Bind an actual imported/checkpointed hierarchy to the consumed bytes."""
+    from .annotations import SavedAnnotationPaths
+    leaves = []
+    def record(node, path):
+        leaves.append(path)
+        return node
+    _map_imported_root(root, record)
+    return SavedAnnotationPaths(captured.digest, len(captured.data), tuple(leaves))
+
+
+def apply_saved_annotations(root, annotations):
+    """Create owned scene values; the imported native root stays immutable."""
+    overrides = {row.path: row.appearance for row in annotations.occurrences}
+    used = set()
+    def apply(node, path):
+        # These two fields come exclusively from this companion codec. Native
+        # STEP color, exact face recipes and physical records remain untouched.
+        native = _native_appearance(node)
+        if path in overrides:
+            used.add(path)
+        return replace(node, appearance=appearance({**native, **overrides.get(path, {})}))
+    result = _map_imported_root(root, apply)
+    if used != set(overrides):
+        raise ValueError("annotation paths do not match the imported root")
+    return result
+
+
+def _native_appearance(node):
+    return {key: value for key, value in appearance(node.appearance).items()
+            if key not in {"pbr", "material"}}
+
+
+def native_saved_root(root):
+    """Recover STEP-only values from a verified annotated saved checkpoint."""
+    return _map_imported_root(root, lambda node, _path: replace(node, appearance=appearance(_native_appearance(node))))
 
 
 class StepImportSession:

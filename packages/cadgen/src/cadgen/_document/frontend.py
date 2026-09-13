@@ -12,6 +12,7 @@ branches, loops, callbacks, and their side effects execute on every revision.
 from __future__ import annotations
 
 from contextvars import ContextVar
+from collections import OrderedDict
 import copy
 from dataclasses import dataclass
 from dataclasses import replace
@@ -31,6 +32,8 @@ _ACTIVE: ContextVar["FrontendSession | None"] = ContextVar(
     "cadgen_document_frontend", default=None
 )
 _PATCH_LOCK = threading.RLock()
+_EFFECT_PROOF_LIMIT = 8
+_EFFECT_PROOFS = OrderedDict()
 _IDENTITY = (
     1.0, 0.0, 0.0, 0.0,
     0.0, 1.0, 0.0, 0.0,
@@ -202,6 +205,7 @@ class FrontendSession:
         self.active = False
         self._token = None
         self._originals: list[tuple[Any, str, Any]] = []
+        self._installed: list[tuple[Any, str, Any, Any]] = []
         self._logical_counts: dict[tuple, int] = {}
         self._compute_depth = 0
         self._bd = None
@@ -268,6 +272,7 @@ class FrontendSession:
             except BaseException as error:  # finish restoring the process-global surface
                 failure = failure or error
         self._originals.clear()
+        self._installed.clear()
         if failure is not None:
             raise failure
 
@@ -275,6 +280,7 @@ class FrontendSession:
         original = inspect.getattr_static(owner, name)
         self._originals.append((owner, name, original))
         setattr(owner, name, replacement)
+        self._installed.append((owner, name, original, replacement))
 
     def _install(self) -> None:
         bd, topology = self._bd, self._topology
@@ -667,11 +673,58 @@ class FrontendSession:
             self._patch(proxy, "fillet", fillet_function)
         self._prepare_primitive_guards(original_box_init, original_cylinder_init,
                                        original_make_box, original_make_cylinder)
+        # Install the small entry interceptors on every replay.  A runtime is
+        # proven only after one session has discovered and finalized both full
+        # transitive provider inventories before any authored code can run.
+        # Later sessions may defer those audits until their corresponding entry
+        # point is actually used, but deferred activation is allowed to consume
+        # an existing canonical plan only; it never learns from author-mutated
+        # process state.
+        proof_key = self._effect_proof_key()
+        from .builder_effects import _provider_plans_live
+        proof = _EFFECT_PROOFS.get(proof_key)
+        defer_audits = proof is not None and _provider_plans_live(proof)
         from .builder_effects import BuilderEffectsFrontend
-        self._builder_effects = BuilderEffectsFrontend(self)
+        self._builder_effects = BuilderEffectsFrontend(self, deferred=defer_audits)
+        if not defer_audits:
+            # Preserve discovery order: the solid inventory is established
+            # before sketch installs its extra interceptors, whose exact final
+            # implementations are added to that inventory below.
+            self._builder_effects.activate(require_cached=False, finalize=False)
         from .sketch_effects import SketchEffectsFrontend
-        self._sketch_effects = SketchEffectsFrontend(self)
-        self._builder_effects.finalize_guards()
+        self._sketch_effects = SketchEffectsFrontend(self, deferred=defer_audits)
+        if not defer_audits:
+            self._sketch_effects.activate(require_cached=False, finalize=False)
+            self._finalize_effect_guards()
+            if (self._builder_effects.stock.providers_match()
+                    and self._sketch_effects.stock.providers_match()):
+                _EFFECT_PROOFS[proof_key] = (
+                    self._builder_effects.stock._canonical_plan,
+                    self._sketch_effects.stock._canonical_plan,
+                )
+                _EFFECT_PROOFS.move_to_end(proof_key)
+                while len(_EFFECT_PROOFS) > _EFFECT_PROOF_LIMIT:
+                    _EFFECT_PROOFS.popitem(last=False)
+
+    def _effect_proof_key(self):
+        """Identity-only key for one installed provider runtime generation."""
+        bd = self._bd
+        namespace = vars(bd)
+        modules = tuple(sys.modules.get(name) for name in (
+            "build123d.build_common", "build123d.build_part",
+            "build123d.operations_part", "build123d.objects_part",
+            "build123d.topology.shape_core", "build123d.topology.two_d",
+            "build123d.topology.three_d",
+        ))
+        return tuple(map(id, (bd, *(namespace.get(name) for name in (
+            "Builder", "BuildPart", "BuildSketch", "Shape", "Solid",
+            "Polygon", "Wire", "WorkplaneList",
+        )), *modules)))
+
+    def _finalize_effect_guards(self):
+        for effects in (self._builder_effects, self._sketch_effects):
+            if effects.stock is not None:
+                effects.stock.finalize_frontend_guards()
 
     def _prepare_primitive_guards(self, box, cylinder, make_box, make_cylinder):
         """Pin the small stock constructor path, including its native providers.

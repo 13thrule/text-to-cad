@@ -186,7 +186,7 @@ function fitCamera(camera, view, bounds, width, height, lockedHalfHeight = null,
   });
 }
 
-function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, {
+export function fitPerspectiveCamera(camera, cameraSpec, bounds, width, height, {
   framePoints = null,
   padding = 0.12,
   sceneScale = RENDER_SCENE_SCALE.CAD

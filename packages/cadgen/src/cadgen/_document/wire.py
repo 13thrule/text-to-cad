@@ -10,7 +10,7 @@ import math
 from types import MappingProxyType
 
 
-PROTOCOL = 1
+PROTOCOL = 2
 MAX_HEADER = 1024 * 1024
 MAX_BYTES = 272 * 1024 * 1024
 CHUNK_BYTES = 4 * 1024 * 1024

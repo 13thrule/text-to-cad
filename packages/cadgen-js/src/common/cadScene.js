@@ -1,7 +1,7 @@
 import { resolveCadEdgeSettings } from "./cadInk.js";
 import { applyRecordTubeDeformation } from "./tubeDeformation.js";
 import { syncRecordBaseEmissiveColor } from "./surfaceMaterialState.js";
-import { applyColorGrading } from "./colorGrading.js";
+import { applyColorGrading, resolveColorGrading } from "./colorGrading.js";
 import {
   normalizeThemeSettings,
   resolveThemeFillColor
@@ -95,6 +95,11 @@ const DEFAULT_THEME = Object.freeze({
 const CAD_EDGE_LINE_RENDER_ORDER = 3;
 
 const meshGeometryCache = new WeakMap();
+// Vertex colors are CPU-shaped for the active appearance. Keep each live
+// source/style combination immutable, then remove it from the component cache
+// after its last scene releases the GPU upload. This bounds the number of
+// variants without letting one scene rewrite another scene's colors.
+const transientGeometryCacheSlots = new WeakMap();
 // Components can be displayed in several scenes (tabs, snapshots, comparison
 // views). GPU disposal must account for all owners, not just one scene's parts.
 const geometryOwners = new WeakMap();
@@ -291,24 +296,47 @@ function shapeSourceColor(THREE, sourceColor, materialSettings = {}, { applyTint
   return applyColorGrading(shaped, materialSettings);
 }
 
-function shapeSourceColorBuffer(THREE, colors, materialSettings = {}) {
+function shapeSourceColorBuffer(THREE, colors, materialSettings = {}, itemSize = 3, defaultColorMask = null, fillIndex = 0) {
   if (!isNumericArray(colors, 3)) {
     return null;
   }
   const shapedColors = new Float32Array(colors.length);
   const color = new THREE.Color();
-  for (let index = 0; index + 2 < colors.length; index += 3) {
+  const fillColor = defaultColorMask ? resolveMaterialFillBaseColor(THREE, materialSettings, fillIndex) : null;
+  for (let index = 0; index + 2 < colors.length; index += itemSize) {
     color.setRGB(
       clamp(Number(colors[index]) || 0, 0, 1),
       clamp(Number(colors[index + 1]) || 0, 0, 1),
       clamp(Number(colors[index + 2]) || 0, 0, 1)
     );
-    const shaped = shapeSourceColor(THREE, color, materialSettings);
+    const shaped = defaultColorMask?.[index / itemSize]
+      ? fillColor : shapeSourceColor(THREE, color, materialSettings);
     shapedColors[index] = shaped.r;
     shapedColors[index + 1] = shaped.g;
     shapedColors[index + 2] = shaped.b;
+    if (itemSize === 4) shapedColors[index + 3] = colors[index + 3];
   }
   return shapedColors;
+}
+
+function sourceColorStyleKey(materialSettings = {}) {
+  const grading = resolveColorGrading(materialSettings);
+  const tintStrength = clamp(Number(materialSettings.tintStrength) || 0, 0, 1);
+  return JSON.stringify({
+    ...grading,
+    tintStrength,
+    tintMode: tintStrength > 0 && materialSettings.tintMode === "blend" ? "blend" : "multiply",
+    tintColor: tintStrength > 0
+      ? String(materialSettings.defaultColor || "#ffffff").trim().toLowerCase()
+      : null
+  });
+}
+
+function activeSourceColorStyleKey(materialSettings = {}, displayMode = CAD_DISPLAY_MODE.SHADED_EDGES) {
+  if (materialSettings.overrideSourceColors === true || displayModeIsWireframe(displayMode)) {
+    return null;
+  }
+  return sourceColorStyleKey(materialSettings);
 }
 
 function shouldUseDisplayVertexColors(meshData) {
@@ -428,7 +456,7 @@ function meshUsesPartSourceOpacity(parts) {
   const renderableParts = Array.isArray(parts) ? parts : [];
   return renderableParts.some((part) => {
     const opacity = Number(part?.opacity);
-    return Number.isFinite(opacity) && clamp(opacity, 0, 1) < 0.999;
+    return part?.hasSourceVertexAlpha === true || (Number.isFinite(opacity) && clamp(opacity, 0, 1) < 0.999);
   });
 }
 
@@ -457,9 +485,13 @@ export function buildPartFillIndexMap(parts = []) {
   );
 }
 
-function geometryCacheEntry(THREE, cacheOwner, key, createGeometry) {
+function geometryCacheEntry(THREE, cacheOwner, key, createGeometry, {
+  whole = false,
+  transient = false
+} = {}) {
   const cache = cacheForOwner(cacheOwner);
-  const cached = cache.part.get(key) || cache.whole.get(key);
+  const bucket = whole ? cache.whole : cache.part;
+  const cached = bucket.get(key);
   if (cached) {
     return cached;
   }
@@ -468,22 +500,43 @@ function geometryCacheEntry(THREE, cacheOwner, key, createGeometry) {
     return null;
   }
   markCachedGeometry(entry.geometry);
-  if (key === MODEL_PART_ID) {
-    cache.whole.set(key, entry);
-  } else {
-    cache.part.set(key, entry);
+  bucket.set(key, entry);
+  if (transient) {
+    transientGeometryCacheSlots.set(entry.geometry, { bucket, key, entry });
   }
   return entry;
 }
 
-function buildPartGeometryEntry(THREE, meshData, part, recomputeNormals = false) {
+function buildPartGeometryEntry(
+  THREE,
+  meshData,
+  part,
+  recomputeNormals = false,
+  materialSettings = {},
+  displayMode = CAD_DISPLAY_MODE.SHADED_EDGES,
+  fillIndex = 0
+) {
   const partId = String(part?.id || part?.occurrenceId || "").trim();
   const sourceMesh = part?.sourceMesh && typeof part.sourceMesh === "object" ? part.sourceMesh : null;
-  const sourceMeshColorMode = sourceMesh && part?.hasSourceColors ? "source-colors" : "flat";
+  const rawColorItemSize = sourceMesh?.colorItemSize === 4 ? 4 : 3;
+  const sourceVertexCount = Math.floor((sourceMesh?.vertices?.length || 0) / 3);
+  const hasSourceMeshColors = !!sourceMesh && part?.hasSourceColors &&
+    isNumericArray(sourceMesh.colors, 3) &&
+    sourceMesh.colors.length === sourceVertexCount * rawColorItemSize;
+  const hasPartColors = !sourceMesh && partUsesDisplayVertexColors(meshData, part) &&
+    meshData?.colors?.length === meshData?.vertices?.length;
+  const hasRawColors = hasSourceMeshColors || hasPartColors;
+  const colorStyleKey = hasRawColors
+    ? activeSourceColorStyleKey(materialSettings, displayMode)
+    : null;
+  const sourceMeshColorMode = sourceMesh && hasSourceMeshColors ? "source-colors" : "flat";
   const sourceMeshKey = sourceMesh
     ? `source:${String(part?.sourceMeshKey || part?.meshUrl || part?.partFileRef || partId || "").trim()}:${sourceMeshColorMode}`
     : "";
-  const key = sourceMeshKey || partId || `${toNumber(part?.vertexOffset)}:${toNumber(part?.triangleOffset)}`;
+  const baseKey = sourceMeshKey || partId || `${toNumber(part?.vertexOffset)}:${toNumber(part?.triangleOffset)}`;
+  const defaultFillKey = sourceMesh?.defaultColorMask
+    ? resolveThemeFillColor(materialSettings, fillIndex) : "";
+  const key = colorStyleKey === null ? baseKey : `${baseKey}:color-style:${colorStyleKey}:${defaultFillKey}`;
   return geometryCacheEntry(THREE, cacheOwnerForPart(meshData, part), key, () => {
     const vertexOffset = sourceMesh ? 0 : toNumber(part?.vertexOffset, 0);
     const vertexCount = sourceMesh
@@ -506,7 +559,7 @@ function buildPartGeometryEntry(THREE, meshData, part, recomputeNormals = false)
       localVertices = sourceMesh.vertices || new Float32Array(0);
       rawColors = part?.hasSourceColors &&
         isNumericArray(sourceMesh.colors, 3) &&
-        sourceMesh.colors.length === localVertices.length
+        sourceMesh.colors.length === localVertices.length / 3 * rawColorItemSize
         ? sourceMesh.colors
         : null;
       localNormals = isNumericArray(sourceMesh.normals, 3) ? sourceMesh.normals : null;
@@ -535,23 +588,41 @@ function buildPartGeometryEntry(THREE, meshData, part, recomputeNormals = false)
       new THREE.BufferAttribute(localVertices instanceof Float32Array ? localVertices : new Float32Array(localVertices), 3)
     );
     geometry.setIndex(new THREE.BufferAttribute(localIndices instanceof Uint32Array ? localIndices : new Uint32Array(localIndices), 1));
-    if (rawColors && rawColors.length === localVertices.length) {
+    if (rawColors && rawColors.length === localVertices.length / 3 * rawColorItemSize) {
+      const displayColors = colorStyleKey === null
+        ? new Float32Array(rawColors)
+        : shapeSourceColorBuffer(THREE, rawColors, materialSettings, rawColorItemSize,
+          sourceMesh?.defaultColorMask, fillIndex);
       geometry.setAttribute(
         "color",
-        new THREE.BufferAttribute(new Float32Array(rawColors), 3)
+        new THREE.BufferAttribute(displayColors, rawColorItemSize)
       );
     }
     applyGeometryNormals(THREE, geometry, localNormals, recomputeNormals);
     geometry.computeBoundingSphere();
     return {
       geometry,
-      rawColors
+      rawColors,
+      rawColorItemSize,
+      hasVertexAlpha: rawColorItemSize === 4 && !!rawColors?.some((value, index) => index % 4 === 3 && value < .999),
     };
-  });
+  }, { transient: colorStyleKey !== null });
 }
 
-function buildWholeGeometryEntry(THREE, meshData, recomputeNormals = false) {
-  return geometryCacheEntry(THREE, cacheOwnerForMeshData(meshData), MODEL_PART_ID, () => {
+function buildWholeGeometryEntry(
+  THREE,
+  meshData,
+  recomputeNormals = false,
+  materialSettings = {},
+  displayMode = CAD_DISPLAY_MODE.SHADED_EDGES
+) {
+  const hasRawColors = shouldUseDisplayVertexColors(meshData) &&
+    meshData.colors?.length === meshData.vertices?.length;
+  const colorStyleKey = hasRawColors
+    ? activeSourceColorStyleKey(materialSettings, displayMode)
+    : null;
+  const key = colorStyleKey === null ? MODEL_PART_ID : `${MODEL_PART_ID}:color-style:${colorStyleKey}`;
+  return geometryCacheEntry(THREE, cacheOwnerForMeshData(meshData), key, () => {
     // Component buffers are immutable and already typed on the surf path: wrap
     // them rather than duplicating every vertex of a single-part model.
     const geometry = new THREE.BufferGeometry();
@@ -559,11 +630,14 @@ function buildWholeGeometryEntry(THREE, meshData, recomputeNormals = false) {
     const indices = meshData.indices instanceof Uint32Array ? meshData.indices : new Uint32Array(meshData.indices || []);
     geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
-    const rawColors = shouldUseDisplayVertexColors(meshData) && meshData.colors?.length === meshData.vertices?.length
+    const rawColors = hasRawColors
       ? new Float32Array(meshData.colors)
       : null;
     if (rawColors) {
-      geometry.setAttribute("color", new THREE.BufferAttribute(new Float32Array(rawColors), 3));
+      const displayColors = colorStyleKey === null
+        ? new Float32Array(rawColors)
+        : shapeSourceColorBuffer(THREE, rawColors, materialSettings);
+      geometry.setAttribute("color", new THREE.BufferAttribute(displayColors, 3));
     }
     applyGeometryNormals(THREE, geometry, meshData.normals, recomputeNormals);
     geometry.computeBoundingSphere();
@@ -571,24 +645,7 @@ function buildWholeGeometryEntry(THREE, meshData, recomputeNormals = false) {
       geometry,
       rawColors
     };
-  });
-}
-
-function syncRecordVertexColors(THREE, record, materialSettings) {
-  if (!record?.geometry || !record.rawColors || !record.hasVertexColors) {
-    return;
-  }
-  const shapedColors = shapeSourceColorBuffer(THREE, record.rawColors, materialSettings);
-  if (!shapedColors) {
-    return;
-  }
-  const attribute = record.geometry.getAttribute("color");
-  if (attribute?.array?.length === shapedColors.length) {
-    attribute.array.set(shapedColors);
-    attribute.needsUpdate = true;
-    return;
-  }
-  record.geometry.setAttribute("color", new THREE.BufferAttribute(shapedColors, 3));
+  }, { whole: true, transient: colorStyleKey !== null });
 }
 
 function buildEdgeGeometryFromIndices(THREE, vertices, edgeIndices) {
@@ -834,7 +891,6 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
     }
     return;
   }
-  syncRecordVertexColors(THREE, record, materialSettings);
   // Per-part PBR overrides: descriptor occurrences may carry a "material"
   // object (cadgen component_package._occurrence_material) so brushed,
   // polished, lacquered, and transparent parts differ in material RESPONSE,
@@ -862,8 +918,8 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
     : 1;
   record.baseOpacity = clamp(displayModeSurfaceOpacity(displayMode, materialSettings.opacity) * sourceOpacity, 0, 1);
   record.material.opacity = record.baseOpacity;
-  record.material.transparent = record.baseOpacity < 0.999;
-  record.material.depthWrite = displayMode === CAD_DISPLAY_MODE.TRANSPARENT ? false : record.baseOpacity >= 0.999;
+  record.material.transparent = record.baseOpacity < 0.999 || (hasVertexColors && record.hasVertexAlpha === true);
+  record.material.depthWrite = displayMode !== CAD_DISPLAY_MODE.TRANSPARENT && !record.material.transparent;
   record.material.envMapIntensity = Math.max(Number(materialSettings.envMapIntensity) || 0, 0);
   if (record.material.color && record.baseColor) {
     record.material.color.copy(record.baseColor);
@@ -951,7 +1007,7 @@ function syncSurfaceTransparency(record, forceTransparent, opacity, {
   if (!Object.hasOwn(record, "baseDepthWrite")) {
     record.baseDepthWrite = material.depthWrite !== false;
   }
-  const nextTransparent = forceTransparent || opacity < 0.999;
+  const nextTransparent = forceTransparent || opacity < 0.999 || (record.useVertexColors === true && record.hasVertexAlpha === true);
   if (material.transparent !== nextTransparent) {
     material.transparent = nextTransparent;
     material.needsUpdate = true;
@@ -1820,9 +1876,9 @@ function recordRestGeometry(record) {
 }
 
 // Free the GPU buffers and raycast BVH only after the last scene releases a
-// component. The geometry stays in the component cache with its
-// CPU arrays (a later publish or scene over the same component reuses it and
-// three re-uploads on the next draw); only the GPU copy and the BVH go.
+// component. Base geometry stays cached so Three can re-upload it on a later
+// draw. Appearance-shaped vertex-color variants leave the cache when their
+// final owner releases them, bounding variants to the styles in active scenes.
 function syncRecordGeometryOwnership(runtime, keptRecords, { releaseGpu = true } = {}) {
   const kept = new Set();
   for (const record of keptRecords) {
@@ -1856,6 +1912,11 @@ function syncRecordGeometryOwnership(runtime, keptRecords, { releaseGpu = true }
       geometry.boundsTree = null;
       delete geometry.userData.__bvhQueued;
       geometry.dispose();
+      const slot = transientGeometryCacheSlots.get(geometry);
+      if (slot && slot.bucket.get(slot.key) === slot.entry) {
+        slot.bucket.delete(slot.key);
+      }
+      transientGeometryCacheSlots.delete(geometry);
     }
     geometryOwners.delete(geometry);
     runtime.ownedGeometries.delete(geometry);
@@ -1971,6 +2032,8 @@ function createDisplayRecord(THREE, runtime, meshData, settings, {
     hasVertexColors,
     useVertexColors: hasVertexColors,
     rawColors: geometryEntry.rawColors,
+    rawColorItemSize: geometryEntry.rawColorItemSize || 3,
+    hasVertexAlpha: geometryEntry.hasVertexAlpha === true,
     geometry: geometryEntry.geometry,
     baseOpacity: Number.isFinite(Number(material.opacity)) ? Number(material.opacity) : 1,
     baseEmissiveColor: baseColor ? baseColor.clone() : null,
@@ -2037,14 +2100,28 @@ function buildDisplayRecords(THREE, runtime, meshData, settings) {
   const records = [];
 
   if (renderParts.length === 0) {
-    const geometryEntry = buildWholeGeometryEntry(THREE, meshData, settings.recomputeNormals === true);
+    const geometryEntry = buildWholeGeometryEntry(
+      THREE,
+      meshData,
+      settings.recomputeNormals === true,
+      runtime.materialSettings,
+      runtime.displayMode
+    );
     if (geometryEntry) {
       records.push(createDisplayRecord(THREE, runtime, meshData, settings, { geometryEntry, fillIndex: 0, ...context }));
     }
     return records;
   }
   for (const part of renderParts) {
-    const geometryEntry = buildPartGeometryEntry(THREE, meshData, part, settings.recomputeNormals === true);
+    const geometryEntry = buildPartGeometryEntry(
+      THREE,
+      meshData,
+      part,
+      settings.recomputeNormals === true,
+      runtime.materialSettings,
+      runtime.displayMode,
+      partFillIndexMap.get(part) ?? records.length
+    );
     if (!geometryEntry) {
       continue;
     }
@@ -2130,7 +2207,8 @@ function reconcileDisplayRecords(THREE, runtime, meshData, settings) {
     // The composer proves exact immutable row reuse. Preserve the complete
     // record without even looking up geometry or rebuilding a Matrix4; only a
     // changed deterministic fill slot needs a later material refresh.
-    if (candidate?.sourcePart === part && composedPackageOwnsPartRow(meshData, part)) {
+    if (candidate?.sourcePart === part && composedPackageOwnsPartRow(meshData, part)
+      && !(part.sourceMesh?.defaultColorMask && candidate.fillIndex !== fillIndex)) {
       if (candidate.fillIndex !== fillIndex) {
         candidate.fillIndex = fillIndex;
         dirtyRecords.push(candidate);
@@ -2138,7 +2216,15 @@ function reconcileDisplayRecords(THREE, runtime, meshData, settings) {
       records.push(candidate);
       continue;
     }
-    const geometryEntry = buildPartGeometryEntry(THREE, meshData, part, recomputeNormals);
+    const geometryEntry = buildPartGeometryEntry(
+      THREE,
+      meshData,
+      part,
+      recomputeNormals,
+      runtime.materialSettings,
+      runtime.displayMode,
+      fillIndex
+    );
     if (!geometryEntry) {
       if (candidate) disposeDisplayRecord(candidate);
       continue;
@@ -2201,8 +2287,36 @@ function staticMutableStateKey(settings) {
 // The settings that decide how records are BUILT (materials, edge style, mode);
 // a change rebuilds every record. Which parts are rendered is tracked apart
 // (renderPartsKey) and reconciled incrementally.
+function renderUsesSourceVertexColors(meshData, theme, settings) {
+  const parts = resolvePartsToRender(meshData, theme, settings);
+  if (!parts.length) {
+    return shouldUseDisplayVertexColors(meshData) &&
+      meshData?.colors?.length === meshData?.vertices?.length;
+  }
+  return parts.some((part) => {
+    const sourceMesh = part?.sourceMesh && typeof part.sourceMesh === "object"
+      ? part.sourceMesh
+      : null;
+    if (sourceMesh) {
+      const itemSize = sourceMesh.colorItemSize === 4 ? 4 : 3;
+      return part?.hasSourceColors === true &&
+        isNumericArray(sourceMesh.colors, 3) &&
+        sourceMesh.colors.length === Math.floor((sourceMesh.vertices?.length || 0) / 3) * itemSize;
+    }
+    return partUsesDisplayVertexColors(meshData, part) &&
+      meshData?.colors?.length === meshData?.vertices?.length;
+  });
+}
+
 function settingsSignature(meshData, theme, settings) {
   const edgeSettings = normalizeDisplayEdgeSettings(settings.edgeSettings);
+  const vertexColorStyle = renderUsesSourceVertexColors(meshData, theme, settings)
+    ? activeSourceColorStyleKey(settings.materialSettings, settings.displayMode)
+    : null;
+  const defaultVertexColors = vertexColorStyle !== null && resolvePartsToRender(meshData, theme, settings)
+    .some((part) => part.sourceMesh?.defaultColorMask)
+    ? [settings.materialSettings.defaultColor, settings.materialSettings.fillColors, settings.materialSettings.cycleColors]
+    : null;
   return JSON.stringify({
     meshData: meshData ? "mesh" : "",
     displayMode: normalizeDisplayMode(settings.displayMode),
@@ -2212,7 +2326,9 @@ function settingsSignature(meshData, theme, settings) {
       edgeSettings.silhouette === true &&
       (edgeSettings.enabled !== false || settings.silhouette === true),
     edgeRendering: settings.edgeRendering?.mode || "basic",
-    depthTest: settings.edgeSettings?.depthTest
+    depthTest: settings.edgeSettings?.depthTest,
+    vertexColorStyle,
+    defaultVertexColors
   });
 }
 

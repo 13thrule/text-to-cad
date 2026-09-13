@@ -231,6 +231,13 @@ def _remember_provider_plan(key, plan):
             _PROVIDER_PLANS.popitem(last=False)
 
 
+def _provider_plans_live(plans):
+    """Whether exact immutable plans retained by a frontend proof still exist."""
+    with _PROVIDER_PLAN_LOCK:
+        retained = tuple(_PROVIDER_PLANS.values())
+        return bool(plans) and all(any(plan is value for value in retained) for plan in plans)
+
+
 def _provider_plan_cacheable(globals_, callables):
     if not all(_canonical_cache_value(value) for _namespace, _name, value in globals_):
         return False
@@ -429,7 +436,7 @@ class StockBuilderEffects:
     The document arena materializes the connected family on native escape.
     """
 
-    def __init__(self, frontend=None, *, extra_providers=()):
+    def __init__(self, frontend=None, *, extra_providers=(), require_cached=False):
         import build123d as bd
         from .frontend import _stock_function, _stock_global
         extra_providers = tuple(extra_providers)
@@ -466,6 +473,7 @@ class StockBuilderEffects:
         self._callable_guards = []
         self._callable_ids = set()
         self._provider_codes = {}
+        self._canonical_plan = None
         self._stock = True
         provider_functions = []
         entry_providers = []
@@ -520,6 +528,7 @@ class StockBuilderEffects:
         cache_key = _provider_cache_key(bd, extra_providers)
         plan = _cached_provider_plan(cache_key)
         if plan is not None and len(plan.entry_providers) == len(entry_providers):
+            self._canonical_plan = plan
             self._guards.extend(plan.guards)
             self._globals = list(plan.globals)
             self._cells = list(plan.cells)
@@ -529,6 +538,7 @@ class StockBuilderEffects:
             self._context_key = plan.context_key
             self._workplane_current = plan.workplane_current
             self._loggers = plan.loggers
+            self._adopt_frontend_interceptors()
             self._stock &= all(_same_entry_provider(actual, expected) for actual, expected in
                                zip(entry_providers, plan.entry_providers))
             # A mismatch deopts this execution against the canonical plan. Do
@@ -540,7 +550,22 @@ class StockBuilderEffects:
         else:
             plan = None
 
-        if plan is None:
+        if plan is None and require_cached:
+            # This path can run after authored Python has begun.  Dynamic entry
+            # bindings are inspected only to reject the old proof; never build a
+            # new transitive inventory from process state that author code could
+            # have changed.
+            self._guards = list(dynamic_guards)
+            self._globals = list(initial_globals)
+            self._cells = []
+            self._callable_guards = []
+            self._callable_ids = set()
+            self._provider_codes = {}
+            self._context_key = ()
+            self._workplane_current = None
+            self._loggers = ()
+            self._stock = False
+        elif plan is None:
             self._guards = list(dynamic_guards)
             self._globals = list(initial_globals)
             self._cells = []
@@ -655,12 +680,14 @@ class StockBuilderEffects:
             if self._stock and _provider_plan_cacheable(self._globals,
                                                         self._callable_guards):
                 static_guards = tuple(self._guards[len(dynamic_guards):])
-                _remember_provider_plan(cache_key, _ProviderPlan(
+                plan = _ProviderPlan(
                     tuple(entry_providers), static_guards, tuple(self._globals),
                     tuple(self._cells), tuple(self._callable_guards),
                     tuple((name, frozenset(codes)) for name, codes in self._provider_codes.items()),
                     self._context_key, self._workplane_current, self._loggers,
-                ))
+                )
+                _remember_provider_plan(cache_key, plan)
+                self._canonical_plan = plan
         self._add = original.get((bd.Builder, "_add_to_context"), bd.Builder._add_to_context)
         self._bool = original.get((bd.Shape, "_bool_op"), bd.Shape._bool_op)
         self._wrapped = original.get((bd.Shape, "wrapped"), inspect.getattr_static(bd.Shape, "wrapped"))
@@ -672,6 +699,33 @@ class StockBuilderEffects:
                         for namespace, name, value in self._globals)
                 and all(cell.cell_contents is value for cell, value in self._cells)
                 and all(guard.matches() for guard in self._callable_guards))
+
+    def _adopt_frontend_interceptors(self):
+        """Translate a cold plan to exact closures installed before this replay.
+
+        The frontend records each successful patch before authored code begins.
+        A later authored replacement never equals that recorded closure and is
+        therefore left to fail the normal identity guard.
+        """
+        if self.frontend is None:
+            return
+        for patched_owner, patched_name, original, replacement in self.frontend._installed:
+            self._guards = [
+                (owner, name, replacement)
+                if (name == patched_name and expected is original
+                    and inspect.getattr_static(owner, name, _MISSING) is replacement)
+                else (owner, name, expected)
+                for owner, name, expected in self._guards
+            ]
+            if not inspect.isclass(patched_owner):
+                namespace = vars(patched_owner)
+                if namespace.get(patched_name) is replacement:
+                    self._globals = [
+                        (values, name, replacement)
+                        if values is namespace and name == patched_name and expected is original
+                        else (values, name, expected)
+                        for values, name, expected in self._globals
+                    ]
 
     def finalize_frontend_guards(self):
         """Freeze installed internal interceptors after all frontend patches."""
@@ -983,34 +1037,54 @@ class _BuilderState:
 class BuilderEffectsFrontend:
     """Constructor provenance and ordinary Python wrapper/effect publication."""
 
-    def __init__(self, frontend):
+    def __init__(self, frontend, *, deferred=False):
         self.frontend = frontend
-        self.stock = StockBuilderEffects(frontend)
+        self.stock = None
         self.current = None
         self.builders = {}
         self.owners = {}
         bd = frontend._bd
-        original = self.stock._add
+        originals = {(owner, name): value for owner, name, value in frontend._originals}
+        original = originals.get((bd.Builder, "_add_to_context"), bd.Builder._add_to_context)
+        self._add_original = original
         def add(builder, *objects, **kwargs):
             sketch = getattr(frontend, "_sketch_effects", None)
-            if sketch is not None and sketch.add(builder, objects, kwargs):
+            if sketch is not None and sketch.stock is not None and sketch.add(builder, objects, kwargs):
                 return None
-            if not self._add(builder, objects, kwargs):
+            if self.stock is None:
+                self.activate(require_cached=True)
+            if self.stock is not None and self._add(builder, objects, kwargs):
+                return None
+            if self.stock is not None:
                 self.revoke(builder)
-                if sketch is not None:
+                if sketch is not None and sketch.stock is not None:
                     sketch.revoke(builder)
-                return original(builder, *objects, **kwargs)
+            return original(builder, *objects, **kwargs)
         frontend._patch(bd.Builder, "_add_to_context", add)
-        self.stock._guards = [(owner, name, add if owner is bd.Builder and name == "_add_to_context" else value)
+        self._installed_add = add
+
+    def activate(self, *, require_cached=True, finalize=True):
+        if self.stock is not None:
+            return self
+        self.stock = StockBuilderEffects(self.frontend, require_cached=require_cached)
+        add = self._installed_add
+        self.stock._guards = [(owner, name, add if owner is self.frontend._bd.Builder
+                               and name == "_add_to_context" else value)
                               for owner, name, value in self.stock._guards]
+        if finalize:
+            self.frontend._finalize_effect_guards()
+        return self
 
     def finalize_guards(self):
         """Freeze the final solid and sketch interceptor implementations."""
         audits = (self.stock, self.frontend._sketch_effects.stock)
         for audit in audits:
-            audit.finalize_frontend_guards()
+            if audit is not None:
+                audit.finalize_frontend_guards()
 
     def begin(self, kind, shape, builder, dimensions, kwargs):
+        if self.stock is None:
+            self.activate(require_cached=True)
         f = self.frontend
         previous = self.current
         align = kwargs.get("align", (f._bd.Align.CENTER,) * 3)
@@ -1029,6 +1103,8 @@ class BuilderEffectsFrontend:
             frame.native_seed = self.frontend._native_originals["wrapped"].fget(shape)
 
     def capture(self, shape):
+        if self.stock is None:
+            return False
         frame = self.current
         if frame is None or frame.output is None or frame.source_native is None:
             return False
@@ -1055,11 +1131,15 @@ class BuilderEffectsFrontend:
             self._manage(shape, frame.output, frame.builder)
 
     def revoke(self, builder):
+        if self.stock is None:
+            return
         state = self.builders.get(id(builder))
         if state is not None:
             state.eligible = False
 
     def revoke_shape(self, shape):
+        if self.stock is None:
+            return
         builder = self.owners.get(id(shape))
         if builder is not None:
             self.revoke(builder)

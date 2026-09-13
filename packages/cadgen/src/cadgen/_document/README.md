@@ -59,6 +59,14 @@ Their immutable results are keyed by prototype and explicit derivation options.
 A placement-only revision can reuse both its native prototype and its mesh.
 Located queries preserve this separation: their native view does not replace
 the returned occurrence's canonical prototype.
+Moving a whole authored assembly currently takes the ordinary private-copy
+path. Its hierarchy and saved placement remain correct, but even a subsequent
+PBR-only edit recaptures its geometry; retained assembly placement is still a
+frontend coverage gap.
+The current wrapper-copy guard also takes private execution when authored PBR
+or face-style dictionaries are attached before placing a leaf. Assigning those
+styles after placement keeps the supported retained path; both execution paths
+preserve saved appearance values.
 
 `RevisionConsumer` pins an exact committed root and resolves occurrence paths
 within that owner and revision. Trusted read-only queries return immutable
@@ -151,9 +159,27 @@ topology without assuming enumeration order. Native STEP colors and physical
 materials have independent readback checks. A translator dropping a physical
 material field fails explicitly. Generic source-to-saved face correspondence
 remains open: current readback verifies the palette, with actual face-placement
-checks on the bounded native fixtures. PBR annotations, kinematics and all mesh
-declarations still need complete publication coverage;
-unsupported declarations do not route to the previous generation engine.
+checks on the bounded native fixtures.
+
+Intrinsic PBR fields and material tags use the sole `<part>.step.json`
+companion. Its strict versioned schema binds the exact STEP digest and byte
+count, and addresses only independently verified saved hierarchy paths. Those
+annotations are companion facts; native color, face and physical-material facts
+remain in STEP. A PBR-only edit of a retained root reuses the native STEP
+product. Empty metadata removes the companion and attests its absence.
+STEP and companion acquire their output claims together after private staging.
+Every completed rename, deletion or matching-state observation immediately gets
+a historical receipt, while final pair verification gates build success. A
+second-output failure preserves earlier receipts and fails the build; a stale
+companion is rejected by its STEP binding. Two filesystem renames are not an
+atomic transaction.
+
+Saved-file loading captures companion bytes before dispatch and validates them
+against the independently imported STEP root. Annotated and STEP-only revisions
+share native prototypes within their saved-document owner, which stays separate
+from source ownership. Recovery retains this separation. Kinematics and mesh
+declarations still need publication coverage; unsupported declarations do not
+route to the previous generation engine.
 
 The new catalog uses SQLite/WAL and immutable opaque payloads, with head
 transactions, exact reader leases, receipt records and bounded reclamation.
