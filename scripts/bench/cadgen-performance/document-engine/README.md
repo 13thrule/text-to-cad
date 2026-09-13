@@ -41,6 +41,25 @@ moved top face reported z=12 mm; increasing the hole radius from 3 to 3.5 mm
 changed its reported area from 585.537619 to 544.696914 mm². These checks do not
 establish the public resident-viewer or large-assembly gate.
 
+## Real 118-occurrence assembly
+
+The `full-paired` command additionally accepts `--models iris118`. It uses the
+existing mechanical iris source under `models/assemblies/src/`, preserving all
+modeling helpers and geometry. It redirects the one declared STEP into the
+benchmark directory and instruments source execution. The local geometry edit
+changes the base-ring mounting-hole diameter; the placement edit translates
+only that base ring along Z. Every saved result is independently imported and
+checks all 118 occurrences, including the 117 parts that must stay unchanged.
+This fixture is opt-in; default short runs still use the plate and Assembly24.
+
+Its frozen old-engine cold build is approximately 20 seconds on the development
+machine. Start with three cold and three warm samples, run the two engines
+serially, and use `--warm-timeout 160` for each primed edit session. The per-build
+cap remains 60 seconds. Use the same `full-paired` report arguments described
+below; both runtime revisions are archived before timing and the report keeps
+every sample, actual output check, and independent geometry oracle. Do not mix
+in-process diagnostic timings with this complete STEP-plus-companion boundary.
+
 ## Serial engine benchmark
 
 `harness.py` prepares code-only frozen runtime archives, runs the two bounded

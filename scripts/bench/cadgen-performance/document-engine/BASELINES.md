@@ -453,3 +453,51 @@ Their completed-sample journals use the same names with `.samples.jsonl`
 appended, except the derived comparison report. `RESULTS-20260913.sha256`
 freezes the exact report and journal bytes while these machine-local results
 remain ignored by Git.
+
+## Iris118 coverage failure — 13 September 2026
+
+The first moderate real-model probe qualifies the earlier small-fixture results:
+those improvements do not yet generalize. The mechanical iris has 118 labeled
+occurrences and produces roughly 13 MB of STEP. These initial complete-request
+samples use the same accepted source bytes and STEP-plus-absent-companion checks:
+
+| Task | Frozen old engine | Internal retained engine | Samples per engine |
+| --- | ---: | ---: | ---: |
+| Cold build | 19.690 s | 22.120 s | 1 |
+| Unchanged build | 0.073 s | 20.683 s | 1 |
+
+These are diagnostic observations, not a repeated paired performance baseline.
+The current engine was a live worktree, with concurrent engineering work during
+part of its probe. Its unchanged result recomputed 1,646 evaluations and made
+1,772 native copies, so the regression is not explained by timer noise. The old
+unchanged gate executes no model body; the new path executes the body and is
+expected to reuse matching managed CAD operations. Both archived STEP outputs
+independently agree on all 118 occurrence labels, topology counts, volume, area
+and bounds. Different STEP byte counts are therefore not themselves evidence of
+missing geometry. Appearance parity was not measured by this geometry oracle.
+
+The first unintended native escape was stock Cone insertion into BuildPart.
+The guarded Cone fix at `27a7c5a23` removes that boundary, but the next escape is
+the second Polygon in a multi-polygon BuildSketch. A subsequent in-process
+probe still takes about 18.4 seconds unchanged; it has a different timing
+boundary and is not an after value for the table. Coverage remains a cutover
+blocker, including ordinary selected-edge queries and modifiers.
+
+A separate old-engine series in a reserved serial compute window changed only
+the base-ring mounting holes to 5.05, 5.10 and 5.15 mm. Complete warm requests
+took **5.893, 5.943 and 5.960 seconds** (median **5.943 seconds**), with source
+execution on every edit. All three saved geometry oracles passed, including the
+117 unchanged parts. There is no matched new-engine edit result yet. The
+repeatable `full-paired --models iris118` workload now supports these hole edits
+and exact base-ring placement edits without changing the original algorithms.
+
+Local raw evidence (not committed CAD artifacts):
+
+- `models/tmp/document-iris-legacy-probe-20260913-v2/report.json`, SHA-256
+  `0b7d13b600749103bdce37fa1c58f4ca4c04fb173228008f4542a5d7a1f411f2`.
+- `models/tmp/document-iris-candidate-probe-20260913/report.json`, SHA-256
+  `a380267237805cc55e8ad0d53465387e18aa5d9ddb0851a5d30247481b050121`.
+- `models/tmp/document-iris-readback-probe-20260913/comparison.json` and
+  `readback.json`, the independent 118-part geometry comparison.
+- `models/tmp/document-iris-legacy-edit-series-20260913-v2/report.json`, SHA-256
+  `2289ce45164e27a651fccc50d0f212569df735d826c123717421abd021d9e038`.

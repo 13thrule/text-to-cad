@@ -9,6 +9,7 @@ includes oracle readback, report writing, or daemon cleanup.
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import hashlib
 import json
@@ -35,7 +36,10 @@ CHECKPOINT = "5c4a212cae32e834fa4d805ae778ab5ee6cd71a2"
 OPTIMIZED_CODE = "18cc312ce"
 MAIN = "3e4dfdeef2cbd5804c369592b59620132188a150"
 OUTPUTS = {"plate": "plate.step", "assembly24": "assembly24.step"}
-EXPECTED_OCCURRENCES = {"plate": 1, "assembly24": 24}
+FULL_OUTPUTS = {**OUTPUTS, "iris118": "mechanical_iris_aperture.step"}
+EXPECTED_OCCURRENCES = {"plate": 1, "assembly24": 24, "iris118": 118}
+IRIS_SOURCE = REPO / "models/assemblies/src/mechanical_iris_aperture/mechanical_iris_aperture.py"
+IRIS_BASE_LABEL = "base_ring_annular_disk_160od_52id_countersunk"
 GEOMETRY_LINE = "HOLE_RADIUS = 3.0  # BENCH_GEOMETRY"
 PLACEMENT_LINE = "PLACEMENT_Z = 0.0  # BENCH_PLACEMENT"
 TRACE_SCHEMA = 1
@@ -240,6 +244,50 @@ def source_variant(original: str, *, geometry: float = 3.0, placement: float = 0
     )
 
 
+def full_fixture_path(model: str) -> Path:
+    return IRIS_SOURCE if model == "iris118" else FIXTURES / f"{model}.py"
+
+
+def validate_full_fixture(original: str) -> None:
+    decorators = [decorator.func.id if isinstance(decorator, ast.Call)
+                  and isinstance(decorator.func, ast.Name)
+                  else decorator.id if isinstance(decorator, ast.Name) else None
+                  for node in ast.walk(ast.parse(original))
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                  for decorator in node.decorator_list]
+    if decorators.count("step") != 1 or "memo" in decorators:
+        raise AssertionError("full-request fixture requires one @step and no @memo")
+
+
+def full_source_variant(model: str, original: str, *, geometry: float,
+                        placement: float) -> str:
+    """Adapt the real iris source without replacing its modeling algorithms."""
+    if model != "iris118":
+        return source_variant(original, geometry=geometry, placement=placement)
+    declaration = '@step(out="../../STEP/mechanical_iris_aperture/mechanical_iris_aperture.step")'
+    markers = (declaration, "BASE_MOUNT_HOLE_DIAMETER = 5.0\n",
+               "    assembly = bd.Compound(\n", "    return assembly\n")
+    if any(original.count(marker) != 1 for marker in markers):
+        raise RuntimeError("iris fixture declaration or edit markers changed")
+    return original.replace(
+        declaration, f'@step(out="{FULL_OUTPUTS[model]}")',
+    ).replace(
+        markers[1], f"BASE_MOUNT_HOLE_DIAMETER = {geometry:.6f}\n"
+                    f"BENCH_PLACEMENT_Z = {placement:.6f}\n",
+    ).replace(
+        markers[2], "    if BENCH_PLACEMENT_Z:\n"
+                    "        parts[1] = parts[1].moved(bd.Location((0.0, 0.0, BENCH_PLACEMENT_Z)))\n"
+                    + markers[2],
+    ).replace(
+        markers[3], "    import os\n    from pathlib import Path\n"
+                    '    trace = os.environ.get("CADGEN_DOCUMENT_BENCH_SOURCE_TRACE")\n'
+                    "    if trace:\n"
+                    '        with Path(trace).open("a") as stream:\n'
+                    '            stream.write("{}\\n")\n'
+                    + markers[3],
+    )
+
+
 def json_events(stdout: str) -> list[dict[str, Any]]:
     rows = []
     for line in stdout.splitlines():
@@ -419,6 +467,38 @@ def validate_oracle(model: str, scenario: str, prime: dict[str, Any], row: dict[
     before, after = parts_by_label(prime), parts_by_label(current)
     if before.keys() != after.keys():
         raise AssertionError(f"{model}/{scenario}: labels changed")
+    if model == "iris118" and scenario != "unchanged":
+        if len(before) != expected_count or IRIS_BASE_LABEL not in before:
+            raise AssertionError("iris oracle requires unique labels and its edited base ring")
+        for label in before:
+            left, right = before[label], after[label]
+            if label != IRIS_BASE_LABEL:
+                assert_oracle_parity(
+                    {"occurrences": 1, "valid": True, "parts": [left]},
+                    {"occurrences": 1, "valid": True, "parts": [right]},
+                    f"iris118/{scenario}/unchanged/{label}",
+                )
+            elif scenario == "local_geometry":
+                if not right["volume"] < left["volume"]:
+                    raise AssertionError("iris hole edit did not remove base-ring volume")
+                for corner in (0, 1):
+                    for axis in range(3):
+                        assert_close(right["bounds"][corner][axis], left["bounds"][corner][axis],
+                                     "iris geometry edit changed base-ring bounds")
+            elif scenario == "placement":
+                for field in ("volume", "area"):
+                    assert_close(right[field], left[field], f"iris placement changed {field}")
+                if right["counts"] != left["counts"]:
+                    raise AssertionError("iris placement changed topology")
+                for corner in (0, 1):
+                    for axis in range(3):
+                        delta = row["placementValue"] if axis == 2 else 0.0
+                        assert_close(right["bounds"][corner][axis],
+                                     left["bounds"][corner][axis] + delta,
+                                     "iris placement differs from requested base-ring translation")
+            else:
+                raise ValueError(f"unknown iris edit scenario: {scenario}")
+        return
     if scenario == "unchanged":
         if current != prime or row["stepSha256"] != row["primeStepSha256"]:
             raise AssertionError(f"{model}/unchanged: geometry or STEP bytes changed")
@@ -1031,12 +1111,12 @@ def full_request_session(*, python: Path, engine_package: Path, readback_package
                          cold_index: int = 0) -> dict[str, Any]:
     """Run one full captured-entry session through an attested STEP response."""
     root.mkdir(parents=True, exist_ok=False)
-    original_path = FIXTURES / f"{model}.py"
+    original_path = full_fixture_path(model)
     original = original_path.read_text(encoding="utf-8")
-    if "@memo" in original or original.count("@step") != 1:
-        raise AssertionError(f"invalid full-request fixture: {original_path}")
+    validate_full_fixture(original)
     source = root / original_path.name
-    output = root / OUTPUTS[model]
+    output = root / FULL_OUTPUTS[model]
+    initial_geometry = 5.0 if model == "iris118" else 3.0
     source_trace = root / "source-trace.jsonl"
     accepted = root / "accepted-inputs"
     accepted.mkdir()
@@ -1044,7 +1124,8 @@ def full_request_session(*, python: Path, engine_package: Path, readback_package
 
     def add_request(*, label: str, sample: int | None, measured: bool,
                     geometry: float, placement: float, name: str) -> None:
-        payload = source_variant(original, geometry=geometry, placement=placement).encode("utf-8")
+        payload = full_source_variant(model, original, geometry=geometry,
+                                      placement=placement).encode("utf-8")
         # A transport buffer is not an importable source path. The logical
         # model path is absent (current) or hidden (legacy) during readback.
         capture = accepted / f"{name}.buffer"
@@ -1058,12 +1139,13 @@ def full_request_session(*, python: Path, engine_package: Path, readback_package
 
     if cold:
         add_request(label=f"{model}/cold/{cold_index}", sample=cold_index, measured=True,
-                    geometry=3.0, placement=0.0, name=f"cold-{cold_index}")
+                    geometry=initial_geometry, placement=0.0, name=f"cold-{cold_index}")
     else:
         add_request(label=f"{model}/{scenario}/prime", sample=None, measured=False,
-                    geometry=3.0, placement=0.0, name="prime")
+                    geometry=initial_geometry, placement=0.0, name="prime")
         for sample in range(samples):
-            geometry = 3.0 + 0.05 * (sample + 1) if scenario == "local_geometry" else 3.0
+            geometry = (initial_geometry + 0.05 * (sample + 1)
+                        if scenario == "local_geometry" else initial_geometry)
             placement = 0.5 + 0.25 * sample if scenario == "placement" else 0.0
             add_request(label=f"{model}/{scenario}/{sample}", sample=sample, measured=True,
                         geometry=geometry, placement=placement, name=f"sample-{sample}")
@@ -1249,9 +1331,9 @@ def full_request_report(*, engine: str, python: Path, package: Path,
             "singleFileExactEntryCapture": True,
         },
         "fixtureSources": {name: {
-            "sha256": sha256(FIXTURES / f"{name}.py"),
-            "path": str((FIXTURES / f"{name}.py").relative_to(REPO)),
-        } for name in OUTPUTS},
+            "sha256": sha256(full_fixture_path(name)),
+            "path": str(full_fixture_path(name).relative_to(REPO)),
+        } for name in models},
         "timingBoundary": (
             "fullRequestMs begins before a cold adapter process launch or, for warm rows, immediately "
             "before input delivery inside a primed persistent adapter. It ends only after source and "
@@ -1363,7 +1445,7 @@ def command_full_paired(args: argparse.Namespace) -> None:
     scenarios = args.scenarios.split(",") if args.scenarios else [
         "cold", "unchanged", "local_geometry", "placement",
     ]
-    if (set(models) - OUTPUTS.keys()
+    if (set(models) - FULL_OUTPUTS.keys()
             or set(scenarios) - {"cold", "unchanged", "local_geometry", "placement"}):
         raise ValueError("unknown full-paired model or scenario")
     scratch.mkdir(parents=True)
@@ -2012,7 +2094,7 @@ def parser() -> argparse.ArgumentParser:
     full_paired.add_argument("--warm-samples", type=int, default=10)
     full_paired.add_argument("--cold-timeout", type=float, default=60.0)
     full_paired.add_argument("--warm-timeout", type=float, default=120.0)
-    full_paired.add_argument("--models", help="comma-separated subset: plate,assembly24")
+    full_paired.add_argument("--models", help="comma-separated subset: plate,assembly24,iris118; iris is opt-in")
     full_paired.add_argument(
         "--scenarios",
         help="comma-separated subset: cold,unchanged,local_geometry,placement",
