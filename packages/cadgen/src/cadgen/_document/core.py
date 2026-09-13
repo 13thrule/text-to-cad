@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import math
 from threading import Event, RLock, get_ident
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
 from uuid import uuid4
 
-from .identities import EvaluationIdentity, EvaluationKey, LogicalIdentity, normalize
+from .identities import EvaluationIdentity, EvaluationKey, LogicalIdentity, allocation_provenance, normalize
 from .native import NativeEscapeArena, NativeResult, TopologyHistory, copy_many, copy_shape
 from .resources import Cancelled, ResourceAdmission, ResourceRequest
 from .roots import RootNode, root_handles, validate_root
@@ -101,6 +102,7 @@ class _Prototype:
     history: TopologyHistory
     dependencies: tuple[GeometryHandle, ...]
     alias_sources: tuple[Any, ...] = ()
+    auxiliary: Any = None
 
 
 @dataclass(frozen=True)
@@ -423,31 +425,7 @@ class RevisionTransaction:
         return result
 
     def _input_alias_provenance(self, handles) -> tuple:
-        """Canonical sharing DAG, independent of execution UUIDs and ordinals.
-
-        Evaluation IDs describe each node's computation; repeated traversal of
-        one allocation emits the same local node index. Thus root+its-face and
-        root+another-root's-equal-face cannot collide. Unary input structure is
-        already represented by its evaluation ID; only relationships between
-        multiple inputs need this additional encoding.
-        """
-        if len(handles) < 2:
-            return ()
-        indices = {}
-        nodes = []
-        def visit(handle):
-            key = handle.allocation_id
-            if key in indices:
-                return indices[key]
-            index = len(nodes)
-            indices[key] = index
-            nodes.append(None)
-            allocation = self.document._allocations[key]
-            children = tuple(visit(parent) for parent in allocation.inputs)
-            nodes[index] = (handle.evaluation_id.value, children)
-            return index
-        roots = tuple(visit(handle) for handle in handles)
-        return roots, tuple(nodes)
+        return allocation_provenance(handles, self.document._allocations)
 
     def _nonce(self) -> str:
         self._volatile += 1
@@ -509,13 +487,15 @@ class RevisionTransaction:
                 raise TypeError("document operator must return NativeResult")
             if result.shape is None or result.shape.IsNull():
                 raise ValueError("document operator returned null geometry")
+            auxiliary = _freeze_auxiliary(result.auxiliary)
             # Escaped outputs remain mutable in this execution; retained snapshots do not.
             retained = copy_shape(result.shape) if escaped else result.shape
             self.stats.native_copies += int(escaped)
         handle = GeometryHandle(self.document.owner_id, key.identity, prototype_id, self._nonce())
         self.document._prototypes[prototype_id] = _Prototype(
             handle, key, retained, result.history, inputs,
-            native_inputs if spec.mutation is Mutation.READ_ONLY and not escaped else ())
+            native_inputs if spec.mutation is Mutation.READ_ONLY and not escaped else (),
+            auxiliary)
         self.document._allocations[handle.allocation_id] = _Allocation(handle, inputs)
         if escaped:
             self.escape_arena.adopt(handle, result.shape)
@@ -649,6 +629,36 @@ class RevisionTransaction:
 
     def __exit__(self, *exc) -> None:
         self.abort()
+
+
+def _freeze_auxiliary(value: Any, depth: int = 0, _budget=None) -> Any:
+    """Snapshot bounded closed structural values carried by a native result.
+
+    Count expanded visits, not only unique containers: checkpoint serialization
+    expands shared value tuples too. A tiny recursive DAG must not turn into
+    unbounded allocation or serialization work.
+    """
+    if _budget is None:
+        _budget = [8 * 1024**2]
+    _budget[0] -= 64 + (len(value) * (4 if type(value) is str else 1)
+                        if type(value) in (str, bytes) else 0)
+    if _budget[0] < 0:
+        raise ValueError("native result auxiliary values exceed the size limit")
+    if depth > 128:
+        raise ValueError("native result auxiliary nesting exceeds the limit")
+    if value is None or type(value) in (str, bytes, bool, int):
+        return value
+    if type(value) is float and math.isfinite(value):
+        return value
+    if type(value) in (tuple, list):
+        return tuple(_freeze_auxiliary(item, depth + 1, _budget) for item in value)
+    if type(value) in (dict, MappingProxyType) and all(type(key) is str for key in value):
+        result = {}
+        for key, item in value.items():
+            _freeze_auxiliary(key, depth + 1, _budget)
+            result[key] = _freeze_auxiliary(item, depth + 1, _budget)
+        return MappingProxyType(result)
+    raise TypeError("native result auxiliary data requires finite closed values")
 
 
 def _freeze_derived(value: Any) -> Any:

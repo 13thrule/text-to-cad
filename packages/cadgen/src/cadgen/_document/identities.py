@@ -60,6 +60,33 @@ def normalize(value: Any) -> tuple:
     raise TypeError(f"unsupported document parameter type: {type(value).__module__}.{type(value).__qualname__}")
 
 
+def allocation_provenance(handles, allocations) -> tuple:
+    """Canonical input-sharing DAG used by evaluation and checkpoint recovery.
+
+    Execution UUIDs locate rows while traversing but never enter the result.
+    Unary ancestry is already encoded by its evaluation identity; relations
+    between multiple inputs additionally distinguish shared and equal roots.
+    """
+    if len(handles) < 2:
+        return ()
+    indices = {}
+    nodes = []
+
+    def visit(handle):
+        key = handle.allocation_id
+        if key in indices:
+            return indices[key]
+        index = len(nodes)
+        indices[key] = index
+        nodes.append(None)
+        children = tuple(visit(parent) for parent in allocations[key].inputs)
+        nodes[index] = (handle.evaluation_id.value, children)
+        return index
+
+    roots = tuple(visit(handle) for handle in handles)
+    return roots, tuple(nodes)
+
+
 @dataclass(frozen=True)
 class EvaluationKey:
     operator: str

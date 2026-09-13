@@ -52,8 +52,10 @@ class BuildAttempt:
         started = time.perf_counter()
         try:
             with self.document.begin(source_identity=self.source.digest, required_exports=self.required_exports) as transaction:
-                if self.job is not None:
-                    transaction.cancellation = self.job.cancellation
+                cancellation = (None if self.job is None
+                                else getattr(self.job, "cancellation", None))
+                if cancellation is not None:
+                    transaction.cancellation = cancellation
                 try:
                     with FrontendSession(transaction) as frontend:
                         yield frontend
@@ -88,6 +90,26 @@ class BuildAttempt:
                 error.add_note(f"Could not mark native revision failed: {failure}")
 
 
+@dataclass(frozen=True)
+class SavedDocument:
+    """A byte-bound saved artifact revision, never a source preview."""
+
+    document: Any
+    revision_id: int
+    input_path: str
+    input_sha256: str
+    input_size: int
+    reused: bool
+
+
+@dataclass(frozen=True)
+class CheckpointPublication:
+    document_id: str
+    revision_id: int
+    catalog_revision_id: str
+    published: bool
+
+
 class DocumentService:
     """A bounded, thread-affine set of retained documents in a kernel worker.
 
@@ -97,13 +119,23 @@ class DocumentService:
     """
 
     def __init__(self, *, max_documents: int = 8, document_factory: Any = None,
-                 coordinator: Any = None):
+                 coordinator: Any = None, checkpoint_codec: Any = None):
         if isinstance(max_documents, bool) or not isinstance(max_documents, int) or max_documents < 1:
             raise ValueError("max_documents must be a positive integer")
         self.max_documents = max_documents
         self._factory = document_factory
+        if checkpoint_codec is not None:
+            from .checkpoint import CheckpointCodec
+
+            if type(checkpoint_codec) is not CheckpointCodec:
+                raise TypeError("document recovery requires a CheckpointCodec")
+            if document_factory is not None:
+                raise ValueError("a recovered document cannot use a custom document factory")
+        self._codec = checkpoint_codec
         self._thread = threading.get_ident()
         self._documents: OrderedDict[tuple[str, str], Any] = OrderedDict()
+        self._checkpoint_heads: dict[tuple[str, str], str | None] = {}
+        self.recovery: dict[tuple[str, str], str] = {}
         self._active: set[tuple[str, str]] = set()
         self.last_attempt: BuildAttempt | None = None
         if coordinator is None:
@@ -123,6 +155,179 @@ class DocumentService:
         from .program import generate
 
         return generate(self, path, function)
+
+    def generate_captured(self, source: CapturedInput, function: str | None = None, *,
+                          cancellation=None):
+        """Build one already-captured source buffer without reading its path again."""
+        self._check_owner()
+        from .program import generate_captured
+
+        return generate_captured(self, source, function, cancellation=cancellation)
+
+    @staticmethod
+    def _has_live_pins(owner) -> bool:
+        pins = getattr(owner, "_pins", None)
+        if pins is None:
+            return False
+        lock = getattr(owner, "_lock", None)
+        if lock is None:
+            return any(pins.values())
+        with lock:
+            return any(pins.values())
+
+    def _evict_one(self) -> None:
+        """Remove one inactive, unpinned owner with the pin check held stable."""
+        for candidate, owner in self._documents.items():
+            if candidate in self._active:
+                continue
+            lock = getattr(owner, "_lock", None)
+            if lock is None:
+                if self._has_live_pins(owner):
+                    continue
+                victim = candidate
+                break
+            with lock:
+                if any(getattr(owner, "_pins", {}).values()):
+                    continue
+                self._documents.pop(candidate)
+                self._checkpoint_heads.pop(candidate, None)
+                self.recovery.pop(candidate, None)
+                return
+        else:
+            raise RuntimeError("document capacity exhausted by active or pinned owners")
+        self._documents.pop(victim)
+        self._checkpoint_heads.pop(victim, None)
+        self.recovery.pop(victim, None)
+
+    def _document_for(self, key, identity, *, admission=None, cancellation=None):
+        """Acquire one owner, restoring only this engine's disposable checkpoint."""
+        if cancellation is not None and cancellation.is_set():
+            from .resources import Cancelled
+
+            raise Cancelled("document acquisition was cancelled")
+        if self._codec is not None:
+            self._codec._check_runtime()
+        if key in self._documents:
+            self._documents.move_to_end(key)
+            return self._documents[key]
+        at_capacity = len(self._documents) >= self.max_documents
+        if at_capacity:
+            evictable = any(candidate not in self._active and not self._has_live_pins(owner)
+                            for candidate, owner in self._documents.items())
+            if not evictable:
+                raise RuntimeError("document capacity exhausted by active or pinned owners")
+        document = None
+        selected = None
+        status = "absent"
+        if self._codec is not None:
+            from .checkpoint import CheckpointError
+            from .storage import StorageCorrupt
+
+            selected = self._codec.catalog.head(identity)
+            if selected is not None:
+                try:
+                    restored = self._codec.recover(identity, selected, admission=admission or self.coordinator.admission,
+                                                   cancellation=cancellation)
+                    document = restored.document
+                    document.admission = self.coordinator.admission
+                    status = "recovered"
+                except (CheckpointError, StorageCorrupt, KeyError):
+                    # Missing, corrupt or incompatible derived state is a miss.
+                    # Source still executes; saved artifacts still parse their
+                    # captured bytes. Never acknowledge historical file saves.
+                    status = "discarded"
+        if document is None:
+            if self._factory is not None:
+                document = self._factory(identity)
+            else:
+                from .core import Document
+
+                runtime = () if self._codec is None else self._codec.runtime
+                document = Document(identity, runtime=runtime, admission=self.coordinator.admission)
+        if cancellation is not None and cancellation.is_set():
+            from .resources import Cancelled
+
+            raise Cancelled("document acquisition was cancelled")
+        if at_capacity:
+            self._evict_one()
+        self._documents[key] = document
+        self._checkpoint_heads[key] = selected
+        self.recovery[key] = status
+        return document
+
+    def checkpoint(self, document, revision_id: int | None = None, *,
+                   resources=None, cancellation=None) -> CheckpointPublication:
+        """Checkpoint an idle resident owner under its original catalog CAS.
+
+        This is internal maintenance, not an authored save queue. Source and
+        completed exchange files remain durable even without a checkpoint.
+        A conflict never advances the expectation to overwrite another owner.
+        """
+        self._check_owner()
+        if self._codec is None:
+            raise RuntimeError("this document service has no checkpoint catalog")
+        key = next((key for key, value in self._documents.items() if value is document), None)
+        if key is None:
+            raise ValueError("checkpoint requires this service's resident document")
+        if key in self._active or document._active:
+            raise RuntimeError("checkpoint requires an idle document")
+        head = document.head
+        selected = head.revision_id if revision_id is None and head is not None else revision_id
+        if type(selected) is not int:
+            raise ValueError("checkpoint requires a committed revision")
+        with document.pin(selected) as pin:
+            from .core import RevisionState
+
+            if (head is None or selected != head.revision_id
+                    or document.state(selected) not in {RevisionState.GEOMETRY_READY,
+                                                        RevisionState.EXPORTS_COMPLETE}):
+                raise ValueError("checkpoint publication requires the current usable head")
+            staged = self._codec.stage(document, pin.revision_id,
+                                       resources=resources, cancellation=cancellation)
+            if cancellation is not None and cancellation.is_set():
+                from .resources import Cancelled
+
+                raise Cancelled("document checkpoint was cancelled")
+            published = self._codec.commit(staged, expected_head=self._checkpoint_heads[key])
+        if published:
+            self._checkpoint_heads[key] = staged.revision_id
+        return CheckpointPublication(document.document_id, selected, staged.revision_id, published)
+
+    def load_step(self, source: CapturedInput, *, work_directory: Path,
+                  cancellation=None) -> SavedDocument:
+        """Open the actual captured file in a saved-artifact owner.
+
+        Identical bytes can share this owner across paths. Capturing a replaced
+        file selects another owner; neither case executes model source.
+        """
+        self._check_owner()
+        from .resources import Cancelled
+        from .step_import import StepImportSession, step_input_identity
+
+        if cancellation is not None and cancellation.is_set():
+            raise Cancelled("STEP import was cancelled")
+        runtime = () if self._codec is None else self._codec.runtime
+        identity = step_input_identity(source, runtime=runtime)
+        key = ("saved-step", identity)
+        if key in self._active:
+            raise RuntimeError("recursive saved STEP import")
+        document = self._document_for(key, f"saved-step:{identity}", cancellation=cancellation)
+        self._active.add(key)
+        try:
+            head = document.head
+            reused = (head is not None and head.source_identity == f"step:{source.digest}"
+                      and head.unrepresented_metadata == ())
+            if not reused:
+                imported = StepImportSession(document, work_directory=work_directory,
+                                             cancellation=cancellation).load(source)
+                revision_id = imported.revision_id
+            else:
+                revision_id = head.revision_id
+            document.collect(keep_revisions=2)
+            return SavedDocument(document, revision_id, str(source.path), source.digest,
+                                 len(source.data), reused)
+        finally:
+            self._active.remove(key)
 
     @contextmanager
     def activate(self) -> Iterator[DocumentService]:
@@ -144,20 +349,9 @@ class DocumentService:
         key = (str(source.path), function)
         if key in self._active:
             raise RuntimeError(f"recursive document build: {source.path.name}::{function}")
-        if key not in self._documents:
-            while len(self._documents) >= self.max_documents:
-                victim = next((candidate for candidate in self._documents if candidate not in self._active), None)
-                if victim is None:
-                    raise RuntimeError("document capacity exhausted by active builds")
-                self._documents.pop(victim)
-            factory = self._factory
-            if factory is None:
-                from cadgen._document import Document
-
-                factory = Document
-            self._documents[key] = factory(f"{source.path}::{function}")
-        document = self._documents[key]
-        self._documents.move_to_end(key)
+        document = self._document_for(key, f"source:{source.path}::{function}",
+                                      admission=None if job is None else job.admission,
+                                      cancellation=None if job is None else getattr(job, "cancellation", None))
         self._active.add(key)
         attempt = BuildAttempt(document, source, function, required_exports, job=job)
         prior_admission = getattr(document, "admission", _ABSENT)

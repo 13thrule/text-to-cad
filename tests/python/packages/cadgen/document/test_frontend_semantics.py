@@ -228,18 +228,35 @@ class FrontendSemanticsTest(unittest.TestCase):
             with self.subTest(operation=operation):
                 expected = place(_nested_group())
                 document = Document(f"nested-group-{operation}")
-                with document.begin() as transaction:
-                    with FrontendSession(transaction) as frontend:
-                        group = _nested_group()
-                        self.assertEqual(("inner", "third"), tuple(c.label for c in group.children))
-                        self.assertEqual(("first", "second"), tuple(c.label for c in group.children[0].children))
-                        result = frontend.materialize(place(group))
-                        self.assertGreater(frontend._fallback_counts["compound-native-construction"], 0)
-                    transaction.commit()
-                self.assertEqual(_facts(expected), _facts(result))
-                self.assertIs(result, result.children[0].parent)
-                self.assertIs(result.children[0], result.children[0].children[0].parent)
-                copy.deepcopy(result)
+                for turn in range(2):
+                    with document.begin() as transaction:
+                        with FrontendSession(transaction) as frontend:
+                            group = _nested_group()
+                            inner, third = group.children
+                            first, second = inner.children
+                            self.assertEqual(("inner", "third"), tuple(c.label for c in group.children))
+                            self.assertEqual(("first", "second"), tuple(c.label for c in inner.children))
+                            self.assertIs(group, inner.parent)
+                            self.assertIs(group, third.parent)
+                            self.assertIs(inner, first.parent)
+                            self.assertIs(inner, second.parent)
+                            self.assertFalse(transaction.escape_arena.active)
+                            self.assertEqual(0, frontend._fallback_counts.get("compound-native-construction", 0))
+                            if turn:
+                                self.assertEqual(0, transaction.stats.computed)
+                                self.assertGreaterEqual(transaction.stats.reused, 3)
+                            result = frontend.materialize(place(group))
+                            if operation == "unchanged":
+                                self.assertIs(group, result)
+                                self.assertIs(inner, result.children[0])
+                                self.assertIs(first, result.children[0].children[0])
+                                if turn:
+                                    self.assertEqual(0, transaction.stats.computed)
+                        transaction.commit()
+                    self.assertEqual(_facts(expected), _facts(result))
+                    self.assertIs(result, result.children[0].parent)
+                    self.assertIs(result.children[0], result.children[0].children[0].parent)
+                    self.assertEqual(_facts(result), _facts(copy.deepcopy(result)))
 
     def test_flat_group_placements_cross_private_boundary_before_copying(self):
         def group():

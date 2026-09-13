@@ -110,9 +110,11 @@ class BuilderTest(unittest.TestCase):
             self.assertEqual(observations, recorded)
             self.assertEqual(4, fallbacks["builder-effects-replayed"])
             if turn:
-                self.assertEqual(4, stats.reused)
-                # The completed builder remains an opaque capture. Context
-                # booleans and effects still execute; this is not full coverage.
+                self.assertGreater(stats.reused, 4)
+                self.assertEqual(1, fallbacks["builder-effects-retained"])
+                # The first complete stock effect is retained. The authored
+                # topology observations then escape and revoke later effects;
+                # those native actions and their captures still execute.
                 self.assertGreater(stats.computed, 0)
 
     def test_locations_workplanes_rotation_and_alignment(self):
@@ -200,10 +202,11 @@ class BuilderTest(unittest.TestCase):
             return part.part, original
         first, original, *_ = self.run_model(document, fixture)
         first.move(bd.Pos(100, 0, 0))
-        second, recorded, stats, *_ = self.run_model(document, fixture)
+        second, recorded, stats, fallbacks, _ = self.run_model(document, fixture)
         self.assertEqual(original, recorded)
         self.assertEqual(original, facts(second))
-        self.assertEqual(1, stats.reused)
+        self.assertGreater(stats.reused, 1)
+        self.assertEqual(1, fallbacks["builder-effects-retained"])
         self.assertNotEqual(facts(first), facts(second))
 
     def test_custom_kernel_wrapper_is_opaque_and_runs_once_per_constructor(self):

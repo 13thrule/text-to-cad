@@ -287,6 +287,18 @@ class RevisionConsumer:
         """Thread-safe cancellation signal; native callbacks remain owner-thread only."""
         self._cancellation.set()
 
+    def checkpoint(self) -> None:
+        """Let a trusted derivation stop between native calls or Python batches.
+
+        The enclosing derive/query request counts cancellation once when it
+        unwinds. A callback checkpoint does not count a second failed request.
+        Native calls that offer no interruptible binding finish before this
+        checkpoint can observe cancellation.
+        """
+        self._assert_open_owner()
+        if self._cancellation.is_set():
+            raise Cancelled("document consumer was cancelled")
+
     def close(self) -> None:
         self._document._assert_owner()
         if not self._closed:

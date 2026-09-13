@@ -39,6 +39,9 @@ class TopologyHistory:
 class NativeResult:
     shape: Any
     history: TopologyHistory = field(default_factory=TopologyHistory)
+    # Structural effect data is part of this evaluation's result. It must
+    # survive checkpoint recovery along with the native shape and history.
+    auxiliary: Any = None
 
 
 def copy_shape(shape: Any) -> Any:

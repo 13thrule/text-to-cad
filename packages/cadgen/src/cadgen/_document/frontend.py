@@ -208,6 +208,7 @@ class FrontendSession:
         self._topology = None
         self._fallback_counts: dict[str, int] = {}
         self._builder_kernel: tuple[str, str] | None = None
+        self._builder_effects = None
 
     @classmethod
     def current(cls) -> "FrontendSession | None":
@@ -341,13 +342,26 @@ class FrontendSession:
 
         def box_init(shape: Any, length: float, width: float, height: float,
                      rotation=(0, 0, 0), align=None, mode=None) -> None:
-            context = bd.Builder._get_context(log=False)
-            if session._compute_depth or context is not None:
-                kwargs = {"rotation": rotation}
-                if align is not None:
-                    kwargs["align"] = align
-                if mode is not None:
-                    kwargs["mode"] = mode
+            kwargs = {"rotation": rotation}
+            if align is not None:
+                kwargs["align"] = align
+            if mode is not None:
+                kwargs["mode"] = mode
+            if session._compute_depth:
+                original_box_init(shape, length, width, height, **kwargs)
+                return
+            # A context provider is ordinary authored Python when replaced.
+            # Do not add a discovery call before taking its private path.
+            context_provider = inspect.getattr_static(bd.Builder, "_get_context")
+            context_variable = inspect.getattr_static(bd.Builder, "_current")
+            if (not _stock_function(context_provider, "build123d.build_common", "Builder._get_context")
+                    or type(context_variable) is not ContextVar):
+                session._record_fallback("opaque-box-provider-or-parameters")
+                original_box_init(shape, length, width, height, **kwargs)
+                session._capture_private(shape, "opaque-box")
+                return
+            context = context_variable.get(None)
+            if context is not None:
                 session._builder_constructor(
                     "box", shape, context, original_box_init,
                     (length, width, height), kwargs,
@@ -382,13 +396,24 @@ class FrontendSession:
 
         def cylinder_init(shape: Any, radius: float, height: float, arc_size: float = 360,
                           rotation=(0, 0, 0), align=None, mode=None) -> None:
-            context = bd.Builder._get_context(log=False)
-            if session._compute_depth or context is not None:
-                kwargs = {"arc_size": arc_size, "rotation": rotation}
-                if align is not None:
-                    kwargs["align"] = align
-                if mode is not None:
-                    kwargs["mode"] = mode
+            kwargs = {"arc_size": arc_size, "rotation": rotation}
+            if align is not None:
+                kwargs["align"] = align
+            if mode is not None:
+                kwargs["mode"] = mode
+            if session._compute_depth:
+                original_cylinder_init(shape, radius, height, **kwargs)
+                return
+            context_provider = inspect.getattr_static(bd.Builder, "_get_context")
+            context_variable = inspect.getattr_static(bd.Builder, "_current")
+            if (not _stock_function(context_provider, "build123d.build_common", "Builder._get_context")
+                    or type(context_variable) is not ContextVar):
+                session._record_fallback("opaque-cylinder-provider-or-parameters")
+                original_cylinder_init(shape, radius, height, **kwargs)
+                session._capture_private(shape, "opaque-cylinder")
+                return
+            context = context_variable.get(None)
+            if context is not None:
                 session._builder_constructor(
                     "cylinder", shape, context, original_cylinder_init,
                     (radius, height), kwargs, original_make_cylinder,
@@ -440,11 +465,13 @@ class FrontendSession:
             if (values and not (obj is not None and children is not None)
                     and type(shape) is bd.Compound and children is not None
                     and parent is None
+                    and type(label) is str and type(color) in (type(None), bd.Color)
+                    and type(material) in (type(None), str) and type(joints) in (type(None), dict)
                     and len({id(value) for value in values}) == len(values)
                     and session._can_defer_hierarchy(shape, values)
-                    and all(_state(value) is not None
-                            and _state(value).handle is not None
-                            and _state(value).children is None
+                    and all(_state(value) is not None and not _state(value).private
+                            and _state(value).session is session
+                            and (_state(value).handle is not None or _state(value).children is not None)
                             and value.parent is None for value in values)):
                 logical = session._logical("compound")
                 session._init_empty(shape, logical, None, children=values)
@@ -565,7 +592,14 @@ class FrontendSession:
             state = _state(shape)
             if state is None or state.private:
                 return original_volume.fget(shape)
+            if not _stock_function(original_volume.fget, "build123d.topology.composite", "Compound.volume"):
+                return original_volume.fget(session._escape_shape(shape))
             handle = session._geometry_handle(shape)
+            if state.private:
+                # Deferred groups now have ordinary private wrappers. Recursive
+                # casts can invoke author hooks; run them outside a query slot,
+                # without pretending those callbacks have a purity contract.
+                return original_volume.fget(shape)
             return session.transaction.query(
                 handle, lambda native: float(session._wrap_native(native).volume)
             )
@@ -632,6 +666,8 @@ class FrontendSession:
             self._patch(proxy, "fillet", fillet_function)
         self._prepare_primitive_guards(original_box_init, original_cylinder_init,
                                        original_make_box, original_make_cylinder)
+        from .builder_effects import BuilderEffectsFrontend
+        self._builder_effects = BuilderEffectsFrontend(self)
 
     def _prepare_primitive_guards(self, box, cylinder, make_box, make_cylinder):
         """Pin the small stock constructor path, including its native providers.
@@ -654,6 +690,7 @@ class FrontendSession:
             (bd.Shape, "move", "build123d.topology.shape_core", "Shape.move"),
             (bd.Shape, "moved", "build123d.topology.shape_core", "Shape.moved"),
             (bd.BuildPart, "_get_context", "build123d.build_common", "Builder._get_context"),
+            (bd.Builder, "_get_context", "build123d.build_common", "Builder._get_context"),
             (bd.Location, "__init__", "build123d.geometry", "Location.__init__"),
             (bd.Rotation, "__init__", "build123d.geometry", "Rotation.__init__"),
             (bd.Plane, "to_gp_ax2", "build123d.geometry", "Plane.to_gp_ax2"),
@@ -747,7 +784,8 @@ class FrontendSession:
                 and (type(align) is bd.Align or (type(align) is tuple and len(align) == 3
                                                and all(type(value) is bd.Align for value in align)))
                 and type(mode) is bd.Mode
-                and self._primitive_provider_matches(kind))
+                and self._primitive_provider_matches(kind)
+                and self._can_defer_hierarchy(shape, ()))
 
     def _inside_compute(self, fn, *args, **kwargs):
         self._compute_depth += 1
@@ -758,12 +796,11 @@ class FrontendSession:
 
     def _builder_constructor(self, kind, shape, context, original, args, kwargs,
                              kernel_constructor, dimensions) -> None:
-        """Reuse only the native primitive, replay every builder effect privately.
+        """Run the ordinary constructor with guarded native kernels/effects.
 
         Builder lifecycle methods inspect author frames and remain untouched.
-        A complete _add_to_context hit would also have to preserve LAST/NEW,
-        obj_before/to_combine aliases and partial failure effects. This bounded
-        adapter deliberately executes that method and its booleans every time.
+        The effects adapter admits only proven stock native input provenance;
+        unsupported effects continue through the ordinary build123d body.
         """
         if self._compute_depth:
             original(shape, *args, **kwargs)
@@ -790,13 +827,17 @@ class FrontendSession:
         self._record_fallback("builder-effects-replayed" if eligible else "builder-opaque-constructor")
         previous = self._builder_kernel
         self._builder_kernel = (kind, self._logical(f"builder-{kind}-kernel")) if eligible else None
+        token = self._builder_effects.begin(kind, shape, context, dimensions, kwargs)
+        succeeded = False
         try:
             # Keep author callbacks under the normal frontend boundary. In
             # particular, do not suppress managed attribute/escape checks while
             # a customized validation or constructor hook executes.
             original(shape, *args, **kwargs)
+            succeeded = True
         finally:
             self._builder_kernel = previous
+            self._builder_effects.finish(token, succeeded)
 
     def _builder_solid(self, kind, cls, original, args, kwargs):
         pending = self._builder_kernel
@@ -832,7 +873,9 @@ class FrontendSession:
                 ResourceRequest(), cancellation=self.transaction.cancellation):
             native = copy_shape(self.transaction._validate_handle(handle).shape)
         self.transaction.stats.native_copies += 1
-        return cls(self._downcast_native(native))
+        result = cls(self._downcast_native(native))
+        self._builder_effects.seed(result, handle)
+        return result
 
     def _logical(self, kind: str) -> str:
         frame = inspect.currentframe()
@@ -865,6 +908,8 @@ class FrontendSession:
         return shape
 
     def _capture_private(self, shape: Any, kind: str) -> Any:
+        if self._builder_effects is not None and self._builder_effects.capture(shape):
+            return shape
         logical = self._logical(kind)
         wrapped = self._native_originals["wrapped"].fget(shape)
         handle = self.transaction.capture(wrapped, logical_id=logical)
@@ -972,24 +1017,79 @@ class FrontendSession:
         self._fallback_counts[reason] = self._fallback_counts.get(reason, 0) + 1
 
     def _can_defer_hierarchy(self, parent: Any, children: tuple[Any, ...]) -> bool:
-        if any(type(child) not in (self._bd.Box, self._bd.Cylinder, self._bd.Part)
+        if any(type(child) not in (self._bd.Box, self._bd.Cylinder, self._bd.Part, self._bd.Compound)
                for child in children):
             return False
-        # Direct node attachment is valid only for build123d's own hooks.
-        # Subclass and instance hooks can validate or cause observable effects,
-        # and must run through the ordinary constructor exactly once.
+        # Metadata names are not provenance: functools.wraps deliberately copies
+        # them. Compare actual code with installed provider code, without running
+        # another module or accepting author-controlled function globals. Cache
+        # only expected code; inspect live hooks on every constructor invocation.
+        if not hasattr(self, "_hierarchy_provider_code"):
+            from importlib.machinery import SourceFileLoader
+            expected = {}
+            for module in ("build123d.topology.composite", "build123d.topology.shape_core", "anytree.node.nodemixin"):
+                provider = sys.modules[module]
+                if type(provider.__loader__) is not SourceFileLoader:
+                    return False
+                pending = [provider.__loader__.get_code(module)]
+                codes = set()
+                while pending:
+                    code = pending.pop()
+                    if inspect.iscode(code):
+                        codes.add(code)
+                        pending.extend(value for value in code.co_consts if inspect.iscode(value))
+                expected[module] = codes
+            self._hierarchy_provider_code = expected
+
+        def stock(hook, owners, name):
+            if isinstance(hook, staticmethod):
+                hook = hook.__func__
+            if type(hook) is not FunctionType or hasattr(hook, "__wrapped__"):
+                return False
+            module = hook.__module__
+            provider = sys.modules.get(module)
+            return (module in self._hierarchy_provider_code
+                    and hook.__qualname__ in {f"{owner}.{name}" if owner else name for owner in owners}
+                    and hook.__globals__ is provider.__dict__
+                    and hook.__code__ in self._hierarchy_provider_code[module])
+
+        if not stock(self._native_originals["compound_init"], ("Compound",), "__init__"):
+            return False
+        composite = sys.modules["build123d.topology.composite"]
+        helper = composite._make_topods_compound_from_shapes
+        if not stock(helper, ("",), "_make_topods_compound_from_shapes"):
+            return False
+        from OCP import TopoDS
+        for name, methods in (("TopoDS_Compound", ("__init__",)),
+                              ("TopoDS_Builder", ("__init__", "MakeCompound", "Add"))):
+            provider = getattr(TopoDS, name)
+            if (helper.__globals__.get(name) is not provider
+                    or type(provider).__module__ != "pybind11_builtins"
+                    or any(type(inspect.getattr_static(provider, method)).__name__ not in
+                           ("instancemethod", "builtin_function_or_method") for method in methods)):
+                return False
+        # Stock logging hooks can still have observable handlers when enabled.
+        import logging
+        logger = sys.modules["build123d.topology.composite"].logger
+        if (type(logger) is not logging.Logger or "debug" in vars(logger)
+                or "isEnabledFor" in vars(logger) or logger.isEnabledFor(logging.DEBUG)):
+            return False
         for shape, names in (
             (parent, ("_pre_attach_children", "_post_attach_children",
                       "_pre_detach_children", "_post_detach_children")),
             *((child, ("_pre_attach", "_post_attach")) for child in children),
         ):
             for name in names:
-                hook = inspect.getattr_static(shape, name)
-                if (getattr(hook, "__module__", None),
-                    getattr(hook, "__qualname__", None)) not in {
-                        (self._bd.Compound.__module__, f"Compound.{name}"),
-                        ("anytree.node.nodemixin", f"NodeMixin.{name}"),
-                    }:
+                if not stock(inspect.getattr_static(shape, name), ("Compound", "NodeMixin"), name):
+                    return False
+            for name in ("__check_children", "__check_loop", "__attach", "__detach"):
+                if not stock(inspect.getattr_static(shape, "_NodeMixin" + name), ("NodeMixin",), name):
+                    return False
+            for name in ("parent", "children"):
+                descriptor = inspect.getattr_static(shape, name)
+                if type(descriptor) is not property or any(
+                        fn is not None and not stock(fn, ("NodeMixin",), name)
+                        for fn in (descriptor.fget, descriptor.fset, descriptor.fdel)):
                     return False
         return True
 
@@ -1203,6 +1303,19 @@ class FrontendSession:
 
     def _escape_shape(self, shape: Any) -> Any:
         state = _state(shape)
+        effects = getattr(self, "_builder_effects", None)
+        if effects is not None:
+            effects.revoke_shape(shape)
+        if state is not None and not state.private:
+            parent = object.__getattribute__(shape, "__dict__").get("_NodeMixin__parent")
+            parent_state = _state(parent)
+            if parent_state is not None and not parent_state.private and parent_state.children is not None:
+                # Stock native compounds snapshot child placement on attachment.
+                # Publish the pending ancestors before returning a mutable child
+                # alias, so later child.move()/wrapped writes cannot rewrite that
+                # earlier parent snapshot through delayed construction.
+                self._materialize_compound(parent)
+                return shape
         if state is None or state.private:
             return shape
         if state.children is not None:
@@ -1215,13 +1328,32 @@ class FrontendSession:
         state.private = True
         return shape
 
-    def _materialize_compound(self, shape: Any) -> Any:
+    def _materialize_compound(self, shape: Any, *, _nested: bool = False) -> Any:
         state = _state(shape)
         assert state is not None and state.children is not None
+        if not _nested:
+            ancestor = object.__getattribute__(shape, "__dict__").get("_NodeMixin__parent")
+            top = None
+            while ancestor is not None:
+                ancestor_state = _state(ancestor)
+                if ancestor_state is None or ancestor_state.private or ancestor_state.children is None:
+                    break
+                top = ancestor
+                ancestor = object.__getattribute__(ancestor, "__dict__").get("_NodeMixin__parent")
+            if top is not None:
+                self._materialize_compound(top)
+                return shape
         native_children = []
         for child in state.children:
             child_state = _state(child)
-            assert child_state is not None and child_state.handle is not None
+            assert child_state is not None
+            if child_state.children is not None and not child_state.private:
+                # Preserve the original Python node and its attached descendants;
+                # only the native group is built recursively on this real escape.
+                self._materialize_compound(child, _nested=True)
+                native_children.append(child)
+                continue
+            assert child_state.handle is not None or child_state.private
             if child_state.private:
                 # deepcopy/copy based build123d operations keep a managed
                 # wrapper's bookkeeping but immediately replace its native

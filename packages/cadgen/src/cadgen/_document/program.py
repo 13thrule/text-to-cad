@@ -194,15 +194,26 @@ def _publish(document, revision, destination, previous, job):
 def generate(service, path: Path, function: str | None = None) -> ProgramResult:
     """Finish an explicit STEP build without the previous generation pipeline."""
     from .sources import CapturedInput
+
+    return generate_captured(service, CapturedInput.read(path), function)
+
+
+def generate_captured(service, captured, function: str | None = None, *, cancellation=None) -> ProgramResult:
+    """Execute the buffer accepted by a caller before queueing or IPC."""
+    from .sources import CapturedInput
     from .resources import AdmissionDenied, ResourceRequest
 
     if current_program() is not None:
         raise RuntimeError("a document program is already running")
-    captured = CapturedInput.read(path)
+    if type(captured) is not CapturedInput:
+        raise TypeError("document generation requires captured source bytes")
+    if function is not None and (type(function) is not str or not function):
+        raise ValueError("model function must be a nonempty string or None")
     family = str(captured.path)
     request = service.coordinator.accept(
         family, f"{family}::{function or '<entry>'}", captured, function or "<entry>",
-        resources=ResourceRequest(native_bytes=512 * 1024**2, derived_bytes=256 * 1024**2))
+        resources=ResourceRequest(native_bytes=512 * 1024**2, derived_bytes=256 * 1024**2),
+        cancellation=cancellation)
     job = None
     try:
         try:

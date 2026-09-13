@@ -311,12 +311,15 @@ class Coordinator:
 
     def accept(self, family: str, document_key: str, source: CapturedInput,
                function: str, *, outputs=(), preview: bool = False,
-               resources: ResourceRequest = ResourceRequest()) -> Request:
+               resources: ResourceRequest = ResourceRequest(),
+               cancellation: threading.Event | None = None) -> Request:
         self._check_process()
         family, document_key = _name(family, "family"), _name(document_key, "document key")
         source, function, paths = _source(source), _name(function, "function"), _paths(outputs)
         if type(preview) is not bool or type(resources) is not ResourceRequest:
             raise TypeError("preview and resource declarations must be typed values")
+        if cancellation is not None and not isinstance(cancellation, threading.Event):
+            raise TypeError("request cancellation requires a threading Event")
         demand = (resources.cpu_slots, resources.native_bytes, resources.derived_bytes)
         if any(demand > capacity for demand, capacity in zip(demand, self.admission.capacity)):
             raise AdmissionDenied("request cannot fit the coordinator resource capacity")
@@ -332,6 +335,8 @@ class Coordinator:
             self._next_ticket += 1
             request = Request(ticket, family, document_key, source, function, paths, preview, resources)
             entry = _Entry(request)
+            if cancellation is not None:
+                entry.cancellation = cancellation
             entry.invocations[0] = Invocation(ticket, 0, source, function)
             entry.outputs[0] = ()
             self._entries[ticket] = entry

@@ -130,15 +130,24 @@ def _identity(value: Any) -> str:
     return hashlib.sha256(payload.encode("ascii")).hexdigest()
 
 
-def _runtime_identity(document: Document) -> tuple:
+def _runtime_identity(runtime: Any) -> tuple:
     return (
         _IMPORT_POLICY,
         hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         platform.python_version(),
         platform.machine(),
         importlib.metadata.version("cadquery-ocp"),
-        normalize(document.runtime),
+        normalize(runtime),
     )
+
+
+def step_input_identity(captured: CapturedInput, *, runtime: Any = ()) -> str:
+    """Identify consumed STEP bytes and this importer, independently of source."""
+    if type(captured) is not CapturedInput:
+        raise TypeError("STEP import requires CapturedInput bytes")
+    if captured.path.suffix.lower() not in {".step", ".stp"}:
+        raise ValueError("STEP import input path must end in .step or .stp")
+    return _identity((captured.digest, len(captured.data), _runtime_identity(runtime)))
 
 
 @contextmanager
@@ -279,17 +288,13 @@ class StepImportSession:
 
     def _load(self, captured: CapturedInput) -> ImportedStep:
         self._check()
-        if not isinstance(captured, CapturedInput):
-            raise TypeError("STEP import requires CapturedInput bytes")
-        if captured.path.suffix.lower() not in {".step", ".stp"}:
-            raise ValueError("STEP import input path must end in .step or .stp")
-        runtime = _runtime_identity(self.document)
-        identity = _identity((captured.digest, len(captured.data), runtime))
+        identity = step_input_identity(captured, runtime=self.document.runtime)
         self._registry.prune(self.document)
         cached = self._registry.get(identity)
         if cached is not None:
             self._check()
             with self.document.begin(f"step:{captured.digest}") as transaction:
+                transaction.cancellation = self.cancellation
                 root = _root_from(cached)
                 transaction.bind_root(root, unrepresented_metadata=())
                 revision = transaction.commit()
@@ -298,6 +303,7 @@ class StepImportSession:
             return self._result(captured, cached, revision)
 
         with self.document.begin(f"step:{captured.digest}") as transaction:
+            transaction.cancellation = self.cancellation
             record = self._parse_capture(captured, identity, transaction)
             self._check()
             root = _root_from(record)

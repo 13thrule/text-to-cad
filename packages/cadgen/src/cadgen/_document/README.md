@@ -2,7 +2,8 @@
 
 This internal module implements resident native ownership, revision behavior,
 captured source execution and direct STEP products. It includes a transactional
-catalog foundation; native checkpoint/service recovery is still being integrated.
+catalog and native checkpoint recovery. Process integration and broader producer
+coverage are still being tested.
 It does not claim a finished replacement for every generation or saved-file path.
 
 `Document.begin()` creates a candidate revision. Trusted frontend adapters call
@@ -65,6 +66,23 @@ values; derived callbacks operate on private native copies and reuse immutable
 results per prototype, runtime and explicit options. The native 24-occurrence
 test meshes once and reuses that product across placement and appearance edits.
 These are resident consumer checks, not yet a browser-update benchmark.
+
+The native meshing producer derives one immutable packed packet per prototype
+and quality. OCCT surface/interior deflection is explicit and scales with each
+prototype's bounds. Analytic normals, face ranges and classified edge polylines
+travel with centered float32 positions and a double-precision origin. Triangles
+that collapse to exactly zero area in the transported coordinates are removed;
+remaining face coverage, orientation, welded closure and sampled trimmed-surface
+error are tested. This is sampled quality evidence, not a global Hausdorff bound.
+
+`build_display` publishes complete immutable hierarchy/appearance data and
+content-addressed mesh packets for an exact revision. The shared JavaScript
+decoder validates framing and topology ranges, verifies asset bytes and reuses
+prototype geometry across scene owners. Previous products must be attested live
+products, rather than caller-constructed reuse hints. A temporary browser harness
+has displayed 24 colored occurrences through Inspect and both photographic
+backgrounds using this path. The public viewer's resident update integration is
+still a separate gate.
 
 `TopologyHistory` carries generated, modified, deleted and unchanged relations
 captured while the kernel builder still exists. Subelement ordinals are exact
@@ -136,7 +154,38 @@ transactions, exact reader leases, receipt records and bounded reclamation.
 Version changes reset only owned disposable data. Crash tests cover both
 reclamation phases and concurrent readers. The catalog imports no kernel and
 contains no previous-store reader. It is a storage primitive, not proof of
-complete process recovery or persisted native alias correctness.
+complete process recovery by itself.
+
+The native checkpoint codec stores one alias-preserving binary shape graph,
+evaluation/allocation dependencies, exact roots, topology history and required
+structural auxiliary results. Recovery verifies all reachable native subshape
+sharing classes and the allocation-provenance DAG before installing a new owner.
+Auxiliary values are closed, immutable and bounded in their expanded form;
+builder layouts cannot live only in a disposable mesh/derivation cache. Codec
+version 3 is a hard cut, with no earlier-version reader.
+
+An idle `DocumentService.checkpoint` publishes through the catalog head selected
+when that owner was acquired. A conflict does not authorize overwriting the other
+owner on a retry. Registry eviction respects live revision pins. On a registry
+miss the service can recover geometry, but authored Python still replays and
+every explicit output gets a fresh save receipt. Corrupt or missing derived
+checkpoints rebuild through this engine. Historical export completion is not
+evidence that a destination still contains the saved bytes.
+
+`load_step` opens captured actual bytes in a separate saved-artifact owner keyed
+by those bytes and importer/runtime policy. Equal files may share that owner;
+changed bytes select a different one. A recovered saved-file root needs no
+source execution or repeated STEP parse. Checkpointing remains explicit internal
+maintenance; it does not delay every warm source call or acknowledge a hidden
+durable authoring save.
+
+The private `DocumentWorker` bridge owns the kernel in a spawned process and
+accepts captured source or saved STEP buffers. Display returns a revision manifest
+and only missing immutable binary meshes; exact inspection uses typed occurrence
+references. Value framing bounds both encoded bytes and expanded metadata.
+Request timeout or an interrupted stream destroys the owner without replaying
+authored work; parent loss also has bounded cleanup. This bridge is tested across
+real process restart, but is not yet the public daemon or live viewer transport.
 
 Permanent topology naming, complete builder effects, format fidelity,
 cross-process service integration, actual memory accounting and end-to-end
