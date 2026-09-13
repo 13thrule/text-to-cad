@@ -145,8 +145,14 @@ names and ordinary colors, and caches immutable encoded products. Product
 identity reflects serialized inputs; logical/allocation identifiers are not
 file content. Actual saved bytes are independently read and remain distinct
 from source-native geometry. Destination replacement checks the selected prior
-digest, stages privately and verifies final bytes. Per-face appearance, full
-materials, kinematics and all mesh declarations still need producer coverage;
+digest, stages privately and verifies final bytes. Exact copier history maps
+authored per-face colors onto retained prototypes; root relocation maps the same
+topology without assuming enumeration order. Native STEP colors and physical
+materials have independent readback checks. A translator dropping a physical
+material field fails explicitly. Generic source-to-saved face correspondence
+remains open: current readback verifies the palette, with actual face-placement
+checks on the bounded native fixtures. PBR annotations, kinematics and all mesh
+declarations still need complete publication coverage;
 unsupported declarations do not route to the previous generation engine.
 
 The new catalog uses SQLite/WAL and immutable opaque payloads, with head
@@ -207,6 +213,15 @@ cross-process service integration, actual memory accounting and end-to-end
 performance acceptance remain open. Stock input-free constructors can reuse
 after unrelated native escapes only under an explicit closed-provider contract;
 input-dependent and user-overridden operations remain conservative.
+
+Closed stock provider inventories are retained in a bounded process cache.
+Reuse still checks installed callable code, defaults, closures, globals and
+descriptor presence without invoking source callbacks. Internal frontend
+interceptors are checked after installation too. The bounded sketch adapter
+retains explicit polygon construction, the first sketch ADD, pending faces and
+single-face extrusion with their wrapper/native alias families. Other builder
+settings execute privately. Complete builder coverage is not implied by those
+operators, and warm overhead still requires the full-request benchmark.
 
 The final cutover resets old derived storage and removes the old execution
 backend. There are no schema readers, cache converters or compatibility aliases

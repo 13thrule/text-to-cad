@@ -27,15 +27,17 @@ from .resources import AdmissionDenied, Cancelled, ResourceRequest
 from .roots import AssemblyGroup, GeometryLeaf, RootNode
 from .sources import CapturedInput
 from .step_product import _CODEC_LOCK, _bounds, _matrix, _owned_xcaf_document
+from .appearance import (appearance, face_recipe, relocated_face_recipe,
+                         xcaf_face_recipe, xcaf_physical_material)
 
 
 _IMPORT_POLICY = (
-    "step-xcaf-import-v1",
+    "step-xcaf-import-v2",
     ("coordinate-unit", "MM"),
     ("names", "required"),
     ("occurrence-colors", "required"),
-    ("face-colors", "reject-until-represented"),
-    ("materials", "reject-until-represented"),
+    ("face-colors", "exact-native-face-map"),
+    ("materials", "physical-records;visual-materials-rejected"),
 )
 _MAX_IMPORTS = 8
 
@@ -79,6 +81,8 @@ class _Node:
     color: tuple[float, ...] | None
     definition: str | None
     children: tuple[_Node, ...]
+    face_colors: tuple = ()
+    physical_material: Any = None
 
 
 @dataclass(frozen=True)
@@ -89,6 +93,7 @@ class _ImportRecord:
     root_bounds: tuple[float, ...]
     geometry_occurrences: int
     node_count: int
+    face_maps: tuple = ()
 
     @property
     def prototype_ids(self) -> frozenset[str]:
@@ -201,41 +206,34 @@ def _reject_unrepresented_metadata(document: Any, shape_tool: Any, colors: Any) 
     from OCP.TDF import TDF_LabelSequence
     from OCP.XCAFDoc import XCAFDoc_DocumentTool
 
-    materials = XCAFDoc_DocumentTool.MaterialTool_s(document.Main())
-    material_labels = TDF_LabelSequence()
-    materials.GetMaterialLabels(material_labels)
     visual = XCAFDoc_DocumentTool.VisMaterialTool_s(document.Main())
     visual_labels = TDF_LabelSequence()
     visual.GetMaterials(visual_labels)
-    if material_labels.Length() or visual_labels.Length():
+    if visual_labels.Length():
         raise UnsupportedStepImport(
-            "STEP intrinsic materials require the future closed material value schema"
+            "STEP visual material textures/channels are not yet represented"
         )
 
-
-
-def _reject_face_colors(definition: Any, shape_tool: Any, colors: Any) -> None:
-    from OCP.TDF import TDF_LabelSequence
-
-    subshapes = TDF_LabelSequence()
-    shape_tool.GetSubShapes_s(definition, subshapes)
-    if any(_color(subshapes.Value(item), colors) is not None
-           for item in range(1, subshapes.Length() + 1)):
-        raise UnsupportedStepImport(
-            "STEP per-face colors require the future face-ordinal appearance schema"
-        )
 
 
 def _root_from(record: _ImportRecord) -> RootNode:
     handles = dict(record.handles)
+    face_maps = dict(record.face_maps)
 
     def build(node: _Node) -> RootNode:
-        appearance = () if node.color is None else {"color": node.color}
+        own = {} if node.color is None else {"color": node.color}
+        if node.physical_material is not None:
+            own["physical_material"] = node.physical_material
+        if node.face_colors:
+            correspondence = face_maps[node.definition]
+            own["face_colors"] = face_recipe(tuple((correspondence[index], color)
+                                                  for index, color in node.face_colors),
+                                              face_count=len(correspondence))
         if node.definition is not None:
             return GeometryLeaf(node.node_id, handles[node.definition], node.transform,
-                                node.label, appearance)
+                                node.label, appearance(own))
         return AssemblyGroup(node.node_id, tuple(build(child) for child in node.children),
-                             node.transform, node.label, appearance)
+                             node.transform, node.label, appearance(own, allow_faces=False))
 
     roots = tuple(build(node) for node in record.roots)
     if len(roots) == 1:
@@ -320,7 +318,7 @@ class StepImportSession:
             revision.revision_id, revision.root, record.root_bounds,
             record.prototype_ids, record.geometry_occurrences, record.node_count, "MM",
             ("names-preserved", "occurrence-colors-preserved",
-             "per-face-colors-absent", "intrinsic-materials-absent"),
+             "per-face-colors-exact-native-map", "physical-materials-preserved"),
         )
 
     def _parse_capture(self, captured: CapturedInput, identity: str,
@@ -334,6 +332,7 @@ class StepImportSession:
 
         self.work_directory.mkdir(parents=True, exist_ok=True)
         definitions: dict[str, Any] = {}
+        colored_definitions = set()
         nodes = 0
         leaves = 0
         with self.document.admission.admit(ResourceRequest(kind="native"),
@@ -368,7 +367,7 @@ class StepImportSession:
                     _reject_unrepresented_metadata(document, shape_tool, colors)
 
                     def visit(label: Any, local_index: int,
-                              inherited_color: tuple[float, ...] | None) -> _Node:
+                              inherited_color: tuple[float, ...] | None, parent_material=None) -> _Node:
                         nonlocal nodes, leaves
                         self._check()
                         nodes += 1
@@ -383,17 +382,17 @@ class StepImportSession:
                         local = _matrix(instance_shape.Location())
                         color = (_color(label, colors) or _color(definition, colors)
                                  or inherited_color)
+                        physical = xcaf_physical_material(label) or xcaf_physical_material(definition) or parent_material
                         children = TDF_LabelSequence()
                         shape_tool.GetComponents_s(definition, children)
                         descendants = tuple(
-                            visit(children.Value(index), index, color)
+                            visit(children.Value(index), index, color, physical)
                             for index in range(1, children.Length() + 1)
                         )
                         label_name = _name(label) or _name(definition)
                         if descendants:
                             return _Node(f"n{local_index}", label_name, local, color,
-                                         None, descendants)
-                        _reject_face_colors(definition, shape_tool, colors)
+                                         None, descendants, (), physical)
                         entry = TCollection_AsciiString()
                         TDF_Tool.Entry_s(definition, entry)
                         key = entry.ToCString()
@@ -402,8 +401,15 @@ class StepImportSession:
                             if native.IsNull():
                                 raise ValueError("STEP definition contains null geometry")
                             definitions[key] = native
+                        definition_shape = shape_tool.GetShape_s(definition)
+                        styles = dict(xcaf_face_recipe(shape_tool, definition, definition_shape, checkpoint=self._check))
+                        if not label.IsEqual(definition):
+                            styles.update(xcaf_face_recipe(shape_tool, label, definition_shape, checkpoint=self._check))
+                        recipe = relocated_face_recipe(definition_shape, definitions[key], tuple(styles.items()))
+                        if recipe:
+                            colored_definitions.add(key)
                         leaves += 1
-                        return _Node(f"n{local_index}", label_name, local, color, key, ())
+                        return _Node(f"n{local_index}", label_name, local, color, key, (), recipe, physical)
 
                     root_labels = TDF_LabelSequence()
                     shape_tool.GetFreeShapes(root_labels)
@@ -418,8 +424,14 @@ class StepImportSession:
 
         self._check()
         handles = []
+        face_maps = []
         for key, native in definitions.items():
             self._check()
-            handles.append((key, transaction.capture(native, logical_id=f"step-definition:{key}")))
+            if key in colored_definitions:
+                handle, mapping = transaction.capture_with_face_map(native, logical_id=f"step-definition:{key}")
+                face_maps.append((key, mapping))
+            else:
+                handle = transaction.capture(native, logical_id=f"step-definition:{key}")
+            handles.append((key, handle))
             self._counts["prototype_captures"] += 1
-        return _ImportRecord(identity, tuple(handles), roots, root_bounds, leaves, nodes)
+        return _ImportRecord(identity, tuple(handles), roots, root_bounds, leaves, nodes, tuple(face_maps))

@@ -10,6 +10,7 @@ from typing import Any
 
 from .frontend import _state, _matrix
 from .roots import AssemblyGroup, GeometryLeaf, IDENTITY_TRANSFORM, RootNode
+from .appearance import appearance, authored_face_recipe, native_faces
 
 
 @dataclass(frozen=True)
@@ -28,14 +29,27 @@ def capture_returned_shape(frontend: Any, shape: Any) -> ReturnedShape:
     if not isinstance(shape, frontend._bd.Shape):
         raise TypeError("a document-backed model must return a build123d Shape")
     unrepresented = set()
+    face_counts = {}
 
-    def appearance(value):
+    def metadata(value):
         result = {}
         color = value._color
         if color is not None:
             result["color"] = tuple(float(channel) for channel in color)
         if value.material:
             result["material"] = value.material
+        raw = object.__getattribute__(value, "__dict__")
+        for field, target in (("cad_material", "pbr"),):
+            # Exact ordinary stored metadata has no author callback to replay.
+            # A descriptor/custom private wrapper is observed normally, once.
+            descriptor = any(field in cls.__dict__ for cls in type(value).__mro__)
+            if descriptor:
+                frontend._escape_shape(value)
+                data = getattr(value, field, None)
+            else:
+                data = raw.get(field)
+            if data is not None:
+                result[target] = data
         return result
 
     def node(value, key, ancestors):
@@ -46,14 +60,22 @@ def capture_returned_shape(frontend: Any, shape: Any) -> ReturnedShape:
         # build123d's ordinary hierarchy. Until bound into the root, a publisher
         # must fail explicitly rather than emit an apparently complete model.
         raw = object.__getattribute__(value, "__dict__")
-        for field in ("cad_material", "cad_face_ordinal_colors", "_occurrence_tree"):
+        for field in ("_occurrence_tree",):
             if (raw.get(field) is not None
                     or any(field in cls.__dict__ for cls in type(value).__mro__)):
                 unrepresented.add(field)
+        own = metadata(value)
+        face_field = "cad_face_ordinal_colors"
+        if any(face_field in cls.__dict__ for cls in type(value).__mro__):
+            frontend._escape_shape(value)
+            face_colors = getattr(value, face_field, None)
+        else:
+            face_colors = raw.get(face_field)
         state = _state(value)
         children = state.children if state is not None and state.children is not None else tuple(value.children)
-        metadata = {"label": value.label, "appearance": appearance(value)}
         if children:
+            if face_colors is not None:
+                raise ValueError("authored face colors require a geometry leaf")
             if state is not None and not state.private:
                 transform = state.transform
             else:
@@ -61,15 +83,25 @@ def capture_returned_shape(frontend: Any, shape: Any) -> ReturnedShape:
                 transform = _matrix(frontend._bd.Location(native.Location()))
             return AssemblyGroup(key, tuple(node(child, str(index), ancestors)
                                            for index, child in enumerate(children)),
-                                 transform=transform, **metadata)
+                                 transform=transform, label=value.label,
+                                 appearance=appearance(own, allow_faces=False))
         if state is not None and not state.private and state.handle is not None:
             handle = state.handle
             transform = state.transform
         else:
             native = frontend._native_originals["wrapped"].fget(value)
-            handle = frontend.transaction.capture(native)
+            if face_colors is None:
+                handle = frontend.transaction.capture(native)
+            else:
+                handle, correspondence = frontend.transaction.capture_with_face_map(native)
+                own["face_colors"] = authored_face_recipe(
+                    face_colors, face_count=len(correspondence), correspondence=correspondence)
             transform = IDENTITY_TRANSFORM
-        return GeometryLeaf(key, handle, transform=transform, **metadata)
+        if face_colors is not None and "face_colors" not in own:
+            if handle.prototype_id not in face_counts:
+                face_counts[handle.prototype_id] = frontend.transaction.query(handle, lambda native: native_faces(native).Extent())
+            own["face_colors"] = authored_face_recipe(face_colors, face_count=face_counts[handle.prototype_id])
+        return GeometryLeaf(key, handle, transform=transform, label=value.label, appearance=appearance(own))
 
     root = node(shape, "root", frozenset())
     return ReturnedShape(root, tuple(sorted(unrepresented)))

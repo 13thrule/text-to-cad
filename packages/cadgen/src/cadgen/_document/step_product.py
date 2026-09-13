@@ -26,10 +26,13 @@ from .identities import normalize
 from .native import copy_shape
 from .resources import Cancelled, ResourceRequest
 from .roots import AssemblyGroup, GeometryLeaf, IDENTITY_TRANSFORM, walk_root
+from .appearance import (appearance, copied_face_recipe, face_recipe, inherited,
+                         native_faces, relocated_face_recipe, set_xcaf_physical_material,
+                         xcaf_face_recipe, xcaf_physical_material)
 
 
-_WRITER_VERSION = "pinned-root-step-v1"
-_READBACK_VERSION = "stepcaf-metadata-v1"
+_WRITER_VERSION = "pinned-root-step-v2"
+_READBACK_VERSION = "stepcaf-metadata-v2"
 _CODEC_LOCK = RLock()
 _MAX_PRODUCTS = 8
 _MAX_PRODUCT_BYTES = 64 * 1024**2
@@ -72,6 +75,8 @@ class SavedNode:
     color: tuple[float, ...] | None
     children: tuple["SavedNode", ...]
     geometry: SavedGeometry | None
+    face_colors: tuple = ()
+    physical_material: Any = None
 
 
 @dataclass(frozen=True)
@@ -81,6 +86,8 @@ class _ExpectedNode:
     local_transform: tuple[float, ...]
     color: tuple[float, ...] | None
     children: tuple["_ExpectedNode", ...]
+    face_colors: tuple = ()
+    physical_material: Any = None
 
 
 @dataclass(frozen=True)
@@ -142,12 +149,14 @@ def _color(appearance: Any) -> tuple[float, ...] | None:
         return None
     if not hasattr(appearance, "keys"):
         raise UnsupportedStepProduct("STEP appearance requires named immutable fields")
-    unknown = set(appearance) - {"color", "material"}
+    unknown = set(appearance) - {"color", "material", "pbr", "face_colors", "physical_material"}
     if unknown:
         raise UnsupportedStepProduct(f"unrepresented STEP appearance fields: {sorted(unknown)}")
     material = appearance.get("material", "")
     if type(material) is not str:
         raise UnsupportedStepProduct("build123d material tags must be strings")
+    if appearance.get("pbr"):
+        raise UnsupportedStepProduct("viewer PBR requires a separately bound annotation product")
     value = appearance.get("color")
     if value is None:
         return None
@@ -165,9 +174,15 @@ def _root_value(root: Any) -> tuple:
     def node(value):
         # Logical keys, allocation UUIDs, and build123d material tags do not
         # reach this STEP codec. A fresh revision still owns those scene facts.
-        common = (value.transform, value.label, _color(value.appearance))
+        try:
+            own = appearance(value.appearance, allow_faces=type(value) is GeometryLeaf)
+        except ValueError as error:
+            raise UnsupportedStepProduct(str(error)) from error
+        physical = own.get("physical_material")
+        common = (value.transform, value.label, _color(own),
+                  None if physical is None else tuple(sorted(physical.items())))
         if type(value) is GeometryLeaf:
-            return ("leaf", value.geometry.prototype_id, *common, ())  # no intrinsic recipe yet
+            return ("leaf", value.geometry.prototype_id, *common, own.get("face_colors", ()))
         if not value.children:
             raise UnsupportedStepProduct("STEP products do not yet represent empty assembly groups")
         return ("group", *common, tuple(node(child) for child in value.children))
@@ -450,48 +465,67 @@ class StepProductSession:
 
         shapes = XCAFDoc_DocumentTool.ShapeTool_s(document.Main())
         colors = XCAFDoc_DocumentTool.ColorTool_s(document.Main())
+        materials = XCAFDoc_DocumentTool.MaterialTool_s(document.Main())
         prototypes, variants, definitions = {}, {}, {}
 
-        def metadata(label, name, color):
+        def metadata(label, name, color, physical=None):
             TDataStd_Name.Set_s(label, TCollection_ExtendedString(name))
             if color is not None:
                 colors.SetColor(label, quantity_color_rgba_from_color(color), XCAFDoc_ColorSurf)
+            if physical is not None:
+                set_xcaf_physical_material(materials, label, physical)
 
-        def build(node, inherited_color):
-            own_color = _color(node.appearance)
-            color = inherited_color if own_color is None else own_color
+        def build(node, parent_appearance):
+            effective = inherited(parent_appearance, node.appearance)
+            color = _color(effective)
+            physical = effective.get("physical_material")
             local = _location(node.transform)
             if type(node) is GeometryLeaf:
                 key = node.geometry.prototype_id
                 if key not in prototypes:
-                    prototypes[key] = copy_shape(self.document._get(node.geometry).shape)
+                    source = self.document._get(node.geometry).shape
+                    copier = BRepBuilderAPI_Copy(source, True, True)
+                    prototypes[key] = (source, copier.Shape(), copier)
                     self._counts["prototype_copies"] += 1
-                native = prototypes[key]
+                source, native, copier = prototypes[key]
                 local = local.Multiplied(native.Location())
-                variant_key = (key, color)
+                recipe = face_recipe(effective.get("face_colors", ()))
+                if recipe:
+                    face_recipe(recipe, face_count=native_faces(source).Extent())
+                variant_key = (key, color, recipe, normalize(None if physical is None else dict(physical)))
                 if variant_key not in definitions:
+                    mapped_recipe = copied_face_recipe(source, native, copier, recipe)
                     base = native.Located(TopLoc_Location())
+                    mapped_recipe = relocated_face_recipe(native, base, mapped_recipe)
                     if key in variants:
-                        base = BRepBuilderAPI_Copy(base, False, False).Shape()
+                        variant_copy = BRepBuilderAPI_Copy(base, False, False)
+                        copied = variant_copy.Shape()
+                        mapped_recipe = copied_face_recipe(base, copied, variant_copy, mapped_recipe)
+                        base = copied
                         self._counts["appearance_copies"] += 1
                     variants.setdefault(key, []).append(base)
                     definition = shapes.AddShape(base, False)
                     definitions[variant_key] = definition
-                    metadata(definition, node.label, color)
-                expected = _ExpectedNode(node.label, _matrix(local), color, ())
+                    metadata(definition, node.label, color, physical)
+                    face_map = native_faces(base) if mapped_recipe else None
+                    for ordinal, rgba in mapped_recipe:
+                        self._check()
+                        sublabel = shapes.AddSubShape(definition, face_map.FindKey(ordinal + 1))
+                        metadata(sublabel, "", rgba)
+                expected = _ExpectedNode(node.label, _matrix(local), color, (), recipe, physical)
                 return definitions[variant_key], local, color, expected
             definition = shapes.NewShape()
-            metadata(definition, node.label, color)
+            metadata(definition, node.label, color, physical)
             expected_children = []
             for child in node.children:
-                child_definition, child_location, child_color, expected_child = build(child, color)
+                child_definition, child_location, child_color, expected_child = build(child, effective)
                 instance = shapes.AddComponent(definition, child_definition, child_location)
-                metadata(instance, child.label, child_color)
+                metadata(instance, child.label, child_color, expected_child.physical_material)
                 expected_children.append(expected_child)
-            expected = _ExpectedNode(node.label, _matrix(local), color, tuple(expected_children))
+            expected = _ExpectedNode(node.label, _matrix(local), color, tuple(expected_children), (), physical)
             return definition, local, color, expected
 
-        root, location, color, expected = build(self._pin.revision.root, None)
+        root, location, color, expected = build(self._pin.revision.root, {})
         shapes.UpdateAssemblies()
         returned_root_path = (1,)
         if not location.IsIdentity():
@@ -518,6 +552,14 @@ class StepProductSession:
             if source.color is not None and (written.color is None or
                     any(abs(a - b) > 1e-6 for a, b in zip(source.color, written.color))):
                 raise UnsupportedStepProduct("STEP readback cannot preserve this occurrence color")
+            if source.physical_material != written.physical_material:
+                raise UnsupportedStepProduct("STEP readback cannot preserve this physical material")
+            # This is a palette check, not a source-to-saved face naming map.
+            # Exact generic correspondence needs STEP transfer-entity history.
+            if any(not any(all(abs(a - b) <= 1e-6 for a, b in zip(wanted, actual))
+                           for _ordinal, actual in written.face_colors)
+                   for _ordinal, wanted in source.face_colors):
+                raise UnsupportedStepProduct("STEP readback lost a required face color")
             if len(source.children) != len(written.children):
                 raise RuntimeError("STEP readback changed the returned hierarchy")
             if source.children:
@@ -603,6 +645,7 @@ def _read_saved_metadata(path: Path, expected_sha256: str) -> tuple[SavedNode, .
     reader = STEPCAFControl_Reader()
     reader.SetNameMode(True)
     reader.SetColorMode(True)
+    reader.SetMatMode(True)
     if reader.ReadFile(str(path)) != IFSelect_RetDone:
         raise ValueError("independent STEP parser rejected the product bytes")
     with _owned_xcaf_document() as document:
@@ -637,7 +680,7 @@ def _saved_document_metadata(document):
                 return (float(rgb.Red()), float(rgb.Green()), float(rgb.Blue()), float(value.Alpha()))
         return None
 
-    def node(label, path, parent_location, inherited_color):
+    def node(label, path, parent_location, inherited_color, parent_material=None):
         definition = label
         if shape_tool.IsReference_s(label):
             definition = TDF_Label()
@@ -649,11 +692,13 @@ def _saved_document_metadata(document):
         local = instance_shape.Location()
         world = parent_location.Multiplied(local)
         label_color = color(label) or color(definition) or inherited_color
+        physical = xcaf_physical_material(label) or xcaf_physical_material(definition) or parent_material
         children = TDF_LabelSequence()
         shape_tool.GetComponents_s(definition, children)
-        descendants = tuple(node(children.Value(index), path + (index,), world, label_color)
+        descendants = tuple(node(children.Value(index), path + (index,), world, label_color, physical)
                             for index in range(1, children.Length() + 1))
         geometry = None
+        recipe = ()
         if not descendants:
             entry = TCollection_AsciiString()
             TDF_Tool.Entry_s(definition, entry)
@@ -662,10 +707,15 @@ def _saved_document_metadata(document):
                 native = shape_tool.GetShape_s(definition).Located(TopLoc_Location())
                 geometry_definitions[key] = (native, _geometry_facts(native))
             native, geometry = geometry_definitions[key]
+            definition_shape = shape_tool.GetShape_s(definition)
+            styles = dict(xcaf_face_recipe(shape_tool, definition, definition_shape))
+            if not label.IsEqual(definition):
+                styles.update(xcaf_face_recipe(shape_tool, label, definition_shape))
+            recipe = relocated_face_recipe(definition_shape, native, tuple(styles.items()))
             if not world.IsIdentity():
                 geometry = replace(geometry, bounds=_bounds(native.Moved(world)))
         return SavedNode(path, name(label) or name(definition), _matrix(local), label_color,
-                         descendants, geometry)
+                         descendants, geometry, recipe, physical)
 
     roots = TDF_LabelSequence()
     shape_tool.GetFreeShapes(roots)

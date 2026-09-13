@@ -43,7 +43,7 @@ class DisplayTests(unittest.TestCase):
         self.assertEqual(30, first["transform"][3])
         self.assertEqual(35, second["transform"][3])
         self.assertEqual({"color": [0., 0., 1., .5], "pbr": {"roughness": .25}}, first["appearance"])
-        self.assertEqual([1., 0., 0.], second["appearance"]["color"])
+        self.assertEqual([1., 0., 0., 1.], second["appearance"]["color"])
         for row in manifest["prototypes"].values():
             self.assertEqual({"mesh", "bytes"}, set(row))
             self.assertEqual(len(product.assets[row["mesh"]].payload), row["bytes"])
@@ -71,7 +71,7 @@ class DisplayTests(unittest.TestCase):
         self.assertEqual(2, validate.call_count)
 
     def test_unknown_or_invalid_appearance_fails_before_native_meshing(self):
-        for appearance in ({"material": "steel"}, {"pbr": {"texture": "image"}},
+        for appearance in ({"material": 3}, {"pbr": {"texture": "image"}},
                            {"color": [1, 0]}, {"color": [2, 0, 0]}, {"pbr": {"opacity": True}}):
             document = Document("invalid-appearance")
             rid = revision(document, appearance=appearance)

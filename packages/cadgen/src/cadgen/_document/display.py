@@ -10,7 +10,6 @@ from dataclasses import dataclass
 import hashlib
 import io
 import json
-import math
 import weakref
 from types import MappingProxyType
 from typing import Mapping
@@ -18,32 +17,12 @@ from typing import Mapping
 from .consumers import RevisionConsumer
 from .meshing import MAX_PACKET_BYTES, MeshOptions, mesh_for_occurrence, unpack_mesh
 from .roots import AssemblyGroup, walk_root
+from .appearance import appearance, encoded_size_bound, inherited, native_faces, to_value
 
 MAX_NODES = 100_000
 MAX_MANIFEST_BYTES = 16 * 1024**2
 MAX_ASSET_BYTES = 256 * 1024**2
 _products = weakref.WeakValueDictionary()
-_PBR = {"roughness", "metalness", "clearcoat", "clearcoatRoughness", "opacity"}
-
-
-def _appearance(value):
-    if value in ((), None):
-        return {}
-    if type(value) not in (dict, MappingProxyType) or set(value) - {"color", "pbr"}:
-        raise ValueError("unsupported display appearance fields")
-    result = {}
-    unit = lambda v: type(v) in (int, float) and 0 <= v <= 1 and math.isfinite(v)
-    if "color" in value:
-        color = value["color"]
-        if type(color) not in (list, tuple) or len(color) not in (3, 4) or not all(map(unit, color)):
-            raise ValueError("display color requires linear RGB or RGBA unit values")
-        result["color"] = list(color)
-    if "pbr" in value:
-        pbr = value["pbr"]
-        if type(pbr) not in (dict, MappingProxyType) or set(pbr) - _PBR or not all(map(unit, pbr.values())):
-            raise ValueError("unsupported display PBR values")
-        result["pbr"] = dict(pbr)
-    return result
 
 
 @dataclass(frozen=True)
@@ -86,7 +65,7 @@ def build_display(document, revision_id: int, *, options: MeshOptions = MeshOpti
             raise ValueError("display root does not represent all authored metadata")
         occurrences = consumer.occurrences()
         # Validate all scene metadata before expensive native derivations.
-        effective, nodes = {}, []
+        effective, nodes, face_counts = {}, [], {}
         metadata_bytes = 0
         for path, node in walk_root(pin.revision.root):
             consumer.checkpoint()
@@ -95,8 +74,23 @@ def build_display(document, revision_id: int, *, options: MeshOptions = MeshOpti
             metadata_bytes += sum(len(key) * 6 + 3 for key in path) + len(node.label) * 6 + 1024
             if metadata_bytes > MAX_MANIFEST_BYTES // 2:
                 raise ValueError("display metadata exceeds the scene limit")
-            own = _appearance(node.appearance)
-            effective[path] = {**effective.get(path[:-1], {}), **own}
+            closed = appearance(node.appearance, allow_faces=type(node) is not AssemblyGroup)
+            metadata_bytes += encoded_size_bound(closed)
+            if metadata_bytes > MAX_MANIFEST_BYTES // 2:
+                raise ValueError("display appearance exceeds the scene metadata limit")
+            own = to_value(closed)
+            if "face_colors" in own:
+                occurrence = consumer.occurrence(path)
+                if occurrence.prototype_id not in face_counts:
+                    face_counts[occurrence.prototype_id] = consumer.query_value(
+                        occurrence.path, lambda native, _placement: native_faces(native).Extent())
+                appearance(own, face_count=face_counts[occurrence.prototype_id])
+            resolved = inherited(effective.get(path[:-1], {}), own)
+            if type(node) is not AssemblyGroup:
+                metadata_bytes += encoded_size_bound(resolved)
+                if metadata_bytes > MAX_MANIFEST_BYTES // 2:
+                    raise ValueError("inherited display appearance exceeds the scene metadata limit")
+            effective[path] = to_value(resolved)
             nodes.append({"path": path, "kind": "group" if type(node) is AssemblyGroup else "part",
                           "label": node.label, "transform": node.transform, "appearance": own})
         assets = {}
@@ -128,6 +122,9 @@ def build_display(document, revision_id: int, *, options: MeshOptions = MeshOpti
         rows = [{"path": row.path.nodes, "prototype": row.prototype_id,
                  "transform": row.transform, "label": row.label,
                  "appearance": effective[row.path.nodes]} for row in occurrences]
+        for row in rows:
+            asset = assets[prototypes[row["prototype"]]["mesh"]]
+            appearance(row["appearance"], face_count=asset.faces)
         value = {"version": 1, "owner": document.owner_id, "revision": revision_id,
                                "nodes": nodes, "prototypes": prototypes, "occurrences": rows}
         stream = io.BytesIO()

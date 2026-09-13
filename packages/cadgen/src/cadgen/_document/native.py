@@ -51,6 +51,33 @@ def copy_shape(shape: Any) -> Any:
     return BRepBuilderAPI_Copy(shape, True, True).Shape()
 
 
+def copy_shape_with_face_map(shape: Any) -> tuple[Any, tuple[int, ...]]:
+    """Copy once and return exact zero-based source→copy FACE ordinals.
+
+    Ordinal preservation is not assumed: the copier's native correspondence
+    identifies every target. Only immutable integer values leave this helper
+    with its owned copy, so the mapper cannot later mutate or pin either graph.
+    """
+    from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+    from OCP.TopAbs import TopAbs_FACE
+    from OCP.TopExp import TopExp
+    from OCP.TopTools import TopTools_IndexedMapOfShape
+
+    if shape is None or shape.IsNull():
+        raise ValueError("a retained native prototype must contain a non-null shape")
+    copier = BRepBuilderAPI_Copy(shape, True, True)
+    retained = copier.Shape()
+    before, after = TopTools_IndexedMapOfShape(), TopTools_IndexedMapOfShape()
+    TopExp.MapShapes_s(shape, TopAbs_FACE, before)
+    TopExp.MapShapes_s(retained, TopAbs_FACE, after)
+    correspondence = tuple(after.FindIndex(copier.ModifiedShape(before.FindKey(index))) - 1
+                           for index in range(1, before.Extent() + 1))
+    if (before.Extent() != after.Extent()
+            or set(correspondence) != set(range(after.Extent()))):
+        raise ValueError("native copy did not provide a complete one-to-one face correspondence")
+    return retained, correspondence
+
+
 def copy_many(shapes: Iterable[Any]) -> tuple[Any, ...]:
     """One copier preserves shared topology across roots and subshape wrappers."""
     from OCP.BRep import BRep_Builder

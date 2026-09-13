@@ -7,10 +7,12 @@ all observable effect outputs, including topology absent from its final Part.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 import inspect
 import sys
+import threading
 from typing import Any
 
 from .core import GeometryHandle, Mutation, OperatorSpec, RevisionTransaction
@@ -19,6 +21,226 @@ from .native import NativeResult, topology_map
 
 class UnsupportedBuilderEffect(ValueError):
     pass
+
+
+_MISSING = object()
+_PROVIDER_PLAN_LIMIT = 8
+_PROVIDER_PLAN_LOCK = threading.RLock()
+_PROVIDER_PLANS = OrderedDict()
+_RUNTIME_VALUE_LIMIT = 4096
+_RUNTIME_VALUE_DEPTH = 32
+_BD_PROVIDER_NAMES = (
+    "Align", "Box", "BuildPart", "BuildSketch", "Builder", "Color", "Compound",
+    "Cylinder", "Edge", "Face", "LocationList", "Mode", "Part", "Plane", "Polygon",
+    "Shape", "ShapeList", "Shell", "Sketch", "SkipClean", "Solid", "Vertex", "Vector",
+    "Wire", "WorkplaneList",
+)
+_WRAPPER_FIELD_NAMES = (
+    "label", "material", "_color", "for_construction", "topo_parent",
+)
+_BUILDER_FIELD_NAMES = (
+    "_part", "lasts", "pending_edges", "pending_faces", "pending_face_planes",
+    "pending_planes", "obj_before", "to_combine",
+)
+
+
+def _closed_runtime_value(value, *, _seen=None, _budget=None, _depth=0):
+    """Snapshot bounded builtin default state without invoking author methods."""
+    if _depth > _RUNTIME_VALUE_DEPTH:
+        raise ValueError("provider default state exceeds the depth limit")
+    if _seen is None:
+        _seen, _budget = {}, [0]
+    _budget[0] += 1
+    if _budget[0] > _RUNTIME_VALUE_LIMIT:
+        raise ValueError("provider default state exceeds the item limit")
+    kind = type(value)
+    scalar = any(kind is allowed for allowed in (bool, int, float, str, bytes))
+    if value is None or scalar:
+        if any(kind is allowed for allowed in (str, bytes)) and len(value) > _RUNTIME_VALUE_LIMIT:
+            raise ValueError("provider default scalar exceeds the size limit")
+        return ("value", id(kind), value)
+    container = any(kind is allowed for allowed in (tuple, list, dict, set, frozenset))
+    if not container:
+        # Identity is deliberately plain numeric data. Looking up attributes on
+        # an arbitrary class or comparing the object could call author code.
+        return ("identity", id(kind), id(value))
+    marker = _seen.get(id(value))
+    if marker is not None:
+        return ("reference", marker)
+    marker = len(_seen)
+    _seen[id(value)] = marker
+    if any(kind is allowed for allowed in (tuple, list)):
+        children = tuple(_closed_runtime_value(item, _seen=_seen, _budget=_budget,
+                                               _depth=_depth + 1) for item in value)
+    elif kind is dict:
+        children = tuple((_closed_runtime_value(key, _seen=_seen, _budget=_budget,
+                                                _depth=_depth + 1),
+                          _closed_runtime_value(item, _seen=_seen, _budget=_budget,
+                                                _depth=_depth + 1))
+                         for key, item in value.items())
+    else:
+        # Preserve native iteration order rather than sorting or hashing values;
+        # the encoded children contain only builtin tuples/scalars/integers.
+        children = tuple(_closed_runtime_value(item, _seen=_seen, _budget=_budget,
+                                               _depth=_depth + 1) for item in value)
+    return ("container", id(kind), marker, children)
+
+
+def _canonical_cache_value(value, *, _seen=None, _budget=None):
+    """Admit only installed runtime objects to a process-retained proof plan."""
+    if _seen is None:
+        _seen, _budget = set(), [0]
+    _budget[0] += 1
+    if _budget[0] > _RUNTIME_VALUE_LIMIT:
+        return False
+    kind = type(value)
+    if value is None or any(kind is allowed for allowed in (bool, int, float, str, bytes)):
+        return True
+    if any(kind is allowed for allowed in (tuple, list, dict, set, frozenset)):
+        if id(value) in _seen:
+            return True
+        _seen.add(id(value))
+        values = tuple(value.items()) if kind is dict else tuple(value)
+        return all(_canonical_cache_value(item, _seen=_seen, _budget=_budget)
+                   for row in values for item in (row if kind is dict else (row,)))
+    if inspect.ismodule(value):
+        module = object.__getattribute__(value, "__name__")
+    elif inspect.isclass(value):
+        module = type.__getattribute__(value, "__module__")
+    else:
+        module = type.__getattribute__(kind, "__module__")
+    root = (module or "").partition(".")[0]
+    return root in ("build123d", "OCP", "builtins") or root in sys.stdlib_module_names
+
+
+@dataclass(frozen=True)
+class _CallableGuard:
+    function: Any
+    module: str
+    namespace: Any
+    code: Any
+    defaults: Any
+    defaults_state: Any
+    kwdefaults: Any
+    kwdefaults_state: Any
+    wrapped: Any
+    closure: Any
+    closure_values: Any
+
+    @classmethod
+    def capture(cls, function):
+        try:
+            defaults = function.__defaults__
+            kwdefaults = function.__kwdefaults__
+            wrapped = getattr(function, "__wrapped__", _MISSING)
+            closure = function.__closure__
+            closure_values = tuple((cell, cell.cell_contents,
+                                    _closed_runtime_value(cell.cell_contents))
+                                   for cell in closure or ())
+            return cls(function, function.__module__, function.__globals__, function.__code__, defaults,
+                       _closed_runtime_value(defaults), kwdefaults,
+                       _closed_runtime_value(kwdefaults), wrapped, closure, closure_values)
+        except Exception:
+            return None
+
+    def matches(self):
+        try:
+            function = self.function
+            module = sys.modules.get(self.module)
+            return (inspect.isfunction(function)
+                    and module is not None and function.__globals__ is vars(module)
+                    and function.__globals__ is self.namespace
+                    and function.__code__ is self.code
+                    and function.__defaults__ is self.defaults
+                    and _closed_runtime_value(function.__defaults__) == self.defaults_state
+                    and function.__kwdefaults__ is self.kwdefaults
+                    and _closed_runtime_value(function.__kwdefaults__) == self.kwdefaults_state
+                    and getattr(function, "__wrapped__", _MISSING) is self.wrapped
+                    and function.__closure__ is self.closure
+                    and all(cell.cell_contents is value
+                            and _closed_runtime_value(cell.cell_contents) == state
+                            for cell, value, state in self.closure_values))
+        except Exception:
+            return False
+
+
+@dataclass(frozen=True)
+class _ProviderPlan:
+    entry_providers: tuple
+    guards: tuple
+    globals: tuple
+    cells: tuple
+    callables: tuple
+    provider_codes: tuple
+    context_key: tuple
+    workplane_current: Any
+    loggers: tuple
+
+
+def _provider_cache_key(bd, extra):
+    """Return a bounded key only for canonical installed provider owners."""
+    inventory = []
+    for item in extra:
+        if type(item) is not tuple or len(item) != 2:
+            return None
+        owner, name = item
+        if type(name) is not str:
+            return None
+        module = ((getattr(owner, "__name__", "") or "") if inspect.ismodule(owner)
+                  else (getattr(owner, "__module__", "") or ""))
+        if module != "build123d" and not module.startswith("build123d."):
+            return None
+        inventory.append((owner, name))
+    return bd, tuple(inventory)
+
+
+def _entry_provider_token(provider):
+    """Stable callable identity across our own descriptor restore cycle."""
+    kind = type(provider)
+    if kind is property:
+        return ("property", provider.fget, provider.fset, provider.fdel)
+    if kind is classmethod:
+        return ("classmethod", provider.__func__)
+    if kind is staticmethod:
+        return ("staticmethod", provider.__func__)
+    return ("value", provider)
+
+
+def _same_entry_provider(left, right):
+    return (len(left) == len(right) and left[0] == right[0]
+            and all(actual is expected for actual, expected in zip(left[1:], right[1:])))
+
+
+def _cached_provider_plan(key):
+    if key is None:
+        return None
+    with _PROVIDER_PLAN_LOCK:
+        plan = _PROVIDER_PLANS.get(key)
+        if plan is not None:
+            _PROVIDER_PLANS.move_to_end(key)
+        return plan
+
+
+def _remember_provider_plan(key, plan):
+    if key is None:
+        return
+    with _PROVIDER_PLAN_LOCK:
+        _PROVIDER_PLANS[key] = plan
+        _PROVIDER_PLANS.move_to_end(key)
+        while len(_PROVIDER_PLANS) > _PROVIDER_PLAN_LIMIT:
+            _PROVIDER_PLANS.popitem(last=False)
+
+
+def _provider_plan_cacheable(globals_, callables):
+    if not all(_canonical_cache_value(value) for _namespace, _name, value in globals_):
+        return False
+    for guard in callables:
+        if (not _canonical_cache_value(guard.defaults)
+                or not _canonical_cache_value(guard.kwdefaults)
+                or any(not _canonical_cache_value(value)
+                       for _cell, value, _state in guard.closure_values)):
+            return False
+    return True
 
 
 @dataclass(frozen=True)
@@ -45,7 +267,7 @@ class EffectLayout:
     prior_slot: int | None
     tools: tuple[WrapperRecord, ...]
     created: tuple[WrapperRecord, ...]
-    result: WrapperRef
+    result: WrapperRef | None
     lasts: tuple[tuple[WrapperRef, ...], ...]
     slot_count: int
 
@@ -78,7 +300,7 @@ def _encode_layout(layout: EffectLayout) -> tuple:
             layout.slot_count)
 
 
-def _decode_layout(value: Any, native: Any) -> EffectLayout:
+def _decode_layout(value: Any, native: Any, *, expected_root: str | None = "Part") -> EffectLayout:
     """Decode a complete typed result; missing/corrupt metadata is an error."""
     def require(condition):
         if not condition:
@@ -107,7 +329,7 @@ def _decode_layout(value: Any, native: Any) -> EffectLayout:
         slot, kind, label, material, color, construction, parent = item
         require(type(slot) is int and count <= slot < slot_count and slot not in used)
         used.add(slot)
-        require(kind in ("Vertex", "Edge", "Wire", "Face", "Shell", "Solid", "Compound", "Part"))
+        require(kind in ("Vertex", "Edge", "Wire", "Face", "Shell", "Solid", "Compound", "Part", "Sketch"))
         require(type(label) is str and (material is None or type(material) is str))
         require(color is None or (type(color) is tuple and len(color) == 4
                                   and all(type(v) is float and 0 <= v <= 1 for v in color)))
@@ -115,9 +337,10 @@ def _decode_layout(value: Any, native: Any) -> EffectLayout:
         return WrapperRecord(slot, kind, label, material, color, construction,
                              ref(parent, optional=True))
     layout = EffectLayout(count, prior, tuple(map(record, tools)), tuple(map(record, created)),
-                          ref(result), tuple(tuple(map(ref, row)) for row in lasts), slot_count)
+                          ref(result, optional=expected_root is None), tuple(tuple(map(ref, row)) for row in lasts), slot_count)
     require(len(used) == slot_count - count)
-    require(layout.result.role == "created" and layout.created[layout.result.index].kind == "Part")
+    require(layout.result is None if expected_root is None else
+            layout.result.role == "created" and layout.created[layout.result.index].kind == expected_root)
     # Only parent chains are traversed while instantiating wrappers. Reject a
     # cycle before constructing anything from independently restored metadata.
     visiting, done = set(), set()
@@ -136,7 +359,7 @@ def _decode_layout(value: Any, native: Any) -> EffectLayout:
     native_slots = _slots(native)
     require(len(native_slots) == slot_count)
     for row in (*layout.tools, *layout.created):
-        expected = "COMPOUND" if row.kind == "Part" else row.kind.upper()
+        expected = "COMPOUND" if row.kind in ("Part", "Sketch") else row.kind.upper()
         require(native_slots[row.native_slot].ShapeType().name == f"TopAbs_{expected}")
     return layout
 
@@ -206,14 +429,17 @@ class StockBuilderEffects:
     The document arena materializes the connected family on native escape.
     """
 
-    def __init__(self, frontend=None):
+    def __init__(self, frontend=None, *, extra_providers=()):
         import build123d as bd
         from .frontend import _stock_function, _stock_global
+        extra_providers = tuple(extra_providers)
         self.bd = bd
         self.frontend = frontend
         original = {} if frontend is None else {
             (owner, name): value for owner, name, value in frontend._originals}
         def original_provider(owner, name, current):
+            if not inspect.isclass(owner):
+                return original.get((owner, name), current)
             defining = next(base for base in owner.__mro__ if name in vars(base))
             return original.get((defining, name), current)
         declarations = (
@@ -237,12 +463,16 @@ class StockBuilderEffects:
         self._guards = []
         self._globals = []
         self._cells = []
+        self._callable_guards = []
+        self._callable_ids = set()
         self._provider_codes = {}
         self._stock = True
         provider_functions = []
+        entry_providers = []
         for owner, name, module, qualified in declarations:
             current = inspect.getattr_static(owner, name)
             provider = original_provider(owner, name, current)
+            entry_providers.append(_entry_provider_token(provider))
             self._stock &= _stock_function(provider, module, qualified)
             self._guards.append((owner, name, current))
             if inspect.isfunction(provider):
@@ -267,84 +497,204 @@ class StockBuilderEffects:
             *((bd.WorkplaneList, name) for name in ("_get_context", "__init__", "__enter__",
                                                    "__exit__", "_convert_to_planes",
                                                    "__getattribute__", "__setattr__")),
+            *extra_providers,
         )
         for owner, name in extra:
             current = inspect.getattr_static(owner, name)
             provider = original_provider(owner, name, current)
+            entry_providers.append(_entry_provider_token(provider))
             self._guards.append((owner, name, current))
             provider_functions.extend(
                 fn for fn in ((provider.fget, provider.fset) if isinstance(provider, property)
                               else (provider.__func__,) if isinstance(provider, (classmethod, staticmethod))
                               else (provider,)) if fn is not None)
-        seen, native_names = set(), set()
-        while provider_functions:
-            fn = provider_functions.pop()
-            if id(fn) in seen:
-                continue
-            seen.add(id(fn))
-            if any(fn is builtin for builtin in (object.__getattribute__, object.__setattr__,
-                                                 list.__init__, list.__iter__, list.__len__)):
-                continue
-            self._stock &= self._stock_wrapped(fn)
-            if not inspect.isfunction(fn):
-                continue
-            native_names.update(fn.__code__.co_names)
-            for name in fn.__code__.co_names:
-                if name not in fn.__globals__:
+        # Adapter code resolves these classes and enums through build123d's
+        # module namespace. Pin those bindings independently of descriptors on
+        # the classes themselves so an alias replacement always deopts.
+        bd_namespace = vars(bd)
+        self._globals.extend((bd_namespace, name, bd_namespace[name])
+                             for name in _BD_PROVIDER_NAMES if name in bd_namespace)
+        dynamic_guards = tuple(self._guards)
+        initial_globals = tuple(self._globals)
+        entry_stock = self._stock
+        cache_key = _provider_cache_key(bd, extra_providers)
+        plan = _cached_provider_plan(cache_key)
+        if plan is not None and len(plan.entry_providers) == len(entry_providers):
+            self._guards.extend(plan.guards)
+            self._globals = list(plan.globals)
+            self._cells = list(plan.cells)
+            self._callable_guards = list(plan.callables)
+            self._callable_ids = {id(value.function) for value in plan.callables}
+            self._provider_codes = dict(plan.provider_codes)
+            self._context_key = plan.context_key
+            self._workplane_current = plan.workplane_current
+            self._loggers = plan.loggers
+            self._stock &= all(_same_entry_provider(actual, expected) for actual, expected in
+                               zip(entry_providers, plan.entry_providers))
+            # A mismatch deopts this execution against the canonical plan. Do
+            # not relearn a plan from a possibly authored mutation. A replaced
+            # build123d module gets a distinct cache key; an in-place reload is
+            # conservatively ineligible for the rest of this owner process.
+            if not self._stock or not self._provider_bindings_match():
+                self._stock = False
+        else:
+            plan = None
+
+        if plan is None:
+            self._guards = list(dynamic_guards)
+            self._globals = list(initial_globals)
+            self._cells = []
+            self._callable_guards = []
+            self._callable_ids = set()
+            self._provider_codes = {}
+            self._stock = entry_stock
+            # These fields are ordinary per-instance state in the audited
+            # build123d runtime. An authored descriptor added to any concrete
+            # wrapper or builder could otherwise run from our trusted reads and
+            # writes. Preserve absence as part of the reusable provider plan.
+            field_owners = (
+                bd.Shape, bd.Vertex, bd.Edge, bd.Wire, bd.Face, bd.Shell,
+                bd.Solid, bd.Compound, bd.Part, bd.Sketch,
+            )
+            builder_owners = (bd.BuildPart, bd.BuildSketch)
+            field_guards = tuple(
+                (owner, name, inspect.getattr_static(owner, name, _MISSING))
+                for owner, names in (
+                    *((owner, _WRAPPER_FIELD_NAMES) for owner in field_owners),
+                    *((owner, _BUILDER_FIELD_NAMES) for owner in builder_owners),
+                )
+                for name in names
+            )
+            self._stock &= all(value is _MISSING for _owner, _name, value in field_guards)
+            self._guards.extend(field_guards)
+            seen, native_names = set(), set()
+            while provider_functions:
+                fn = provider_functions.pop()
+                if id(fn) in seen:
                     continue
-                value = fn.__globals__[name]
-                self._globals.append((fn.__globals__, name, value))
-                if inspect.isfunction(value) and value.__module__.startswith("build123d."):
-                    provider_functions.append(value)
-        native_providers = {value for _, _, value in self._globals
-                            if inspect.isclass(value) and value.__module__.startswith("OCP.")
-                            and not issubclass(value, BaseException)}
-        for owner in native_providers:
-            self._stock &= type(owner).__module__ == "pybind11_builtins"
-            for name in {"__init__", *native_names}:
-                member = inspect.getattr_static(owner, name, None)
-                if member is None or not callable(member):
+                seen.add(id(fn))
+                if any(fn is builtin for builtin in (
+                        object.__new__, object.__getattribute__, object.__setattr__,
+                        list.__init__, list.__iter__, list.__len__)):
                     continue
-                function = member.__func__ if isinstance(member, staticmethod) else member
-                self._stock &= (type(function).__name__ in ("instancemethod", "builtin_function_or_method")
-                                and getattr(function, "__module__", "").startswith("OCP."))
-                self._guards.append((owner, name, member))
-        # Shared numeric tolerances are serialization inputs too. Capture
-        # their current values in the evaluation key, and pin them during it.
-        self._context_key = tuple(sorted({(namespace.get("__name__"), name, value)
-                                         for namespace, name, value in self._globals
-                                         if type(value) in (bool, int, float, str)}))
-        self._stock &= (bd.BuildPart._tag == "BuildPart" and bd.BuildPart._shape is bd.Solid
-                        and bd.BuildPart._sub_class is bd.Part and bd.Part.order == 4)
-        self._guards.extend((owner, name, inspect.getattr_static(owner, name))
-                            for owner, names in ((bd.BuildPart, ("_tag", "_shape", "_sub_class")),
-                                                 (bd.Part, ("order",)), (bd.Solid, ("order",)))
-                            for name in names)
-        import contextvars
-        self._workplane_current = inspect.getattr_static(bd.WorkplaneList, "_current")
-        self._stock &= type(self._workplane_current) is contextvars.ContextVar
-        self._guards.append((bd.WorkplaneList, "_current", self._workplane_current))
-        self._stock &= all(_stock_global(name, value) or self._stock_wrapped(value)
-                           for _, name, value in self._globals)
-        import logging
-        self._loggers = tuple({value for _, name, value in self._globals if name == "logger"})
-        for logger in self._loggers:
-            self._stock &= type(logger) is logging.Logger
-            for name in ("info", "debug", "isEnabledFor"):
-                provider = inspect.getattr_static(logger, name)
-                self._stock &= _stock_function(provider, "logging", f"Logger.{name}")
-                self._guards.append((logger, name, provider))
+                self._stock &= self._stock_wrapped(fn)
+                if not inspect.isfunction(fn):
+                    continue
+                native_names.update(fn.__code__.co_names)
+                for name in fn.__code__.co_names:
+                    if name not in fn.__globals__:
+                        continue
+                    value = fn.__globals__[name]
+                    self._globals.append((fn.__globals__, name, value))
+                    if (inspect.isfunction(value)
+                            and (value.__module__ or "").startswith("build123d.")):
+                        provider_functions.append(value)
+            native_providers = {value for _, _, value in self._globals
+                                if inspect.isclass(value)
+                                and (value.__module__ or "").startswith("OCP.")
+                                and not issubclass(value, BaseException)}
+            for owner in native_providers:
+                self._stock &= type(owner).__module__ == "pybind11_builtins"
+                for name in {"__init__", *native_names}:
+                    member = inspect.getattr_static(owner, name, None)
+                    if member is None or not callable(member):
+                        continue
+                    function = member.__func__ if isinstance(member, staticmethod) else member
+                    native_method = (type(function).__name__ in
+                                     ("instancemethod", "builtin_function_or_method")
+                                     and (getattr(function, "__module__", "") or "").startswith("OCP."))
+                    defining = next((base for base in owner.__mro__ if name in vars(base)), None)
+                    native_shared_new = (
+                        name == "__new__" and defining is not None
+                        and defining.__module__ == "pybind11_builtins"
+                        and defining.__name__ == "pybind11_object"
+                        and type(function).__name__ == "builtin_function_or_method"
+                        and function is inspect.getattr_static(defining, "__new__")
+                        and getattr(function, "__self__", None) is defining
+                    )
+                    # Abstract OCCT classes expose a native slot descriptor for
+                    # __init__, even though constructing them is not permitted.
+                    native_slot = (type(function).__name__ == "wrapper_descriptor"
+                                   and type(function.__objclass__).__module__ == "pybind11_builtins"
+                                   and function.__objclass__.__module__.startswith("OCP."))
+                    self._stock &= native_method or native_slot or native_shared_new
+                    self._guards.append((owner, name, member))
+            # Shared numeric tolerances are serialization inputs too. Capture
+            # their current values in the evaluation key, and pin them during it.
+            self._context_key = tuple(sorted({(namespace.get("__name__"), name, value)
+                                             for namespace, name, value in self._globals
+                                             if type(value) in (bool, int, float, str)}))
+            self._stock &= (bd.BuildPart._tag == "BuildPart" and bd.BuildPart._shape is bd.Solid
+                            and bd.BuildPart._sub_class is bd.Part and bd.Part.order == 4)
+            self._guards.extend((owner, name, inspect.getattr_static(owner, name))
+                                for owner, names in ((bd.BuildPart, ("_tag", "_shape", "_sub_class")),
+                                                     (bd.Part, ("order",)), (bd.Solid, ("order",)))
+                                for name in names)
+            import contextvars
+            self._workplane_current = inspect.getattr_static(bd.WorkplaneList, "_current")
+            self._stock &= type(self._workplane_current) is contextvars.ContextVar
+            self._guards.append((bd.WorkplaneList, "_current", self._workplane_current))
+            for _, name, value in self._globals:
+                admitted = _stock_global(name, value)
+                if admitted and inspect.isfunction(value):
+                    admitted = self._remember_callable(value)
+                if not admitted:
+                    admitted = self._stock_wrapped(value)
+                self._stock &= admitted
+            import logging
+            self._loggers = tuple({value for _, name, value in self._globals if name == "logger"})
+            for logger in self._loggers:
+                self._stock &= type(logger) is logging.Logger
+                for name in ("info", "debug", "isEnabledFor"):
+                    provider = inspect.getattr_static(logger, name)
+                    self._stock &= _stock_function(provider, "logging", f"Logger.{name}")
+                    if inspect.isfunction(provider):
+                        self._stock &= self._remember_callable(provider)
+                    self._guards.append((logger, name, provider))
+            self._stock &= self._provider_bindings_match()
+            if self._stock and _provider_plan_cacheable(self._globals,
+                                                        self._callable_guards):
+                static_guards = tuple(self._guards[len(dynamic_guards):])
+                _remember_provider_plan(cache_key, _ProviderPlan(
+                    tuple(entry_providers), static_guards, tuple(self._globals),
+                    tuple(self._cells), tuple(self._callable_guards),
+                    tuple((name, frozenset(codes)) for name, codes in self._provider_codes.items()),
+                    self._context_key, self._workplane_current, self._loggers,
+                ))
         self._add = original.get((bd.Builder, "_add_to_context"), bd.Builder._add_to_context)
         self._bool = original.get((bd.Shape, "_bool_op"), bd.Shape._bool_op)
         self._wrapped = original.get((bd.Shape, "wrapped"), inspect.getattr_static(bd.Shape, "wrapped"))
 
+    def _provider_bindings_match(self):
+        return (all(inspect.getattr_static(owner, name, _MISSING) is provider
+                    for owner, name, provider in self._guards)
+                and all(namespace.get(name) is value
+                        for namespace, name, value in self._globals)
+                and all(cell.cell_contents is value for cell, value in self._cells)
+                and all(guard.matches() for guard in self._callable_guards))
+
+    def finalize_frontend_guards(self):
+        """Freeze installed internal interceptors after all frontend patches."""
+        for owner, name, expected in self._guards:
+            provider = inspect.getattr_static(owner, name, _MISSING)
+            if provider is not expected:
+                self._stock = False
+                continue
+            kind = type(provider)
+            functions = ((provider.fget, provider.fset, provider.fdel)
+                         if kind is property else
+                         (provider.__func__,) if kind in (classmethod, staticmethod) else
+                         (provider,))
+            for function in functions:
+                if (inspect.isfunction(function)
+                        and (function.__module__ or "").startswith("cadgen._document.")):
+                    self._stock &= self._remember_callable(function)
+        self._stock &= self._provider_bindings_match()
+
     def providers_match(self):
         return (self._stock and type(inspect.getattr_static(self.bd.SkipClean, "clean")) is bool
-                and self._quiet_loggers() and self._workplanes_match() and all(inspect.getattr_static(owner, name) is provider
-                                   for owner, name, provider in self._guards) and all(
-                                       namespace.get(name) is value
-                                       for namespace, name, value in self._globals) and all(
-                                           cell.cell_contents is value for cell, value in self._cells))
+                and self._quiet_loggers() and self._workplanes_match()
+                and self._provider_bindings_match())
 
     def _workplanes_match(self):
         if inspect.getattr_static(self.bd.WorkplaneList, "workplanes", None) is not None:
@@ -383,7 +733,8 @@ class StockBuilderEffects:
     def _stock_wrapped(self, value):
         """Admit build123d's own context decorators, not author-decorated hooks."""
         from importlib.machinery import SourceFileLoader
-        if not inspect.isfunction(value) or not value.__module__.startswith("build123d."):
+        if (not inspect.isfunction(value)
+                or not (value.__module__ or "").startswith("build123d.")):
             return False
         module = sys.modules[value.__module__]
         if value.__globals__ is not vars(module) or type(module.__loader__) is not SourceFileLoader:
@@ -399,6 +750,8 @@ class StockBuilderEffects:
             self._provider_codes[value.__module__] = codes
         if value.__code__ not in self._provider_codes[value.__module__]:
             return False
+        if not self._remember_callable(value):
+            return False
         wrapped = getattr(value, "__wrapped__", None)
         if wrapped is not None and not self._stock_wrapped(wrapped):
             return False
@@ -407,6 +760,16 @@ class StockBuilderEffects:
             if inspect.isfunction(captured) and not self._stock_wrapped(captured):
                 return False
             self._cells.append((cell, captured))
+        return True
+
+    def _remember_callable(self, value):
+        if id(value) in self._callable_ids:
+            return True
+        guard = _CallableGuard.capture(value)
+        if guard is None:
+            return False
+        self._callable_ids.add(id(value))
+        self._callable_guards.append(guard)
         return True
 
     def _execute(self, fn, *args):
@@ -476,15 +839,17 @@ class StockBuilderEffects:
             record.native_slot, (bundle.handle,),
             lambda inputs, arena: NativeResult(_slots(inputs[0])[record.native_slot]))
 
-    def _capture(self, previous, native_inputs, mode, clean, skip_clean):
+    def _capture(self, previous, native_inputs, mode, clean, skip_clean, *,
+                 builder_type=None, tool_factory=None, include_pending=False):
         bd = self.bd
         prior_count = int(previous is not None)
         slots = list(native_inputs)  # shared DAG edges, not expanded prior slots
         before = None if previous is None else self._root_wrapper(previous, native_inputs[0])
-        tools = [bd.Solid(bd.Solid.cast(_single_solid(shape)).wrapped)
-                 for shape in native_inputs[prior_count:]]
-        builder = object.__new__(bd.BuildPart)
-        builder._part = before
+        tools = ([bd.Solid(bd.Solid.cast(_single_solid(shape)).wrapped)
+                  for shape in native_inputs[prior_count:]] if tool_factory is None else
+                 [tool_factory(shape) for shape in native_inputs[prior_count:]])
+        builder = object.__new__(bd.BuildPart if builder_type is None else builder_type)
+        builder._obj = before
         builder.lasts = {kind: [] for kind in (bd.Vertex, bd.Edge, bd.Face, bd.Solid)}
         builder.pending_edges = []
         builder.pending_faces = []
@@ -508,6 +873,13 @@ class StockBuilderEffects:
         finally:
             bd.Shape._bool_op = original_bool
             bd.SkipClean.clean = old_clean
+        native, layout, extras = self._record(native_inputs, before, tools, builder._obj,
+                                              builder.lasts, builder.pending_faces if include_pending else ())
+        return (native, layout, extras) if include_pending else (native, layout)
+
+    def _record(self, native_inputs, before, tools, result, lasts, extra_outputs=()):
+        bd = self.bd
+        slots = list(native_inputs)
         created = []
         refs = {id(tool): WrapperRef("tool", index) for index, tool in enumerate(tools)}
         if before is not None:
@@ -533,13 +905,14 @@ class StockBuilderEffects:
             created.append(None)
             created[ref.index] = record(shape)
             return ref
-        result_ref = reference(builder.part)
-        lasts = tuple(tuple(reference(shape) for shape in builder.lasts[kind])
-                      for kind in (bd.Vertex, bd.Edge, bd.Face, bd.Solid))
+        result_ref = None if result is None else reference(result)
+        last_refs = tuple(tuple(reference(shape) for shape in lasts[kind])
+                          for kind in (bd.Vertex, bd.Edge, bd.Face, bd.Solid))
+        extras = tuple(reference(shape) for shape in extra_outputs)
         tool_records = tuple(record(tool) for tool in tools)
-        layout = EffectLayout(len(native_inputs), 0 if previous else None,
-                              tool_records, tuple(created), result_ref, lasts, len(slots))
-        return _pack(slots), layout
+        layout = EffectLayout(len(native_inputs), 0 if before is not None else None,
+                              tool_records, tuple(created), result_ref, last_refs, len(slots))
+        return _pack(slots), layout, extras
 
     def _instantiate(self, record, native):
         bd = self.bd
@@ -578,7 +951,7 @@ class StockBuilderEffects:
             made[ref] = shape
             shape.topo_parent = None if record.topo_parent is None else wrapper(record.topo_parent)
             return shape
-        return EffectView(wrapper(layout.result), before,
+        return EffectView(None if layout.result is None else wrapper(layout.result), before,
                           tuple(wrapper(WrapperRef("tool", i)) for i in range(len(layout.tools))),
                           tuple(tuple(wrapper(ref) for ref in row) for row in layout.lasts))
 
@@ -619,12 +992,23 @@ class BuilderEffectsFrontend:
         bd = frontend._bd
         original = self.stock._add
         def add(builder, *objects, **kwargs):
+            sketch = getattr(frontend, "_sketch_effects", None)
+            if sketch is not None and sketch.add(builder, objects, kwargs):
+                return None
             if not self._add(builder, objects, kwargs):
                 self.revoke(builder)
+                if sketch is not None:
+                    sketch.revoke(builder)
                 return original(builder, *objects, **kwargs)
         frontend._patch(bd.Builder, "_add_to_context", add)
         self.stock._guards = [(owner, name, add if owner is bd.Builder and name == "_add_to_context" else value)
                               for owner, name, value in self.stock._guards]
+
+    def finalize_guards(self):
+        """Freeze the final solid and sketch interceptor implementations."""
+        audits = (self.stock, self.frontend._sketch_effects.stock)
+        for audit in audits:
+            audit.finalize_frontend_guards()
 
     def begin(self, kind, shape, builder, dimensions, kwargs):
         f = self.frontend
@@ -753,6 +1137,12 @@ class BuilderEffectsFrontend:
                 return False
         except UnsupportedBuilderEffect:
             return False
+        return self._publish(builder, objects, shape_input, mode, clean, previous, frame, native)
+
+    def _publish(self, builder, objects, shape_input, mode, clean, previous, frame, native):
+        f, bd = self.frontend, self.frontend._bd
+        tx = f.transaction
+        source = objects[0]
         builder.obj_before = builder._part
         builder.to_combine = list(objects)
         bundle = self.stock.evaluate(tx, None if previous is None else previous.bundle,

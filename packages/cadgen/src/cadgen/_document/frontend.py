@@ -209,6 +209,7 @@ class FrontendSession:
         self._fallback_counts: dict[str, int] = {}
         self._builder_kernel: tuple[str, str] | None = None
         self._builder_effects = None
+        self._sketch_effects = None
 
     @classmethod
     def current(cls) -> "FrontendSession | None":
@@ -668,6 +669,9 @@ class FrontendSession:
                                        original_make_box, original_make_cylinder)
         from .builder_effects import BuilderEffectsFrontend
         self._builder_effects = BuilderEffectsFrontend(self)
+        from .sketch_effects import SketchEffectsFrontend
+        self._sketch_effects = SketchEffectsFrontend(self)
+        self._builder_effects.finalize_guards()
 
     def _prepare_primitive_guards(self, box, cylinder, make_box, make_cylinder):
         """Pin the small stock constructor path, including its native providers.
@@ -908,6 +912,8 @@ class FrontendSession:
         return shape
 
     def _capture_private(self, shape: Any, kind: str) -> Any:
+        if self._sketch_effects is not None and self._sketch_effects.capture(shape):
+            return shape
         if self._builder_effects is not None and self._builder_effects.capture(shape):
             return shape
         logical = self._logical(kind)
@@ -1303,6 +1309,8 @@ class FrontendSession:
 
     def _escape_shape(self, shape: Any) -> Any:
         state = _state(shape)
+        if self._sketch_effects is not None:
+            self._sketch_effects.revoke_shape(shape)
         effects = getattr(self, "_builder_effects", None)
         if effects is not None:
             effects.revoke_shape(shape)

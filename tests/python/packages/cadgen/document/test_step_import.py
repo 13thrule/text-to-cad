@@ -97,7 +97,7 @@ class StepImportTests(unittest.TestCase):
         self.assertEqual(imported.coordinate_unit, "MM")
         self.assertEqual(imported.metadata_attestation,
                          ("names-preserved", "occurrence-colors-preserved",
-                          "per-face-colors-absent", "intrinsic-materials-absent"))
+                      "per-face-colors-exact-native-map", "physical-materials-preserved"))
         self.assertEqual(imported.input_sha256, captured.digest)
         self.assertEqual(imported.root_bounds, (0., 0., 0., 16., 8., 2.))
         with RevisionConsumer(self.imported, imported.revision_id) as consumer:
@@ -218,7 +218,7 @@ class StepImportTests(unittest.TestCase):
         self.assertNotIn(first.identity, self.imported._step_imports.entries)
         self.assertIn(second.identity, self.imported._step_imports.entries)
 
-    def test_cancellation_admission_and_unsupported_face_colors_fail_without_revision(self):
+    def test_cancellation_admission_and_supported_native_appearance(self):
         self._single()
         event = Event()
         event.set()
@@ -254,13 +254,14 @@ class StepImportTests(unittest.TestCase):
         colored = bd.Box(3, 3, 3)
         colored.cad_face_ordinal_colors = {1: (1., 0., 0., 1.)}
         export_build123d_step_file(colored, self.target)
-        fresh = Document("unsupported STEP metadata")
-        importer = StepImportSession(fresh, work_directory=self.directory / "unsupported")
-        with self.assertRaisesRegex(UnsupportedStepImport, "per-face colors"):
-            importer.load(CapturedInput.read(self.target))
-        self.assertIsNone(fresh.head)
+        fresh = Document("colored STEP metadata")
+        importer = StepImportSession(fresh, work_directory=self.directory / "colored")
+        colored_result = importer.load(CapturedInput.read(self.target))
+        self.assertEqual(1, len(colored_result.root.appearance["face_colors"]))
+        self.assertEqual((1., 0., 0., 1.), colored_result.root.appearance["face_colors"][0][1])
+        self.assertIsNotNone(fresh.head)
         self.assertEqual(importer.metrics.native_parses, 1)
-        self.assertEqual(importer.metrics.prototype_captures, 0)
+        self.assertEqual(importer.metrics.prototype_captures, 1)
 
         from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
         from OCP.TCollection import TCollection_HAsciiString
@@ -277,12 +278,14 @@ class StepImportTests(unittest.TestCase):
                                   text("density"), text("g/cm3"))
             write_xcaf_doc_step_file(material_document, self.target)
         material_import = StepImportSession(
-            Document("unsupported STEP material"),
-            work_directory=self.directory / "unsupported-material")
-        with self.assertRaisesRegex(UnsupportedStepImport, "intrinsic materials"):
-            material_import.load(CapturedInput.read(self.target))
+            Document("physical STEP material"),
+            work_directory=self.directory / "physical-material")
+        imported_material = material_import.load(CapturedInput.read(self.target))
+        self.assertEqual({"name": "steel", "description": "fixture", "density": 7.8,
+                          "density_name": "density", "density_type": ""},
+                         imported_material.root.appearance["physical_material"])
         self.assertEqual((material_import.metrics.native_parses,
-                          material_import.metrics.prototype_captures), (1, 0))
+                          material_import.metrics.prototype_captures), (1, 1))
 
         denied_document = Document(
             "denied STEP import", admission=ResourceAdmission(cpu_slots=0))

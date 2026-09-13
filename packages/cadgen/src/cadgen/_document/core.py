@@ -16,7 +16,8 @@ from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from .identities import EvaluationIdentity, EvaluationKey, LogicalIdentity, allocation_provenance, normalize
-from .native import NativeEscapeArena, NativeResult, TopologyHistory, copy_many, copy_shape
+from .native import (NativeEscapeArena, NativeResult, TopologyHistory,
+                     copy_many, copy_shape, copy_shape_with_face_map)
 from .resources import Cancelled, ResourceAdmission, ResourceRequest
 from .roots import RootNode, root_handles, validate_root
 
@@ -518,11 +519,23 @@ class RevisionTransaction:
 
     def capture(self, shape: Any, *, logical_id=None) -> GeometryHandle:
         """Snapshot an external/opaque result; never infer pure native identity."""
+        return self._capture(shape, logical_id=logical_id, map_faces=False)[0]
+
+    def capture_with_face_map(self, shape: Any, *, logical_id=None) -> tuple[GeometryHandle, tuple[int, ...]]:
+        """Capture once with exact source-to-retained face ordinal values.
+
+        Trusted metadata adapters use this to attach source face styles to the
+        actual retained prototype. It is not a naming map across model edits.
+        """
+        return self._capture(shape, logical_id=logical_id, map_faces=True)
+
+    def _capture(self, shape, *, logical_id, map_faces):
         self._check()
         key = EvaluationKey.create("opaque", "1", (), runtime=self.document.runtime,
                                    volatility=self._nonce())
         with self.document.admission.admit(ResourceRequest(), cancellation=self.cancellation):
-            retained = copy_shape(shape)
+            retained, face_map = (copy_shape_with_face_map(shape) if map_faces
+                                  else (copy_shape(shape), ()))
         handle = GeometryHandle(self.document.owner_id, key.identity, key.identity.value, self._nonce())
         self.document._prototypes[handle.prototype_id] = _Prototype(
             handle, key, retained, TopologyHistory(reason="opaque native capture"), ())
@@ -531,7 +544,7 @@ class RevisionTransaction:
             self.escape_arena.adopt(handle, shape)
         self.stats.computed += 1
         self.stats.native_copies += 1
-        return self._record(handle, logical_id)
+        return self._record(handle, logical_id), face_map
 
     def query(self, handle: GeometryHandle, fn: Callable[[Any], Any]) -> Any:
         prototype = self._validate_handle(handle)

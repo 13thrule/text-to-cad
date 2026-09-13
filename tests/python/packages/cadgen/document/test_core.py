@@ -67,6 +67,67 @@ class ResourceTests(unittest.TestCase):
 
 
 class NativeDocumentTests(unittest.TestCase):
+    def test_opaque_face_capture_uses_copier_history_when_target_order_changes(self):
+        from OCP.BRep import BRep_Builder
+        from OCP.BRepBuilderAPI import BRepBuilderAPI_Copy
+        from OCP.BRepGProp import BRepGProp
+        from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+        from OCP.GProp import GProp_GProps
+        from OCP.TopAbs import TopAbs_FACE
+        from OCP.TopExp import TopExp
+        from OCP.TopTools import TopTools_IndexedMapOfShape
+        from OCP.TopoDS import TopoDS_Compound, TopoDS_Iterator
+        from OCP.gp import gp_Pnt
+
+        builder = BRep_Builder()
+        original = TopoDS_Compound()
+        builder.MakeCompound(original)
+        builder.Add(original, BRepPrimAPI_MakeBox(2., 3., 4.).Shape())
+        builder.Add(original, BRepPrimAPI_MakeBox(gp_Pnt(10., 0., 0.), 5., 6., 7.).Shape())
+
+        def reorder_copy(*args):
+            copier = BRepBuilderAPI_Copy(*args)
+            children = []
+            iterator = TopoDS_Iterator(copier.Shape())
+            while iterator.More():
+                children.append(iterator.Value())
+                iterator.Next()
+            reordered = TopoDS_Compound()
+            builder.MakeCompound(reordered)
+            for child in reversed(children):
+                builder.Add(reordered, child)
+
+            class NativeCopy:
+                def Shape(self):
+                    return reordered
+
+                def ModifiedShape(self, shape):
+                    return copier.ModifiedShape(shape)
+
+            return NativeCopy()
+
+        document = Document("exact face copy")
+        with document.begin("opaque input") as transaction, patch(
+                "OCP.BRepBuilderAPI.BRepBuilderAPI_Copy", side_effect=reorder_copy):
+            handle, mapping = transaction.capture_with_face_map(original)
+            retained = document._get(handle).shape
+            self.assertEqual(1, transaction.stats.native_copies)
+            self.assertEqual(1, transaction.stats.computed)
+            self.assertEqual(12, len(mapping))
+            self.assertNotEqual(tuple(range(12)), mapping)
+            source_faces, target_faces = TopTools_IndexedMapOfShape(), TopTools_IndexedMapOfShape()
+            TopExp.MapShapes_s(original, TopAbs_FACE, source_faces)
+            TopExp.MapShapes_s(retained, TopAbs_FACE, target_faces)
+            for source_index, target_index in enumerate(mapping):
+                source, target = source_faces.FindKey(source_index + 1), target_faces.FindKey(target_index + 1)
+                self.assertFalse(source.IsPartner(target))
+                before, after = GProp_GProps(), GProp_GProps()
+                BRepGProp.SurfaceProperties_s(source, before)
+                BRepGProp.SurfaceProperties_s(target, after)
+                self.assertAlmostEqual(before.Mass(), after.Mass(), places=10)
+                self.assertLess(before.CentreOfMass().Distance(after.CentreOfMass()), 1e-10)
+            transaction.commit()
+
     def test_unchanged_operations_use_resident_native_without_copy_or_brep(self):
         doc = Document("plate")
         with doc.begin("first") as first:

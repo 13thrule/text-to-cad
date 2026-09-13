@@ -79,9 +79,11 @@ class ReturnedTest(unittest.TestCase):
             root._occurrence_tree = {"name": "authored-instance-hierarchy"}
             return root
 
-        document, transaction, _, _ = self.run_model(model)
-        self.assertEqual(("_occurrence_tree", "cad_face_ordinal_colors", "cad_material"),
+        document, transaction, root, _ = self.run_model(model)
+        self.assertEqual(("_occurrence_tree",),
                          document._revisions[transaction.revision_id].unrepresented_metadata)
+        self.assertEqual({"roughness": .2}, root.children[0].appearance["pbr"])
+        self.assertEqual(((0, (1., 0., 0., 1.)),), root.children[0].appearance["face_colors"])
         document, transaction, _, _ = self.run_model(lambda: bd.Box(3, 4, 5))
         self.assertEqual((), document._revisions[transaction.revision_id].unrepresented_metadata)
 
