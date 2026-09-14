@@ -143,6 +143,8 @@ class SavedStepReadbackTest(unittest.TestCase):
         self.assertEqual((self.root / "part.step").read_bytes(), original)
 
     def test_current_pbr_is_rebound_without_reading_source_records_or_staged_sidecars(self):
+        from cadgen._internal.source_sidecar import SOURCE_MATERIAL_DEFAULTS
+
         shape = self.shape()
         first_finish = {"name": "First", "roughness": .2, "metalness": .6}
         second_finish = {"name": "Second", "roughness": .8, "metalness": .1}
@@ -158,7 +160,16 @@ class SavedStepReadbackTest(unittest.TestCase):
         self.assertEqual(expected[3], changed[3])
         self.assertEqual(expected[2]["documentTree"], changed[2]["documentTree"])
         self.assertNotEqual(expected[2]["documentAppearance"], changed[2]["documentAppearance"])
-        self.assertTrue(all(value == second_finish for value in changed[2]["documentAppearance"].values()))
+        expected_effective = {
+            **SOURCE_MATERIAL_DEFAULTS,
+            "roughness": second_finish["roughness"],
+            "metalness": second_finish["metalness"],
+        }
+        self.assertTrue(all(
+            value == expected_effective
+            for value in changed[2]["documentAppearance"].values()
+        ))
+        self.assertEqual(changed[1]["appearance"]["materials"]["finish"], second_finish)
 
     def test_nested_located_root_and_repeated_prototypes_keep_names_placements_and_colors(self):
         from build123d import Compound, Location

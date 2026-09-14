@@ -228,7 +228,11 @@ class ColdCompileCleanupTest(unittest.TestCase):
 
     def test_bound_sidecar_is_preserved_and_remains_an_export_overlay(self):
         from cadgen._internal.source_sidecar import (
-            apply_appearance, read_source_sidecar, source_sidecar_path, write_source_sidecar,
+            SOURCE_MATERIAL_DEFAULTS,
+            apply_appearance,
+            read_source_sidecar,
+            source_sidecar_path,
+            write_source_sidecar,
         )
         from cadgen.store.trees import flatten
 
@@ -255,8 +259,12 @@ class ColdCompileCleanupTest(unittest.TestCase):
             self.assertEqual(declarations["kinematics"], payload["kinematics"])
             canonical = flatten(result["tree"])
             overlaid = apply_appearance(canonical, declarations["appearance"])
-            material = next(occ["material"] for occ in overlaid["occurrences"] if occ["id"] == "o1.1.1")
-            self.assertEqual(material, {"name": "Finish", "roughness": .27, "metalness": .6})
+            occurrence = next(occ for occ in overlaid["occurrences"] if occ["id"] == "o1.1.1")
+            self.assertEqual(
+                occurrence["material"],
+                {**SOURCE_MATERIAL_DEFAULTS, "roughness": .27, "metalness": .6},
+            )
+            self.assertEqual(occurrence["materialName"], "Finish")
             self.assertNotEqual(overlaid, canonical)
 
     def test_foreign_sidecar_is_not_repaired_or_silently_accepted_by_its_reader(self):

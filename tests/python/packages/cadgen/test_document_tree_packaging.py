@@ -55,6 +55,7 @@ class DocumentTreePackagingTest(unittest.TestCase):
         return raw_tree
 
     def test_single_part_root_wrapper_is_canonical_across_warm_cold_and_file_copies(self):
+        from cadgen._internal.source_sidecar import SOURCE_MATERIAL_DEFAULTS
         from cadgen.store.build import build_tree_through_step
         from cadgen.store.trees import get_tree
 
@@ -75,8 +76,17 @@ class DocumentTreePackagingTest(unittest.TestCase):
         self.assertNotEqual(result, stats["documentTree"])
         self.assertEqual(set(stats["documentOccurrenceMap"]["o1"]),
                          {occurrence["id"] for occurrence in canonical["occurrences"]})
-        self.assertEqual(stats["documentAppearance"],
-                         {occurrence["id"]: finish for occurrence in canonical["occurrences"]})
+        self.assertEqual(
+            stats["documentAppearance"],
+            {
+                occurrence["id"]: {
+                    **SOURCE_MATERIAL_DEFAULTS,
+                    "roughness": finish["roughness"],
+                    "metalness": finish["metalness"],
+                }
+                for occurrence in canonical["occurrences"]
+            },
+        )
         self.assertTrue(all("material" not in occurrence for occurrence in canonical["occurrences"]))
         self.assertNotIn("documentTree", get_tree(result))
 
