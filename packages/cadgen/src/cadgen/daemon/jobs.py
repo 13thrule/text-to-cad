@@ -146,6 +146,7 @@ class JobLedger:
             "argv": [str(a) for a in (argv or [])],
             "state": "submitted",
             "phase": None,
+            "detail": "",
             "done": None,
             "total": None,
             "startedAt": now,
@@ -226,7 +227,7 @@ class JobLedger:
                     "sequence": sequence, "storeRoot": "", "announced": True,
                     "tool": "run", "subject": model,
                     "outputs": declared_outputs(model, "run"), "argv": [], "state": "submitted",
-                    "phase": None, "done": None, "total": None, "startedAt": now,
+                    "phase": None, "detail": "", "done": None, "total": None, "startedAt": now,
                     "updatedAt": now, "finishedAt": None, "exit": None, "error": None,
                 }
                 self._jobs[job["id"]] = job
@@ -236,6 +237,8 @@ class JobLedger:
             elif state == "building":
                 job["state"] = "building"
                 job["phase"] = event.get("phase") or job["phase"]
+                if event.get("detail") is not None:
+                    job["detail"] = str(event.get("detail") or "")
                 job["done"] = event.get("done")
                 job["total"] = event.get("total")
             elif state in ("done", "current"):

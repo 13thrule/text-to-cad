@@ -13,6 +13,7 @@ import {
   PROGRESSIVE_PUBLISH_MAX_COMPONENTS,
   createProgressivePackageLoader,
   orderComponentsForProgressiveLoad,
+  progressiveLoadProgress,
   progressiveLoadStage,
   progressivePublishCeilings,
   progressivePublishDue,
@@ -114,7 +115,14 @@ test("policy constants: a batch publishes at either ceiling, and the ceilings do
   assert.deepEqual(progressivePublishCeilings(0, { maxComponents: 4, maxBytes: 10 }), { components: 4, bytes: 10 });
   assert.deepEqual(progressivePublishCeilings(9, { maxComponents: 4, maxBytes: 10 }), { components: 4, bytes: 10 });
   assert.equal(progressivePublishDue({ pendingComponents: 1, pendingBytes: 10 }, { maxComponents: 4, maxBytes: 10 }), true);
-  assert.equal(progressiveLoadStage(3, 12), "loading components 3/12");
+  assert.equal(progressiveLoadStage(3, 12), "Loading geometry");
+  assert.deepEqual(progressiveLoadProgress(3, 12), {
+    phase: "geometry",
+    label: "Loading geometry",
+    done: 3,
+    total: 12,
+    determinate: true,
+  });
 });
 
 test("batches publish in order with monotonically increasing component counts; the last is final", async () => {

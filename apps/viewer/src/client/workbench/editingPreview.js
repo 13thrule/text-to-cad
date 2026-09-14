@@ -8,6 +8,9 @@ export function initialEditingPreview() {
     saved: null,
     retainedSaved: null,
     state: "disconnected",
+    phase: "",
+    detail: "",
+    updatedAt: 0,
     error: "",
   };
 }
@@ -20,7 +23,10 @@ export function previewGeometryChanged(previous, next) {
 export function reduceEditingPreview(current, next) {
   if (!next || typeof next !== "object") return current;
   if (!next.epoch) {
-    return { ...current, state: "disconnected", error: next.error || "" };
+    return {
+      ...current, state: "disconnected", phase: "", detail: "", updatedAt: 0,
+      error: next.error || ""
+    };
   }
   const previous = current.epoch && current.epoch !== next.epoch ? initialEditingPreview() : current;
   const revision = Number(next.revision) || 0;
@@ -37,6 +43,17 @@ export function reduceEditingPreview(current, next) {
       : same
         ? previous.previewUnavailable === true
         : false;
+  const state = next.state || "building";
+  const active = ["submitted", "queued", "building"].includes(state);
+  const phase = active
+    ? String(next.phase || (same ? previous.phase : "") || "").trim()
+    : "";
+  const detail = active
+    ? String(next.detail || (same ? previous.detail : "") || "").trim()
+    : "";
+  const updatedAt = active
+    ? Number(next.updatedAt) || (same ? previous.updatedAt : 0) || 0
+    : 0;
   return {
     epoch: next.epoch,
     revision,
@@ -44,7 +61,10 @@ export function reduceEditingPreview(current, next) {
     previewUnavailable,
     saved: next.saved || null,
     retainedSaved: next.saved || previous.saved || previous.retainedSaved || null,
-    state: next.state || "building",
+    state,
+    phase,
+    detail,
+    updatedAt,
     error: next.error || "",
     output: next.output,
     file: next.file || next.output,
@@ -83,14 +103,4 @@ export function editingPreviewEntry(state, catalogEntry) {
     editingPreview: true,
     previewKinematics: state.preview.kinematics || null,
   };
-}
-
-export function editingPreviewLabel(state, showingPreview) {
-  if (state.previewUnavailable && state.saved && !showingPreview) return "STEP saved · preview unavailable";
-  if (state.error || state.state === "failed") return state.error || "Save failed";
-  if (state.state === "disconnected") return showingPreview ? "Preview disconnected" : "Waiting for edits";
-  if (state.saved) return showingPreview ? "Preview · STEP saved" : "Saved";
-  if (showingPreview) return "Preview · saving STEP";
-  if (["submitted", "queued", "building"].includes(state.state)) return "Building preview";
-  return "Saved file";
 }

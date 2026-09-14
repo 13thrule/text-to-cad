@@ -12,10 +12,18 @@ import { fileKey } from "./sidebar.js";
 
 // The summary belongs in the compact file badge. The viewport shows one title,
 // an explanation with a next step, and the complete diagnostic on demand.
+function isViewerServiceFailure(failure, detail) {
+  const kind = String(failure?.kind || "").toLowerCase();
+  return ["service", "worker", "daemon", "broker", "status", "timeout"].includes(kind) || /\b(?:artifact|model) (?:worker|broker)\b|\bworker unavailable\b|\bservice unavailable\b|artifact request failed|lost its protocol|no cold retry|no unaccounted retry/i.test(detail);
+}
+
 function failureAlert(fileRef, error, failure, compile = false) {
   const detail = String(failure?.detail || error || "").trim();
-  const kind = failure?.kind || (/^(Failed to fetch|Load failed|NetworkError.*|network failed)$/i.test(detail)
+  let kind = failure?.kind || (/^(Failed to fetch|Load failed|NetworkError.*|network failed)$/i.test(detail)
     ? "network" : compile ? "compile" : "mesh");
+  if (isViewerServiceFailure(failure, detail)) {
+    kind = "service";
+  }
   const operation = failure?.operation || (compile ? "preparing display assets" : "loading geometry");
   const diagnostics = [
     `File: ${fileRef}`, `Operation: ${operation}`,
@@ -30,6 +38,14 @@ function failureAlert(fileRef, error, failure, compile = false) {
     ...(failure?.method === "POST" ? {
       recovery: "The build may still be running on the server. Reloading checks its status before starting any work."
     } : {}),
+    reload: true
+  };
+  if (kind === "service") return {
+    ...common, summary: "Viewer service failed", title: "Couldn’t prepare the model",
+    message: ["status", "timeout"].includes(failure?.kind)
+      ? "The viewer did not respond while preparing this model."
+      : "The viewer couldn’t finish processing this model.",
+    recovery: "Try again. If this continues, check the viewer’s terminal output.",
     reload: true
   };
   if (kind === "http" || kind === "response") return {
@@ -59,8 +75,13 @@ export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = n
 
   const sourceFormat = entrySourceFormat(entry);
 
-  if (artifact?.status === "failed" && !hasMeshData) {
-    return failureAlert(fileRef, artifact.error, artifact.failure, true);
+  if (artifact?.status === "failed") {
+    const alert = failureAlert(fileRef, artifact.error, artifact.failure, true);
+    return hasMeshData ? {
+      ...alert,
+      blocking: false,
+      message: `${alert.message} The existing model remains visible.`
+    } : alert;
   }
 
   const stepArtifactError = failedStepArtifact(entry, sourceFormat);
@@ -85,7 +106,12 @@ export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = n
   }
 
   if (loadError) {
-    return failureAlert(fileRef, loadError?.message || loadError, loadError?.failure);
+    const alert = failureAlert(fileRef, loadError?.message || loadError, loadError?.failure);
+    return hasMeshData ? {
+      ...alert,
+      blocking: false,
+      message: `${alert.message} The existing model remains visible.`
+    } : alert;
   }
 
   // A dimensioned DRAWING has no mesh BY DESIGN -- it encloses nothing to extrude
@@ -111,3 +137,80 @@ export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = n
   return null;
 }
 
+/**
+ * Turn a live-edit failure into the same actionable alert used by file loads.
+ * Feed disconnects and recoverable preview expiry stay quiet; neither means the
+ * model or its saved file is invalid.
+ */
+export function buildViewerEditAlert(editingState, showingCurrentPreview = false, hasGeometry = false) {
+  const state = String(editingState?.state || "").trim().toLowerCase();
+  const detail = String(editingState?.error || "").trim();
+  if (!editingState || state === "disconnected") {
+    return null;
+  }
+
+  const usableModelVisible = Boolean(showingCurrentPreview || hasGeometry);
+  const hasSavedFallback = Boolean(editingState.saved || editingState.retainedSaved);
+  const missingPreviewBlocksOpen = editingState.previewUnavailable
+    && !usableModelVisible
+    && !hasSavedFallback;
+  const previewOnlyFailure = editingState.previewUnavailable
+    && /preview|cache|no longer available/i.test(detail);
+  if ((editingState.previewUnavailable && !missingPreviewBlocksOpen && previewOnlyFailure)
+      || (state !== "failed" && !missingPreviewBlocksOpen)) {
+    return null;
+  }
+
+  const actualDetail = detail || (missingPreviewBlocksOpen
+    ? "The live model is no longer available."
+    : "The viewer returned no diagnostic for the failed update.");
+  const details = [
+    editingState.file || editingState.output
+      ? `File: ${editingState.file || editingState.output}`
+      : "",
+    editingState.revision ? `Revision: ${editingState.revision}` : "",
+    showingCurrentPreview ? "Operation: writing the STEP file" : "Operation: updating the model",
+    actualDetail
+  ].filter(Boolean).join("\n");
+  const common = {
+    severity: "error",
+    details,
+    reload: true,
+    ...(usableModelVisible ? { blocking: false } : {})
+  };
+
+  if (showingCurrentPreview) {
+    return {
+      ...common,
+      summary: "Update failed",
+      title: "Couldn’t write the STEP file",
+      message: "The updated model is visible, but the STEP file could not be written.",
+      reason: actualDetail,
+      recovery: "Check the diagnostic in Details and the viewer’s terminal output, then run the model again."
+    };
+  }
+
+  if (isViewerServiceFailure(editingState.failure, actualDetail)) {
+    return {
+      ...common,
+      kind: "service",
+      summary: "Viewer service failed",
+      title: "Couldn’t prepare the model",
+      message: usableModelVisible
+        ? "The viewer’s processing service failed. The existing model remains visible."
+        : "The viewer’s processing service failed.",
+      recovery: "Try again. If this continues, check the viewer’s terminal output."
+    };
+  }
+
+  return {
+    ...common,
+    summary: usableModelVisible ? "Update failed" : "Open failed",
+    title: usableModelVisible ? "Couldn’t update the model" : "Couldn’t open the model",
+    message: usableModelVisible
+      ? "The update failed, so the existing model remains visible."
+      : "The model could not be prepared for display.",
+    reason: actualDetail,
+    recovery: "Check the diagnostic in Details, correct the model, then run it again."
+  };
+}

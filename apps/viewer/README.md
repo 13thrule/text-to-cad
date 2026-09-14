@@ -104,7 +104,7 @@ environment. Quality changes refine the view without rebuilding exact CAD
 geometry or the model scene. Entering Render creates an ordinary-depth WebGL
 runtime so the photographic ground can receive shadows; returning to CAD restores
 its wide-range logarithmic-depth runtime while decoded geometry stays cached. The
-filename badge reports Reduced detail when memory limits prevent requested detail. Snapshots use the same policy:
+filename badge reports Limited detail when memory limits prevent requested detail. Snapshots use the same policy:
 Final selects the existing finest L3 STEP tessellation and 2× capture scale unless
 an explicit output scale overrides it. CAD tessellation controls cannot be combined
 with a photographic snapshot request.
@@ -190,15 +190,21 @@ the build — detection only; it keeps serving.
   rows prioritizes its metadata immediately. Unchanged catalog rows and concurrent
   tree verification are reused; loading one model does not wait for every model.
 - STEP entries always follow active edits, showing the root preview before its
-  STEP save. The compact badge beside the filename reports loading, edits,
-  save outcomes and detail failures or limits in one or two words. Orbit-driven refinement stays
-  in the background without changing the badge. A loaded saved file has no badge.
-  Loading uses an inline spinner; its overlay and tooltip report catalog,
-  structure, surface preparation, tessellation, and component-loading stages.
-  Warnings and errors use their own icons. Tooltips explain the state.
+  STEP save. The filename badge reports only **Opening**, **Updating**, **Open failed**,
+  **Update failed**, or **Limited detail**. Once a usable current view is displayed,
+  saving, successful completion, idle edit-feed state and routine refinement stay quiet.
+  Busy badges have a spinner; failures and detail limits have an icon and open their
+  explanation on click. Existing usable views remain visible during updates and failures.
+  Opening uses one headline with **Finding file**, **Reading model**, **Loading geometry**,
+  or **Preparing view** underneath. Counts measure completed geometry items in the current
+  stage, not assembly occurrences or an overall ETA. Uncounted stages are indeterminate.
+  Render initialization uses the same indicator against the destination backdrop until
+  its first usable frame. Long waits show elapsed time; interrupted progress requests
+  explain that the viewer is waiting for a response before offering recovery.
+  Selection and edge preparation report beside their controls, not as whole-model loading.
   Run the model normally; existing decorators need no new imports. The daemon
   must be running for live updates. The prior model stays visible while the
-  next request builds; save errors or a disconnected feed remain visible.
+  next request builds; failed updates remain visible while an idle disconnected feed retries quietly.
   Updates arrive through a held request that wakes when this output's build
   ledger changes. Unrelated jobs do not wake the tab. The server admits 32
   waiters independently of kernel workers; excess tabs retry every 500 ms.
@@ -212,8 +218,8 @@ the build — detection only; it keeps serving.
   Restarting the daemon expires the ephemeral session, and rerunning the model
   reconnects it. Source files hold authored changes; there is no hidden durable
   preview document. Every explicit model run still waits for declared outputs.
-  A successful save leaves that revision's authored preview displayed, labelled
-  **Saved**. A later successful no-op run without a new preview, or
+  A successful save leaves that revision's authored preview displayed without a status badge.
+  A later successful no-op run without a new preview, or
   an expired preview with a validated saved result, uses the saved file instead.
   Complete displayed component arrays remain available while a replacement
   stages or fails. Reuse requires the same runtime surface input, concrete
@@ -228,7 +234,7 @@ the build — detection only; it keeps serving.
   standard level, preserving its angular smoothness even when projected chord
   error alone would permit a coarser mesh. Close inspection can request finer
   detail. The top bar distinguishes preview, refinement, standard detail and
-  limited or failed refinement; STEP save status remains separate.
+  limited or failed refinement; background file writing stays quiet.
   Refinement uses the camera and disposable memory budget; exact geometry,
   measurements and explicit mesh-export tolerances remain unchanged.
   Static assemblies sample full transformed occurrence bounds against the camera

@@ -90,7 +90,8 @@ export function useViewerRuntime({
   onContextLost,
   onContextRestored,
   onInitializationError,
-  onFirstFrame,
+  onFramePresented,
+  presentationRequestRef,
   preserveInteractionPixelRatio = false,
   runtimeResetToken = 0
 }) {
@@ -176,7 +177,7 @@ export function useViewerRuntime({
       syncCameraViewport(orthographicCamera, width, height);
 
       const renderer = createWebGlRenderer(THREE, renderMode);
-      const presentation = createFramePresentation({ canvas: renderer.domElement, renderMode, onFirstFrame });
+      const presentation = createFramePresentation({ canvas: renderer.domElement, renderMode, onPresent: onFramePresented });
       const softwareRendering = isSoftwareWebGlRenderer(renderer);
       let idlePixelRatioCap = softwareRendering
         ? 1
@@ -453,7 +454,11 @@ export function useViewerRuntime({
         fitCameraDepthRange(runtimeRef.current);
         renderer.shadowMap.needsUpdate = interactionState.shadowsDirty === true;
         interactionState.shadowsDirty = false;
-        presentation.draw(runtimeRef.current, () => renderer.render(scene, runtimeRef.current?.camera || camera));
+        presentation.draw(
+          runtimeRef.current,
+          () => renderer.render(scene, runtimeRef.current?.camera || camera),
+          presentationRequestRef?.current,
+        );
         const previewOrbitActive = !!runtimeRef.current?.previewOrbitEnabled;
         if (!previewOrbitActive) {
           const nextActiveFace = getActiveViewPlaneFaceId(runtimeRef.current);
@@ -760,6 +765,7 @@ export function useViewerRuntime({
         gridHelper: null,
         floorMode,
         hasVisibleModel: false,
+        hasDrawingDocument: false,
         edgePickThreshold: 1.5,
         vertexPickThreshold: 0.9,
         cameraTransition: null,

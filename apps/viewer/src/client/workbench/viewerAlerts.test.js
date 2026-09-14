@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildViewerMeshAlert } from "./viewerAlerts.js";
+import { buildViewerEditAlert, buildViewerMeshAlert } from "./viewerAlerts.js";
 
 const step = { file: "STEP/moonwatch.step", kind: "part" };
 
@@ -25,13 +25,15 @@ test("disconnected POST warns that the build may still be running", () => {
   assert.doesNotMatch(alert.title, /compil/i);
 });
 
-test("HTTP error reports status and the server's reason", () => {
+test("worker-unavailable HTTP errors identify the service and retain diagnostics", () => {
   const alert = buildViewerMeshAlert(step, false, "", {
     status: "failed", error: "Worker unavailable", failure: { kind: "http", status: 503 }
   });
-  assert.match(alert.message, /HTTP 503/);
-  assert.equal(alert.reason, "Worker unavailable");
+  assert.equal(alert.summary, "Viewer service failed");
+  assert.equal(alert.title, "Couldn’t prepare the model");
+  assert.equal(alert.reason, undefined);
   assert.match(alert.details, /HTTP status: 503/);
+  assert.match(alert.details, /Worker unavailable/);
 });
 
 test("compile failure preserves the full diagnostic, context and useful recovery", () => {
@@ -51,8 +53,35 @@ test("missing compiler diagnostic is stated honestly", () => {
   assert.match(alert.recovery, /terminal output/);
 });
 
-test("an artifact failure is not raised once geometry is visible", () => {
-  assert.equal(buildViewerMeshAlert(step, true, "", { status: "failed", error: "boom" }), null);
+test("a failed replacement stays actionable without blocking usable geometry", () => {
+  const alert = buildViewerMeshAlert(step, true, "", { status: "failed", error: "Invalid edge loop" });
+  assert.equal(alert.blocking, false);
+  assert.match(alert.message, /existing model remains visible/i);
+  assert.equal(alert.reason, "Invalid edge loop");
+});
+
+test("worker protocol failures identify the viewer service without blaming the source", () => {
+  const diagnostic = "artifact request failed or lost its protocol; no cold retry: worker exited";
+  const alert = buildViewerMeshAlert(step, false, "", { status: "failed", error: diagnostic });
+  assert.equal(alert.summary, "Viewer service failed");
+  assert.equal(alert.title, "Couldn’t prepare the model");
+  assert.match(alert.message, /viewer (?:couldn’t finish processing|did not respond while preparing) this model/);
+  assert.doesNotMatch(alert.recovery, /correct|rebuild the source/i);
+  assert.equal(alert.reason, undefined);
+  assert.ok(alert.details.endsWith(diagnostic));
+});
+
+test("status and timeout failures also identify the processing service", () => {
+  for (const kind of ["status", "timeout"]) {
+    const alert = buildViewerMeshAlert(step, false, "", {
+      status: "failed",
+      error: "Request did not complete",
+      failure: { kind, detail: "Request did not complete" }
+    });
+    assert.equal(alert.summary, "Viewer service failed");
+    assert.match(alert.message, /viewer (?:couldn’t finish processing|did not respond while preparing) this model/);
+    assert.match(alert.details, /Request did not complete/);
+  }
 });
 
 test("failed STEP artifact explains what is missing and retains a renderable fallback", () => {
@@ -92,4 +121,54 @@ test("missing geometry gives file context and a next step; empty drawings stay v
   assert.equal(buildViewerMeshAlert(drawing, false, ""), null);
   assert.equal(buildViewerMeshAlert(drawing, false, "bad DXF").summary, "Mesh load failed");
   assert.equal(buildViewerMeshAlert(null, false, "failure"), null);
+});
+
+test("edit alerts keep disconnects and healthy preview expiry quiet", () => {
+  assert.equal(buildViewerEditAlert({ state: "disconnected", error: "Connection closed" }, false, false), null);
+  assert.equal(buildViewerEditAlert({
+    state: "done",
+    error: "Preview geometry is no longer available in the cache",
+    previewUnavailable: true,
+    saved: { tree: "saved" }
+  }, false, true), null);
+
+  const blocked = buildViewerEditAlert({
+    state: "done",
+    error: "Preview geometry is no longer available in the cache",
+    previewUnavailable: true
+  }, false, false);
+  assert.equal(blocked.summary, "Open failed");
+  assert.equal(blocked.blocking, undefined);
+});
+
+test("a failed save explains that the updated model is visible and keeps the diagnostic", () => {
+  const alert = buildViewerEditAlert({
+    state: "failed",
+    error: "Disk full\nwrite trace",
+    file: "STEP/moonwatch.step",
+    revision: 8
+  }, true, true);
+  assert.equal(alert.summary, "Update failed");
+  assert.equal(alert.message, "The updated model is visible, but the STEP file could not be written.");
+  assert.equal(alert.title, "Couldn’t write the STEP file");
+  assert.equal(alert.blocking, false);
+  assert.equal(alert.reason, "Disk full\nwrite trace");
+  assert.match(alert.details, /Revision: 8/);
+});
+
+test("edit worker failures are distinct from invalid-model failures", () => {
+  const worker = buildViewerEditAlert({
+    state: "failed",
+    error: "artifact request failed or lost its protocol; no cold retry"
+  }, false, true);
+  assert.equal(worker.summary, "Viewer service failed");
+  assert.equal(worker.kind, "service");
+  assert.equal(worker.blocking, false);
+  assert.equal(worker.reason, undefined);
+  assert.match(worker.details, /no cold retry/);
+
+  const invalid = buildViewerEditAlert({ state: "failed", error: "Fillet radius is too large" }, false, false);
+  assert.equal(invalid.summary, "Open failed");
+  assert.match(invalid.recovery, /correct the model/i);
+  assert.equal(invalid.reason, "Fillet radius is too large");
 });

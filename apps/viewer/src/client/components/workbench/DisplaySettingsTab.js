@@ -210,7 +210,9 @@ export function DisplaySettingsSection({
   projection = CAMERA_PROJECTION.ORTHOGRAPHIC,
   onProjectionChange,
   clipBounds = null,
-  explodeMeshData = null
+  explodeMeshData = null,
+  edgeStatus = "idle",
+  edgeError = ""
 }) {
   const display = useMemo(() => normalizeDisplaySettings(displaySettings), [displaySettings]);
   const setDisplay = (patch) => updateDisplaySettings((current) => ({
@@ -280,6 +282,8 @@ export function DisplaySettingsSection({
       </FileSheetSubsection>
 
       <FileSheetSubsection title="Edges">
+        {edgeStatus === "loading" ? <p role="status" className="px-3 py-1 text-xs text-muted-foreground">Preparing edges…</p> : null}
+        {edgeError ? <p role="alert" className="px-3 py-1 text-xs text-destructive">Couldn’t load edges. {edgeError}</p> : null}
         <FileSheetToggleRow label="Silhouette" checked={display.edges.silhouette} onCheckedChange={(silhouette) => setEdges({ silhouette })} />
       </FileSheetSubsection>
 

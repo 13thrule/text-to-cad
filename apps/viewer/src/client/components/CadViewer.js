@@ -1,5 +1,6 @@
 "use client";
 
+import LoadingIndicator from "./workbench/LoadingIndicator";
 import { disposeViewerCadScene } from "../render/lodSceneCleanup.js";
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -1769,6 +1770,9 @@ const CadViewer = forwardRef(function CadViewer({
   compactViewPlane = false,
   viewportFrameInsets = null,
   isLoading = false,
+  presentationKey = "",
+  onPresentationChange = null,
+  loadingPresentation = null,
   pickMode = VIEWER_PICK_MODE.AUTO,
   panToolActive = false,
   renderPartsIndividually = false,
@@ -1903,13 +1907,27 @@ const CadViewer = forwardRef(function CadViewer({
   const [runtimeResetToken, setRuntimeResetToken] = useState(0);
   const presentationEpoch = useMemo(() => ({}), [renderMode, runtimeResetToken]);
   const [presentedEpoch, setPresentedEpoch] = useState(null);
-  const handleFirstFrame = useCallback(() => setPresentedEpoch(presentationEpoch), [presentationEpoch]);
+  const [presentedKey, setPresentedKey] = useState("");
+  const resolvedPresentationKey = String(presentationKey || modelKey || "");
+  const presentationRequestRef = useRef({ key: "", ready: false });
+  const handleFramePresented = useCallback((key) => {
+    setPresentedEpoch(presentationEpoch);
+    setPresentedKey(String(key || ""));
+  }, [presentationEpoch]);
   useLayoutEffect(() => {
     // Hide the old canvas in the same commit as the mode control changes,
     // before asynchronous runtime teardown/setup can expose an empty frame.
     const canvas = runtimeRef.current?.renderer?.domElement;
     if (canvas) canvas.style.visibility = "hidden";
   }, [presentationEpoch]);
+  useLayoutEffect(() => {
+    presentationRequestRef.current = { key: resolvedPresentationKey, ready: false };
+  }, [presentationEpoch, resolvedPresentationKey]);
+  const markPresentationReady = useCallback((runtime) => {
+    if (!runtime || !resolvedPresentationKey) return;
+    presentationRequestRef.current = { key: resolvedPresentationKey, ready: true };
+    runtime.requestRender?.();
+  }, [resolvedPresentationKey]);
   const [activeViewPlaneFace, setActiveViewPlaneFace] = useState("");
   const [viewPlaneOrientation, setViewPlaneOrientation] = useState(DEFAULT_VIEW_PLANE_ORIENTATION);
   const [cameraZoomPercent, setCameraZoomPercent] = useState(100);
@@ -2661,16 +2679,16 @@ const CadViewer = forwardRef(function CadViewer({
     const group = runtime?.modelGroup;
     const previous = runtime?.dxfDrawingLines || null;
     const dispose = () => {
-      if (!previous) {
-        return;
-      }
-      previous.parent?.remove(previous);
-      for (const child of previous.children || []) {
-        child.geometry?.dispose?.();
-        child.material?.dispose?.();
+      if (previous) {
+        previous.parent?.remove(previous);
+        for (const child of previous.children || []) {
+          child.geometry?.dispose?.();
+          child.material?.dispose?.();
+        }
       }
       if (runtime) {
         runtime.dxfDrawingLines = null;
+        runtime.hasDrawingDocument = false;
       }
     };
     if (!group || !drawingIsDocument || !drawingGeometry?.geometry) {
@@ -2691,6 +2709,8 @@ const CadViewer = forwardRef(function CadViewer({
     );
     const { layers } = buildDxfDrawingLineGroups(drawingGeometry);
     if (!layers.length) {
+      runtime.hasDrawingDocument = true;
+      markPresentationReady(runtime);
       return undefined;
     }
     const container = new THREE.Group();
@@ -2725,6 +2745,7 @@ const CadViewer = forwardRef(function CadViewer({
     group.add(container);
     if (runtime) {
       runtime.dxfDrawingLines = container;
+      runtime.hasDrawingDocument = true;
     }
     // A document has no mesh for the shared fit to measure, so its own extent stands in.
     // Publishing runtime.modelBounds is how it gets the shared zoom baseline, reset and fit
@@ -2744,9 +2765,10 @@ const CadViewer = forwardRef(function CadViewer({
       runtime.hasVisibleModel = true;
       resetZoomAndPan({ animate: false });
     }
+    markPresentationReady(runtime);
     runtime?.requestRender?.();
     return undefined;
-  }, [applyActivePhotographicStudio, drawingIsDocument, drawingGeometry, drawingHiddenLayers, viewerReadyTick]);
+  }, [applyActivePhotographicStudio, drawingIsDocument, drawingGeometry, drawingHiddenLayers, markPresentationReady, viewerReadyTick]);
 
   // Applied SYNCHRONOUSLY when the meshes already exist. The previous version restored flat
   // positions in its cleanup and re-folded on the next animation frame — so every slider
@@ -3539,7 +3561,8 @@ const CadViewer = forwardRef(function CadViewer({
     floorMode: resolvedFloorMode,
     renderMode,
     onInitializationError: handleRuntimeInitializationError,
-    onFirstFrame: handleFirstFrame,
+    onFramePresented: handleFramePresented,
+    presentationRequestRef,
     onContextLost: handleRuntimeContextLost,
     onContextRestored: handleRuntimeContextRestored,
     preserveInteractionPixelRatio,
@@ -4432,6 +4455,7 @@ const CadViewer = forwardRef(function CadViewer({
       // environment or animation alert that replaced it during recovery.
       viewerAlertChangeRef.current?.(current => current === recoveredAlert ? null : current);
     }
+    if (adopted) markPresentationReady(runtime);
     } catch (error) {
       staticSceneResetRef.current.invalidate();
       if (error?.failedCadScene) {
@@ -4465,6 +4489,7 @@ const CadViewer = forwardRef(function CadViewer({
     }
   }, [
     meshGeometrySource,
+    markPresentationReady,
     modelKey,
     perspective,
     perspectiveRef,
@@ -5539,7 +5564,19 @@ const CadViewer = forwardRef(function CadViewer({
     allowMeshVertexSnap
   });
 
-  const preparingFrame = presentedEpoch !== presentationEpoch && !error && hasViewportContent;
+  const hasPresentableContent = hasViewportContent || Boolean(drawingIsDocument && drawingGeometry?.geometry);
+  const preparingFrame = Boolean(resolvedPresentationKey) &&
+    (presentedEpoch !== presentationEpoch || presentedKey !== resolvedPresentationKey) && !error;
+  const coveringModeTransition = presentedEpoch !== presentationEpoch && !error && hasPresentableContent;
+  useEffect(() => {
+    onPresentationChange?.({
+      file: modelKey,
+      renderMode,
+      key: resolvedPresentationKey,
+      preparing: Boolean(preparingFrame),
+      covering: Boolean(coveringModeTransition),
+    });
+  }, [modelKey, renderMode, resolvedPresentationKey, preparingFrame, coveringModeTransition, onPresentationChange]);
   const transitionBackdrop = viewerTransitionBackdrop({
     renderMode, renderConfiguration, background: normalizedThemeSettings.background, viewerTheme
   });
@@ -5548,16 +5585,17 @@ const CadViewer = forwardRef(function CadViewer({
     <div
       ref={interactionHostRef}
       className="relative h-full w-full"
-      style={preparingFrame ? { backgroundColor: transitionBackdrop.backgroundColor } : undefined}
+      style={coveringModeTransition ? { backgroundColor: transitionBackdrop.backgroundColor } : undefined}
       aria-busy={preparingFrame}
     >
       <div className="h-full w-full" ref={mountRef} />
-      {preparingFrame ? (
+      {coveringModeTransition ? (
         <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center" style={transitionBackdrop} role="status" data-viewer-transition={renderMode ? "render" : "inspect"}>
-          <span className="flex items-center gap-2 text-sm">
-            <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
-            {renderMode ? "Preparing render…" : "Preparing view…"}
-          </span>
+          <LoadingIndicator
+            headline={renderMode ? "Preparing render…" : "Opening model…"}
+            progress={loadingPresentation?.busy ? loadingPresentation.progress : { label: "Preparing view" }}
+            operationKey={`${resolvedPresentationKey}:${renderMode}`}
+          />
         </div>
       ) : null}
       <canvas

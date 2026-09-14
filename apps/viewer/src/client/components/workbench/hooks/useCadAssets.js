@@ -43,7 +43,7 @@ import { resolvePackageAssetUrl } from "./packageAssetUrl.js";
 import {
   createProgressivePackageLoader,
   PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
-  progressiveLoadStage,
+  progressiveLoadProgress,
   publishMeshCostAccounting,
   shouldRetainCompleteSameFileMesh
 } from "./packageProgressiveLoad.js";
@@ -302,7 +302,7 @@ export function useCadAssets({
   const [meshLoadInProgress, setMeshLoadInProgress] = useState(false);
   const [meshLoadTargetFile, setMeshLoadTargetFile] = useState("");
   const [meshLoadTargetHash, setMeshLoadTargetHash] = useState("");
-  const [meshLoadStage, setMeshLoadStage] = useState("");
+  const [meshLoadProgress, setMeshLoadProgress] = useState(null);
   const [status, setStatus] = useState(ASSET_STATUS.READY);
   const [error, setError] = useState("");
   const [urdfState, setUrdfState] = useState(null);
@@ -808,7 +808,7 @@ export function useCadAssets({
     setMeshLoadInProgress(false);
     setMeshLoadTargetFile("");
     setMeshLoadTargetHash("");
-    setMeshLoadStage("");
+    setMeshLoadProgress(null);
   }, [buildLodPackageSummary]);
 
   const cancelUrdfLoad = useCallback(() => {
@@ -871,7 +871,13 @@ export function useCadAssets({
     setMeshLoadInProgress(true);
     setMeshLoadTargetFile(String(entry?.file || "").trim());
     setMeshLoadTargetHash(targetMeshHash);
-    setMeshLoadStage(entry?.kind === "assembly" ? "loading assembly mesh" : "loading mesh");
+    setMeshLoadProgress({
+      phase: "finding",
+      label: "Finding model",
+      done: 0,
+      total: 0,
+      determinate: false,
+    });
     // Any new load invalidates the previous entry's LOD working set. A
     // complete same-file scene can remain rendered while its replacement is
     // decoded; it is frozen at its current LOD until the atomic commit.
@@ -895,7 +901,13 @@ export function useCadAssets({
       // package with one occurrence); compose it the same way. Only non-STEP meshes
       // (STL/3MF/OBJ) fall through to the monolithic single-file loader below.
       if (entrySourceFormat(entry) === RENDER_FORMAT.STEP) {
-        setMeshLoadStage("loading structure");
+        setMeshLoadProgress({
+          phase: "read",
+          label: "Reading model",
+          done: 0,
+          total: 0,
+          determinate: false,
+        });
         const meshUrl = entryAssetUrl(entry, "glb");
         if (!meshUrl) {
           throw new Error(`STEP file is missing GLB asset: ${entry.file || "(unknown)"}`);
@@ -928,6 +940,7 @@ export function useCadAssets({
           // post-load publish used to produce.
           let publishedOnce = false;
           const componentEntries = Object.entries(packageDescriptor.components || {});
+          setMeshLoadProgress(progressiveLoadProgress(0, componentEntries.length));
           const defaultInitialPlan = initialDisplayLodPlan({
             componentCount: componentEntries.length,
             maxInFlightBytes: PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
@@ -975,9 +988,6 @@ export function useCadAssets({
               const identity = componentIdentityByCid.get(cid);
               if (!identity?.surfaceObject) {
                 throw new Error(`Component ${cid} has no resolved surface identity`);
-              }
-              if (requestId === requestIdRef.current && !controller.signal.aborted) {
-                setMeshLoadStage(cacheProbe ? "loading cached meshes" : "tessellating surfaces");
               }
               const meshData = await loadRenderSurf(
                 identity.surfUrl || "",
@@ -1029,9 +1039,6 @@ export function useCadAssets({
                   byteLength: null,
                 };
               } else {
-                if (requestId === requestIdRef.current && !controller.signal.aborted) {
-                  setMeshLoadStage("preparing surfaces");
-                }
                 const resolved = await resolveSurfaceComponents(packageDescriptor, [{
                   cid, surfaceInput, surfaceObject: component.surfaceObject,
                 }], { signal: controller.signal });
@@ -1088,10 +1095,20 @@ export function useCadAssets({
             // final composition is published.
             publishIntermediate: !stageWholeReplacement,
             onRetainedChange: ({ loaded, total, retainedBytes }) => {
-              if (!stageWholeReplacement || requestId !== requestIdRef.current) return;
-              viewerMemoryPolicy.setRetained("replacementPending", retainedBytes);
-              syncAssetCacheMemory();
-              setMeshLoadStage(progressiveLoadStage(loaded, total));
+              if (requestId !== requestIdRef.current || controller.signal.aborted) return;
+              if (stageWholeReplacement) {
+                viewerMemoryPolicy.setRetained("replacementPending", retainedBytes);
+                syncAssetCacheMemory();
+              }
+              setMeshLoadProgress(loaded === total
+                ? {
+                    phase: "view",
+                    label: "Preparing view",
+                    done: loaded,
+                    total,
+                    determinate: true,
+                  }
+                : progressiveLoadProgress(loaded, total));
             },
             // The same staleness guard every publish below re-checks: the
             // request is current and not aborted.
@@ -1198,13 +1215,20 @@ export function useCadAssets({
               // loads; the summary only lists components with bounds (loaded).
               setLodPackage(buildLodPackageSummary(entry, meshUrl, packageDescriptor,
                 publishedCtx.componentMeshDataByCid, publishedCtx.componentIdentityByCid));
-              setMeshLoadStage(final ? "building assembly" : progressiveLoadStage(loaded, total));
+              if (final) {
+                setMeshLoadProgress({
+                  phase: "view",
+                  label: "Preparing view",
+                  done: loaded,
+                  total,
+                  determinate: true,
+                });
+              }
               if (stageWholeReplacement && final) {
                 viewerMemoryPolicy.setRetained("replacementPending", 0);
               }
             }
           });
-          setMeshLoadStage("checking cached meshes");
           try {
             await loader.run();
           } finally {
@@ -1228,10 +1252,18 @@ export function useCadAssets({
         );
       }
       const meshUrl = entryMeshAssetUrl(entry);
+      setMeshLoadProgress({
+        phase: "read",
+        label: "Reading model",
+        done: 0,
+        total: 0,
+        determinate: false,
+      });
       if (!meshUrl) {
         const assetLabel = meshAssetKeyForEntry(entry).toUpperCase();
         throw new Error(`${assetLabel} entry is missing ${assetLabel} asset: ${entry.file || "(unknown)"}`);
       }
+      setMeshLoadProgress(progressiveLoadProgress(0, 1));
       const loadedMesh = await loadRenderMeshForEntry(entry, { signal: controller.signal });
       const meshData = loadedMesh?.meshData || loadedMesh;
       const meshHash = entryMeshAssetHash(entry);
@@ -1249,7 +1281,13 @@ export function useCadAssets({
         setError("");
         return;
       }
-      setMeshLoadStage("building");
+      setMeshLoadProgress({
+        phase: "view",
+        label: "Preparing view",
+        done: 1,
+        total: 1,
+        determinate: true,
+      });
       displayedLodPackageRef.current = null;
       displayedReferenceCompositionRef.current = null;
       setMeshState({
@@ -1310,7 +1348,7 @@ export function useCadAssets({
         setMeshLoadInProgress(false);
         setMeshLoadTargetFile("");
         setMeshLoadTargetHash("");
-        setMeshLoadStage("");
+        setMeshLoadProgress(null);
       }
       if (meshAbortControllerRef.current === controller) {
         meshAbortControllerRef.current = null;
@@ -1810,7 +1848,7 @@ export function useCadAssets({
     meshLoadInProgress,
     meshLoadTargetFile,
     meshLoadTargetHash,
-    meshLoadStage,
+    meshLoadProgress,
     status,
     setStatus,
     error,

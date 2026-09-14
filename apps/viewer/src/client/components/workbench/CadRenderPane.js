@@ -258,6 +258,9 @@ export default function CadRenderPane({
   viewerLoading,
   retainingPreviousStepMesh = false,
   viewerAlert,
+  presentationKey,
+  onPresentationChange,
+  loadingPresentation,
   stepUpdateInProgress,
   referenceSelectionPending = false,
   referenceSelectionUnavailable = false,
@@ -484,6 +487,9 @@ export default function CadRenderPane({
         ref={viewerRef}
         meshData={selectedMeshData}
         modelKey={selectedKey}
+        presentationKey={presentationKey}
+        onPresentationChange={onPresentationChange}
+        loadingPresentation={loadingPresentation}
         renderFormat={renderFormat}
         drawingThicknessScale={drawingThicknessScale}
         planMode={effectivePlanMode}
@@ -647,26 +653,6 @@ export default function CadRenderPane({
             </h2>
             <ViewerAlertBody alert={blockingViewerAlert} />
           </div>
-        </div>
-      ) : null}
-      {!previewMode && inspectionEnabled && stepUpdateInProgress ? (
-        <div className="pointer-events-none absolute z-20 flex justify-center px-4" style={modelViewportBottomOverlayStyle}>
-          <Alert
-            role="status"
-            className="bg-popover w-auto px-3 py-1.5 text-[11px] font-medium text-popover-foreground shadow-sm"
-          >
-            STEP changed. Updating/regenerating references...
-          </Alert>
-        </div>
-      ) : null}
-      {!previewMode && inspectionEnabled && !stepUpdateInProgress && topologySelectionPending ? (
-        <div className="pointer-events-none absolute z-20 flex justify-center px-4" style={modelViewportBottomOverlayStyle}>
-          <Alert
-            role="status"
-            className="bg-popover w-auto px-3 py-1.5 text-[11px] font-medium text-popover-foreground shadow-sm"
-          >
-            Preparing selectable topology...
-          </Alert>
         </div>
       ) : null}
       {!previewMode && ctaMode && !stepUpdateInProgress && !topologySelectionPending && !topologySelectionUnavailable && !topologySelectionDeferred ? (

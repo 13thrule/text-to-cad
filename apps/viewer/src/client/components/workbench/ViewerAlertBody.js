@@ -19,7 +19,7 @@ export default function ViewerAlertBody({ alert }) {
       ) : null}
       {alert.reload ? (
         <Button type="button" variant="outline" size="sm" onClick={() => window.location.reload()}>
-          Reload viewer
+          Try again
         </Button>
       ) : null}
     </div>

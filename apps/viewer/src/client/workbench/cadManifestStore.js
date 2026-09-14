@@ -215,7 +215,7 @@ export async function refreshCadCatalog({
 // Unified geometry-artifact client API. GET reports compile state ({ state: "compiled" | "not-compiled" |
 // "compiling" | "failed", ... }); a direct-render entry is always "compiled". (Replaced the STEP-specific
 // requestStepSourceStatus + requestStepArtifactGeneration.)
-export async function requestArtifactStatus(fileRef, { signal } = {}) {
+export async function requestArtifactStatus(fileRef, { signal, timeoutMs = 0 } = {}) {
   if (typeof window === "undefined") {
     return null;
   }
@@ -225,7 +225,7 @@ export async function requestArtifactStatus(fileRef, { signal } = {}) {
   }
   return requestViewerJson(cadApiUrl("/__cad/artifact", {
     params: { file: normalizedFileRef },
-  }), { method: "GET", cache: "no-store", signal }, "checking display assets");
+  }), { method: "GET", cache: "no-store", signal }, "checking display assets", { timeoutMs });
 }
 
 // POST (re)builds the artifact and publishes the refreshed catalog; resolves to

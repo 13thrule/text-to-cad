@@ -58,6 +58,21 @@ test("cancellation stays cancellation, including during response decoding", asyn
   await assert.rejects(requestViewerJson(url, {}, "checking display assets"), (error) => error === abort);
 });
 
+test("a bounded GET reports timeout context but the same bound never aborts a POST", async (t) => {
+  const mock = t.mock.method(globalThis, "fetch", async (_requestUrl, options) => new Promise((resolve, reject) => {
+    options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
+  }));
+  await assert.rejects(
+    requestViewerJson(url, { method: "GET" }, "checking display assets", { timeoutMs: 5 }),
+    (error) => error.failure.kind === "timeout" && error.failure.method === "GET"
+  );
+  mock.mock.mockImplementation(async () => Response.json({ ok: true }));
+  assert.deepEqual(
+    await requestViewerJson(url, { method: "POST" }, "preparing display assets", { timeoutMs: 5 }),
+    { ok: true }
+  );
+});
+
 test("artifact requests preserve security header, GET/POST semantics and recover normally", async (t) => {
   globalThis.window = {};
   t.after(() => { delete globalThis.window; });

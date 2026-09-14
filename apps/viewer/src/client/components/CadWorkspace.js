@@ -45,9 +45,7 @@ import UrdfFileSheet from "./workbench/UrdfFileSheet";
 import ViewerAlertDialog from "./workbench/ViewerAlertDialog";
 import ViewerLoadingOverlay from "./workbench/ViewerLoadingOverlay";
 import {
-  ARTIFACT_PROGRESS_POLL_MS,
-  formatArtifactProgress,
-  normalizeArtifactProgress
+  ARTIFACT_PROGRESS_POLL_MS
 } from "@/workbench/artifactProgress.js";
 import FloatingToolBar from "./workbench/FloatingToolBar";
 import CadWorkspaceTopBar from "./workbench/CadWorkspaceTopBar";
@@ -57,6 +55,7 @@ import { useEditingPreview } from "./workbench/hooks/useEditingPreview.js";
 import { useViewportQualityStatus } from "./workbench/hooks/useViewportQualityStatus.js";
 import { previewGeometryChanged } from "@/workbench/editingPreview.js";
 import { resolveFileStatus } from "@/workbench/fileStatus.js";
+import { viewerLoadingState } from "@/workbench/viewerLoading.js";
 import {
   resolveDesktopPanelWidths,
   useCadWorkspaceLayout
@@ -120,7 +119,8 @@ import {
   VIEWPORT_CONTENT
 } from "cadgen-js/lib/renderCapabilities";
 import {
-  buildViewerMeshAlert
+  buildViewerMeshAlert,
+  buildViewerEditAlert
 } from "@/workbench/viewerAlerts";
 import {
   buildParameterValuesCopyText,
@@ -360,12 +360,8 @@ function statusOnlyFileSheetTitle(sourceFormat) {
 // concept and keep their own wording.
 // The URDF loader reports its stage in lower case ("loading meshes 7/13") because the
 // file-list chip reads that way; the viewport card is a sentence and needs a capital.
-function capitalizeFirst(value) {
-  const text = String(value || "").trim();
-  return text ? `${text.slice(0, 1).toUpperCase()}${text.slice(1)}` : "";
-}
 
-const ARTIFACT_GENERATING_LABEL = "Generating artifacts";
+
 const EMPTY_LIST = Object.freeze([]);
 const EMPTY_MATERIAL_OVERRIDES = Object.freeze({});
 const PHOTOGRAPHIC_VIEW_DEFAULTS = resolveSceneSettings({
@@ -1357,7 +1353,7 @@ export default function CadWorkspace({
     meshLoadInProgress,
     meshLoadTargetFile,
     meshLoadTargetHash,
-    meshLoadStage,
+    meshLoadProgress,
     status,
     setStatus,
     error,
@@ -1368,17 +1364,17 @@ export default function CadWorkspace({
     setUrdfStatus,
     urdfError,
     setUrdfError,
-    urdfLoadStage,
     urdfLoadProgress,
     referenceState,
     setReferenceState,
     referenceStatus,
     setReferenceStatus,
     setReferenceError,
-    referenceLoadStage,
     displayEdgeState,
     setDisplayEdgeState,
+    displayEdgeStatus,
     setDisplayEdgeStatus,
+    displayEdgeError,
     setDisplayEdgeError,
     getCachedMeshState,
     getCachedReferenceState,
@@ -2668,58 +2664,26 @@ export default function CadWorkspace({
     selectedMeshMatches &&
     !assemblyPartsLoaded &&
     !selectedAssemblyHydrationFailed;
-  const assemblyHydrationLoading =
-    isAssemblyView &&
-    selectedMeshMatches &&
-    selectedAssemblyStructureReady &&
-    !selectedAssemblyInteractionReady &&
-    !selectedAssemblyHydrationFailed;
-  // Six format arms said one thing: name the asset being fetched. Formats the viewer does
-  // not build ARE their own asset, so the label is just their name; artifact-managed ones
-  // fall through to the build/parameter progression below, which is about the package
-  // rather than the file.
-  // A robot assembles from many meshes and the loader already counts them off. Reporting
-  // "loading meshes 7/13" instead of a static card is the difference between a 15-second
-  // wait that looks like progress and one that looks like a hang; the count was already
-  // computed and only ever reached the file-list chip.
-  const robotLoadingLabel = `Loading ${renderFormatLabel(effectiveRenderFormat)} robot...`;
-  const simpleLoadingLabel = selectedArtifactGenerating || isArtifactManagedFormat(effectiveRenderFormat)
-    ? ""
-    : {
-        [ASSET_KIND.ROBOT]: urdfLoadStage
-          ? `${capitalizeFirst(urdfLoadStage)}...`
-          : robotLoadingLabel,
-        [ASSET_KIND.MESH]: `Loading ${renderFormatLabel(effectiveRenderFormat)}...`,
-        [ASSET_KIND.DRAWING]: ""
-      }[assetKindForRenderFormat(effectiveRenderFormat)];
-  const activeMeshLoadStage = meshLoadInProgress && meshLoadTargetFile === fileKey(selectedEntry)
-    ? meshLoadStage : "";
-  const viewerLoadingLabel = selectedCatalogPending
-    ? "Loading model metadata..."
-    : selectedArtifactGenerating ? "Generating file..."
-    : activeMeshLoadStage ? `${capitalizeFirst(activeMeshLoadStage)}...`
-    : simpleLoadingLabel
-      ? simpleLoadingLabel
-      : stepUpdateInProgress
-                ? ARTIFACT_GENERATING_LABEL
-                : selectedStepArtifactRenderPending
-                  ? ARTIFACT_GENERATING_LABEL
-                  : selectedStepModuleLoading
-                    ? "Loading STEP module..."
-                  : selectedEntry && !selectedEntryHasMesh
-                    ? ARTIFACT_GENERATING_LABEL
-                    : "Loading CAD...";
-  // Geometry can be compiled while its display surfaces are still being prepared.
-  // Keep the overlay connected to the active loader through those stages too.
-  const selectedLoadProgress = selectedArtifactProgress || normalizeArtifactProgress(
-    urdfLoadProgress || {
-      phase: "display",
-      label: !catalogHydrated ? "Loading catalog"
-        : selectedCatalogPending ? "Loading model metadata"
-        : activeMeshLoadStage ? capitalizeFirst(activeMeshLoadStage)
-          : viewerLoadingLabel,
-    }
+  const activeMeshLoadProgress = meshLoadInProgress && meshLoadTargetFile === fileKey(selectedEntry)
+    ? meshLoadProgress : null;
+  const selectedLoadProgress = selectedArtifactProgress || activeMeshLoadProgress || urdfLoadProgress || null;
+  const presentationKey = selectedKey ? `${selectedKey}:${selectedMeshData ? meshState?.meshHash || selectedMeshHash : selectedMeshHash}:${selectedMeshPartial ? "partial" : "complete"}` : "";
+  const [presentationState, setPresentationState] = useState(null);
+  const handlePresentationChange = useCallback((next) => {
+    setPresentationState(previous => previous?.file === next.file && previous?.renderMode === next.renderMode &&
+      previous?.key === next.key && previous?.covering === next.covering && previous?.preparing === next.preparing ? previous : next);
+  }, []);
+  const presentationPending = Boolean(selectedMeshData || selectedEntryIsDrawingDocument) && (
+    presentationState?.file !== selectedKey || presentationState?.key !== presentationKey || presentationState?.renderMode !== renderSession.enabled ||
+    presentationState?.preparing === true
   );
+  const currentPreviewVisible = Boolean(editingPreview.entry && selectedMeshMatches && !selectedMeshPartial &&
+    !presentationPending && Number(editingPreview.state.preview?.revision) === Number(editingPreview.state.revision));
+  const completedViewFile = useRef("");
+  useEffect(() => {
+    if (!effectiveViewerLoading && !selectedMeshPartial && !presentationPending &&
+        (selectedMeshData || selectedEntryIsDrawingDocument)) completedViewFile.current = selectedKey;
+  }, [effectiveViewerLoading, selectedMeshPartial, presentationPending, selectedMeshData, selectedEntryIsDrawingDocument, selectedKey]);
   const selectedDrawingBendAxisCount = useMemo(() => {
     if (!drawingGeometry?.geometry) {
       return 0;
@@ -2739,6 +2703,14 @@ export default function CadWorkspace({
     : 1;
 
   const viewerAlert = useMemo(() => {
+    const editFailure = buildViewerEditAlert(editingPreview.state, currentPreviewVisible, Boolean(selectedMeshData));
+    if (editFailure) return editFailure;
+    if (catalogError && !selectedMeshData) return {
+      severity: "error", kind: "status", title: "Couldn’t open the model",
+      message: "The viewer couldn’t retrieve this file’s information.",
+      recovery: "Try again. If this continues, check that the viewer is running.",
+      details: catalogError, reload: true,
+    };
     if (viewerRuntimeAlert?.blocking) {
       return viewerRuntimeAlert;
     }
@@ -2760,10 +2732,16 @@ export default function CadWorkspace({
         hydrationFailed: selectedAssemblyHydrationFailed,
         backgroundError: meshState?.assemblyBackgroundError,
       }),
-      selectedArtifact
+      selectedMeshData && !selectedMeshPartial &&
+        !["submitted", "queued", "building"].includes(editingPreview.state?.state) &&
+        ["network", "timeout", "status"].includes(selectedArtifact.failure?.kind)
+        ? null : selectedArtifact
     );
     return meshAlert || viewerRuntimeAlert;
   }, [
+    editingPreview.state,
+    currentPreviewVisible,
+    catalogError,
     effectiveRenderFormat,
     error,
     meshState?.assemblyBackgroundError,
@@ -2771,6 +2749,7 @@ export default function CadWorkspace({
     selectedEntry,
     selectedArtifact,
     selectedArtifactGenerating,
+    selectedMeshPartial,
     selectedMeshData,
     selectedUrdfPreviewError,
     status,
@@ -4855,148 +4834,36 @@ export default function CadWorkspace({
       !effectiveSelectorRuntime
     )
   );
-  const filenameLoadActivity = useMemo(() => {
-    if (!selectedEntry) {
-      return null;
-    }
-
-    if (selectedArtifactGenerating) {
-      const frame = selectedArtifactProgress ? formatArtifactProgress(selectedArtifactProgress) : null;
-      // One number, and only a measured one: a phase's own count. An uncountable phase adds
-      // nothing here rather than a percentage of the whole build, which nothing can honestly
-      // compute. The phase name and sub-unit live in the tooltip, which is opened on purpose.
-      const chip = frame?.determinate ? frame.counts : "";
-      return {
-        loading: true,
-        label: chip ? `${ARTIFACT_GENERATING_LABEL} ${chip}` : ARTIFACT_GENERATING_LABEL,
-        title: frame
-          ? [frame.label, frame.ordinal && `phase ${frame.ordinal}`, frame.detail]
-              .filter(Boolean)
-              .join(" — ")
-          : "Generator script is running"
-      };
-    }
-
-    if (isRobotRenderFormat(effectiveRenderFormat) && urdfViewerLoading) {
-      return {
-        loading: true,
-        label: selectedEntryHasUrdf ? (urdfLoadStage || (effectiveRenderFormat === RENDER_FORMAT.SDF ? "loading SDF" : "loading URDF")) : "building",
-        title: viewerLoadingLabel
-      };
-    }
-
-    if (effectiveRenderFormat === RENDER_FORMAT.STEP && stepUpdateInProgress) {
-      return {
-        loading: true,
-        label: ARTIFACT_GENERATING_LABEL,
-        title: viewerLoadingLabel
-      };
-    }
-
-    if (effectiveRenderFormat === RENDER_FORMAT.STEP && selectedStepArtifactRenderPending) {
-      return {
-        loading: true,
-        label: ARTIFACT_GENERATING_LABEL,
-        title: viewerLoadingLabel
-      };
-    }
-
-    if (effectiveRenderFormat === RENDER_FORMAT.STEP && selectedStepModuleLoading) {
-      return {
-        loading: true,
-        label: "loading STEP module",
-        title: viewerLoadingLabel
-      };
-    }
-
-    if ([RENDER_FORMAT.STEP, RENDER_FORMAT.STL, RENDER_FORMAT.THREE_MF, RENDER_FORMAT.GLB].includes(effectiveRenderFormat) && meshViewerLoading) {
-      const activeMeshLoadStage = meshLoadTargetFile === fileKey(selectedEntry)
-        ? meshLoadStage
-        : "";
-      return {
-        loading: true,
-        label: selectedEntryHasMesh ? (activeMeshLoadStage || "loading mesh") : "building",
-        title: viewerLoadingLabel
-      };
-    }
-
-    if (effectiveRenderFormat === RENDER_FORMAT.STEP && assemblyHydrationLoading) {
-      const activeMeshLoadStage = meshLoadTargetFile === fileKey(selectedEntry)
-        ? meshLoadStage
-        : "";
-      return {
-        loading: true,
-        label: activeMeshLoadStage || "loading meshes",
-        title: "Loading assembly meshes"
-      };
-    }
-
-    if (renderSession.enabled) {
-      return null;
-    }
-
-    if (effectiveRenderFormat === RENDER_FORMAT.STEP && referenceSelectionStatus === REFERENCE_STATUS.LOADING) {
-      return {
-        loading: true,
-        label: referenceLoadStage || "loading topology",
-        title: "Loading selectable topology"
-      };
-    }
-
-    if (effectiveRenderFormat === RENDER_FORMAT.STEP && referenceSelectionPending) {
-      return {
-        loading: true,
-        label: "building topology",
-        title: "Preparing selectable topology"
-      };
-    }
-
-    if (assemblySidebarLoading) {
-      return {
-        loading: true,
-        label: "building assembly",
-        title: "Preparing assembly parts"
-      };
-    }
-
-    return null;
-  }, [
-    assemblyHydrationLoading,
-    assemblySidebarLoading,
-    effectiveRenderFormat,
-    meshLoadStage,
-    meshLoadTargetFile,
-    referenceLoadStage,
-    referenceSelectionPending,
-    referenceSelectionStatus,
-    renderSession.enabled,
-    selectedEntry,
-    selectedEntryHasDxf,
-    selectedEntryHasMesh,
-    selectedEntryHasUrdf,
-    selectedArtifactGenerating,
-    selectedArtifactProgress,
-    selectedStepArtifactRenderPending,
-    selectedStepModuleLoading,
-    stepUpdateInProgress,
-    meshViewerLoading,
-    urdfLoadStage,
-    urdfViewerLoading,
-    viewerLoadingLabel
-  ]);
+  const loading = viewerLoadingState({
+    busy: effectiveViewerLoading || selectedMeshPartial || presentationPending,
+    editPending: ["submitted", "queued", "building"].includes(editingPreview.state?.state) && !editingPreview.state?.saved,
+    previousView: completedViewFile.current === selectedKey && Boolean(selectedMeshData || selectedEntryIsDrawingDocument),
+    currentPreview: currentPreviewVisible,
+    error: viewerAlert || (!selectedMeshData && catalogError) || missingFileRef,
+    renderMode: renderSession.enabled,
+    progress: selectedLoadProgress || (editingPreview.state.phase ? { phase: editingPreview.state.phase, detail: editingPreview.state.detail } : null),
+    finding: !catalogHydrated || selectedCatalogPending || fileParamSelectionPending,
+    preparing: presentationPending && !effectiveViewerLoading && !selectedMeshPartial,
+  });
   const fileStatus = resolveFileStatus({
     hasFile: Boolean(selectedEntry || explicitFileParam),
-    error: viewerAlert || catalogError || (missingFileRef
+    error: viewerAlert || (catalogError && !selectedMeshData ? catalogError : null) || (missingFileRef
       ? { title: "File unavailable", message: "The selected file could not be found." }
       : null) || (selectedEntry?.annotationError && !selectedEntry.editingPreview
       ? { severity: "warning", title: "Annotations unavailable", message: selectedEntry.annotationError }
       : null),
-    activity: filenameLoadActivity || (effectiveViewerLoading ? { loading: true, title: viewerLoadingLabel } : null),
+    opening: loading.opening,
+    updating: loading.updating,
+    loadingTitle: loading.progress.connectionLost ? "Waiting for a response. Retrying…" : loading.progress.label,
     editingState: editingAvailable ? editingPreview.state : null,
-    showingPreview: Boolean(editingPreview.entry),
+    showingPreview: currentPreviewVisible,
     qualityStatus: viewportQualityStatus,
     hasGeometry: Boolean(selectedMeshData || selectedEntryIsDrawingDocument)
   });
+  const fileStatusAlert = viewerAlert || (fileStatus && !fileStatus.busy && ["error", "warning"].includes(fileStatus.tone) ? {
+    severity: fileStatus.tone, title: fileStatus.label, message: fileStatus.title,
+    reload: fileStatus.tone === "error", blocking: false,
+  } : null);
   const selectedWholeTopologyReferencePartIds = useMemo(() => (
     uniqueStringList(
       selectedReferenceIds.flatMap((referenceId) => renderPartIdsForWholeTopologyReference(referenceId))
@@ -7454,7 +7321,9 @@ export default function CadWorkspace({
           projection: resolvedScene.camera.projection,
           onProjectionChange: handleProjectionChange,
           clipBounds: selectedMeshData?.bounds || null,
-          explodeMeshData: selectedMeshData || null
+          explodeMeshData: selectedMeshData || null,
+          edgeStatus: displayEdgeStatus,
+          edgeError: displayEdgeError
         })
       : null,
     renderSession.enabled ? buildRenderSettingsTab({
@@ -7548,6 +7417,9 @@ export default function CadWorkspace({
           viewerLoading={viewerLoading}
           retainingPreviousStepMesh={retainingPreviousStepMesh}
           viewerAlert={viewerAlert}
+          onPresentationChange={handlePresentationChange}
+          presentationKey={presentationKey}
+          loadingPresentation={loading}
           stepUpdateInProgress={effectiveRenderFormat === RENDER_FORMAT.STEP && stepUpdateInProgress}
           referenceSelectionPending={referenceSelectionPending}
           referenceSelectionUnavailable={referenceSelectionUnavailable}
@@ -7614,6 +7486,7 @@ export default function CadWorkspace({
         <CadWorkspaceTopBar
           previewMode={previewMode}
           fileStatus={fileStatus}
+          onFileStatusClick={fileStatusAlert ? () => setViewerAlertOpen(true) : undefined}
           renderMode={renderSession.enabled}
           onRenderModeChange={handleRenderEnabledChange}
           sidebarLabelForEntry={sidebarLabelForEntry}
@@ -7724,9 +7597,9 @@ export default function CadWorkspace({
               ) : null}
 
               <ViewerLoadingOverlay
-                viewerLoading={effectiveViewerLoading}
+                loading={presentationState?.file === selectedKey && presentationState?.covering ? null : loading}
                 previewMode={previewMode}
-                progress={selectedLoadProgress}
+                operationKey={selectedKey || explicitFileParam}
               />
             </div>
 
@@ -7950,7 +7823,7 @@ export default function CadWorkspace({
 
         <ViewerAlertDialog
           viewerAlertOpen={viewerAlertOpen}
-          viewerAlert={viewerAlert}
+          viewerAlert={fileStatusAlert}
           previewMode={previewMode}
           setViewerAlertOpen={setViewerAlertOpen}
         />

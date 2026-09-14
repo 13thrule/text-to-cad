@@ -91,7 +91,23 @@ export function createDecodeSizeEstimator({
 }
 
 export function progressiveLoadStage(loaded, total) {
-  return `loading components ${loaded}/${total}`;
+  return progressiveLoadProgress(loaded, total).label;
+}
+
+export function progressiveLoadProgress(loaded, total, detail = undefined) {
+  const normalizedTotal = Math.max(0, Math.floor(Number(total) || 0));
+  const normalizedLoaded = Math.max(0, Math.min(
+    normalizedTotal,
+    Math.floor(Number(loaded) || 0),
+  ));
+  return {
+    phase: "geometry",
+    label: "Loading geometry",
+    done: normalizedLoaded,
+    total: normalizedTotal,
+    determinate: true,
+    ...(detail === undefined ? {} : { detail }),
+  };
 }
 
 // Whether a published mesh state is the COMPLETE model: the final publish
@@ -284,7 +300,7 @@ export function orderComponentsForProgressiveLoad(descriptor) {
  *   reserveLoad?({ cid, estimatedBytes }) -> { ok, token?, detail? },
  *   releaseLoad?(token), onMemoryLimitation?(detail),
  *   recoverMemoryPressure?(detail),    // one bounded reclaim attempt after admitted work drains
- *   onRetainedChange?({ loaded, total, retainedBytes }),
+ *   onRetainedChange?({ loaded, total, retainedBytes }), // every unique component completion
  *   swappedComponents?(),              // the live LOD working set (cid -> meshData) or null
  *   onPublish({ meshData, componentMeshDataByCid, loaded, total, final, composeMs, publishCount }),
  *   maxComponents?, maxBytes?

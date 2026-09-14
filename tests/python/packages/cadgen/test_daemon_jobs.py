@@ -129,9 +129,12 @@ class Lifecycle(unittest.TestCase):
         job = self.ledger.start(tool="run", subject=self.model, argv=[self.model])
         self.assertEqual("submitted", job["state"])
         self.assertEqual([str(Path(self.model).with_suffix(".step"))], job["outputs"])
-        self.ledger.observe(self._event(self.model, "building", phase="Meshing components", done=3, total=9))
+        self.ledger.observe(self._event(
+            self.model, "building", phase="Meshing components", detail="finger linkage", done=3, total=9,
+        ))
         listed = self.ledger.snapshot()[0]
         self.assertEqual(("building", "Meshing components", 3, 9), (listed["state"], listed["phase"], listed["done"], listed["total"]))
+        self.assertEqual("finger linkage", listed["detail"])
         self.ledger.observe(self._event(self.model, "done"))
         self.ledger.finish(job, 0)
         listed = self.ledger.snapshot()[0]

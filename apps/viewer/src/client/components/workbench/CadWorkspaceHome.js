@@ -156,11 +156,11 @@ export default function CadWorkspaceHome({
             );
           }) : catalogErrorMessage ? (
             <p className="break-words px-5 py-5 text-sm text-muted-foreground sm:px-6" role="status">
-              CAD catalog unavailable: {catalogErrorMessage}
+              Couldn’t find files: {catalogErrorMessage}
             </p>
           ) : catalogLoading ? (
             <p className="px-5 py-5 text-sm text-muted-foreground sm:px-6" role="status">
-              Loading CAD catalog...
+              Finding files…
             </p>
           ) : (
             <p className="px-5 py-5 text-sm text-muted-foreground sm:px-6">

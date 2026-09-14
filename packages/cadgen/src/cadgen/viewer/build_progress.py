@@ -79,7 +79,7 @@ def _progress_payload(job: dict) -> dict:
         "done": done if isinstance(done, int) else 0,
         "total": total if isinstance(total, int) else None,
         "determinate": isinstance(total, int) and total > 0,
-        "detail": "",
+        "detail": str(job.get("detail") or ""),
         "updatedAt": round(float(job.get("updatedAt") or 0.0) * 1000.0),
     }
 

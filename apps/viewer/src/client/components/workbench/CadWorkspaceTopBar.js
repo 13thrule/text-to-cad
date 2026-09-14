@@ -91,7 +91,7 @@ function fileSheetLabel(fileSheetKind) {
   return "file sheet";
 }
 
-function FileStatusBadge({ status }) {
+function FileStatusBadge({ status, onClick }) {
   if (!status) {
     return null;
   }
@@ -99,10 +99,12 @@ function FileStatusBadge({ status }) {
     <TooltipProvider delayDuration={250}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span
-            role="status"
+          <button
+            type="button"
+            onClick={onClick}
+            role={onClick ? undefined : "status"}
+            aria-label={onClick ? `${status.label}: show details` : undefined}
             aria-live="polite"
-            tabIndex={0}
             data-file-status={status.label}
             className={cn(
               "inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -116,7 +118,7 @@ function FileStatusBadge({ status }) {
                 : status.tone === "warning" ? <TriangleAlert className="size-3" aria-hidden="true" />
                   : null}
             {status.label}
-          </span>
+          </button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="max-w-72 text-xs">{status.title}</TooltipContent>
       </Tooltip>
@@ -981,6 +983,7 @@ function VersionReleaseLink({ version, releaseUrl, releaseCheck = emptyLatestRel
 export default function CadWorkspaceTopBar({
   previewMode,
   fileStatus = null,
+  onFileStatusClick,
   renderMode = false,
   onRenderModeChange,
   sidebarLabelForEntry,
@@ -1149,7 +1152,7 @@ export default function CadWorkspaceTopBar({
       ) : (
         <div className="min-w-0" />
       )}
-      <FileStatusBadge status={fileStatus} />
+      <FileStatusBadge status={fileStatus} onClick={onFileStatusClick} />
 
       <div className="min-w-0 flex-1" />
 

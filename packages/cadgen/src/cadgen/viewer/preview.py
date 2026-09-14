@@ -76,6 +76,8 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
         "request": latest.get("id"),
         "state": latest.get("state"),
         "phase": latest.get("phase"),
+        "detail": latest.get("detail"),
+        "updatedAt": round(float(latest.get("updatedAt") or 0.0) * 1000.0),
         "error": latest.get("error"),
     }
     # Only the newest accepted request can publish. The client may retain a

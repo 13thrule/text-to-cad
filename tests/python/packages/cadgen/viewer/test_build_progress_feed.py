@@ -29,10 +29,10 @@ from tests.python.support.store_fixtures import seed_result  # noqa: E402
 STEP_BYTES = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
 
 
-def job(subject, outputs, state, *, id="job-1", phase=None, done=None, total=None, exit=None, tool="run", started=1.0):
+def job(subject, outputs, state, *, id="job-1", phase=None, detail="", done=None, total=None, exit=None, tool="run", started=1.0):
     return {
         "id": id, "tool": tool, "subject": subject, "outputs": outputs, "argv": [], "state": state,
-        "phase": phase, "done": done, "total": total, "startedAt": started, "updatedAt": started,
+        "phase": phase, "detail": detail, "done": done, "total": total, "startedAt": started, "updatedAt": started,
         "finishedAt": None if state in ("submitted", "queued", "building") else started + 1, "exit": exit,
     }
 
@@ -71,11 +71,12 @@ class ProgressFeed(unittest.TestCase):
         return self.ops.artifact_status("STEP/widget.step")
 
     def test_a_cli_build_started_outside_the_viewer_shows_as_compiling_with_its_phase(self):
-        self.jobs = [job(self.script, [str(self.document)], "building", phase="Meshing components", done=3, total=9)]
+        self.jobs = [job(self.script, [str(self.document)], "building", phase="Meshing components", detail="finger linkage", done=3, total=9)]
         status = self.status()
         self.assertEqual("compiling", status["state"])
         self.assertEqual("job-1", status["runId"])
         self.assertEqual(("Meshing components", 3, 9, True), (status["progress"]["phase"], status["progress"]["done"], status["progress"]["total"], status["progress"]["determinate"]))
+        self.assertEqual("finger linkage", status["progress"]["detail"])
 
     def test_a_parents_child_build_is_matched_by_the_childs_output_path(self):
         rig = str(self.root / "src" / "rig.py")

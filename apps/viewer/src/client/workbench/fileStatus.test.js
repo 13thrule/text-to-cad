@@ -3,254 +3,130 @@ import test from "node:test";
 
 import { resolveFileStatus } from "./fileStatus.js";
 
-const ready = {
-  hasFile: true,
-  hasGeometry: true,
-  qualityStatus: { state: "standard", title: "Standard detail is ready." }
-};
+const ready = { hasFile: true, hasGeometry: true };
 
-test("no selected file has no filename status", () => {
+test("idle files and optional edit-feed states stay quiet", () => {
   assert.equal(resolveFileStatus(), null);
-});
-
-test("loaded saved STEP files stay quiet when the optional editing feed is disconnected", () => {
-  assert.deepEqual(resolveFileStatus({
+  assert.equal(resolveFileStatus(ready), null);
+  assert.equal(resolveFileStatus({
     ...ready,
-    editingState: { state: "disconnected", error: "The build daemon is unavailable" }
+    showingPreview: true,
+    editingState: { state: "done", saved: { tree: "saved" } }
+  }), null);
+  assert.equal(resolveFileStatus({
+    ...ready,
+    showingPreview: true,
+    editingState: { state: "disconnected", error: "Connection closed" }
+  }), null);
+  assert.equal(resolveFileStatus({
+    ...ready,
+    showingPreview: true,
+    editingState: { state: "building", revision: 3, preview: { revision: 3 } }
   }), null);
 });
 
-test("build and load failures outrank usable geometry and loading activity", () => {
+test("opening is authoritative for incomplete first loads, including partial geometry", () => {
   assert.deepEqual(resolveFileStatus({
     ...ready,
-    error: { severity: "error", summary: "Compile failed", message: "Fillet radius is too large" },
-    activity: { loading: true, label: "loading mesh", title: "Loading CAD" }
+    opening: true,
+    loadingTitle: "Loading components 4 of 12"
   }), {
-    label: "Build failed",
-    title: "Fillet radius is too large",
-    tone: "error",
-    busy: false
+    label: "Opening",
+    title: "Loading components 4 of 12",
+    tone: "info",
+    busy: true
   });
+});
+
+test("updates stay busy only until the current preview is displayed", () => {
+  assert.equal(resolveFileStatus({
+    ...ready,
+    opening: true,
+    updating: true,
+    loadingTitle: "Preparing replacement geometry"
+  }).label, "Updating");
 
   assert.equal(resolveFileStatus({
     ...ready,
-    error: "GLB parser failed"
-  }).label, "Load failed");
+    updating: true,
+    showingPreview: true,
+    editingState: { state: "building", revision: 4, preview: { revision: 4 } }
+  }), null);
 });
 
-test("failed STEP saves stay visible while their usable preview remains visible", () => {
+test("failures distinguish opening from replacement while preserving diagnostics", () => {
+  const diagnostic = "Invalid file header\nfull parser trace";
+  assert.deepEqual(resolveFileStatus({
+    hasFile: true,
+    error: { message: diagnostic }
+  }), {
+    label: "Open failed",
+    title: diagnostic,
+    tone: "error",
+    busy: false
+  });
+  assert.equal(resolveFileStatus({
+    ...ready,
+    error: { message: "Replacement decode failed" }
+  }).label, "Update failed");
+});
+
+test("a failed save explains that the updated model remains visible", () => {
   assert.deepEqual(resolveFileStatus({
     ...ready,
     showingPreview: true,
     editingState: {
       state: "failed",
       error: "Disk full",
-      revision: 4,
-      preview: { revision: 4 }
-    }
-  }), {
-    label: "Save failed",
-    title: "Disk full",
-    tone: "error",
-    busy: false
-  });
-});
-
-test("an edit that fails before publishing its current preview is a build failure", () => {
-  assert.deepEqual(resolveFileStatus({
-    ...ready,
-    showingPreview: true,
-    editingState: {
-      state: "failed",
-      error: "Sketch constraint failed",
       revision: 5,
-      preview: { revision: 4 }
+      preview: { revision: 5 }
     }
   }), {
-    label: "Build failed",
-    title: "Sketch constraint failed",
+    label: "Update failed",
+    title: "The updated model is visible, but the STEP file could not be written.",
     tone: "error",
     busy: false
   });
-
-  assert.equal(resolveFileStatus({
-    hasFile: true,
-    editingState: { state: "failed", error: "Model returned no shape", revision: 1 }
-  }).label, "Build failed");
 });
 
-test("annotation warnings are metadata issues rather than load failures", () => {
-  assert.deepEqual(resolveFileStatus({
-    ...ready,
-    error: {
-      severity: "warning",
-      title: "Annotations unavailable",
-      message: "The annotation sidecar could not be parsed."
-    }
-  }), {
-    label: "Metadata issue",
-    title: "The annotation sidecar could not be parsed.",
-    tone: "warning",
-    busy: false
-  });
-});
-
-test("edit queue, build, and save statuses reflect the live revision", () => {
+test("only blocked missing previews and limited detail produce remaining badges", () => {
   assert.equal(resolveFileStatus({
     ...ready,
-    editingState: { state: "queued", revision: 3 }
-  }).label, "Queued");
-
+    error: { severity: "warning", message: "Optional annotations are unavailable." }
+  }), null);
   assert.equal(resolveFileStatus({
     ...ready,
-    showingPreview: true,
-    editingState: { state: "building", revision: 3, preview: { revision: 2 } }
-  }).label, "Building", "a retained older preview does not pretend the current revision is saving");
-
-  assert.deepEqual(resolveFileStatus({
-    ...ready,
-    showingPreview: true,
-    editingState: { state: "building", revision: 3, preview: { revision: 3 } }
-  }), {
-    label: "Saving",
-    title: "The current live preview is visible while its STEP file is saved.",
-    tone: "info",
-    busy: true
-  });
-});
-
-test("real build and loader activity use compact labels and preserve detailed tooltips", () => {
-  assert.deepEqual(resolveFileStatus({
-    hasFile: true,
-    activity: {
-      loading: true,
-      label: "generating 14/20",
-      title: "Tessellating components — phase 2/3 — 14 of 20"
-    }
-  }), {
-    label: "Building",
-    title: "Tessellating components — phase 2/3 — 14 of 20",
-    tone: "info",
-    busy: true
-  });
-
+    editingState: { state: "done", previewUnavailable: true, saved: { tree: "saved" } }
+  }), null);
   assert.equal(resolveFileStatus({
     hasFile: true,
-    activity: { loading: true, label: "loading STEP module" }
-  }).label, "Loading");
-  assert.equal(resolveFileStatus({
-    hasFile: true,
-    activity: { loading: true, label: "building topology", title: "Preparing selectable topology" }
-  }).label, "Loading", "background interaction preparation is not presented as a model build");
-});
-
-test("quality failures and limits are visible while background refinement stays quiet", () => {
-  assert.equal(resolveFileStatus({
-    ...ready,
-    qualityStatus: { state: "error", title: "Surface adoption failed." }
-  }).label, "Detail failed");
-  assert.equal(resolveFileStatus({
-    ...ready,
-    qualityStatus: { state: "limited", title: "Additional detail did not fit in memory." }
-  }).label, "Reduced detail");
+    editingState: { state: "done", previewUnavailable: true }
+  }).label, "Open failed");
   assert.deepEqual(resolveFileStatus({
     ...ready,
     qualityStatus: { state: "refining", title: "More detail is loading." }
   }), null);
   assert.deepEqual(resolveFileStatus({
     ...ready,
-    activity: { loading: true, label: "refining detail" }
-  }), resolveFileStatus(ready));
-  assert.equal(resolveFileStatus({
-    ...ready,
-    qualityStatus: { state: "refining" },
-    editingState: { state: "done", saved: { tree: "tree" } }
-  }).label, "Saved");
-  assert.equal(resolveFileStatus({
-    ...ready,
-    qualityStatus: { state: "high", title: "High-detail geometry is ready." }
-  }), null);
-});
-
-test("stable live states distinguish a validated save from an unsaved preview", () => {
-  assert.deepEqual(resolveFileStatus({
-    ...ready,
-    showingPreview: true,
-    editingState: { state: "done", saved: { tree: "tree", documentHash: "bytes" } }
+    qualityStatus: { state: "error", title: "Fine surfaces could not be loaded." }
   }), {
-    label: "Saved",
-    title: "The live preview is visible and its STEP file was saved.",
-    tone: "success",
-    busy: false
-  });
-
-  assert.deepEqual(resolveFileStatus({
-    ...ready,
-    showingPreview: true,
-    editingState: { state: "done" }
-  }), {
-    label: "Preview",
-    title: "Showing a live preview that has not been saved to STEP.",
-    tone: "info",
-    busy: false
-  });
-});
-
-test("lost and disconnected live previews remain honest without affecting static files", () => {
-  assert.equal(resolveFileStatus({
-    ...ready,
-    editingState: {
-      state: "done",
-      error: "Preview geometry is no longer available in the cache",
-      previewUnavailable: true,
-      saved: { tree: "tree", documentHash: "bytes" }
-    }
-  }).label, "Preview lost");
-
-  assert.deepEqual(resolveFileStatus({
-    ...ready,
-    showingPreview: true,
-    editingState: { state: "disconnected", error: "Connection closed" }
-  }), {
-    label: "Offline",
-    title: "Connection closed",
+    label: "Limited detail",
+    title: "Fine surfaces could not be loaded.",
     tone: "warning",
     busy: false
   });
 });
 
-test("every emitted badge label stays within the one-to-two word contract", () => {
-  const cases = [
-    ready,
-    { hasFile: true },
+test("the resolver emits only the approved filename labels", () => {
+  const inputs = [
+    { hasFile: true, opening: true },
+    { ...ready, updating: true },
+    { hasFile: true, error: "bad" },
     { ...ready, error: "bad" },
-    { ...ready, error: { kind: "build", message: "bad" } },
-    { ...ready, editingState: { state: "failed" } },
-    { ...ready, editingState: { state: "queued" } },
-    { ...ready, editingState: { state: "building" } },
-    { ...ready, activity: { loading: true, label: "loading meshes 2/4" } },
-    { ...ready, qualityStatus: { state: "preview" } },
-    { ...ready, qualityStatus: { state: "refining" } },
-    { ...ready, qualityStatus: { state: "limited" } },
-    { ...ready, qualityStatus: { state: "error" } },
-    { ...ready, showingPreview: true, editingState: { state: "done" } },
-    { ...ready, editingState: { state: "done", saved: { tree: "tree" } } }
+    { ...ready, qualityStatus: { state: "limited" } }
   ];
-
-  for (const input of cases) {
-    const result = resolveFileStatus(input);
-    if (!result) continue;
-    assert.ok(result.label.split(/\s+/).length <= 2, result.label);
+  const allowed = new Set(["Opening", "Updating", "Open failed", "Update failed", "Limited detail"]);
+  for (const input of inputs) {
+    assert.ok(allowed.has(resolveFileStatus(input).label));
   }
-});
-
-
-test("transport errors identify the connection instead of a failed build", () => {
-  const result = resolveFileStatus({
-    hasFile: true,
-    error: { kind: "network", severity: "error", summary: "Connection lost", message: "Check that the viewer is running." }
-  });
-  assert.equal(result.label, "Offline");
-  assert.equal(result.tone, "error");
-  assert.match(result.title, /viewer is running/);
 });

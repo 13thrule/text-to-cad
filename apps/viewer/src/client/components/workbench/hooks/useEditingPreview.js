@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  editingPreviewEntry, editingPreviewLabel, initialEditingPreview, reduceEditingPreview,
+  editingPreviewEntry, initialEditingPreview, reduceEditingPreview,
 } from "../../../workbench/editingPreview.js";
 import { observeEditingPreview } from "../../../workbench/editingPreviewFeed.js";
 
@@ -29,5 +29,5 @@ export function useEditingPreview(file, { enabled, catalogEntry } = {}) {
     state.saved?.tree, state.saved?.documentHash,
     state.retainedSaved?.tree, state.retainedSaved?.documentHash, catalogEntry,
   ]);
-  return { entry, state, label: editingPreviewLabel(state, Boolean(entry)) };
+  return { entry, state };
 }
