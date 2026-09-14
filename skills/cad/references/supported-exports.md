@@ -28,7 +28,7 @@ if __name__ == "__main__":
     bracket()
 ```
 
-`python models/bracket.py` then writes the STEP **and** the declared meshes, and rewrites any of them that were deleted or edited — no separate export step (a declared output is part of the model's freshness gate). The declarations are recorded in the document's sidecar, which is where the mesh doors read them from.
+`python models/bracket.py` then writes the STEP **and** the declared meshes, and rewrites any of them that were deleted or edited — no separate export step (a declared output is part of the model's freshness gate). The declarations are recorded in the model's store record. Mesh doors read the document, its intrinsic appearance annotations when present, and derived artifact data; they never read a model's output declarations.
 
 ## A model with no STEP
 

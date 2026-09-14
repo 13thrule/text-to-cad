@@ -290,7 +290,9 @@ restored unchanged when the user returns to Inspect.
 
 The top Setup section contains Quality. Reset sits below the Backdrop section.
 Camera contains Lens and Exposure; Lighting contains Rotation,
-Softbox size, and Fill ratio; Backdrop contains Transparent, Color, and Ground.
+Softbox size, and Fill ratio; Backdrop contains Transparent, Color, Ground, and
+Ground position (visible only with Ground enabled). Ground position defaults to
+Model origin (Z=0); Lowest point is an explicit presentation option.
 Studio defaults follow global app appearance. Customized backdrop settings remain
 in the model session until Reset, which restores defaults for the current
 appearance. Do not add preset or settings clipboard controls. Do not add material,

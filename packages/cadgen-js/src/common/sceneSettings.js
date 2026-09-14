@@ -103,7 +103,8 @@ export const RENDER_LIGHTING_KEYS = Object.freeze([
 export const RENDER_BACKDROP_KEYS = Object.freeze([
   "color",
   "transparent",
-  "ground"
+  "ground",
+  "groundPlacement"
 ]);
 
 const RENDER_STUDIO_IDS = new Set(RENDER_STUDIO_PRESETS.map((preset) => preset.id));
@@ -118,7 +119,8 @@ export const DEFAULT_RENDER_LIGHTING = Object.freeze({
 
 export const DEFAULT_RENDER_BACKDROP = Object.freeze({
   transparent: false,
-  ground: true
+  ground: true,
+  groundPlacement: "origin"
 });
 
 const STUDIO_BACKDROP_COLORS = Object.freeze({
@@ -228,6 +230,9 @@ function validateRenderBackdrop(value) {
   if (Object.hasOwn(value, "color")) validateColor(value.color, "render.backdrop.color");
   if (Object.hasOwn(value, "transparent")) validateBoolean(value.transparent, "render.backdrop.transparent");
   if (Object.hasOwn(value, "ground")) validateBoolean(value.ground, "render.backdrop.ground");
+  if (Object.hasOwn(value, "groundPlacement") && !["origin", "lowest"].includes(value.groundPlacement)) {
+    throw new Error("render.backdrop.groundPlacement must be origin or lowest");
+  }
 }
 
 export function normalizeSceneAppearance(value = SCENE_APPEARANCE.SYSTEM, {
@@ -324,7 +329,8 @@ export function resolveRenderConfiguration(render = {}, appearance = SCENE_APPEA
     backdrop: {
       color: payload.backdrop?.color || STUDIO_BACKDROP_COLORS[studio],
       transparent: payload.backdrop?.transparent ?? DEFAULT_RENDER_BACKDROP.transparent,
-      ground: payload.backdrop?.ground ?? DEFAULT_RENDER_BACKDROP.ground
+      ground: payload.backdrop?.ground ?? DEFAULT_RENDER_BACKDROP.ground,
+      groundPlacement: payload.backdrop?.groundPlacement ?? DEFAULT_RENDER_BACKDROP.groundPlacement
     }
   };
 }

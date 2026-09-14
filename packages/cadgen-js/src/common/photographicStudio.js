@@ -64,7 +64,8 @@ function resolvedConfiguration(configuration = {}) {
         : DEFAULT_RENDER_BACKDROP.transparent,
       ground: typeof backdrop.ground === "boolean"
         ? backdrop.ground
-        : DEFAULT_RENDER_BACKDROP.ground
+        : DEFAULT_RENDER_BACKDROP.ground,
+      groundPlacement: backdrop.groundPlacement ?? DEFAULT_RENDER_BACKDROP.groundPlacement
     }
   };
 }
@@ -154,8 +155,16 @@ function updateGround(THREE, state, configuration, bounds, sceneScale) {
         emissiveIntensity: PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY,
         roughness: 0.88,
         metalness: 0,
-        envMapIntensity: 0.22
+        envMapIntensity: 0.22,
+        transparent: true,
+        opacity: 0.3
       });
+    // Keep both the physical floor and transparent-background shadow catcher
+    // from hiding geometry or fighting coplanar faces at the exact ground Z.
+    material.depthWrite = false;
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = 1;
+    material.polygonOffsetUnits = 1;
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
     ground.name = "studio-ground";
     ground.receiveShadow = true;
@@ -177,9 +186,11 @@ function updateGround(THREE, state, configuration, bounds, sceneScale) {
     bounds.radius * PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER,
     minimumSize
   );
-  const epsilon = Math.max(bounds.radius * 1e-4, sceneScale === "urdf" ? 1e-5 : 1e-3);
+  // Geometry keeps its authored coordinates. Grounding a shot is an explicit
+  // presentation choice; the default plane stays at the document's Z=0.
+  const groundZ = configuration.backdrop.groundPlacement === "lowest" ? bounds.min[2] : 0;
   state.ground.scale.set(stageSize, stageSize, 1);
-  state.ground.position.set(bounds.center[0], bounds.center[1], bounds.min[2] - epsilon);
+  state.ground.position.set(bounds.center[0], bounds.center[1], groundZ);
   state.ground.updateMatrixWorld(true);
 }
 

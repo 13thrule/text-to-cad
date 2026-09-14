@@ -185,7 +185,10 @@ camera}`. `studio` is `light` or `dark`; omission follows the resolved
 global appearance and remains omitted in the normalized payload. `quality` is
 `preview` or `final` and defaults to `final`. Exposure is an EV adjustment from
 -5 to +5. Lighting exposes only rotation, relative softbox size and fill ratio.
-Backdrop exposes its color, transparency and whether the model is grounded.
+Backdrop exposes its color, transparency, ground visibility and ground placement.
+The translucent ground defaults to the authored Z=0 plane;
+`backdrop.groundPlacement: "lowest"` explicitly aligns it to the model minimum
+without moving geometry or changing illumination.
 `resolved.render.configuration` expands these defaults for rendering and UI
 display without turning the sparse session payload into a pinned studio.
 

@@ -54,12 +54,13 @@ function configuration(overrides = {}) {
     backdrop: {
       color: overrides.color ?? "#e7e7e5",
       transparent: overrides.transparent ?? false,
-      ground: overrides.ground ?? true
+      ground: overrides.ground ?? true,
+      groundPlacement: overrides.groundPlacement ?? "origin"
     }
   };
 }
 
-test("photographic studio applies one scale-stable key, Neutral exposure, and grounded backdrop", () => {
+test("photographic studio applies one scale-stable key, Neutral exposure, and origin-aligned backdrop", () => {
   const value = runtime();
   const state = applyPhotographicStudio(THREE, value, configuration({ exposure: 2 }), {
     sceneScale: "cad",
@@ -95,7 +96,7 @@ test("photographic studio applies one scale-stable key, Neutral exposure, and gr
   assert.equal(state.ground.receiveShadow, true);
   assert.equal(state.ground.position.x, 10);
   assert.equal(state.ground.position.y, 10);
-  assert.ok(state.ground.position.z < -5);
+  assert.equal(state.ground.position.z, 0);
   const boundsRadius = Math.hypot(20, 30, 10);
   assert.equal(
     state.ground.scale.x,
@@ -104,6 +105,36 @@ test("photographic studio applies one scale-stable key, Neutral exposure, and gr
   assert.equal(state.ground.scale.y, state.ground.scale.x);
   assert.equal(value.scene.environmentIntensity, 1);
   assert.equal(value.requestCount, 1);
+});
+
+test("ground keeps authored origin for floating and below-origin models unless explicitly aligned", () => {
+  const value = runtime();
+  for (const minZ of [-40, 0, 40]) {
+    value.modelBounds = { min: [-10, -10, minZ], max: [10, 10, minZ + 20] };
+    const originalBounds = structuredClone(value.modelBounds);
+    const state = applyPhotographicStudio(THREE, value, {});
+    const keyPosition = state.keyLight.position.clone();
+    const keyIntensity = state.keyLight.intensity;
+    assert.equal(state.ground.position.z, 0);
+    assert.equal(state.ground.material.transparent, true);
+    assert.ok(state.ground.material.opacity > 0 && state.ground.material.opacity < 1);
+    assert.equal(state.ground.material.depthWrite, false);
+
+    const aligned = applyPhotographicStudio(THREE, value, configuration({ groundPlacement: "lowest" }));
+    assert.equal(aligned.ground, state.ground);
+    assert.equal(aligned.ground.position.z, minZ);
+    assert.ok(aligned.keyLight.position.equals(keyPosition));
+    assert.equal(aligned.keyLight.intensity, keyIntensity);
+    assert.deepEqual(value.modelBounds, originalBounds);
+
+    applyPhotographicStudio(THREE, value, {});
+    assert.equal(state.ground.position.z, 0);
+    applyPhotographicStudio(THREE, value, configuration({ transparent: true }));
+    assert.equal(state.ground.position.z, 0);
+    assert.equal(state.ground.material.depthWrite, false);
+    assert.equal(state.ground.material.polygonOffset, true);
+  }
+  disposePhotographicStudio(value);
 });
 
 test("valid metre-scale bounds do not inherit CAD's one-unit minimum radius", () => {
@@ -183,7 +214,7 @@ test("live updates reuse the rig, rotate key and environment together, and resiz
   assert.equal(value.scene.children.filter((child) => child.name === "cadgen-photographic-studio").length, 1);
 });
 
-test("opaque ground fill follows backdrop color without changing studio illumination", () => {
+test("ground fill follows backdrop color without changing studio illumination", () => {
   const value = runtime();
   const state = applyPhotographicStudio(THREE, value, configuration({ color: "#224466" }));
   const keyIntensity = state.keyLight.intensity;

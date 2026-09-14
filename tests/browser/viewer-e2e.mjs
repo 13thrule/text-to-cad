@@ -399,7 +399,7 @@ async function sceneGates() {
       await configureScene(page, setting);
       await page.waitForFunction(
         (follows) => window.__cadModelPlacement?.floorFollowsModel === follows,
-        setting.render,
+        false,
         { timeout: 30_000 },
       );
       const placement = await page.evaluate(() => window.__cadModelPlacement);
@@ -416,7 +416,7 @@ async function sceneGates() {
         if (!setting.render && Math.abs(Number(placement.gridFloorZ)) > 1e-4) {
           failures.push(`${setting.id}: inspection grid left world z=0 (${placement.gridFloorZ})`);
         }
-        if (Boolean(placement.floorFollowsModel) !== setting.render) failures.push(`${setting.id}: floor-follow state wrong`);
+        if (placement.floorFollowsModel !== false) failures.push(`${setting.id}: default floor moved away from the authored origin`);
       }
       if (errors.length) failures.push(`${setting.id}: ${errors.join(" | ")}`);
     } finally {

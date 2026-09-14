@@ -71,8 +71,8 @@ cadgen daemon status         # the warm workers and the jobs they are running
 ```
 
 **Scripts are RUN; commands take DOCUMENTS.** `python model.py` is the one
-source door — it writes every output the model declares and (only when the
-model declares kinematics, animation, or mesh exports) its sidecar. Every
+source door — it writes every output the model declares and, for STEP files
+with kinematics or intrinsic material finishes, their sidecar. Every
 command above takes a `.step`/`.stl`/`.dxf` FILE, and one handed a `.py` says
 so. A door asks one question of a document: does the store have a tree for
 this file's bytes? If so it reads it; if not it compiles one from the bytes as
@@ -136,10 +136,11 @@ The rules, each enforced by the decorator or the build:
   point — a posed or differently configured export is authored geometry, or
   another model.
 - **A sidecar only when strictly necessary.** `<name>.step.json` is written
-  only when the model declares `kinematics=`; a model that declares none has
-  no sidecar, and a rebuild that dropped the declaration deletes the stale
-  file. What a model declares about its outputs lives in its record, not in
-  a file beside the geometry.
+  only for `kinematics=` or intrinsic `cad_material` finishes on leaf shapes.
+  It contains resolved declarations bound to the saved STEP's byte hash; a
+  model with neither has no sidecar. Rebuilding removes dropped sections and
+  deletes an empty sidecar. Mesh-output declarations live in the store record;
+  animation clips live in the authored `.step.js` beside the document.
 - **One model per file, as a rule of thumb.** A model's identity is its file
   plus its function (`plate.py::plate`); a file holding one model is named by
   its path alone. A file MAY hold several (a small family of variants): each is
@@ -302,7 +303,7 @@ cadgen step snapshot STEP/bracket.step tmp/review.png
 
 OUT is written exactly as given (a relative path against the current working directory). Conflicting Render/CAD controls are rejected before OUT is touched. After that check, OUT is cleared before input resolution and written atomically after rendering, so a later failure leaves no stale image from an earlier successful run. Reuse one name while iterating, and name the iterations (`tmp/before.png`, `tmp/after.png`) when you need to compare. A directory (`tmp/`) is the don't-care case and gets a generated timestamped name inside it, printed on the `saved snapshot:` line. The same rule applies per output in a JSON packet.
 
-**Normal and Render snapshots.** With no `--render`, snapshots use deterministic light CAD lighting, an orthographic isometric camera, normal shaded-with-edges display, and no grid or axis guides. `--render light|dark` opts into the photographic scene: perspective, shaded authored materials, softbox lighting, ground shadows, and no edges or guides. `--render '{}'` chooses the Light studio. It also accepts compact Render JSON or a path to it: `studio` is `light` or `dark`, `quality` is `preview` or `final`, `exposure` is -5..5, `lighting` controls `rotation`, `size`, and `fill`, `backdrop` controls `color`, `transparent`, and `ground`, and `camera` controls the photographic view. Final quality is the default and captures at L3 with 2x render scale; preview uses L1 and 1x. A perspective camera may set `focalLength` to 20..200 mm; projection and the positive `orthographicHalfHeight` view scale also belong in camera JSON. Top-level `--camera` and `--display` configure normal CAD snapshots and cannot be combined with Render. A packet output's `camera` remains an explicit per-image override.
+**Normal and Render snapshots.** With no `--render`, snapshots use deterministic light CAD lighting, an orthographic isometric camera, normal shaded-with-edges display, and no grid or axis guides. `--render light|dark` opts into the photographic scene: perspective, shaded authored materials, softbox lighting, ground shadows, and no edges or guides. `--render '{}'` chooses the Light studio. It also accepts compact Render JSON or a path to it: `studio` is `light` or `dark`, `quality` is `preview` or `final`, `exposure` is -5..5, `lighting` controls `rotation`, `size`, and `fill`, `backdrop` controls `color`, `transparent`, `ground`, and `groundPlacement` (`origin` for the default Z=0 plane, or `lowest` to align the translucent floor to the model minimum), and `camera` controls the photographic view. Final quality is the default and captures at L3 with 2x render scale; preview uses L1 and 1x. A perspective camera may set `focalLength` to 20..200 mm; projection and the positive `orthographicHalfHeight` view scale also belong in camera JSON. Top-level `--camera` and `--display` configure normal CAD snapshots and cannot be combined with Render. A packet output's `camera` remains an explicit per-image override.
 
 Selection, kinematics and top-level `quality.tessellation` are also normal-CAD state and
 cannot be combined with Render. Animation frames and sequences remain composable with Render.

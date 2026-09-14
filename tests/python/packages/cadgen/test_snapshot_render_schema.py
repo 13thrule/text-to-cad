@@ -59,11 +59,11 @@ class RenderKeySchemaTest(unittest.TestCase):
             "quality": "preview",
             "exposure": -1.25,
             "lighting": {"rotation": 180, "size": 0.25, "fill": 1},
-            "backdrop": {"color": "#123456", "transparent": True, "ground": False},
+            "backdrop": {"color": "#123456", "transparent": True, "ground": False, "groundPlacement": "lowest"},
         }
         self.assertEqual(render, normalize(render=render)["render"])
         self.assertEqual({"rotation", "size", "fill"}, set(RENDER_LIGHTING_KEYS))
-        self.assertEqual({"color", "transparent", "ground"}, set(RENDER_BACKDROP_KEYS))
+        self.assertEqual({"color", "transparent", "ground", "groundPlacement"}, set(RENDER_BACKDROP_KEYS))
 
         invalid = (
             {"exposure": True}, {"exposure": "0"}, {"exposure": -5.01}, {"exposure": 5.01},
@@ -74,6 +74,7 @@ class RenderKeySchemaTest(unittest.TestCase):
             {"lighting": {"key": 1}}, {"backdrop": []},
             {"backdrop": {"color": "white"}}, {"backdrop": {"transparent": 1}},
             {"backdrop": {"ground": "true"}}, {"backdrop": {"floor": True}},
+            {"backdrop": {"groundPlacement": "auto"}},
         )
         for render_value in invalid:
             with self.subTest(render=render_value), self.assertRaises(SnapshotError):

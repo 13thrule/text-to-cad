@@ -92,6 +92,17 @@ function RenderSettingsContent({
         <FileSheetToggleRow label="Transparent" checked={configuration.backdrop.transparent} onCheckedChange={(value) => setValue(["backdrop", "transparent"], value)} />
         <FileSheetColorRow label="Color" value={configuration.backdrop.color} disabled={configuration.backdrop.transparent} onChange={(value) => setValue(["backdrop", "color"], value)} />
         <FileSheetToggleRow label="Ground" checked={configuration.backdrop.ground} onCheckedChange={(value) => setValue(["backdrop", "ground"], value)} />
+        {configuration.backdrop.ground && (
+          <FileSheetSelectRow
+            label="Ground position"
+            value={configuration.backdrop.groundPlacement}
+            onValueChange={(value) => setValue(["backdrop", "groundPlacement"], value)}
+            options={[
+              { value: "origin", label: "Model origin" },
+              { value: "lowest", label: "Lowest point" }
+            ]}
+          />
+        )}
       </FileSheetSubsection>
 
       <FileSheetButtonRow columns={1}>

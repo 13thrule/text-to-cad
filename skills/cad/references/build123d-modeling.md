@@ -177,11 +177,10 @@ looks like it worked if you only check the STEP. Colour every leaf.
 ## Finish
 
 Colour alone cannot tell cast from machined from carbon: those differ in how
-they RESPOND to light, and by default every part takes the viewer theme's one
-roughness/metalness/clearcoat. A leaf shape may carry a `cad_material` dict to
-override those per part; the values ride the tree's occurrence and
-the viewer applies them over the theme, so the same model reads differently
-under every theme without re-authoring:
+they respond to light. A leaf shape may carry a `cad_material` dict for its
+intrinsic finish. These values survive cached composition into parent assemblies,
+and Render, snapshots and GLB exports consume the same resolved appearance.
+Inspect retains color and opacity but uses matte workbench shading:
 
 ```python
 housing.cad_material = {"roughness": 0.85, "metalness": 0.2}            # as-cast
@@ -193,8 +192,11 @@ window.cad_material = {"opacity": 0.35}
 Keys: `roughness`, `metalness`, `clearcoat`, `clearcoatRoughness`, `opacity`,
 each clamped to 0..1; unknown keys are ignored. Like colour, it belongs on the
 LEAF — a group compound's `cad_material` reaches nothing — and it is a
-presentation hint only: STEP has no channel for it, so it lives in the package,
-not the file.
+material appearance declaration, not a geometry change. STEP cannot carry these
+PBR channels, so a generated STEP's `.step.json` preserves them in `appearance`,
+bound to canonical occurrences and the saved document hash. They also remain in
+the pinned source tree for composition. The adjacent `.step.js` holds document
+animation clips; it does not currently declare material overrides.
 
 ## Rotating a plane
 

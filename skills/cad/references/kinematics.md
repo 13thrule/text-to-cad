@@ -13,21 +13,24 @@ There are THREE systems with different lifecycles, deliberately independent:
   the export decorators. It drives the viewer's pose sliders — no rebuild, no
   Python at render time — and never moves the geometry a model writes. It
   lives in the model's sidecar (`<name>.step.json`, written beside the
-  artifact), the one thing a sidecar is written for.
+  artifact), alongside any intrinsic material appearance.
 - **Animation** is choreography in the RENDER MODULE beside the document:
   `STEP/<name>.step.js`, next to `<name>.step` and `<name>.step.json`. It is
   authored and committed, discovered by name, loaded by the viewer and the
-  snapshot door, and read by NO build — no decorator names it, the sidecar
-  carries no copy, the gate has no clause for it. It targets occurrences
+  snapshot door, and by explicit animated GLB exports. Source model builds
+  never read it: no decorator names it, the sidecar carries no copy, and the
+  source gate has no clause for it. Animated GLB export pins its text and hashes
+  it with the clip request, so a module edit invalidates that export. It targets occurrences
   directly and knows nothing about mates. Editing it is a reload in the
   viewer, never a rebuild; editing kinematics never changes the tree either,
   but it does rewrite the sidecar, so a kinematics edit is a (cheap) run.
 
 ## Kinematics: typed mates
 
-Kinematics is the ONE thing a model writes a sidecar for, and it never moves
-geometry: the declaration describes how the written tree articulates, the
-viewer poses it at render time. A model that declares none has no sidecar.
+Kinematics is one sidecar section, independent of intrinsic material appearance.
+It never moves saved geometry: the declaration describes how the written tree
+articulates, and the viewer poses it at render time. A STEP model with neither
+kinematics nor intrinsic material finishes has no sidecar.
 
 One `kinematics=` dict, closed keys `mates` / `couplings` / `poses`, on any of
 `@step`/`@stl`/`@glb`/`@threemf`. Each decorator's declaration stands alone

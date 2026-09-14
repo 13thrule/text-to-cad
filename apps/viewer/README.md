@@ -79,7 +79,9 @@ one row on each entry. Dragging and splitting them is temporary and never
 overwrites the durable per-kind CAD arrangement. The default Light or Dark
 studio follows global app appearance. Backdrop customizations remain local to the model session.
 The compact editor controls lens and exposure, softbox rotation, size and fill,
-plus backdrop color, transparency, and ground. Khronos PBR Neutral tone mapping and a generated
+plus backdrop color, transparency, ground visibility and position. The translucent
+ground stays at the model's original Z=0 plane by default; **Lowest point**
+explicitly aligns the floor to the model without moving its geometry. Khronos PBR Neutral tone mapping and a generated
 softbox environment provide the Render lighting. The overhead side key models
 depth, while a rear fill retains detail on dark and polished surfaces. Defaults
 are checked against colored assemblies, mechanical models, and material samples

@@ -142,10 +142,12 @@ These two terms classify a STEP file by what its source is:
 - An **imported STEP file** is its own source: authored or downloaded
   elsewhere. There is nothing upstream to regenerate.
 
-A model that DECLARES something beyond geometry — kinematics, animation, or
-mesh exports — gets a sidecar BESIDE THE OUTPUT (`<name>.step.json`) carrying
-those sections. A plain model writes NO sidecar: its record in the store is
-what makes reruns no-op. Imports write none of it. The written STEP file
+A STEP model with kinematics or intrinsic `cad_material` finishes writes a
+sidecar beside its output (`<name>.step.json`) containing resolved `kinematics`
+and/or `appearance` sections, bound to the saved STEP's byte hash. A model with
+neither writes no sidecar; its store record makes reruns no-op. Mesh declarations
+stay in that record, and animation clips stay in the authored `.step.js`.
+Compiling an imported STEP preserves any authored sidecar. The written STEP file
 itself carries NO cadgen metadata and no link back to source code, ever — a
 bare artifact copied anywhere is a plain importable file, and every door
 resolves it by its bytes, so a moved or copied document renders identically to

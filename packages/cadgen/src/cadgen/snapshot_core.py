@@ -103,7 +103,7 @@ RENDER_INCOMPATIBLE_JOB_KEYS = frozenset(
     {"camera", "display", "selection", "kinematics", "jointValues", "quality"}
 )
 RENDER_LIGHTING_KEYS = frozenset({"rotation", "size", "fill"})
-RENDER_BACKDROP_KEYS = frozenset({"color", "transparent", "ground"})
+RENDER_BACKDROP_KEYS = frozenset({"color", "transparent", "ground", "groundPlacement"})
 SUPPORTED_OUTPUT_SETTINGS_KEYS = frozenset(
     {"sizeProfile", "padding", "paddingPercent", "viewLabels", "tightFrame", "transparent", "renderScale"}
 )
@@ -543,6 +543,8 @@ def validate_render_option(value: object, *, source_label: str) -> dict[str, obj
         for key in ("transparent", "ground"):
             if key in backdrop:
                 _render_boolean(backdrop[key], f"render.backdrop.{key}")
+        if "groundPlacement" in backdrop and backdrop["groundPlacement"] not in ("origin", "lowest"):
+            raise SnapshotError("render.backdrop.groundPlacement must be origin or lowest")
     if "camera" in payload:
         camera = payload["camera"]
         payload["camera"] = parse_camera_option(camera)

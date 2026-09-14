@@ -39,7 +39,7 @@ test("omitted Render fields stay sparse while configuration expands effective de
     quality: "final",
     exposure: 0,
     lighting: { rotation: 0, size: 1, fill: 0.25 },
-    backdrop: { color: "#e7e7e5", transparent: false, ground: true }
+    backdrop: { color: "#e7e7e5", transparent: false, ground: true, groundPlacement: "origin" }
   });
   assert.equal(dark.render.configuration.studio, "dark");
   assert.equal(dark.render.configuration.backdrop.color, "#121315");
@@ -62,14 +62,14 @@ test("explicit studios pin only the backdrop default", () => {
     studio: "dark",
     exposure: 1.5,
     lighting: { rotation: -45, size: 2, fill: 0 },
-    backdrop: { color: "#123456", transparent: true, ground: false }
+    backdrop: { color: "#123456", transparent: true, ground: false, groundPlacement: "lowest" }
   }, "light");
   assert.deepEqual(custom, {
     studio: "dark",
     quality: "final",
     exposure: 1.5,
     lighting: { rotation: -45, size: 2, fill: 0 },
-    backdrop: { color: "#123456", transparent: true, ground: false }
+    backdrop: { color: "#123456", transparent: true, ground: false, groundPlacement: "lowest" }
   });
 });
 
@@ -183,6 +183,7 @@ test("Render validation rejects old and malformed fields with generic schema err
     [{ lighting: { key: 2 } }, /Unsupported render\.lighting fields: key/],
     [{ backdrop: { color: "red" } }, /render\.backdrop\.color must be a hex color/],
     [{ backdrop: { transparent: 1 } }, /render\.backdrop\.transparent must be a boolean/],
+    [{ backdrop: { groundPlacement: "auto" } }, /render\.backdrop\.groundPlacement must be origin or lowest/],
     [{ backdrop: { floor: true } }, /Unsupported render\.backdrop fields: floor/],
     [{ camera: { focalLength: 19 } }, /camera\.focalLength/],
     [{ display: {} }, /Unsupported render fields: display/]

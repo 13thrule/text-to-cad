@@ -228,8 +228,8 @@ def animation_variant_token(request: dict[str, object], render_module_text: str)
 
     A static mesh is a pure function of the document's bytes and its tolerances,
     which is what the ledger keys on. An ANIMATED one is also a function of the
-    request and of the render module -- a file no build reads and no document
-    hash covers -- so editing a clip would leave a ledgered GLB reported current
+    request and of the render module -- a file no source model build reads
+    and no document hash covers -- so editing a clip would leave a ledgered GLB reported current
     with the old motion baked in. Folding both into the variant key makes an
     edited ``.step.js`` a miss, which is a re-export rather than a wrong answer.
     """

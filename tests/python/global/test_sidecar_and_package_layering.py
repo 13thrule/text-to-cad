@@ -6,7 +6,7 @@ Two stores of state sit beside a generated STEP and neither may leak into the ot
   is not derivable from artifact bytes, so a tree carrying it would make
   identical-bytes documents collide and would be swept by `cadgen store gc`.
 * The SIDECAR is what the author declared, and it TRAVELS WITH THE FILE. It holds
-  kinematics and nothing else (law 17): no mesh declarations, no choreography (the
+  kinematics and intrinsic appearance (law 17): no mesh declarations, no choreography (the
   render module beside the document is read by the viewer, never by a build), and
   no path into anybody's source tree.
 

@@ -2098,6 +2098,7 @@ const CadViewer = forwardRef(function CadViewer({
       window.__cadModelPlacement = {
         ...window.__cadModelPlacement,
         floorFollowsModel: configuration.backdrop?.ground === true
+          && configuration.backdrop.groundPlacement === "lowest"
       };
     }
   }, [normalizedSceneScaleMode, renderMode]);
@@ -4294,6 +4295,7 @@ const CadViewer = forwardRef(function CadViewer({
         gridFloorZ: Number.isFinite(Number(runtime.gridFloorZ)) ? Number(runtime.gridFloorZ) : null,
         floorFollowsModel: renderMode
           ? renderConfigurationRef.current?.backdrop?.ground === true
+            && renderConfigurationRef.current.backdrop.groundPlacement === "lowest"
           : floorFollowsModel
       };
     }
