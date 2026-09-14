@@ -223,7 +223,11 @@ def _materialized_metadata(node: Any, *, root: bool) -> tuple:
     if color is not None and type(color) is not Color:
         raise ValueError("materialized color is not a build123d Color")
     rgba = None if color is None else tuple(float(v) for v in color)
-    authored_material = node.__dict__.get("cad_material")
+    if "cad_material" in node.__dict__:
+        raise ValueError(
+            "cad_material authoring was removed; declare named materials with @step(materials=...)"
+        )
+    authored_material = node.__dict__.get("_cadgen_material")
     if authored_material is None:
         authored_material = {}
     if type(authored_material) is not dict:
@@ -232,6 +236,11 @@ def _materialized_metadata(node: Any, *, root: bool) -> tuple:
         (key, min(1.0, max(0.0, number(authored_material[key]))))
         for key in _MATERIAL_KEYS if authored_material.get(key) is not None
     ))
+    material_identity = (
+        str(authored_material.get("name") or ""),
+        str(authored_material.get("baseColor") or ""),
+        str(node.__dict__.get("_cadgen_material_id") or ""),
+    )
     authored_face_colors = node.__dict__.get("cad_face_ordinal_colors")
     if authored_face_colors is None:
         authored_face_colors = {}
@@ -244,7 +253,7 @@ def _materialized_metadata(node: Any, *, root: bool) -> tuple:
         face_colors.append((key, tuple(number(v) for v in value)))
     face_colors = tuple(sorted(face_colors))
     # Material and per-face overrides have no root-link override surface.
-    common = (material, face_colors, node.__dict__.get("_occurrence_tree") is not None)
+    common = (material, material_identity, face_colors, node.__dict__.get("_occurrence_tree") is not None)
     if root:
         return common
     label = node.__dict__.get("label")
@@ -471,14 +480,24 @@ def _color_from_entry(entry: dict[str, Any]):
         return None
 
 
-def _material_from_entry(entry: dict[str, Any]) -> dict[str, float] | None:
+def _material_from_entry(entry: dict[str, Any]) -> dict[str, Any] | None:
     """A private canonical copy of an occurrence's authored PBR finish."""
     from cadgen._internal.component_package import _MATERIAL_KEYS
 
     material = entry.get("material")
     if not isinstance(material, dict):
-        return None
-    resolved: dict[str, float] = {}
+        material = {}
+    resolved: dict[str, Any] = {}
+    name = entry.get("materialName")
+    if not isinstance(name, str) or not name:
+        name = material.get("name")
+    if isinstance(name, str) and name:
+        resolved["name"] = name
+    base_color = entry.get("baseColor")
+    if not isinstance(base_color, str) or not base_color:
+        base_color = material.get("baseColor")
+    if isinstance(base_color, str) and base_color:
+        resolved["baseColor"] = base_color
     for key in _MATERIAL_KEYS:
         value = material.get(key)
         if value is None:
@@ -530,6 +549,10 @@ def materialize_descriptor(
         canonical_json_bytes, effective_face_colors, NativeUnavailable,
     )
 
+    if descriptor.get("appearance") is not None:
+        from cadgen._internal.source_sidecar import apply_appearance
+
+        descriptor = apply_appearance(descriptor, descriptor["appearance"])
     components = descriptor.get("components") or {}
     shapes = dict(shapes or {})
     decoded_by_object: dict[str, Any] = {}
@@ -586,11 +609,17 @@ def materialize_descriptor(
             child.__dict__.pop("cad_face_ordinal_colors", None)
         material = _material_from_entry(occurrence)
         if material is not None:
-            child.cad_material = material
+            child._cadgen_material = material
+            material_id = occurrence.get("materialId")
+            if isinstance(material_id, str) and material_id:
+                child._cadgen_material_id = material_id
+            else:
+                child.__dict__.pop("_cadgen_material_id", None)
         else:
             # ``shapes`` may supply a wrapper carrying process-local metadata.
             # The descriptor is authoritative, including an absent finish.
-            child.__dict__.pop("cad_material", None)
+            child.__dict__.pop("_cadgen_material", None)
+            child.__dict__.pop("_cadgen_material_id", None)
         content_hash = str((components.get(cid) or {}).get("contentHash") or "")
         brep = str((components.get(cid) or {}).get("brep") or "")
         if content_hash and cid == content_hash[:16] and brep and (components[cid].get("kind") == "native"):

@@ -14,7 +14,8 @@ import {
   renderJobContext,
   renderMeshJob,
   resolveOutputCameraProjection,
-  resolveOutputCameraSpec
+  resolveOutputCameraSpec,
+  stepParametersForSnapshotOutput
 } from "./renderMeshScene.js";
 import { evaluateAnimationClip, normalizeAnimationClips } from "./animationRuntime.js";
 import { resolveAnimationFrame } from "./animationClock.js";
@@ -384,7 +385,7 @@ function buildStepModel(job) {
   const meshData = twoPartMeshData();
   const context = renderJobContext(meshData, job);
   const model = buildModel(THREE, { kind: "step", meshData }, modelOptionsForRenderJob(context, job));
-  model.update({ stepParameters: job.stepParameters || null });
+  model.update({ stepParameters: stepParametersForSnapshotOutput(job.outputs?.[0], job) });
   return model;
 }
 
@@ -458,8 +459,27 @@ test("a snapshot frame layers over the kinematics pose in the viewer's order", (
   }
 });
 
+test("photographic Render applies a non-rest kinematics transform", () => {
+  const stepParameters = liftRuntime(4);
+  const job = {
+    mode: "view",
+    kind: "step",
+    render: {},
+    outputs: [{ path: "render-pose.png" }],
+    stepParameters
+  };
+  assert.equal(stepParametersForSnapshotOutput(job.outputs[0], job), stepParameters);
+  const model = buildStepModel(job);
+  try {
+    const left = model.displayRecords.find((record) => record.partId === "left");
+    assert.deepEqual(roundedPoint(left.effectMatrix, [0, 0, 0]), [0, 0, 4]);
+  } finally {
+    model.dispose();
+  }
+});
+
 test("photographic scene requests reject explicitly supplied CAD controls", () => {
-  for (const key of ["camera", "display", "selection", "kinematics", "jointValues", "quality"]) {
+  for (const key of ["camera", "display", "selection", "jointValues", "quality"]) {
     assert.throws(() => renderJobContext(twoPartMeshData(), { render: {}, [key]: null }),
       new RegExp(`render cannot be combined.*${key}`));
   }

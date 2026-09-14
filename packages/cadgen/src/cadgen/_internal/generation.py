@@ -476,6 +476,8 @@ def _generate_part_outputs(
                     preview={
                         "output": str(spec.step_path.expanduser().resolve()),
                         "tree": result_hash, "kinematics": tree_kinematics(result_hash),
+                        "appearance": copy.deepcopy(_tree.get("appearance")),
+                        "animation": copy.deepcopy(getattr(scene, "animation", None)),
                         **({"surfaceProducer": surface_producer} if surface_producer is not None else {}),
                     },
                 ))
@@ -512,6 +514,7 @@ def _generate_part_outputs(
                     logger=logger,
                     on_preview=publish_preview,
                     _internal_source_publication=True,
+                    materials=getattr(scene, "materials", None),
                 )
         else:
             with logger.timed("tree: components"):
@@ -523,6 +526,7 @@ def _generate_part_outputs(
                     tree_hash, tree, stats = build_tree_from_compound(
                         shape, root_name=spec.step_path.stem, force=force,
                         progress=progress, extra=tree_extra,
+                        materials=getattr(scene, "materials", None),
                     )
                     publish_preview(tree_hash, tree)
         stats["tree"] = tree_hash
@@ -544,8 +548,16 @@ def _generate_part_outputs(
                     )
             if spec.step_output:
                 assert staged_step is not None
-                if stats.get("documentAppearance"):
-                    sidecar_payload["appearance"] = {"occurrences": stats["documentAppearance"]}
+                appearance = tree.get("appearance")
+                if appearance is not None:
+                    from cadgen._internal.source_sidecar import remap_appearance
+
+                    sidecar_payload["appearance"] = remap_appearance(
+                        appearance, stats["documentOccurrenceMap"]
+                    )
+                animation = getattr(scene, "animation", None)
+                if animation is not None:
+                    sidecar_payload["animation"] = copy.deepcopy(animation)
                 write_source_sidecar(staged_step, sidecar_payload, document_hash=exported_hash)
                 assert exported_hash is not None  # written by build_tree_through_step above
                 outputs[str(spec.step_path.expanduser().resolve())] = {"sha256": exported_hash}
@@ -605,11 +617,14 @@ def _generate_part_outputs(
             "entryKind": tree_kind(tree),
             "sourceKind": "step" if (not generated or reemit_source_hash) else "python",
             "tree": tree_hash,
+            "unannotatedTree": str(stats.get("unannotatedTree") or tree_hash),
             "documentTree": document_tree_hash if spec.step_output else None,
             "closure": {"hash": closure_hash, "files": closure_files, "shas": closure_shas, "static": closure_static},
             # Literals imported from model files, tracked by VALUE (gate clause 2).
             "constants": dict(getattr(scene, "source_closure_constants", None) or {}) if generated else {},
             "children": list(getattr(scene, "store_children", None) or []),
+            "documentOccurrenceMap": copy.deepcopy(stats.get("documentOccurrenceMap") or {}),
+            "documentNodeMap": copy.deepcopy(stats.get("documentNodeMap") or {}),
             "outputs": outputs,
             # The bytes of the document this tree describes -- a door's one question
             # (cadgen._internal.doors.document_tree). An imported document is hashed
@@ -624,12 +639,41 @@ def _generate_part_outputs(
                 )
             ),
         }
+        from cadgen.store.trees import get_tree
+
+        unannotated = get_tree(str(record["unannotatedTree"]))
+        intrinsic_appearance = (unannotated or {}).get("appearance")
+        if intrinsic_appearance is not None and stats.get("documentOccurrenceMap"):
+            from cadgen._internal.source_sidecar import remap_appearance
+
+            intrinsic_appearance = remap_appearance(
+                intrinsic_appearance, stats["documentOccurrenceMap"]
+            )
+        if intrinsic_appearance is not None:
+            record["intrinsicAppearance"] = copy.deepcopy(intrinsic_appearance)
         if reemit_source_hash:
             record["sourceHash"] = str(reemit_source_hash)
             record["annotationHash"] = str(getattr(scene, "reemit_annotation_hash", "") or "")
             record["inputAppearance"] = str(getattr(scene, "reemit_appearance_hash", "") or "")
         if generated and sidecar_payload is not None and sidecar_payload.get("kinematics") is not None:
             record["kinematics"] = sidecar_payload.get("kinematics")
+        if generated:
+            if getattr(scene, "materials", None) is not None:
+                record["materials"] = copy.deepcopy(scene.materials)
+            if getattr(scene, "animation", None) is not None:
+                record["animation"] = copy.deepcopy(scene.animation)
+            if sidecar_payload is not None and sidecar_payload.get("appearance") is not None:
+                record["appearance"] = copy.deepcopy(sidecar_payload["appearance"])
+        if record["sourceKind"] == "python" and spec.script_path is not None:
+            from cadgen._internal.annotation_refresh import capture_geometry_closure
+
+            entry_name = getattr(spec.generator_metadata, "entry_function", None)
+            if entry_name:
+                geometry_closure = capture_geometry_closure(
+                    spec.script_path, record["closure"], entry_name=entry_name
+                )
+                if geometry_closure is not None:
+                    record["geometryClosure"] = geometry_closure
         if generated:
             from cadgen.store.publish import decide
             from cadgen.store.trees import tree_complete
@@ -689,7 +733,9 @@ def _generate_part_outputs(
             executors.emit_event(executors.model_event(
                 model_path, "building", phase="STEP saved",
                 saved={"output": str(spec.step_path.expanduser().resolve()),
-                       "tree": document_tree_hash, "documentHash": exported_hash},
+                       "tree": document_tree_hash, "documentHash": exported_hash,
+                       "appearance": copy.deepcopy((sidecar_payload or {}).get("appearance")),
+                       "animation": copy.deepcopy((sidecar_payload or {}).get("animation"))},
             ))
         stats["published"] = True
         return stats
@@ -742,6 +788,14 @@ def _generate_step_outputs(
     # An on-demand output (mesh sidecar or --step export) must run even when the tree is
     # current, so its presence defeats the reuse fast path.
     has_extra_outputs = _spec_requests_extra_outputs(spec)
+    if not force and not has_extra_outputs and spec.source == "generated":
+        from cadgen._internal.annotation_refresh import refresh_annotations
+
+        refreshed_tree = refresh_annotations(spec)
+        if refreshed_tree is not None:
+            _current_source_result(spec, refreshed_tree)
+            _produce_declared_mesh_exports(spec, logger=logger, source_tree=refreshed_tree)
+            return GeneratedStepResult(spec=spec, scene=None, tree=refreshed_tree)
     reuse_tree = _checked_source_tree(spec) if not force and not has_extra_outputs else None
     # Reuse fast path: skip the build when the tree is already present and
     # current and nothing forces a run. A generated model's freshness rides on its recorded

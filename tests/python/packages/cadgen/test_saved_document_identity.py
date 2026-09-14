@@ -17,6 +17,8 @@ from tests.python.support.tmp_root import generated_cad_directory
 IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
 RGBA = [0.2, 0.4, 0.6, 0.75]
 ROUGH = {
+    "name": "Rough finish",
+    "baseColor": "#FF0000",
     "roughness": 0.1,
     "metalness": 0.2,
     "clearcoat": 0.3,
@@ -24,6 +26,8 @@ ROUGH = {
     "opacity": 0.5,
 }
 POLISHED = {
+    "name": "Polished finish",
+    "baseColor": "#0000FF",
     "roughness": 0.9,
     "metalness": 0.8,
     "clearcoat": 0.7,
@@ -32,18 +36,20 @@ POLISHED = {
 }
 
 
-def _model_source(material: dict[str, float]) -> str:
+def _model_source(material: dict[str, object]) -> str:
     return textwrap.dedent(
         f"""
         from cadgen import step
         from cadgen import build123d as bd
 
-        @step
+        @step(materials={{
+            "definitions": {{"finish": {material!r}}},
+            "assignments": [{{"targets": ["#box"], "material": "finish"}}],
+        }})
         def box():
             shape = bd.Box(2, 3, 4)
             shape.label = "box"
             shape.color = bd.Color(0.2, 0.4, 0.6, 0.75)
-            shape.cad_material = {material!r}
             return shape
 
         if __name__ == "__main__":
@@ -52,11 +58,25 @@ def _model_source(material: dict[str, float]) -> str:
     ).lstrip()
 
 
-def _materials(descriptor: dict) -> dict[str, dict[str, float]]:
+def _materials(descriptor: dict) -> dict[str, dict[str, object]]:
+    result = {}
+    for occurrence in descriptor.get("occurrences") or []:
+        if occurrence.get("material") is None:
+            continue
+        material = dict(occurrence["material"])
+        if occurrence.get("materialName"):
+            material["name"] = occurrence["materialName"]
+        if occurrence.get("baseColor"):
+            material["baseColor"] = occurrence["baseColor"]
+        result[str(occurrence["id"])] = material
+    return result
+
+
+def _appearance_materials(appearance: dict) -> dict[str, dict[str, object]]:
+    materials = appearance["materials"]
     return {
-        str(occurrence["id"]): dict(occurrence["material"])
-        for occurrence in descriptor.get("occurrences") or []
-        if occurrence.get("material") is not None
+        occurrence_id: dict(materials[material_id])
+        for occurrence_id, material_id in appearance["assignments"].items()
     }
 
 
@@ -136,8 +156,8 @@ class SavedDocumentIdentityTest(unittest.TestCase):
         self.assertEqual(rough_sidecar["documentHash"], polished_sidecar["documentHash"])
         self.assertNotEqual(rough_sidecar["appearance"], polished_sidecar["appearance"])
         leaf_ids = {str(item["id"]) for item in canonical_before["occurrences"]}
-        self.assertEqual(leaf_ids, set(rough_sidecar["appearance"]["occurrences"]))
-        self.assertEqual(leaf_ids, set(polished_sidecar["appearance"]["occurrences"]))
+        self.assertEqual(leaf_ids, set(rough_sidecar["appearance"]["assignments"]))
+        self.assertEqual(leaf_ids, set(polished_sidecar["appearance"]["assignments"]))
         colors = [item["color"] for item in canonical_before["occurrences"]]
         self.assertTrue(colors)
         for color in colors:
@@ -147,11 +167,15 @@ class SavedDocumentIdentityTest(unittest.TestCase):
         rough_authored = flatten(rough_record["tree"])
         polished_authored = flatten(polished_record["tree"])
         self.assertEqual(
-            {frozenset(value.items()) for value in _materials(rough_authored).values()},
+            {frozenset(value.items()) for value in _appearance_materials(
+                rough_authored["appearance"]
+            ).values()},
             {frozenset(ROUGH.items())},
         )
         self.assertEqual(
-            {frozenset(value.items()) for value in _materials(polished_authored).values()},
+            {frozenset(value.items()) for value in _appearance_materials(
+                polished_authored["appearance"]
+            ).values()},
             {frozenset(POLISHED.items())},
         )
 
@@ -205,10 +229,14 @@ class SavedDocumentIdentityTest(unittest.TestCase):
         def assert_finish(path: Path, expected: dict[str, float]) -> None:
             (material,) = _glb_json(path)["materials"]
             pbr = material["pbrMetallicRoughness"]
+            self.assertEqual(expected["name"], material["name"])
+            expected_rgb = [1, 0, 0] if expected["baseColor"] == "#FF0000" else [0, 0, 1]
+            self.assertEqual(expected_rgb, pbr["baseColorFactor"][:3])
             self.assertEqual(expected["roughness"], pbr["roughnessFactor"])
             self.assertEqual(expected["metalness"], pbr["metallicFactor"])
-            self.assertEqual(expected["opacity"], pbr["baseColorFactor"][3])
-            if expected["opacity"] < 1:
+            effective_opacity = expected["opacity"] * RGBA[3]
+            self.assertEqual(effective_opacity, pbr["baseColorFactor"][3])
+            if effective_opacity < 1:
                 self.assertEqual("BLEND", material["alphaMode"])
             else:
                 self.assertNotIn("alphaMode", material)
@@ -233,9 +261,10 @@ class SavedDocumentIdentityTest(unittest.TestCase):
 
         # An annotation-only edit leaves STEP bytes and the document tree
         # untouched, but must miss the old output's appearance-sensitive gate.
-        write_source_sidecar(rough_step, {"appearance": {"occurrences": {
-            occurrence_id: POLISHED for occurrence_id in leaf_ids
-        }}})
+        write_source_sidecar(rough_step, {"appearance": {
+            "materials": {"finish": POLISHED},
+            "assignments": {occurrence_id: "finish" for occurrence_id in leaf_ids},
+        }})
         edited = export_cad_target(rough_step, [("glb", rough_glb)], repo_root=self.root)
         self.assertFalse(edited["files"][0]["skipped"])
         self.assertNotEqual(rough_bytes, rough_glb.read_bytes())
@@ -261,13 +290,16 @@ class SavedDocumentIdentityTest(unittest.TestCase):
                 from cadgen import build123d as bd
                 from child import child
 
-                @step
+                @step(materials={{
+                    "definitions": {{"finish": {POLISHED!r}}},
+                    "assignments": [
+                        {{"targets": ["#moved_polished_child"], "material": "finish"}},
+                    ],
+                }})
                 def parent():
                     pinned = child()
-                    assert pinned.cad_material == {ROUGH!r}
                     pinned.label = "pinned_child"
                     modified = child()
-                    modified.cad_material = {POLISHED!r}
                     moved = bd.Pos(5, 0, 0) * modified
                     moved.label = "moved_polished_child"
                     return bd.Compound(children=[pinned, moved], label="parent")
@@ -289,13 +321,15 @@ class SavedDocumentIdentityTest(unittest.TestCase):
         )
         parent_result = flatten(parent_record["tree"])
         self.assertEqual(
-            {frozenset(value.items()) for value in _materials(parent_result).values()},
+            {frozenset(value.items()) for value in _appearance_materials(
+                parent_result["appearance"]
+            ).values()},
             {frozenset(ROUGH.items()), frozenset(POLISHED.items())},
             parent_result,
         )
         parent_sidecar = read_source_sidecar(parent.with_suffix(".step"))
         self.assertEqual(
-            {frozenset(value.items()) for value in parent_sidecar["appearance"]["occurrences"].values()},
+            {frozenset(value.items()) for value in _appearance_materials(parent_sidecar["appearance"]).values()},
             {frozenset(ROUGH.items()), frozenset(POLISHED.items())},
         )
 
@@ -308,11 +342,15 @@ class SavedDocumentIdentityTest(unittest.TestCase):
         self.assertNotEqual(child_record["tree"], read_record(child)["tree"])
         pinned_again = flatten(read_record(parent)["tree"])
         self.assertEqual(
-            {frozenset(value.items()) for value in _materials(pinned_again).values()},
+            {frozenset(value.items()) for value in _appearance_materials(
+                pinned_again["appearance"]
+            ).values()},
             {frozenset(ROUGH.items()), frozenset(POLISHED.items())},
         )
         self.assertEqual(
-            {frozenset(value.items()) for value in read_source_sidecar(parent.with_suffix(".step"))["appearance"]["occurrences"].values()},
+            {frozenset(value.items()) for value in _appearance_materials(
+                read_source_sidecar(parent.with_suffix(".step"))["appearance"]
+            ).values()},
             {frozenset(ROUGH.items()), frozenset(POLISHED.items())},
         )
 

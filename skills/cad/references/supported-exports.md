@@ -88,7 +88,7 @@ A mesh door never writes a `.step` file. A generated model's STEP is the OUTPUT 
 
 ### Carrying a clip into the GLB
 
-GLB is the one mesh format with somewhere to put motion. `--animation` bakes a clip the document's render module (`STEP/model.step.js`) declares into the file as glTF node animation, so an external viewer plays it:
+GLB is the one mesh format with somewhere to put motion. `--animation` bakes a clip from the document sidecar's embedded animation into the file as glTF node animation, so an external viewer plays it:
 
 ```bash
 cadgen glb build STEP/model.step meshes/model.glb --animation demo

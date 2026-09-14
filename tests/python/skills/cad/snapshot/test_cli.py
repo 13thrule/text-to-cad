@@ -38,7 +38,7 @@ def tearDownModule():
     _MODULE_CACHE.cleanup()
 
 
-def write_package(step_path, *, entry_kind="part", source_kind="step", kinematics=None, render_module=None):
+def write_package(step_path, *, entry_kind="part", source_kind="step", kinematics=None, animation_source=None):
     """Materialize the canonical render artifact for ``step_path``: a SELF-CONTAINED
     view directory (assembly.json + components/) inside the per-folder cache
     (``__cadgen__/models/<step-filename>/assembly.json``) whose content-addressed component
@@ -72,16 +72,16 @@ def write_package(step_path, *, entry_kind="part", source_kind="step", kinematic
         ],
     })
     pkg_dir = result_view_dir(step_path)
+    sidecar = {}
     if kinematics:
-        # Kinematics (source-derived) rides the MODEL-SIDE sidecar, never
-        # assembly.json.
+        sidecar["kinematics"] = kinematics
+    if animation_source is not None:
+        sidecar["animation"] = {"language": "javascript", "source": animation_source}
+    if sidecar:
+        # Source declarations share one document-bound schema-9 sidecar.
         from cadgen._internal.source_sidecar import write_source_sidecar
 
-        write_source_sidecar(step_path, {"kinematics": kinematics})
-    if render_module is not None:
-        # Choreography is the render module beside the document, authored and
-        # discovered by name: part.step -> part.step.js.
-        Path(f"{step_path}.js").write_text(render_module, encoding="utf-8")
+        write_source_sidecar(step_path, sidecar)
     return pkg_dir
 
 add_repo_path("packages/cadgen/src")
@@ -1235,7 +1235,7 @@ class SnapshotCliTests(unittest.TestCase):
                         cwd=root,
                     )
 
-    def test_render_rejects_all_cad_state_and_retains_per_output_camera(self) -> None:
+    def test_render_rejects_incompatible_cad_state_and_retains_per_output_camera(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
             base = {
@@ -1244,14 +1244,13 @@ class SnapshotCliTests(unittest.TestCase):
                 "camera": {"preset": "back"},
                 "display": {"mode": "hidden_edges"},
                 "selection": {"focus": ["missing/selector"]},
-                "kinematics": {"hinge": 25},
                 "jointValues": {"joint": 30},
                 "quality": {"tessellation": {"chordTolerance": "ignored"}},
             }
             with self.assertRaisesRegex(
                 SnapshotError,
                 "top-level CAD control\\(s\\): camera, display, jointValues, "
-                "kinematics, quality, selection",
+                "quality, selection",
             ):
                 resolve_render_job_packet(
                     {**base, "outputs": [{"path": "tmp/render.png"}]}, cwd=root,
@@ -2096,14 +2095,19 @@ class StepPoseParameterTests(unittest.TestCase):
         packet = self._resolve(self._job(kinematics={"stroke": 1}))
         resolved = packet["jobs"][0]["resolved"]
         self.assertIn(".step.json", str(resolved["stepParameterUrl"]))
-        self.assertEqual(resolved["sourceSidecar"]["schemaVersion"], 8)
+        self.assertEqual(resolved["sourceSidecar"]["schemaVersion"], 9)
         self.assertNotIn("stepParameterPath", resolved)
 
     def test_saved_appearance_is_inlined_for_the_shared_source_resolver(self) -> None:
         from cadgen._internal.source_sidecar import write_source_sidecar
 
         step_path = self._step(pose=False)
-        appearance = {"occurrences": {"o1.1": {"roughness": 0.2, "metalness": 0.7}}}
+        appearance = {
+            "materials": {
+                "finish": {"name": "Machined finish", "roughness": 0.2, "metalness": 0.7},
+            },
+            "assignments": {"o1.1": "finish"},
+        }
         write_source_sidecar(step_path, {"appearance": appearance})
 
         resolved = self._resolve(self._job())["jobs"][0]["resolved"]
@@ -2155,10 +2159,10 @@ class StepPoseParameterTests(unittest.TestCase):
             self._resolve(self._job(kinematics={"stroke": 1}))
 
     def test_animation_never_gates_the_parameter_url(self) -> None:
-        # Choreography is INDEPENDENT of kinematics: a render module beside the
-        # document without kinematics gives pose values nothing to drive.
+        # Animation is independent of kinematics: an embedded animation without
+        # kinematics still gives pose values nothing to drive.
         step_path = self._step(pose=False)
-        write_package(step_path, render_module="export const clips = {};")
+        write_package(step_path, animation_source="export const clips = {};")
         with self.assertRaisesRegex(SnapshotError, "declares no kinematics"):
             self._resolve(self._job(kinematics={"stroke": 1}))
 
@@ -2184,8 +2188,8 @@ class StepPoseParameterTests(unittest.TestCase):
 class StepAnimationFrameTests(unittest.TestCase):
     """The job's `animation` key freezes ONE frame of ONE clip: `{"clip": name,
     "time": seconds}`, spelled the same as the flag (`--animation CLIP --time
-    SECONDS`). The clips come from the render module beside the document
-    (`part.step.js`), never from the sidecar. It is layered over `kinematics`
+    SECONDS`). The clips come from animation.source in the document-bound
+    schema-9 sidecar. It is layered over `kinematics`
     the way the viewer layers its Animation tab over the Pose tab — the two
     travel independently and meet only in the renderer's effect records."""
 
@@ -2207,7 +2211,7 @@ class StepAnimationFrameTests(unittest.TestCase):
     def _step(self, name="part.step", *, clips=CLIPS, kinematics=None):
         step_path = self.models / name
         step_path.write_text("ISO-10303-21;\nEND-ISO-10303-21;\n", encoding="utf-8")
-        write_package(step_path, kinematics=kinematics, render_module=clips)
+        write_package(step_path, kinematics=kinematics, animation_source=clips)
         return step_path
 
     def _job(self, **overrides):
@@ -2294,14 +2298,14 @@ class StepAnimationFrameTests(unittest.TestCase):
         with self.assertRaisesRegex(SnapshotError, r"render job animation has unknown key\(s\): loop"):
             self._resolve(self._job(animation={"clip": "demo", "loop": False}))
 
-    def test_a_declared_clip_resolves_the_render_module_url_and_normalizes_the_request(self) -> None:
-        # An animation-only model: no kinematics, no sidecar at all — the frame
-        # needs only the render module beside the document.
+    def test_a_declared_clip_resolves_embedded_animation_and_normalizes_the_request(self) -> None:
+        # An animation-only model needs only its document-bound sidecar source.
         self._step()
         packet = self._resolve(self._job(animation={"clip": "demo", "time": 2}))
         resolved_job = packet["jobs"][0]
-        self.assertIn("part.step.js", str(resolved_job["resolved"]["renderModuleUrl"]))
-        self.assertNotIn("stepParameterUrl", resolved_job["resolved"])
+        resolved = resolved_job["resolved"]
+        self.assertEqual(self.CLIPS, resolved["sourceSidecar"]["animation"]["source"])
+        self.assertNotIn("stepParameterUrl", resolved)
         self.assertEqual({"clip": "demo", "time": 2.0}, resolved_job["animation"])
 
     def test_an_unknown_clip_is_refused_with_the_declared_clips(self) -> None:
@@ -2320,7 +2324,7 @@ class StepAnimationFrameTests(unittest.TestCase):
         ):
             self._resolve(self._job(animation={"clip": "demo"}))
 
-    def test_a_module_built_indirectly_defers_the_name_check_to_the_runtime(self) -> None:
+    def test_embedded_source_built_indirectly_defers_the_name_check_to_the_runtime(self) -> None:
         # The CLI reads the literal the contract requires; a module that assembles
         # its clips some other way is not refused on a guess — the runtime, with
         # the compiled clips in hand, is the authority that names the set.
@@ -2328,22 +2332,26 @@ class StepAnimationFrameTests(unittest.TestCase):
         packet = self._resolve(self._job(animation={"clip": "anything"}))
         self.assertEqual({"clip": "anything", "time": 0.0}, packet["jobs"][0]["animation"])
 
-    def test_a_document_without_a_render_module_has_no_frame_to_render(self) -> None:
+    def test_a_document_without_embedded_animation_has_no_frame_to_render(self) -> None:
         self._step(clips=None)
-        with self.assertRaisesRegex(SnapshotError, "has no render module") as caught:
+        with self.assertRaisesRegex(SnapshotError, "has no animation in its sidecar") as caught:
             self._resolve(self._job(animation={"clip": "demo"}))
-        self.assertIn("part.step.js", str(caught.exception))
+        self.assertIn("part.step", str(caught.exception))
 
     def test_a_frame_is_layered_over_kinematics_not_instead_of_it(self) -> None:
-        """Both fields travel; neither gates the other — the same sidecar URL
-        serves both loaders, and each reads only its own section."""
+        """Both fields travel through Render; each evaluator reads its own
+        declaration from the same document-bound sidecar."""
         pose = {
             "mates": [{"name": "stroke", "kind": "slider", "parent": "#body", "child": "#ram",
                        "axis": {"origin": [0, 0, 0], "dir": [0, 0, 1]},
                        "limits": {"value": [0, 1]}}],
         }
         self._step(kinematics=pose)
-        packet = self._resolve(self._job(kinematics={"stroke": 1}, animation={"clip": "spin", "time": 0.5}))
+        packet = self._resolve(self._job(
+            render={"studio": "light"},
+            kinematics={"stroke": 1},
+            animation={"clip": "spin", "time": 0.5},
+        ))
         resolved_job = packet["jobs"][0]
         self.assertEqual({"stroke": 1}, resolved_job["kinematics"])
         self.assertEqual({"clip": "spin", "time": 0.5}, resolved_job["animation"])

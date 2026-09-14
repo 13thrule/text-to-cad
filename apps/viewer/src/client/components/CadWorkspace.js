@@ -10,6 +10,7 @@ import { lodSceneMayMove } from "../render/lodCameraSample.js";
 import FileViewerSidebar from "./workbench/FileViewerSidebar";
 import { buildDisplaySettingsTab } from "./workbench/DisplaySettingsTab";
 import { buildRenderSettingsTab } from "./workbench/RenderSettingsTab";
+import { buildMaterialsSettingsTab } from "./workbench/MaterialsSettingsTab";
 import MeshFileSheet from "./workbench/MeshFileSheet";
 import { DXF_PREVIEW_REFERENCE_THICKNESS_MM } from "cadgen-js/lib/dxf/previewGlb";
 import { dxfDataIsDocument } from "cadgen-js/lib/dxf/parseDxf";
@@ -156,7 +157,6 @@ import {
   entryHasUrdf,
   entryMeshAssetSignature,
   entryPoseUrl,
-  entryRenderModuleUrl,
   entryUrdfAssetHash
 } from "cadgen-js/lib/entryAssets";
 import {
@@ -328,12 +328,18 @@ import {
   previewKinematicsModuleDefinition
 } from "cadgen-js/common/kinematicsModule";
 import { validateSourceSidecar } from "cadgen-js/common/sourceSidecar.js";
-import { loadRenderModule, validateRenderModuleClips } from "cadgen-js/common/renderModule";
+import { loadSourceAnimation, validateAnimationClips } from "cadgen-js/common/renderModule";
 import {
   normalizeParameterValue,
   normalizeParameterValues
 } from "cadgen-js/common/parameters.js";
 import { copyTextToClipboard, readTextFromClipboard } from "@/ui/clipboard";
+import {
+  applySourceMaterialOverlayToMeshData,
+  sourceMaterialOverlayIsEmpty,
+  sourceAppearanceHasMaterials,
+  sourceMaterialTargets
+} from "@/workbench/sourceMaterialSession";
 import {
   copyTargetsForFileAccessAsset,
   fileAccessAssetsForEntry,
@@ -378,6 +384,21 @@ const DEFAULT_SIDEBAR_WIDTH = CAD_WORKSPACE_DEFAULT_SIDEBAR_WIDTH;
 const DESKTOP_TAB_TOOLS_MIN_WIDTH = 240;
 const DESKTOP_TAB_TOOLS_MAX_WIDTH = 448;
 const DEFAULT_TAB_TOOLS_WIDTH = CAD_WORKSPACE_DEFAULT_TAB_TOOLS_WIDTH;
+
+function sourceAnimationForEntry(entry) {
+  return (entry?.editingPreview ? entry.previewAnimation : entry?.sourceSidecar?.animation) || null;
+}
+
+function sourceAnimationKeyForEntry(entry) {
+  if (!sourceAnimationForEntry(entry)) return "";
+  return `${fileKey(entry)}:${entry?.animationHash || entry?.documentHash || entry?.hash || "animation"}`;
+}
+
+function sourceAppearanceKeyForEntry(entry) {
+  const appearance = entry?.editingPreview ? entry.previewAppearance : entry?.sourceSidecar?.appearance;
+  if (!appearance) return "";
+  return String(entry?.appearanceHash || entry?.documentHash || entry?.hash || "").trim();
+}
 const CAD_WORKSPACE_TOP_BAR_HEIGHT = 44;
 const DEFAULT_LARGE_FILE_STATE = Object.freeze({
   selectableTopologyEnabled: false
@@ -1296,9 +1317,12 @@ export default function CadWorkspace({
   });
   const [stepModuleParameterValues, setStepModuleParameterValues] = useState({});
   const [stepModuleEnabled, setStepModuleEnabled] = useState(true);
+  // Per-model Render material edits live only for this Viewer session. The
+  // package and authored source sidecar remain immutable.
+  const [sourceMaterialOverlayByFile, setSourceMaterialOverlayByFile] = useState({});
   // The ANIMATION system, loaded and held entirely apart from the kinematics
-  // state above: kinematics is the sidecar's, choreography is the render
-  // module beside the document (<name>.step.js), and a model may ship either,
+  // state above: kinematics and choreography are independent declarations in
+  // the embedded source sidecar, and a model may ship either,
   // both, or neither.
   const [animationLoadState, setAnimationLoadState] = useState({
     url: "",
@@ -1569,14 +1593,17 @@ export default function CadWorkspace({
   const selectedStepModuleDefinition = stepModuleLoadState.url === selectedStepModuleUrl
     ? stepModuleLoadState.definition
     : null;
-  const selectedRenderModuleUrl = supportsSidecarParams ? entryRenderModuleUrl(selectedEntry) : "";
-  const selectedAnimationClips = animationLoadState.url === selectedRenderModuleUrl
+  const selectedSourceAnimation = supportsSidecarParams
+    ? sourceAnimationForEntry(selectedEntry)
+    : null;
+  const selectedAnimationSourceKey = selectedSourceAnimation ? sourceAnimationKeyForEntry(selectedEntry) : "";
+  const selectedAnimationClips = animationLoadState.url === selectedAnimationSourceKey
     ? animationLoadState.clips
     : null;
-  const selectedAnimationStatus = selectedRenderModuleUrl
-    ? (animationLoadState.url === selectedRenderModuleUrl ? animationLoadState.status : "loading")
+  const selectedAnimationStatus = selectedAnimationSourceKey
+    ? (animationLoadState.url === selectedAnimationSourceKey ? animationLoadState.status : "loading")
     : "idle";
-  const selectedAnimationLoadError = animationLoadState.url === selectedRenderModuleUrl
+  const selectedAnimationLoadError = animationLoadState.url === selectedAnimationSourceKey
     ? animationLoadState.error
     : "";
   const selectedStepModuleStatus = selectedStepModuleUrl
@@ -1615,7 +1642,7 @@ export default function CadWorkspace({
     !!selectedMeshHash &&
     selectedEntrySourceFormat === RENDER_FORMAT.STEP &&
     !selectedStepModuleUrl &&
-    !selectedRenderModuleUrl &&
+    !selectedAnimationSourceKey &&
     shouldRetainCompleteSameFileMesh(meshState, selectedEntry, selectedMeshHash);
   const retainedPreviousStepMeshError = retainingPreviousStepMesh &&
     meshState?.assemblyBackgroundErrorMeshHash === selectedMeshHash
@@ -1833,9 +1860,8 @@ export default function CadWorkspace({
     };
   }, [fileSessionNamespace, selectedEntry, selectedStepModuleCadPath, selectedStepModuleUrl]);
 
-  // The animation half, loaded on its own from the render module beside the
-  // document (<name>.step.js): its text compiles to clips through a Blob
-  // import. A document with no render module resolves to no clips and no
+  // The animation half compiles the exact source embedded in the selected
+  // sidecar. A document with no animation resolves to no clips and no
   // Animation tab, and a broken one reports its own error without disturbing
   // the Pose tab.
   useEffect(() => {
@@ -1847,7 +1873,7 @@ export default function CadWorkspace({
       resetAnimationClock();
     };
 
-    if (!selectedRenderModuleUrl) {
+    if (!selectedAnimationSourceKey || !selectedSourceAnimation) {
       setAnimationLoadState({ url: "", status: "idle", error: "", clips: null });
       resetAnimation();
       return () => {
@@ -1856,21 +1882,23 @@ export default function CadWorkspace({
     }
 
     setAnimationLoadState({
-      url: selectedRenderModuleUrl,
+      url: selectedAnimationSourceKey,
       status: "loading",
       error: "",
       clips: null
     });
     resetAnimation();
 
-    loadRenderModule(selectedRenderModuleUrl)
-      .then((renderModule) => {
+    loadSourceAnimation({ animation: selectedSourceAnimation }, {
+      name: `${fileKey(selectedEntry) || "STEP"} animation`
+    })
+      .then((animationModule) => {
         if (cancelled) {
           return;
         }
-        const clips = renderModule?.clips || {};
+        const clips = animationModule?.clips || {};
         setAnimationLoadState({
-          url: selectedRenderModuleUrl,
+          url: selectedAnimationSourceKey,
           status: "ready",
           error: "",
           clips
@@ -1890,7 +1918,7 @@ export default function CadWorkspace({
           return;
         }
         setAnimationLoadState({
-          url: selectedRenderModuleUrl,
+          url: selectedAnimationSourceKey,
           status: "error",
           error: error instanceof Error ? error.message : String(error),
           clips: null
@@ -1901,7 +1929,7 @@ export default function CadWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [fileSessionNamespace, selectedEntry, selectedStepModuleUrl]);
+  }, [fileSessionNamespace, selectedAnimationSourceKey, selectedEntry, selectedSourceAnimation]);
 
   const selectedUrdfMeshGeometryResult = useMemo(() => {
     if (!selectedUrdfData || !selectedUrdfMeshes) {
@@ -1967,6 +1995,44 @@ export default function CadWorkspace({
     : (selectedMeshMatches || retainingPreviousStepMesh)
       ? meshState.meshData
       : null;
+  const selectedSourceAppearance = selectedEntry?.editingPreview
+    ? selectedEntry.previewAppearance || null
+    : selectedEntry?.sourceSidecar?.appearance || selectedMeshData?.appearance || null;
+  const sourceMaterialScope = selectedEntry ? fileKey(selectedEntry) : "";
+  const selectedSourceAppearanceKey = sourceAppearanceKeyForEntry(selectedEntry);
+  const selectedSourceMaterialRecord = sourceMaterialOverlayByFile[sourceMaterialScope] || null;
+  const selectedSourceMaterialOverlay = selectedSourceMaterialRecord?.signature === selectedSourceAppearanceKey
+    ? selectedSourceMaterialRecord.overlay
+    : null;
+  const selectedSourceMaterialTargets = useMemo(
+    () => sourceMaterialTargets(selectedMeshData),
+    [selectedMeshData]
+  );
+  const selectedDisplayMeshData = useMemo(() => {
+    if (!selectedMeshData || !sourceAppearanceHasMaterials(selectedSourceAppearance)) return selectedMeshData;
+    const source = selectedMeshData.appearance === selectedSourceAppearance
+      ? selectedMeshData
+      : { ...selectedMeshData, appearance: selectedSourceAppearance };
+    return applySourceMaterialOverlayToMeshData(source, selectedSourceMaterialOverlay);
+  }, [selectedMeshData, selectedSourceAppearance, selectedSourceMaterialOverlay]);
+  const handleSourceMaterialOverlayChange = useCallback((nextOverlay) => {
+    if (!sourceMaterialScope) return;
+    setSourceMaterialOverlayByFile((current) => {
+      if (sourceMaterialOverlayIsEmpty(nextOverlay)) {
+        if (!current[sourceMaterialScope]) return current;
+        const next = { ...current };
+        delete next[sourceMaterialScope];
+        return next;
+      }
+      return {
+        ...current,
+        [sourceMaterialScope]: {
+          signature: selectedSourceAppearanceKey,
+          overlay: nextOverlay
+        }
+      };
+    });
+  }, [selectedSourceAppearanceKey, sourceMaterialScope]);
   const selectedGlbDocument = selectedMeshMatches ? meshState?.glbDocument || null : null;
   const embeddedGlbAnimationRuntime = useEmbeddedGlbAnimation(selectedGlbDocument);
   // Animated direct GLBs render their live hierarchy. Flattened triangle picks
@@ -1982,7 +2048,7 @@ export default function CadWorkspace({
   );
   // Progressive publish (design/viewer-memory.md §6): a STEP package paints
   // while it loads, and the partial states carry assemblyInteractionReady=false.
-  // The render module attaches on the FIRST publish and stays live: the viewer
+  // Embedded animation attaches on the FIRST publish and stays live: the viewer
   // re-runs its setup on every meshData change (the same path a LOD swap
   // takes), so occurrences bind as they arrive. Pose and animation controls
   // act on whatever is present; only clip validation waits for the complete
@@ -2292,7 +2358,7 @@ export default function CadWorkspace({
   // THE content signal: "is there anything on screen?", answered once for every format.
   // Consumers (toolbar gates, CTA, preview mode, zoom pill, alert blocking) read this
   // instead of each one guessing which loaded object backs the viewport.
-  // The render module's clips are checked against the compiled tree once it is
+  // Embedded animation clips are checked against the compiled tree once it is
   // in hand: a target no part carries fails HERE, in the Status tab, not the
   // first time playback reaches that frame.
   const selectedAnimationValidationError = useMemo(() => {
@@ -2305,7 +2371,7 @@ export default function CadWorkspace({
     if (selectedMeshPartial) {
       return "";
     }
-    return validateRenderModuleClips(THREE, selectedMeshData, selectedAnimationClips)
+    return validateAnimationClips(THREE, selectedMeshData, selectedAnimationClips)
       .map((problem) => `${problem.clip}: ${problem.error}`)
       .join("\n");
   }, [selectedAnimationClips, selectedMeshData, selectedMeshPartial]);
@@ -2807,7 +2873,7 @@ export default function CadWorkspace({
     // an offscreen part without a camera event when re-enabled.
     dynamicScene: lodSceneMayMove({ robot: isUrdfView, drawing: selectedEntryIsDrawing,
       kinematics: selectedStepModuleDefinition, kinematicsLoading: selectedStepModuleLoading,
-      renderModuleUrl: selectedRenderModuleUrl, exploded: resolvedScene.display?.exploded?.enabled })
+      animation: selectedSourceAnimation, exploded: resolvedScene.display?.exploded?.enabled })
   });
   const viewportQualityStatus = useViewportQualityStatus({
     modelKey: viewportQualityModelKey,
@@ -3253,10 +3319,11 @@ export default function CadWorkspace({
     ),
     hasStepAnimationPanel: Boolean(
       selectedAnimationClipList.length ||
-      (selectedRenderModuleUrl && selectedAnimationStatus === "loading") ||
+      (selectedAnimationSourceKey && selectedAnimationStatus === "loading") ||
       selectedAnimationError
     ),
     hasEmbeddedGlbAnimationPanel: Boolean(embeddedGlbAnimationRuntime),
+    hasMaterialsPanel: sourceAppearanceHasMaterials(selectedSourceAppearance),
     measurementAvailable: effectiveSupportsMeasure,
     hasDxfBendsPanel: selectedFileSheetKind === "dxf" && drawingBends.length > 0,
     hasDxfLayersPanel: selectedFileSheetKind === "dxf" && drawingLayers.length > 1,
@@ -3268,6 +3335,7 @@ export default function CadWorkspace({
     selectedAnimationError,
     selectedAnimationStatus,
     embeddedGlbAnimationRuntime,
+    selectedSourceAppearance,
     effectiveSupportsMeasure,
     selectedFileSheetKind,
     selectedStepModuleDefinition,
@@ -3408,6 +3476,10 @@ export default function CadWorkspace({
     const targetUrdfJointValues = targetFileKey && jointValuesByFileRef?.[targetFileKey]
       ? jointValuesByFileRef[targetFileKey]
       : {};
+    const targetMaterialRecord = sourceMaterialOverlayByFile[targetFileKey] || null;
+    const targetMaterialOverlay = targetMaterialRecord?.signature === sourceAppearanceKeyForEntry(targetEntry)
+      ? targetMaterialRecord.overlay
+      : null;
     // While a clip plays the authoritative time is the clock store's, not React
     // state's — the loop only writes back when playback stops.
     const snapshotAnimationElapsedSec = animationState.playing
@@ -3450,6 +3522,7 @@ export default function CadWorkspace({
           speed: animationState.speed,
           loopEnabled: animationState.loopEnabled
         },
+        ...(targetMaterialOverlay ? { materials: targetMaterialOverlay } : {}),
         urdf: {
           jointValues: targetUrdfJointValues,
         },
@@ -3467,6 +3540,7 @@ export default function CadWorkspace({
     renderSession,
     resolvedScene.camera.projection,
     selectedEntry,
+    sourceMaterialOverlayByFile,
     stepModuleEnabled,
     stepModuleParameterValues,
   ]);
@@ -3567,12 +3641,29 @@ export default function CadWorkspace({
     if (animationSlice) {
       const restoredAnimationState = restoreAnimationState(
         animationSlice,
-        animationLoadState.url === entryRenderModuleUrl(entry) ? animationLoadState.clips : null
+        animationLoadState.url === sourceAnimationKeyForEntry(entry) ? animationLoadState.clips : null
       );
       animationStateRef.current = restoredAnimationState;
       setAnimationState(restoredAnimationState);
       setAnimationClock(restoredAnimationState.elapsedSec);
     }
+
+    const materialsSlice = sessionState?.slices?.materials || null;
+    setSourceMaterialOverlayByFile((current) => {
+      if (materialsSlice) {
+        return {
+          ...current,
+          [normalizedKey]: {
+            signature: sourceAppearanceKeyForEntry(entry),
+            overlay: materialsSlice
+          }
+        };
+      }
+      if (!current[normalizedKey]) return current;
+      const next = { ...current };
+      delete next[normalizedKey];
+      return next;
+    });
 
     const urdfSlice = sessionState?.slices?.urdf || null;
     if (urdfSlice) {
@@ -3653,6 +3744,7 @@ export default function CadWorkspace({
     setIsolatedAssemblyNodeIds([]);
     setDisplaySettings(normalizeDisplaySettings());
     setRenderSession(createRenderSessionState());
+    setSourceMaterialOverlayByFile({});
     setLargeFileState(normalizeLargeFileState(DEFAULT_LARGE_FILE_STATE));
     setHoveredListReferenceId("");
     setHoveredModelReferenceId("");
@@ -4230,7 +4322,6 @@ export default function CadWorkspace({
   const selectedSelectorRuntime = selectedReferencesMatch ? referenceState?.selectorRuntime || null : null;
   const selectedStepParameterRuntime = useMemo(() => {
     if (
-      renderSession.enabled ||
       !selectedStepModuleDefinition ||
       !stepModuleEnabled ||
       (selectedStepModuleTopologyRequested && !selectedSelectorRuntime)
@@ -4246,7 +4337,6 @@ export default function CadWorkspace({
     };
   }, [
     selectedSelectorRuntime,
-    renderSession.enabled,
     selectedStepModuleCadPath,
     selectedStepModuleDefinition,
     selectedStepModuleTopologyRequested,
@@ -7323,6 +7413,13 @@ export default function CadWorkspace({
       onQualityChange: handleRenderQualityChange,
       onPayloadValueChange: handleRenderPayloadValueChange,
       onReset: handleRenderReset
+    }) : null,
+    renderSession.enabled ? buildMaterialsSettingsTab({
+      appearance: selectedSourceAppearance,
+      overlay: selectedSourceMaterialOverlay,
+      targets: selectedSourceMaterialTargets,
+      scope: sourceMaterialScope,
+      onOverlayChange: handleSourceMaterialOverlayChange
     }) : null
   ].filter(Boolean);
 
@@ -7382,13 +7479,14 @@ export default function CadWorkspace({
           onLodCameraChange={onLodCameraMoved}
           onMeshSourceAdoption={onMeshSourceAdoption}
           renderPartsIndividually={
-            isUrdfView || Boolean(selectedStepParameterRuntime) || Boolean(selectedAnimationRuntime)
+            isUrdfView || Boolean(selectedStepParameterRuntime) || Boolean(selectedAnimationRuntime) ||
+            sourceAppearanceHasMaterials(selectedSourceAppearance)
           }
           stepParameters={selectedStepParameterRuntime}
           stepAnimation={selectedAnimationRuntime}
           glbDocument={selectedGlbDocument}
           embeddedGlbAnimation={embeddedGlbAnimationRuntime?.render || null}
-          selectedMeshData={selectedMeshData}
+          selectedMeshData={selectedDisplayMeshData}
           selectedKey={selectedKey}
           missingFileRef={editingPreview.entry ? "" : missingFileRef}
           viewerServerInfo={viewerServerInfo}

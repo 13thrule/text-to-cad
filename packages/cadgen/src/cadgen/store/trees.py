@@ -5,7 +5,7 @@ A tree holds the geometry a model made itself (``components``, placed by its
 child are two links to one tree. Nothing of a child is copied::
 
     {
-      "kind": "geometry-tree", "schemaVersion": 1,
+      "kind": "geometry-tree", "schemaVersion": 2,
       "label": "robot", "entryKind": "assembly",
       "components": {"<cid>": {"kind": "native", "codec": "bintools-v4", "brep": "<object>", "faceColors": {}, "contentHash": "…"}},
       "occurrences": [{"id": "o1.1", "name": "housing", "component": "<cid>", "transform": [16 floats]}],
@@ -39,7 +39,7 @@ from typing import Any
 from cadgen.store.objects import object_path, put_object, read_verified_object
 
 TREE_KIND = "geometry-tree"
-TREE_SCHEMA = 1
+TREE_SCHEMA = 2
 FLAT_KIND = "assembly-package"
 
 # Metadata readers need an independently owned flattened descriptor but not the
@@ -207,6 +207,49 @@ def flatten_tree(
     components: dict[str, Any] = {cid: dict(entry) for cid, entry in (tree.get("components") or {}).items()}
     occurrences: list[dict[str, Any]] = [dict(occ) for occ in tree.get("occurrences") or []]
     links = {str(link.get("id")): link for link in (tree.get("links") or []) if isinstance(link, dict)}
+    # A published model tree carries its complete resolved intrinsic appearance.
+    # An unpublished draft does not, so flattening it composes child libraries
+    # and rebases their assignments before the parent declaration is resolved.
+    from cadgen._internal.source_sidecar import normalize_appearance
+
+    appearance_authoritative = tree.get("appearance") is not None
+    own_appearance = normalize_appearance(tree.get("appearance"))
+    if own_appearance is None:
+        inline_materials: dict[str, Any] = {}
+        inline_assignments: dict[str, str] = {}
+        for occurrence in occurrences:
+            material = occurrence.get("material")
+            material_id = occurrence.get("materialId")
+            if isinstance(material, dict) and isinstance(material_id, str) and material_id:
+                inline_materials[material_id] = dict(material)
+                inline_assignments[str(occurrence.get("id") or "")] = material_id
+        if inline_assignments:
+            own_appearance = normalize_appearance({
+                "materials": inline_materials, "assignments": inline_assignments,
+            })
+    appearance_materials = dict((own_appearance or {}).get("materials") or {})
+    appearance_assignments = dict((own_appearance or {}).get("assignments") or {})
+
+    def inherit_appearance(child: dict[str, Any], link_id: str) -> None:
+        if appearance_authoritative:
+            return
+        child_appearance = normalize_appearance(child.get("appearance"))
+        if child_appearance is None:
+            return
+        remapped: dict[str, str] = {}
+        for material_id, definition in child_appearance["materials"].items():
+            if material_id not in appearance_materials or appearance_materials[material_id] == definition:
+                inherited_id = material_id
+            else:
+                inherited_id = f"{link_id}/{material_id}"
+                suffix = 2
+                while inherited_id in appearance_materials and appearance_materials[inherited_id] != definition:
+                    inherited_id = f"{link_id}-{suffix}/{material_id}"
+                    suffix += 1
+            appearance_materials.setdefault(inherited_id, dict(definition))
+            remapped[material_id] = inherited_id
+        for occurrence_id, material_id in child_appearance["assignments"].items():
+            appearance_assignments[_rebase_id(link_id, occurrence_id)] = remapped[material_id]
 
     def expand(node: dict[str, Any]) -> dict[str, Any] | None:
         node_type = str(node.get("nodeType") or "")
@@ -220,6 +263,7 @@ def flatten_tree(
                     f"tree {tree_hash or '<unpublished>'}: linked tree object missing: "
                     f"{child_hash or '<empty>'}"
                 )
+            inherit_appearance(child, node_id)
             placement = _as16(link.get("transform"))
             for cid, entry in (child.get("components") or {}).items():
                 components.setdefault(cid, dict(entry))
@@ -286,6 +330,14 @@ def flatten_tree(
     root = (tree.get("assembly") or {}).get("root")
     expanded_root = expand(root) if isinstance(root, dict) else None
     descriptor["occurrences"] = occurrences
+    appearance = normalize_appearance({
+        "materials": appearance_materials,
+        "assignments": appearance_assignments,
+    }) if (appearance_materials or appearance_assignments) else None
+    if appearance is not None:
+        descriptor["appearance"] = appearance
+    else:
+        descriptor.pop("appearance", None)
     if expanded_root is not None:
         descriptor["assembly"] = {"root": expanded_root}
     stats = dict(descriptor.get("stats") or {})
@@ -309,6 +361,12 @@ def _validate_structure(tree: Any, *, native: bool = False) -> None:
         raise ValueError("unsupported geometry tree schema")
     if "surfaceProducer" in tree:
         raise ValueError("geometry tree contains a surface producer")
+    if "appearance" in tree:
+        from cadgen._internal.source_sidecar import normalize_appearance
+
+        appearance = normalize_appearance(tree["appearance"])
+        if appearance is None or appearance != tree["appearance"]:
+            raise ValueError("invalid geometry tree appearance")
     if tree.get("units") != "mm" or tree.get("entryKind") not in {"part", "assembly"}:
         raise ValueError("invalid geometry tree metadata")
     if type(tree.get("components")) is not dict or type(tree.get("occurrences")) is not list or type(tree.get("links")) is not list:

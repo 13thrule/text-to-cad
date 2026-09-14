@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+import copy
 import contextlib
 from dataclasses import dataclass
 from dataclasses import replace
@@ -190,12 +191,13 @@ def _purge_stale_bytecode(script_path: Path) -> None:
 
 @dataclass(frozen=True)
 class _DeclaredKinematics:
-    """What the decorator declared, resolved for the build: the kinematics
-    block. Choreography is not here — the render module beside the document
-    (``<name>.step.js``) is read by the viewer, never by a build, so an edit to
-    it is a reload and not a rebuild — and no declaration moves geometry."""
+    """What the decorator declared for the build: kinematics, named materials,
+    and the embedded animation module. None of these declarations moves
+    geometry or changes STEP bytes."""
 
     block: dict | None
+    materials: dict | None = None
+    animation: dict | None = None
 
 
 def _resolve_declared_kinematics(defn: object) -> _DeclaredKinematics:
@@ -205,7 +207,9 @@ def _resolve_declared_kinematics(defn: object) -> _DeclaredKinematics:
     resolve against real geometry later in the tree build."""
     kinematics_def = getattr(defn, "kinematics", None)
     block = dict(kinematics_def.block) if kinematics_def is not None else None
-    return _DeclaredKinematics(block=block)
+    materials = copy.deepcopy(getattr(defn, "materials", None))
+    animation = copy.deepcopy(getattr(defn, "animation", None))
+    return _DeclaredKinematics(block=block, materials=materials, animation=animation)
 
 
 def _normalize_step_payload(
@@ -609,6 +613,8 @@ def _run_script_generator_body(
         )
         if declared.block:
             generated_scene.kinematics = declared.block
+        generated_scene.materials = declared.materials
+        generated_scene.animation = declared.animation
         # Children pinned by the body's calls — recorded from the CALLS, never
         # derived from the tree's links (a modified child is still a dependency).
         generated_scene.store_children = [

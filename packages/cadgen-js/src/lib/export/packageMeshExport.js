@@ -66,6 +66,21 @@ export function occurrenceMaterial(value) {
   return Object.keys(finish).length ? finish : null;
 }
 
+// STEP occurrence alpha is independent of the named material library. The
+// material opacity scales that source alpha, matching the viewport composer;
+// neither channel replaces the other.
+export function occurrenceMaterialWithSourceAlpha(value, color) {
+  const material = occurrenceMaterial(value);
+  const sourceAlpha = Array.isArray(color) && color.length >= 4 && Number.isFinite(Number(color[3]))
+    ? Math.min(1, Math.max(0, Number(color[3])))
+    : 1;
+  if (sourceAlpha >= 0.999) return material;
+  const materialOpacity = material && Number.isFinite(Number(material.opacity))
+    ? material.opacity
+    : 1;
+  return { ...(material || {}), opacity: sourceAlpha * materialOpacity };
+}
+
 // The finish's contribution to the grouping key. Colour alone would merge a brushed and
 // a polished body that happen to share a colour into ONE material, and the file would
 // then show one finish for both. Empty for an unauthored finish.
@@ -84,7 +99,9 @@ export function materialKey(finish) {
  */
 export function occurrenceFaceRangeColors(descriptor, occurrence, tessellation, defaultColor = DEFAULT_COLOR_HEX) {
   const cid = String(occurrence?.component || "");
-  const occurrenceColor = linearRgbToHex(occurrence?.color);
+  const occurrenceColor = /^#[0-9a-fA-F]{6}$/.test(String(occurrence?.baseColor || ""))
+    ? String(occurrence.baseColor).toUpperCase()
+    : linearRgbToHex(occurrence?.color);
   const componentColor = linearRgbToHex(descriptor?.components?.[cid]?.color) || null;
   const partColor = linearRgbToHex(tessellation?.partColor) || null;
   const fallback = occurrenceColor || componentColor || partColor || defaultColor;
@@ -185,7 +202,7 @@ export function buildPackageMeshPrimitives(descriptor, componentTessellations, o
   // the colour, so sorting the same strings sorts by occurrence and then by colour. An
   // authored FINISH appends itself to whichever of those two the caller asked for -- so a
   // source with no material keys, sorts and serializes byte for byte as it always did,
-  // and two same-colour different-finish bodies stay two groups.
+  // while distinct named materials stay separate even when their current channels match.
   const groups = new Map();
   let occurrenceIndex = -1;
   for (const occurrence of descriptor.occurrences || []) {
@@ -195,7 +212,9 @@ export function buildPackageMeshPrimitives(descriptor, componentTessellations, o
     if (!tessellation) continue;
     const occurrenceId = String(occurrence.id || cid);
     if (hidden?.has(occurrenceId)) continue;
-    const occurrenceColor = linearRgbToHex(occurrence.color);
+    const occurrenceColor = /^#[0-9a-fA-F]{6}$/.test(String(occurrence?.baseColor || ""))
+      ? String(occurrence.baseColor).toUpperCase()
+      : linearRgbToHex(occurrence.color);
     const componentColor = componentColors.get(cid) || null;
     const partColor = linearRgbToHex(tessellation.partColor) || null;
     const fallback = occurrenceColor || componentColor || partColor || defaultColor;
@@ -205,8 +224,10 @@ export function buildPackageMeshPrimitives(descriptor, componentTessellations, o
     // The occurrence's authored finish rides every face range it owns. `opacity` above is
     // a CALLER's override (an animation clip's faded occurrence) and stays separate: the
     // writer resolves the two, preferring the override.
-    const material = occurrenceMaterial(occurrence.material);
-    const finishKey = materialKey(material);
+    const material = occurrenceMaterialWithSourceAlpha(occurrence.material, occurrence.color);
+    const materialId = String(occurrence.materialId || "").trim();
+    const materialName = String(occurrence.materialName || materialId).trim();
+    const finishKey = materialKey(material) + (materialId ? `|material:${materialId}` : "");
 
     const override = overrides?.get(occurrenceId);
     if (override) {
@@ -222,6 +243,8 @@ export function buildPackageMeshPrimitives(descriptor, componentTessellations, o
             node: occurrenceId,
             name: String(occurrence.name || occurrenceId),
             occurrenceId,
+            ...(materialId ? { materialId } : {}),
+            ...(materialName ? { materialName } : {}),
             ...(opacity === null || opacity === undefined ? {} : { opacity }),
           },
         });
@@ -247,6 +270,8 @@ export function buildPackageMeshPrimitives(descriptor, componentTessellations, o
         groups.set(key, (group = {
           color,
           material,
+          materialId,
+          materialName,
           chunks: [],
           node: perOccurrence ? occurrenceId : null,
           name: perOccurrence ? String(occurrence.name || occurrenceId) : null,
@@ -333,6 +358,8 @@ export function buildPackageMeshPrimitives(descriptor, componentTessellations, o
       }),
       ...(group.opacity === null || group.opacity === undefined ? {} : { opacity: group.opacity }),
       ...(group.material === null ? {} : { material: group.material }),
+      ...(group.materialId ? { materialId: group.materialId } : {}),
+      ...(group.materialName ? { materialName: group.materialName } : {}),
     }))))
     .filter((primitive) => (primitive.indices ? primitive.indices.length >= 3 : primitive.positions.length >= 9));
   // An INDEXED primitive (a morph override) counts its triangles from its index

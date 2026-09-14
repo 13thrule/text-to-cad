@@ -410,7 +410,7 @@ import { renderModel } from "cadgen-js/common/renderModel.js";
 const source = await loadSource({
   kind: "step",
   glbUrl: "/models/.part.step.glb",
-  stepParameterUrl: "/models/.part.step.js",
+  sourceSidecarUrl: "/models/part.step.json",
   cadPath: "models/part.step",
   kinematics: { drive: 180 }
 });

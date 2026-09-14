@@ -10,7 +10,7 @@ Freshness rides content-keyed records in the store's ``index/mesh`` tier: a
 record is keyed by the
 WRITTEN file's bytes and names the source documents (by content hash) and the
 effective tolerances that produced it — plus, for an animated GLB, the clip
-request and the render module that produced the motion, which the document's
+request and embedded animation source that produced the motion, which the document's
 own bytes do not cover. Both front doors read and write the
 same ledger, so a CLI export satisfies a declaration's gate and vice versa.
 Records are best-effort: losing one costs a re-export, never correctness.
@@ -47,7 +47,7 @@ class MeshExportJob:
     ``animation`` is the GLB door's clip request (cadgen._internal.mesh_animation)
     and nothing else carries one: a clip becomes glTF node animation, which STL
     and 3MF have nowhere to put. ``animation_key`` is that request plus the
-    render module's bytes, folded into the freshness variant so an edited clip
+    embedded animation source, folded into the freshness variant so an edited clip
     is a miss rather than a stale file reported current.
     """
 
@@ -79,7 +79,7 @@ def run_mesh_exporter(
     deterministic. Tolerances are the tessellator's units — chord RELATIVE to
     each component's bounding diagonal, angular in radians.
 
-    ``render_module`` captures the ``.step.js`` beside the DOCUMENT, and is required
+    ``render_module`` captures ``animation.source`` from the DOCUMENT's sidecar, and is required
     exactly when a job carries an ``animation``: the builder compiles its pinned text through
     the same loader the viewer uses and samples the named clip into keyframes.
     Returns the builder's payload, whose per-file ``animation`` block reports
@@ -130,7 +130,7 @@ def run_mesh_exporter(
             # The shared loader imports text via a data URL (relative imports
             # are unsupported). Preserve its original filename in diagnostics;
             # the mutable document sibling is never read again by this export.
-            argv += ["--render-module", str(module_path)]
+            argv += ["--animation-source", str(module_path)]
         with logger.timed(f"tessellate + write {label}"):
             proc = subprocess.run(argv, capture_output=True, text=True)
     payload: dict = {}
@@ -245,7 +245,7 @@ def mesh_variant_key(
     of the ARTIFACT-side ledger (``index/document/<sha256(bytes)>.meshes``).
 
     Only GLB carries a serializer revision; STL/3MF variants stay unchanged.
-    An ANIMATED GLB appends the clip request folded with the render module's
+    An ANIMATED GLB appends the clip request folded with the embedded animation
     bytes (mesh_animation.animation_variant_token), so it can never be satisfied
     by the static file at the same path, nor by a GLB of a clip since edited."""
     serialization_version = _serialization_version(fmt)

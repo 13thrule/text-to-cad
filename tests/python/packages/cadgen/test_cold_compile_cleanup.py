@@ -235,7 +235,10 @@ class ColdCompileCleanupTest(unittest.TestCase):
         document = self.document(nested=True)
         source_bytes = document.read_bytes()
         digest = hashlib.sha256(source_bytes).hexdigest()
-        payload = {"appearance": {"occurrences": {"o1.1.1": {"roughness": .27, "metalness": .6}}},
+        payload = {"appearance": {
+                       "materials": {"finish": {"name": "Finish", "roughness": .27, "metalness": .6}},
+                       "assignments": {"o1.1.1": "finish"},
+                   },
                    "kinematics": {"poses": {"rest": {}}}}
         write_source_sidecar(document, payload, document_hash=digest)
         sidecar = source_sidecar_path(document)
@@ -253,7 +256,7 @@ class ColdCompileCleanupTest(unittest.TestCase):
             canonical = flatten(result["tree"])
             overlaid = apply_appearance(canonical, declarations["appearance"])
             material = next(occ["material"] for occ in overlaid["occurrences"] if occ["id"] == "o1.1.1")
-            self.assertEqual(material, {"roughness": .27, "metalness": .6})
+            self.assertEqual(material, {"name": "Finish", "roughness": .27, "metalness": .6})
             self.assertNotEqual(overlaid, canonical)
 
     def test_foreign_sidecar_is_not_repaired_or_silently_accepted_by_its_reader(self):

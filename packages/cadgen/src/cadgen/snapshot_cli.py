@@ -233,7 +233,7 @@ def parse_animation_option(raw_animation: object, raw_time: object = None) -> di
     Already an object when it came from a ``<format>.snapshot(animation={...})``
     call; from argv it is one string, told apart by shape the way ``--kinematics``
     is: text that opens with ``{`` is the inline JSON request, anything else is
-    the NAME of a clip the document's render module (``<name>.step.js``)
+    the NAME of a clip the document's embedded animation source
     declares. ``--time`` is the
     second half of the same request — the moment, in seconds, defaulting to 0 —
     and is folded in here, so the job carries ONE field either way. Resolving
@@ -1107,14 +1107,9 @@ def resolve_step_render_job(
         # fold through the shared FK evaluator (cadgen-js kinematicsModule),
         # which reads the sidecar's kinematics section.
         resolved["stepParameterUrl"] = asset_url_for_path(source_sidecar_path(source_path), root_path)
-    from cadgen._internal.render_module import read_render_module_text, render_module_path
-
-    # Choreography is the render module beside the document (<name>.step.js),
-    # discovered by name and loaded by the page through the shared loader; no
-    # build wrote it and the sidecar knows nothing of it.
-    render_module_text = read_render_module_text(source_path)
-    if render_module_text is not None:
-        resolved["renderModuleUrl"] = asset_url_for_path(render_module_path(source_path), root_path)
+    # Animation and materials come from the same pinned annotation snapshot.
+    animation_block = sidecar.get("animation")
+    render_module_text = animation_block["source"] if animation_block is not None else None
     if kinematics_block:
         # A pose NAME and every DOF id are validated HERE, against the
         # declaration the CLI just loaded — a typo must fail as a clean CLI
@@ -1152,9 +1147,8 @@ def resolve_step_render_job(
     if animation_request is not None:
         if render_module_text is None:
             raise SnapshotError(
-                f"{input_path.name} has no render module, so there is no clip frame to "
-                f"render — author {render_module_path(source_path).name} beside the document "
-                "(export const clips = {...}); see the cad skill's kinematics reference"
+                f"{input_path.name} has no animation in its sidecar. "
+                "Declare animation= on @step or pass --animation to cadgen step build."
             )
         # The clip NAME is validated HERE against the module the CLI just read —
         # a typo must fail as a clean CLI error naming the clips the model has,
@@ -1227,7 +1221,7 @@ def resolve_drawing_render_job(
         )
     if job.get("animation") is not None:
         raise SnapshotError(
-            "an animation frame requires a STEP document with a render module beside it; "
+            "an animation frame requires a STEP document with embedded animation in its sidecar; "
             "drawings have no clips"
         )
     if job.get("video") is not None:

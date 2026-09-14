@@ -82,8 +82,8 @@ SUPPORTED_JOB_KEYS = frozenset(
         # angle, so it gets its own key rather than overloading one that means a sidecar.
         "jointValues",
         # One frozen frame of a STEP document's choreography: {"clip": name,
-        # "time": seconds}. The clips come from the render module beside the
-        # document (<name>.step.js); spelled the same as the --animation flag.
+        # "time": seconds}. The clips come from animation.source in the document sidecar;
+        # spelled the same as the --animation flag.
         # Layered over the kinematics pose exactly as the viewer layers its
         # Animation tab.
         "animation",
@@ -100,7 +100,7 @@ SUPPORTED_RENDER_KEYS = frozenset(
     {"studio", "quality", "exposure", "lighting", "backdrop", "camera"}
 )
 RENDER_INCOMPATIBLE_JOB_KEYS = frozenset(
-    {"camera", "display", "selection", "kinematics", "jointValues", "quality"}
+    {"camera", "display", "selection", "jointValues", "quality"}
 )
 RENDER_LIGHTING_KEYS = frozenset({"rotation", "size", "fill"})
 RENDER_BACKDROP_KEYS = frozenset({"color", "transparent", "ground", "groundPlacement"})
@@ -1132,7 +1132,7 @@ def resolve_mesh_render_job(
         )
     if job.get("animation") is not None:
         raise SnapshotError(
-            f"an animation frame requires a STEP document with a render module beside it; "
+            f"an animation frame requires a STEP document with animation in its sidecar; "
             f"{label} mesh inputs have no clips"
         )
     if job.get("video") is not None:
@@ -1662,7 +1662,7 @@ class BatchSnapshotRenderer:
     ) -> dict[str, object]:
         """Render one job's animation clip as a video and report what was written.
 
-        The page prepares the source, the render module and the model ONCE and
+        The page prepares the source, embedded animation and model ONCE and
         then answers one capture request per frame: fetching and tessellating a
         document 1800 times is not a slower video, it is no video at all. The
         frames come back a PNG at a time for the same reason the mesh bytes ride

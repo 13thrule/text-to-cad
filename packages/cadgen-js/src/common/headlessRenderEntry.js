@@ -9,16 +9,13 @@ import {
   renderModel
 } from "./renderMeshScene.js";
 import {
-  hasStepParameterRenderValues
-} from "./stepParameters.js";
-import {
   loadSource,
   sourceIsStep,
   stepParameterRuntime
 } from "./source.js";
 import { resolveAnimationFrame } from "./animationClock.js";
 import { framePlanElapsedSec, resolveFramePlan } from "./framePlan.js";
-import { loadRenderModule } from "./renderModule.js";
+import { loadSourceAnimation } from "./renderModule.js";
 import {
   createHttpTessellationCacheProvider,
   setTessellationCacheProvider
@@ -57,11 +54,9 @@ async function capturePreparedSource(source, job, stageTimings) {
 // `job.animation` is the JOB PACKET's frame request ({clip, time}); the
 // `stepAnimation` it becomes is the SETTINGS key renderMeshScene routes to the
 // shared effects pass — the same `{clip, elapsedSec}` the viewer's Animation
-// tab hands its own pass. The choreography loads through the one render-module
-// loader the viewer uses (the `.step.js` beside the document, resolved by the
-// CLI as `resolved.renderModuleUrl`): the sidecar is never consulted here, so
-// the two systems stay independent end to end and meet only in the effect
-// records.
+// tab hands its own pass. Choreography is the schema-v9 sidecar's embedded,
+// self-contained JavaScript module; the sidecar was already document-bound by
+// loadSource, so animation and kinematics compose against the same tree.
 async function loadStepAnimation(job, source) {
   const request = job.animation;
   if (request === undefined || request === null) {
@@ -73,15 +68,13 @@ async function loadStepAnimation(job, source) {
   if (String(job.mode || "view").toLowerCase() !== "view") {
     throw new Error("an animation frame supports only view mode");
   }
-  const renderModuleUrl = String(job.resolved?.renderModuleUrl || "").trim();
-  if (!renderModuleUrl) {
-    throw new Error("animation requires resolved.renderModuleUrl (the .step.js beside the document)");
+  const animation = await loadSourceAnimation(source.sourceSidecar, {
+    name: `${source.cadPath || "STEP document"} animation`
+  });
+  if (!animation) {
+    throw new Error("the document sidecar declares no animation, so there is no clip frame to render");
   }
-  const renderModule = await loadRenderModule(renderModuleUrl);
-  if (!renderModule) {
-    throw new Error("the document has no render module beside it, so there is no clip frame to render");
-  }
-  return resolveAnimationFrame(renderModule.clips, request);
+  return resolveAnimationFrame(animation.clips, request);
 }
 
 // Everything a render needs before a single pixel is drawn: the fetched and
@@ -100,16 +93,12 @@ async function prepareRenderJob(job) {
   // `stepParameters` set below is the shared buildModel/renderMeshScene SETTINGS key,
   // carrying the compiled runtime object. They used to be the same key, so a packet field
   // and a runtime object took turns living on it.
-  const explicitParams = hasStepParameterRenderValues(job.kinematics);
   const renderJob = {
     ...job,
     selectorRuntime: source.selectorRuntime,
     displayEdgeRuntime: source.displayEdgeRuntime,
     stepAnimation
   };
-  if (stepParameterSource && explicitParams && String(job.mode || "view").toLowerCase() !== "view") {
-    throw new Error("kinematics values support only view mode; set display.mode for display-style changes");
-  }
   const prepared = {
     source,
     stepAnimation,

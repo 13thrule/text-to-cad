@@ -3,7 +3,7 @@ import { normalizeRenderPayload } from "./sceneSettings.js";
 // Snapshot requests have one rendering path. Unlike the viewer's dormant CAD
 // session state, explicitly supplied CAD controls must never be ignored here.
 const CAD_ONLY_RENDER_KEYS = Object.freeze([
-  "camera", "display", "selection", "kinematics", "jointValues", "quality"
+  "camera", "display", "selection", "jointValues", "quality"
 ]);
 
 export function validateSnapshotRenderJob(job = {}) {

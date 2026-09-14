@@ -70,7 +70,7 @@ declared meshes there too, so the two front doors never redo each other's work).
 GLB variants and model output entries also carry the final serializer revision.
 A change to GLB encoding invalidates final GLB exports without discarding
 geometry or tessellation results, or affecting STL/3MF freshness.
-Animated exports capture the render module's text before mesh preparation;
+Animated exports capture the sidecar's embedded animation source before mesh preparation;
 the animation variant and the Node builder consume that same immutable text.
 Three properties, each enforced by a
 test:
@@ -133,6 +133,8 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
 
 ```json
 {
+  "kind": "geometry-tree",
+  "schemaVersion": 2,
   "label": "link_arm",
   "entryKind": "assembly",
   "units": "mm",
@@ -172,7 +174,9 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   unlocated BREP bytes and effective positive face-ordinal RGBA recipe. Absent
   native face ordinals are removed before hashing. JSON ordinal keys are
   converted to strings before canonical sorting, so round trips past ordinal9
-  preserve the same identity. Uniform color and PBR remain occurrence metadata.
+  preserve the same identity. Uniform color remains occurrence metadata.
+  Named PBR definitions and leaf assignments live in the authored tree's
+  top-level `appearance`.
   Extractor, native runtime and surface readiness never enter a native component
   or geometry tree identity.
 
@@ -239,8 +243,9 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   components. Current authored PBR is rebound after readback, without consulting
   source records, output indexes or staged sidecars.
 
-  Finishes that STEP does not carry persist in the schema-8 sidecar's
-  `appearance.occurrences` map, keyed by verified canonical leaf IDs. Resolved
+  Finishes that STEP does not carry persist in the schema-9 sidecar's named
+  `appearance.materials` library and `appearance.assignments` map, keyed by
+  verified canonical leaf IDs. Resolved
   kinematics are remapped to exact written product nodes, with independent
   descendant validation so nested single-child groups retain their identity.
   Saved readers compose
@@ -248,14 +253,15 @@ identity. A real one (`link_arm`: a bar plus two placements of a pin model):
   geometry while retaining their own finishes. Appearance-sensitive exports
   include the normalized appearance digest in their variant, including absence.
 
-  Model records use payload schema6. Earlier records are misses: the next
+  Model records use payload schema7. Earlier records are misses: the next
   source run rebuilds outputs whose input hashes may have been captured after
   a mid-build edit, as well as outputs predating distinct occurrence colours.
   This is one source rebuild; existing geometry and surface objects remain reusable.
   Document mappings remain payload schema4: saved bytes stay
   authoritative and are reparsed without guessing colours that the document
   does not contain. There are no directory or document-byte-key salts. Trees
-  use only geometry schema1; there is no optional old-tree decoder. Document indexes may carry an
+  use only geometry schema2; there is no optional old-tree decoder. Schema2
+  admits resolved named intrinsic appearance on authored trees. Document indexes may carry an
   optional exact loaded `surfaceProducer` hint outside the tree. A same-tree
   rewrite preserves a valid hint and external mesh ledger; a tree replacement
   drops both unless an attested producer is supplied. A reader selects tree and
@@ -283,7 +289,7 @@ A real one (`link_robot`: a base, two placements of `link_arm`, one of
 ```json
 {
   "kind": "record",
-  "schemaVersion": 4,
+  "schemaVersion": 7,
   "model": "/abs/models/assemblies/src/link_robot/link_robot.py::link_robot",
   "script": "/abs/models/assemblies/src/link_robot/link_robot.py",
   "function": "link_robot",
@@ -308,9 +314,9 @@ A real one (`link_robot`: a base, two placements of `link_arm`, one of
 - `closure.files` is the model's static import closure (AST, transitive,
   first-party, absolute and relative imports alike — a `lib/` package's
   `from .chain import X` counts) **stopping at model files**, plus files executed in its own
-  frame and discovered inputs (`read_step` documents). The render module
-  beside a document (`<name>.step.js`, choreography) is not an input: no build
-  reads it, so editing it never makes a model stale. The
+  frame and discovered inputs (`read_step` documents). The animation module
+  declared by `@step(animation=...)` is source annotation;
+  it is embedded in the unified sidecar and never enters geometry identity. The
   boundary is decided statically by what the importer TAKES from a model
   file: only model functions (`from arm import arm`) → a result edge, file
   excluded, the child tracked by its pin (also when that file declares several
@@ -333,6 +339,17 @@ A real one (`link_robot`: a base, two placements of `link_arm`, one of
   stale rather than as unchanged. This is why a model file's top level must
   stay kernel-free (`from cadgen import build123d as bd`, no `bd.` in module
   constants): the gate runs it.
+- Python records may also carry `unannotatedTree`, exact document occurrence
+  and node maps, and `geometryClosure`. Together they permit one narrow
+  metadata refresh: same-module literal `kinematics=`, `materials=`, or
+  `animation=` values (including literal constants used exclusively there)
+  can be reapplied to a complete cached baseline without executing the model
+  or rewriting STEP. The recorded geometry closure is derived from the exact
+  source buffer that executed. Computed and imported annotations stay in that
+  geometry fingerprint; an unchanged one can coexist with a literal edit by
+  reusing its recorded value. Changing its expression or dependency, reflection,
+  constants used anywhere else, child-pin changes, incomplete trees, and
+  changed output bytes fall back to the ordinary build.
 - A leaf has `children: []`. Roots and leaves have the same record. A record
   for an imported document (`sourceKind: "step"`) has the document's bytes as
   its closure. Cold compilation does not read earlier model/output records
@@ -631,7 +648,7 @@ Each rename is atomic; the group is not a transaction or compare-and-swap.
 There is a check-to-rename race with independent CLI or external writers, and
 an external writer can replace a successfully saved document later. A failure
 before publication preserves the previous pair. A crash after the STEP rename
-can leave a missing or mismatched annotation: schema 8 binds annotations to the
+can leave a missing or mismatched annotation: schema 9 binds annotations to the
 STEP's SHA-256, so readers reject that annotation instead of applying old
 mates or finishes to new geometry. Material-only saves can retain the same
 STEP digest, so refresh and output-pair conflict checks also observe sidecar
@@ -943,8 +960,8 @@ resolved against the preview tree; the saved sidecar is resolved separately agai
 tree and bound to the saved bytes. Within one build, successful authored-tree
 kinematics resolution may be reused for that exact tree hash, with independent
 copies for preview and saved-document remapping. No resolution survives the
-build or substitutes for the read-back remap. Adjacent authored render modules
-remain independent. A saved-tree identity change clears incompatible selection and
+build or substitutes for the read-back remap. Preview and saved events carry
+their independently pinned appearance and embedded animation. A saved-tree identity change clears incompatible selection and
 measurement state.
 
 An open editing tab holds one request against an opaque ledger cursor scoped

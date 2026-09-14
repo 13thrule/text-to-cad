@@ -108,7 +108,7 @@ class SourceJobResults(unittest.TestCase):
         script = self.root / "part.py"
         script.write_text(
             "from cadgen import step, build123d as bd\n@step\ndef part():\n"
-            "    shape = bd.Box(4, 3, 2)\n    shape.cad_material = {'roughness': .2}\n    return shape\n",
+            "    return bd.Box(4, 3, 2)\n",
             encoding="utf-8",
         )
         namespace = runpy.run_path(str(script))
@@ -117,10 +117,8 @@ class SourceJobResults(unittest.TestCase):
                         side_effect=AssertionError("generated outputs repeated an unused package gate")), \
              contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             first = namespace["part"]()
-            first.cad_material["roughness"] = .9
             second = namespace["part"]()
         self.assertEqual(getattr(first, TREE_TAG), getattr(second, TREE_TAG))
-        self.assertEqual(second.cad_material, {"roughness": .2})
         self.assertFalse(first.wrapped.IsPartner(second.wrapped))
 
     def test_current_gate_and_cli_keep_the_checked_tree_when_the_record_moves(self):
@@ -224,7 +222,7 @@ class SourceJobResults(unittest.TestCase):
             + ("    writer._produce_declared_mesh_exports = save\n" if block_mesh else
                "    writer.export_build123d_step_file = save\n")
             +
-            "    shape = bd.Box(4, 3, 2)\n    shape.cad_material = {'roughness': .2}\n    return shape\n",
+            "    return bd.Box(4, 3, 2)\n",
             encoding="utf-8",
         )
         parent.write_text(

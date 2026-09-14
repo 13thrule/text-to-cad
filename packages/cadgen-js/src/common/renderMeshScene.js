@@ -954,6 +954,12 @@ export function modelOptionsForRenderJob(context, job = {}) {
   };
 }
 
+// Kinematics is model state in both Inspect and Render. Per-output values take
+// precedence so a multi-output capture can pose each frame independently.
+export function stepParametersForSnapshotOutput(output = {}, job = {}) {
+  return output.stepParameters || job.stepParameters || null;
+}
+
 export function renderModel(_THREE, model, viewportOptions = {}) {
   if (!model?.root) {
     throw new Error("renderModel requires a model returned by buildModel");
@@ -1217,15 +1223,12 @@ export async function captureModel(viewport, captureOptions = {}) {
   }
   const sceneBuildMs = performance.now() - viewport.sceneBuildStarted;
   const padding = framePadding(job);
-  const parametersForOutput = (output) => (
-    context.sceneSettings.render.enabled ? null : output.stepParameters || job.stepParameters || null
-  );
   const renderedOutputs = [];
   const renderStarted = performance.now();
   for (const output of outputs) {
     const outputTimings = stageTimings ? { path: String(output.path || "") } : null;
     let stageStarted = performance.now();
-    const parameters = parametersForOutput(output);
+    const parameters = stepParametersForSnapshotOutput(output, job);
     const { width, height } = outputSize(output, job);
     viewport.renderer.setSize(width, height, false);
     // ONE update per output. `modelState` is a patch a caller needs applied in

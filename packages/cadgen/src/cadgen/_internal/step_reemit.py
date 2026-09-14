@@ -88,7 +88,38 @@ def load_kinematics_space(raw: object, *, where: str) -> Any | None:
     return normalize_kinematics(parsed, where=where)
 
 
-def annotation_digest(kinematics_def: Any | None, appearance: object = None) -> str:
+def load_materials_config(raw: object, *, where: str) -> dict | None:
+    """Load the same material definitions/assignments accepted by @step."""
+    from cadgen._internal.source_sidecar import normalize_materials
+
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text.startswith("{"):
+            text = Path(text).expanduser().read_text(encoding="utf-8")
+        try:
+            raw = json.loads(text)
+        except ValueError as error:
+            raise _fail(f"{where} --materials is not valid JSON: {error}") from None
+    return normalize_materials(raw, where=f"{where} --materials")
+
+
+def load_animation_source(raw: object, *, where: str) -> dict | None:
+    """Embed a JS input file or inline module source, never its source path."""
+    from cadgen._internal.source_sidecar import normalize_animation
+
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        raise _fail(f"{where} --animation must be a JavaScript file or module source")
+    text = raw.strip()
+    if "\n" not in text and not text.startswith(("export ", "//", "/*", "const ", "let ", "var ", "class ", "async ", "function ")):
+        text = Path(text).expanduser().read_text(encoding="utf-8")
+    return normalize_animation(text, where=f"{where} --animation")
+
+
+def annotation_digest(kinematics_def: Any | None, appearance: object = None, materials: object = None, animation: object = None) -> str:
     """A stable digest of what the author DECLARED for this document.
 
     Digests the pre-resolution block (selector refs and all), so an annotation
@@ -96,6 +127,8 @@ def annotation_digest(kinematics_def: Any | None, appearance: object = None) -> 
     """
     payload = {
         "kinematics": None if kinematics_def is None else kinematics_def.block,
+        "materials": materials,
+        "animation": animation,
         "appearance": appearance,
     }
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -160,6 +193,8 @@ def reemit_step_document(
     out: Path,
     *,
     kinematics_def: Any | None,
+    materials: dict | None = None,
+    animation: dict | None = None,
     force: bool,
     logger: CliLogger,
 ) -> dict[str, object]:
@@ -178,7 +213,7 @@ def reemit_step_document(
         raise _fail(f"could not read {_display(document)}")
     appearance = (read_source_sidecar(document, document_hash=input_hash) or {}).get("appearance")
     appearance_key = appearance_digest(appearance)
-    digest = annotation_digest(kinematics_def, appearance)
+    digest = annotation_digest(kinematics_def, appearance, materials, animation)
 
     sidecar = read_source_provenance(out) or {}
     tree = result_tree_for(out)
@@ -205,11 +240,22 @@ def reemit_step_document(
         # annotation never moves geometry. Re-resolve the declaration against a view of the tree already in
         # the store and rewrite the sidecar — no OCCT, no emit, no new tree.
         payload = dict(sidecar)
-        existing_appearance = (
-            read_source_sidecar(out, document_hash=str(record.get("stepHash") or "")) or {}
-        ).get("appearance")
-        if existing_appearance is not None:
-            payload["appearance"] = existing_appearance
+        from cadgen._internal.source_sidecar import resolve_materials
+        from cadgen.store.trees import flatten
+
+        # Reuse the saved geometry and resolve only the new declarations.
+        # Re-emitted intrinsic materials are the baseline; root assignments
+        # are applied afresh so removing an override restores that baseline.
+        inherited = record.get("intrinsicAppearance")
+        if inherited is None:
+            inherited = appearance
+        resolved_appearance = resolve_materials(flatten(tree), materials, inherited=inherited)
+        payload.pop("appearance", None)
+        if resolved_appearance is not None:
+            payload["appearance"] = resolved_appearance
+        payload.pop("animation", None)
+        if animation is not None:
+            payload["animation"] = animation
         payload["annotationHash"] = digest
         payload.pop("kinematics", None)
         if kinematics_def is not None:
@@ -250,6 +296,8 @@ def reemit_step_document(
         updated_record.update(
             annotationHash=digest,
             kinematics=payload.get("kinematics"),
+            appearance=payload.get("appearance"),
+            animation=payload.get("animation"),
             outputs=outputs,
         )
         write_record(out, updated_record)
@@ -267,6 +315,8 @@ def reemit_step_document(
         input_hash=input_hash,
         digest=digest,
         kinematics_def=kinematics_def,
+        materials=materials,
+        animation=animation,
         appearance=appearance,
         force=force,
         logger=logger,
@@ -287,6 +337,8 @@ def _emit(
     input_hash: str,
     digest: str,
     kinematics_def: Any | None,
+    materials: dict | None = None,
+    animation: dict | None = None,
     appearance: object = None,
     force: bool,
     logger: CliLogger,
@@ -321,6 +373,8 @@ def _emit(
 
     scene.reemit_appearance_hash = appearance_digest(appearance)
     scene.kinematics = None if kinematics_def is None else dict(kinematics_def.block)
+    scene.materials = materials
+    scene.animation = animation
 
     out.parent.mkdir(parents=True, exist_ok=True)
     spec = _build_entry_spec(Path.cwd().resolve(), scene.step_path, scene)

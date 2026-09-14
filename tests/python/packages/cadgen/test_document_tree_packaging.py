@@ -59,17 +59,24 @@ class DocumentTreePackagingTest(unittest.TestCase):
         from cadgen.store.trees import get_tree
 
         shape = self.box("authored-part-name")
-        shape.cad_material = {"roughness": .2, "metalness": .7}
+        finish = {"name": "Machined", "roughness": .2, "metalness": .7}
+        materials = {
+            "definitions": {"finish": finish},
+            "assignments": [{"targets": ["#authored-part-name"], "material": "finish"}],
+        }
         output = self.root / "original.step"
-        result, tree, stats, _ = build_tree_through_step(shape, output, root_name="authored-root-name")
+        result, tree, stats, _ = build_tree_through_step(
+            shape, output, root_name="authored-root-name", materials=materials
+        )
         self.assertEqual(tree["occurrences"][0]["name"], "authored-part-name")
-        self.assertEqual(tree["occurrences"][0]["material"], shape.cad_material)
+        self.assertEqual(tree["appearance"]["materials"]["finish"], finish)
+        self.assertEqual(tree["appearance"]["assignments"], {"o1": "finish"})
         canonical = self.assert_warm_and_cold_repackage(output, stats["documentTree"])
         self.assertNotEqual(result, stats["documentTree"])
         self.assertEqual(set(stats["documentOccurrenceMap"]["o1"]),
                          {occurrence["id"] for occurrence in canonical["occurrences"]})
         self.assertEqual(stats["documentAppearance"],
-                         {occurrence["id"]: shape.cad_material for occurrence in canonical["occurrences"]})
+                         {occurrence["id"]: finish for occurrence in canonical["occurrences"]})
         self.assertTrue(all("material" not in occurrence for occurrence in canonical["occurrences"]))
         self.assertNotIn("documentTree", get_tree(result))
 
@@ -311,8 +318,17 @@ class DocumentTreePackagingTest(unittest.TestCase):
         from cadgen.store.build import build_tree_through_step
 
         first, second = self.box("first"), self.box("second").moved(Location((8, 0, 0)))
-        first.cad_material, second.cad_material = {"roughness": .1}, {"roughness": .9}
         shape = Compound(children=[first, second], label="parent")
+        materials = {
+            "definitions": {
+                "matte": {"name": "Matte", "roughness": .1},
+                "polished": {"name": "Polished", "roughness": .9},
+            },
+            "assignments": [
+                {"targets": ["#first"], "material": "matte"},
+                {"targets": ["#second"], "material": "polished"},
+            ],
+        }
 
         def reordered(*args, **kwargs):
             scene = load_step_scene(*args, **kwargs)
@@ -321,7 +337,9 @@ class DocumentTreePackagingTest(unittest.TestCase):
 
         with mock.patch("cadgen._internal.step_scene_loader.load_step_scene", side_effect=reordered):
             with self.assertRaisesRegex(RuntimeError, "written product name changed"):
-                build_tree_through_step(shape, self.root / "reordered.step", root_name="parent")
+                build_tree_through_step(
+                    shape, self.root / "reordered.step", root_name="parent", materials=materials
+                )
 
 
 if __name__ == "__main__":

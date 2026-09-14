@@ -14,7 +14,7 @@
  *     --format stl|glb|3mf --out <abs path> [--chord-tolerance t] [--angle-tolerance t] \
  *       [--animation '{"clip":...}'] \
  *     [--format F --out P [--chord-tolerance t] [--angle-tolerance t] ...] \
- *     [--name N] [--render-module <abs path>]
+ *     [--name N] [--animation-source <abs path>]
  *   `--format`/`--out` repeat as ordered pairs. Tolerance and animation flags
  *   AFTER a pair bind to that pair; tolerance flags BEFORE the first pair set
  *   the run defaults. Jobs group by their effective tolerance pair: the package
@@ -27,9 +27,10 @@
  *
  * `--animation` is the GLB door's clip request, `{clip, fps, seconds, start,
  * drop, deform, deformTolerance}` — the same shape cadgen's mesh_animation
- * normalized before spawning this. The choreography is the render module beside
- * the DOCUMENT (`<name>.step.js`, passed as `--render-module`), compiled through
- * the one loader the viewer uses, sampled into per-occurrence keyframes, and
+ * normalized before spawning this. The choreography is the immutable source
+ * captured from the document sidecar (`animation.source`, passed through a
+ * temporary `--animation-source` file), compiled through the one loader the
+ * viewer uses, sampled into per-occurrence keyframes, and
  * written as glTF animation. An animated job emits one node per occurrence
  * instead of the flat colour-grouped soup, because a channel needs a node to
  * target. With `deform: "morph"` a deforming tube's node also carries baked
@@ -75,7 +76,7 @@ import {
 import { buildTubeMorphTargets } from "../src/lib/export/packageTubeMorph.js";
 import { animationClipList, findAnimationClip } from "../src/common/animationClock.js";
 import { resolveFramePlan } from "../src/common/framePlan.js";
-import { compileRenderModule, importRenderModule } from "../src/common/renderModule.js";
+import { compileAnimationSource } from "../src/common/renderModule.js";
 
 function parseArgs(argv) {
   // Scalar flags are last-wins; `--format`/`--out` collect in CLI order and
@@ -218,23 +219,17 @@ if (defaultColor !== null && !/^#[0-9a-fA-F]{6}$/.test(defaultColor)) {
   fail("--default-color must be #rrggbb");
 }
 
-const renderModulePath = String(args["render-module"] || "");
-if (jobs.some((job) => job.animation) && !renderModulePath) {
-  fail("--animation needs --render-module: the clips live in the .step.js beside the document");
+const animationSourcePath = String(args["animation-source"] || "");
+if (jobs.some((job) => job.animation) && !animationSourcePath) {
+  fail("--animation needs --animation-source: the clips live in the document sidecar");
 }
 
-/** The document's compiled clips, through the ONE render-module loader.
- *
- * `loadRenderModule` fetches; this reads the file the caller named, because a
- * builder has the path and no HTTP. Everything after the read is shared — the
- * same Blob-realm import, the same closed export vocabulary — so a module the
- * viewer refuses is a module this refuses, with the same message.
- */
-async function loadClips(modulePath) {
-  const source = fs.readFileSync(modulePath, "utf8");
-  const moduleName = path.basename(modulePath);
-  const namespace = await importRenderModule(source, { name: moduleName });
-  return compileRenderModule(namespace, { name: moduleName }).clips;
+/** Compile the immutable animation-source snapshot captured from the bound
+ * sidecar by Python. The temporary file is internal transport, never adjacent
+ * authored module discovery. */
+async function loadClips(sourcePath) {
+  const source = fs.readFileSync(sourcePath, "utf8");
+  return (await compileAnimationSource(source, { name: "embedded animation" })).clips;
 }
 
 /** One job's sampled clip: the schedule it resolved and the tracks it baked. */
@@ -263,10 +258,9 @@ try {
   const used = new Set(
     (descriptor.occurrences || []).map((occurrence) => String(occurrence.component || "")),
   );
-  // Compiled only when a job actually asks for a clip: a render module is a
-  // file the caller may name for other reasons, and a syntax error in one must
-  // not fail a static export that never reads it.
-  const clips = jobs.some((job) => job.animation) ? await loadClips(renderModulePath) : null;
+  // Compiled only when a job asks for a clip, so static export does not parse
+  // animation source it never consumes.
+  const clips = jobs.some((job) => job.animation) ? await loadClips(animationSourcePath) : null;
   const groups = new Map();
   jobs.forEach((job, index) => {
     if (!groups.has(job.groupKey)) groups.set(job.groupKey, { options: job.options, members: [] });

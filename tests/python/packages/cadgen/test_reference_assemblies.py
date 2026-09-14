@@ -72,8 +72,14 @@ class ReferenceAssemblies(unittest.TestCase):
             return self._curved_tree
         placed = bd.Solid.make_torus(7, 1).moved(bd.Location((2, 3, 5), (13, 27, 39)))
         placed.color = "red"
-        placed.cad_material = {"roughness": 0.3}
-        self._curved_tree = build_tree_from_compound(placed, root_name="curved")[0]
+        self._curved_tree = build_tree_from_compound(
+            placed,
+            root_name="curved",
+            materials={
+                "definitions": {"finish": {"name": "Finish", "roughness": 0.3}},
+                "assignments": [{"targets": ["#o1"], "material": "finish"}],
+            },
+        )[0]
         return self._curved_tree
 
     def child(self, frame, index, tree=None, job=None):
@@ -255,7 +261,10 @@ class ReferenceAssemblies(unittest.TestCase):
             with self.subTest(mode=mode), building(None) as frame:
                 a, b = self.child(frame, 1, self.box_tree), self.child(frame, 2, self.box_tree)
                 if mode == "material":
-                    a.cad_material = {"roughness": 0.7}
+                    # Private restored metadata mutation still forces ordinary
+                    # construction; public authors use @step(materials=...).
+                    a._cadgen_material = {"name": "Override", "roughness": 0.7}
+                    a._cadgen_material_id = "override"
                 elif mode == "faces":
                     a.cad_face_ordinal_colors = {1: (1, 0, 0, 1)}
                 else:
@@ -393,8 +402,9 @@ class ReferenceAssemblies(unittest.TestCase):
                                ("curve", "bd.Solid.make_torus(7, 1)")):
             (self.root / f"{name}.py").write_text(
                 "from cadgen import step, build123d as bd\n"
-                f"@step\ndef {name}():\n    shape = {geometry}\n"
-                "    shape.cad_material = {'roughness': .3}\n    return shape\n",
+                "@step(materials={'definitions': {'finish': {'name': 'Finish', 'roughness': .3}}, "
+                "'assignments': [{'targets': ['#o1'], 'material': 'finish'}]})\n"
+                f"def {name}():\n    return {geometry}\n",
                 encoding="utf-8",
             )
         parent = self.root / "parent.py"

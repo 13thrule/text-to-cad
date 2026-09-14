@@ -214,11 +214,11 @@ def step_snapshot_verb(door: str):
         display: normal-CAD display settings; incompatible with Render.
         kinematics: pose values — a declared preset name or {dof: value}
             JSON, validated against the model's kinematics declaration;
-            normal-CAD only and incompatible with Render.
-        animation: one still frame of a clip the document's render module
-            (<name>.step.js beside it) declares — the clip name (with --time),
-            or {"clip": name, "time": seconds} JSON. Normal CAD layers it
-            over the kinematics pose; Render evaluates the clip from rest.
+            available in normal CAD and Render.
+        animation: one still frame of a clip embedded in the document sidecar —
+            the clip name (with --time),
+            or {"clip": name, "time": seconds} JSON. Both viewing styles layer it
+            over the kinematics pose.
         time: seconds into the animation clip (default 0); requires animation.
         video: render the clip as a VIDEO instead of one frame, into the .mp4 or
             .gif OUT names — {"fps": 30, "seconds": <what is left of the clip>,
@@ -411,7 +411,7 @@ def polymorphic_snapshot_verb():
         display: normal-CAD settings; incompatible with Render. CAD-edge and
             exploded modes require STEP topology.
         kinematics: pose values for a STEP model's kinematics — a preset
-            name or {dof: value} JSON; normal-CAD only and incompatible with Render.
+            name or {dof: value} JSON; available in normal CAD and Render.
         animation: one still frame of a STEP model's clip — the clip name
             (with --time), or {"clip": name, "time": seconds} JSON.
         time: seconds into the animation clip (default 0); requires animation.

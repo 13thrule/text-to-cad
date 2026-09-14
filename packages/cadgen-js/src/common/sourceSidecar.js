@@ -1,17 +1,28 @@
-// Saved STEP annotations are document-bound data. Geometry remains identified
-// by the immutable STEP tree; these helpers validate and compose annotations
-// into a private descriptor owned by the current reader.
+// Saved STEP declarations are document-bound data. Geometry remains identified
+// by the immutable STEP tree; these helpers validate declarations and compose
+// appearance into private descriptors owned by the current reader/session.
 
-export const SOURCE_SIDECAR_SCHEMA_VERSION = 8;
+export const SOURCE_SIDECAR_SCHEMA_VERSION = 9;
 export const SOURCE_APPEARANCE_CHANNELS = Object.freeze([
+  "baseColor",
   "roughness",
   "metalness",
   "clearcoat",
   "clearcoatRoughness",
   "opacity"
 ]);
+export const SOURCE_MATERIAL_DEFAULTS = Object.freeze({
+  roughness: 0.42,
+  metalness: 0.03,
+  clearcoat: 0,
+  clearcoatRoughness: 0.26,
+  opacity: 1
+});
 
-const SOURCE_APPEARANCE_CHANNEL_SET = new Set(SOURCE_APPEARANCE_CHANNELS);
+const NUMERIC_MATERIAL_CHANNELS = SOURCE_APPEARANCE_CHANNELS.filter((key) => key !== "baseColor");
+const MATERIAL_KEYS = new Set(["name", ...SOURCE_APPEARANCE_CHANNELS]);
+const SIDECAR_KEYS = new Set(["schemaVersion", "documentHash", "kinematics", "appearance", "animation"]);
+
 function isObject(value) {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -28,39 +39,138 @@ function normalizedDocumentHash(value) {
   return /^[0-9a-f]{64}$/.test(digest) ? digest : "";
 }
 
-export function normalizeSourceAppearance(block) {
-  if (block === undefined || block === null) {
-    return null;
+function nonemptyString(value, where) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${where} must be a nonempty string`);
   }
-  if (!isObject(block) || Object.keys(block).length !== 1 || !Object.hasOwn(block, "occurrences")) {
-    throw new Error("appearance must contain only an occurrences object");
+  return value.trim();
+}
+
+function normalizeMaterial(value, materialId, { nameRequired = true } = {}) {
+  const keys = isObject(value) ? Object.keys(value) : [];
+  if (!isObject(value) || keys.some((key) => !MATERIAL_KEYS.has(key))) {
+    throw new Error(
+      `material ${JSON.stringify(materialId)} must contain only name, ${SOURCE_APPEARANCE_CHANNELS.join(", ")}`
+    );
   }
-  if (!isObject(block.occurrences)) {
-    throw new Error("appearance.occurrences must be an object keyed by occurrence id");
+  const normalized = {};
+  if (Object.hasOwn(value, "name")) {
+    normalized.name = nonemptyString(value.name, `material ${JSON.stringify(materialId)}.name`);
+  } else if (nameRequired) {
+    throw new Error(`material ${JSON.stringify(materialId)}.name must be a nonempty string`);
   }
-  const occurrenceEntries = [];
-  for (const occurrenceId of Object.keys(block.occurrences).sort()) {
-    if (!occurrenceId.trim()) {
-      throw new Error("appearance occurrence ids must be nonempty strings");
+  if (Object.hasOwn(value, "baseColor")) {
+    const color = String(value.baseColor || "");
+    if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+      throw new Error(`material ${JSON.stringify(materialId)}.baseColor must be a #RRGGBB color`);
     }
-    const material = block.occurrences[occurrenceId];
-    const keys = isObject(material) ? Object.keys(material) : [];
-    if (!keys.length || keys.some((key) => !SOURCE_APPEARANCE_CHANNEL_SET.has(key))) {
+    normalized.baseColor = color.toUpperCase();
+  }
+  for (const key of NUMERIC_MATERIAL_CHANNELS) {
+    if (!Object.hasOwn(value, key)) continue;
+    const channel = value[key];
+    if (typeof channel !== "number" || !Number.isFinite(channel) || channel < 0 || channel > 1) {
       throw new Error(
-        `appearance ${occurrenceId}: expected supported PBR channels: ${SOURCE_APPEARANCE_CHANNELS.join(", ")}`
+        `material ${JSON.stringify(materialId)}.${key} must be a finite number between 0 and 1`
       );
     }
-    const normalizedMaterial = {};
-    for (const key of keys.sort()) {
-      const value = material[key];
-      if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-        throw new Error(`appearance ${occurrenceId}.${key}: expected a finite number between 0 and 1`);
-      }
-      normalizedMaterial[key] = value;
-    }
-    occurrenceEntries.push([occurrenceId, normalizedMaterial]);
+    normalized[key] = channel;
   }
-  return occurrenceEntries.length ? { occurrences: Object.fromEntries(occurrenceEntries) } : null;
+  return normalized;
+}
+
+function normalizeAppearanceShape(block, {
+  label = "appearance",
+  allowPartialMaterials = false,
+  allowUnknownAssignments = false
+} = {}) {
+  if (block === undefined || block === null) return null;
+  if (!isObject(block) || Object.keys(block).length !== 2
+    || !Object.hasOwn(block, "materials") || !Object.hasOwn(block, "assignments")) {
+    throw new Error(`${label} must contain only materials and assignments objects`);
+  }
+  if (!isObject(block.materials) || !isObject(block.assignments)) {
+    throw new Error(`${label}.materials and ${label}.assignments must be objects`);
+  }
+  const materials = {};
+  for (const rawMaterialId of Object.keys(block.materials).sort()) {
+    const materialId = nonemptyString(rawMaterialId, `${label} material id`);
+    materials[materialId] = normalizeMaterial(block.materials[rawMaterialId], materialId, {
+      nameRequired: !allowPartialMaterials
+    });
+  }
+  const assignments = {};
+  for (const rawOccurrenceId of Object.keys(block.assignments).sort()) {
+    const occurrenceId = nonemptyString(rawOccurrenceId, `${label} assignment occurrence id`);
+    const materialId = nonemptyString(
+      block.assignments[rawOccurrenceId],
+      `${label} assignment ${occurrenceId}`
+    );
+    if (!allowUnknownAssignments && !Object.hasOwn(materials, materialId)) {
+      throw new Error(`${label} assignment ${occurrenceId} references unknown material ${JSON.stringify(materialId)}`);
+    }
+    assignments[occurrenceId] = materialId;
+  }
+  return Object.keys(materials).length || Object.keys(assignments).length ? { materials, assignments } : null;
+}
+
+export function normalizeSourceAppearance(block) {
+  return normalizeAppearanceShape(block);
+}
+
+// A session overlay uses the saved shape but may patch an existing material,
+// add a named material for duplication, and redirect leaf assignments. The
+// returned effective appearance owns every row and never mutates saved data.
+export function resolveSourceAppearance(baseAppearance, sessionOverlay = null) {
+  const base = normalizeSourceAppearance(baseAppearance);
+  if (sessionOverlay === undefined || sessionOverlay === null) return base;
+  const overlay = normalizeAppearanceShape(sessionOverlay, {
+    label: "appearance session overlay",
+    allowPartialMaterials: true,
+    allowUnknownAssignments: true
+  });
+  const materials = Object.fromEntries(
+    Object.entries(base?.materials || {}).map(([materialId, material]) => [materialId, { ...material }])
+  );
+  for (const [materialId, patch] of Object.entries(overlay?.materials || {})) {
+    const existing = materials[materialId];
+    if (!existing && !Object.hasOwn(patch, "name")) {
+      throw new Error(`new session material ${JSON.stringify(materialId)} requires a nonempty name`);
+    }
+    materials[materialId] = { ...(existing || {}), ...patch };
+  }
+  const assignments = { ...(base?.assignments || {}), ...(overlay?.assignments || {}) };
+  for (const [occurrenceId, materialId] of Object.entries(assignments)) {
+    if (!Object.hasOwn(materials, materialId)) {
+      throw new Error(
+        `appearance session assignment ${occurrenceId} references unknown material ${JSON.stringify(materialId)}`
+      );
+    }
+  }
+  return Object.keys(materials).length || Object.keys(assignments).length ? { materials, assignments } : null;
+}
+
+export function sourceMaterialForOccurrence(appearance, occurrenceId, sessionOverlay = null) {
+  const resolved = resolveSourceAppearance(appearance, sessionOverlay);
+  const id = String(occurrenceId || "").trim();
+  const materialId = resolved?.assignments?.[id];
+  const material = materialId ? resolved.materials[materialId] : null;
+  return material ? { materialId, ...SOURCE_MATERIAL_DEFAULTS, ...material } : null;
+}
+
+export function normalizeSourceAnimation(block) {
+  if (block === undefined || block === null) return null;
+  if (!isObject(block) || Object.keys(block).length !== 2
+    || !Object.hasOwn(block, "language") || !Object.hasOwn(block, "source")) {
+    throw new Error("animation must contain only language and source");
+  }
+  if (block.language !== "javascript") {
+    throw new Error("animation.language must be 'javascript'");
+  }
+  if (typeof block.source !== "string" || !block.source.trim()) {
+    throw new Error("animation.source must be a nonempty JavaScript module");
+  }
+  return { language: "javascript", source: block.source };
 }
 
 export function validateSourceSidecar(sidecar, { url = "", documentHash = "" } = {}) {
@@ -75,6 +185,10 @@ export function validateSourceSidecar(sidecar, { url = "", documentHash = "" } =
       + `(expected ${SOURCE_SIDECAR_SCHEMA_VERSION}) — rebuild the model `
       + `(python ${model}.py) or re-annotate the document (cadgen step build)`
     );
+  }
+  const unknown = Object.keys(sidecar).filter((key) => !SIDECAR_KEYS.has(key));
+  if (unknown.length) {
+    throw new Error(`${sidecarName(url)}: unknown sidecar field${unknown.length === 1 ? "" : "s"} ${unknown.join(", ")}`);
   }
   const expected = normalizedDocumentHash(documentHash);
   if (!expected) {
@@ -93,15 +207,16 @@ export function validateSourceSidecar(sidecar, { url = "", documentHash = "" } =
     ...sidecar,
     ...(Object.hasOwn(sidecar, "appearance")
       ? { appearance: normalizeSourceAppearance(sidecar.appearance) }
+      : {}),
+    ...(Object.hasOwn(sidecar, "animation")
+      ? { animation: normalizeSourceAnimation(sidecar.animation) }
       : {})
   };
 }
 
 export async function loadSourceSidecar(sidecarUrl, { documentHash = "" } = {}) {
   const url = String(sidecarUrl || "").trim();
-  if (!url) {
-    return null;
-  }
+  if (!url) return null;
   const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`Failed to load model sidecar: HTTP ${response.status}`);
@@ -109,26 +224,33 @@ export async function loadSourceSidecar(sidecarUrl, { documentHash = "" } = {}) 
   return validateSourceSidecar(await response.json(), { url, documentHash });
 }
 
-export function applySourceAppearance(descriptor, block) {
+export function applySourceAppearance(descriptor, block, { sessionOverlay = null } = {}) {
   if (!isObject(descriptor)) {
     throw new Error("appearance requires an assembly package descriptor");
   }
-  const appearance = normalizeSourceAppearance(block);
-  if (!appearance) {
-    return descriptor;
-  }
+  const appearance = resolveSourceAppearance(block, sessionOverlay);
+  if (!appearance) return descriptor;
   const sourceOccurrences = Array.isArray(descriptor.occurrences) ? descriptor.occurrences : [];
   const byId = new Map(sourceOccurrences.map((occurrence) => [String(occurrence?.id || ""), occurrence]));
   const replacements = new Map();
-  for (const [occurrenceId, material] of Object.entries(appearance.occurrences)) {
+  for (const [occurrenceId, materialId] of Object.entries(appearance.assignments)) {
     const target = byId.get(occurrenceId);
     if (!target || !String(target.component || "").trim()) {
       throw new Error(`appearance targets missing document occurrence ${occurrenceId}`);
     }
-    replacements.set(occurrenceId, { ...target, material: { ...material } });
+    const authored = appearance.materials[materialId];
+    const { name: materialName, baseColor, ...channels } = authored;
+    replacements.set(occurrenceId, {
+      ...target,
+      materialId,
+      materialName,
+      material: { ...SOURCE_MATERIAL_DEFAULTS, ...channels },
+      ...(baseColor ? { baseColor } : {})
+    });
   }
   return {
     ...descriptor,
+    appearance,
     occurrences: sourceOccurrences.map((occurrence) => (
       replacements.get(String(occurrence?.id || "")) || occurrence
     ))

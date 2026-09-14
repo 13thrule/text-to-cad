@@ -50,14 +50,17 @@ test("render sessions default to an off, sparse photographic setup", () => {
 test("Render tab selection stays outside the photographic payload and starts at Studio on re-entry", () => {
   const session = createRenderSessionState({
     enabled: true,
-    openSectionIds: ["animation", "display", "animation"],
+    openSectionIds: ["materials", "pose", "animation", "display", "animation"],
     payload: { exposure: 0.5 }
   });
-  assert.deepEqual(session.openSectionIds, ["animation"]);
+  assert.deepEqual(session.openSectionIds, ["materials", "pose", "animation"]);
   assert.deepEqual(session.payload, { exposure: 0.5 });
-  assert.deepEqual(createRenderSessionState(JSON.parse(JSON.stringify(session))).openSectionIds, ["animation"]);
+  assert.deepEqual(
+    createRenderSessionState(JSON.parse(JSON.stringify(session))).openSectionIds,
+    ["materials", "pose", "animation"]
+  );
   const disabled = renderSessionForEnabledChange(session, false);
-  assert.deepEqual(disabled.openSectionIds, ["animation"]);
+  assert.deepEqual(disabled.openSectionIds, ["materials", "pose", "animation"]);
   const reenabled = renderSessionForEnabledChange(disabled, true);
   assert.deepEqual(reenabled.openSectionIds, ["render"]);
   assert.equal(reenabled.payload.exposure, 0.5);

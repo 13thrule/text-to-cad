@@ -2,8 +2,8 @@
 // Dynamic scenes deliberately keep the conservative all-occurrence policy until
 // pose changes have their own scheduler resampling boundary.
 export function lodSceneMayMove({ robot = false, drawing = false, kinematics = null,
-  kinematicsLoading = false, renderModuleUrl = "", exploded = false } = {}) {
-  return Boolean(robot || drawing || kinematics || kinematicsLoading || renderModuleUrl || exploded);
+  kinematicsLoading = false, animation = null, exploded = false } = {}) {
+  return Boolean(robot || drawing || kinematics || kinematicsLoading || animation || exploded);
 }
 
 export function resampleLodAfterViewportResize(runtime, { syncFraming, syncZoom, emitPerspective, resample }) {

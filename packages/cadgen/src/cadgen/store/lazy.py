@@ -113,31 +113,21 @@ class LazyCompound(Compound):
 
     @property
     def cad_material(self):
-        """The pinned root finish, forcing only when no override was authored."""
-        if "cad_material" not in self.__dict__ and not self._forced:
-            self._force()
-        if "cad_material" not in self.__dict__:
-            raise AttributeError("cad_material")
-        return self.__dict__["cad_material"]
+        raise AttributeError(
+            "cad_material authoring was removed; declare named materials with "
+            "@step(materials={'definitions': ..., 'assignments': ...})"
+        )
 
     @cad_material.setter
     def cad_material(self, value) -> None:
-        # A model may deliberately replace or clear its child's finish before
-        # geometry is needed. _force preserves this key; the immutable partner
-        # baseline then rejects the child as a link when the value changed.
-        self.__dict__["cad_material"] = value
+        raise AttributeError(
+            "cad_material authoring was removed; declare named materials with "
+            "@step(materials={'definitions': ..., 'assignments': ...})"
+        )
 
     @cad_material.deleter
     def cad_material(self) -> None:
-        # Match an ordinary Shape's metadata semantics.  Force first so the
-        # immutable partner captures the pinned value; deleting it afterwards
-        # is then an authored metadata change and cannot be mistaken for an
-        # unchanged linked child.
-        if not self._forced:
-            self._force()
-        if "cad_material" not in self.__dict__:
-            raise AttributeError("cad_material")
-        del self.__dict__["cad_material"]
+        raise AttributeError("cad_material authoring was removed; remove the @step materials= assignment instead")
 
     @property
     def cad_face_ordinal_colors(self):
@@ -241,7 +231,7 @@ class LazyCompound(Compound):
         Compound.__init__(clone, None, label=self.label)
         clone.__dict__.update({k: v for k, v in self.__dict__.items() if k.startswith("_lazy_")})
         clone.color = self.color
-        for key in ("cad_material", "cad_face_ordinal_colors"):
+        for key in ("_cadgen_material", "_cadgen_material_id", "cad_face_ordinal_colors"):
             if key in self.__dict__:
                 clone.__dict__[key] = copy.deepcopy(self.__dict__[key])
         clone._lazy_placement = loc if self._lazy_placement is None else loc * self._lazy_placement
@@ -356,7 +346,6 @@ class LazyCompound(Compound):
         self._lazy_forcing = True
         try:
             tree = self.tree_hash()
-            material_overridden = "cad_material" in self.__dict__
             face_colors_overridden = "cad_face_ordinal_colors" in self.__dict__
             compound = _ready_children.take_prepared(self, tree, self._lazy_label)
             if compound is None:
@@ -370,7 +359,8 @@ class LazyCompound(Compound):
             if self.color is None and getattr(compound, "color", None) is not None:
                 self.color = compound.color
             for key, overridden in (
-                ("cad_material", material_overridden),
+                ("_cadgen_material", False),
+                ("_cadgen_material_id", False),
                 ("cad_face_ordinal_colors", face_colors_overridden),
             ):
                 if overridden:

@@ -5,10 +5,8 @@ hash) is a pure function of the STEP file's bytes plus schema versions — the
 cache engine's world, freely evictable. The model's DECLARATIONS live in ONE
 sidecar FILE BESIDE THE MODEL, ``<name>.step.json``: KINEMATICS
 (typed mates with axes resolved to world numbers, couplings, pose presets)
-and APPEARANCE (intrinsic PBR values keyed by canonical document occurrence).
-Choreography and mesh-export declarations are not here. The render module
-beside the document (``<name>.step.js``) is authored, loaded by
-the viewer by name, and read by no build. The one hash here is
+and APPEARANCE (named materials assigned to canonical document occurrences),
+plus an optional embedded ANIMATION module. The one hash here is
 ``documentHash``: an artifact binding that prevents declarations from being
 applied to different STEP bytes after a partial copy or replacement. It is not
 source identity or provenance. No source paths, closure hashes, or timestamps
@@ -17,7 +15,7 @@ sidecar sits beside the model because declarations cannot be re-derived from
 the STEP bytes: evicting the store must never lose kinematics. New capability
 = new SECTION + schema bump, never a second sidecar file.
 
-A sidecar exists ONLY when the model NEEDS kinematics or appearance. A plain
+A sidecar exists ONLY when the model NEEDS kinematics, appearance, or animation. A plain
 model — geometry and nothing else — writes no sidecar at all; its provenance and freshness ride
 the PROVENANCE RECORD in the evictable records tier (bottom of this module),
 which every generated build writes and every gate reads — the ONE home of
@@ -52,20 +50,28 @@ from cadgen._internal.atomic_replace import replace_atomic, temp_suffix
 # suffix too (`.step.json` / `.stp.json`).
 SOURCE_SIDECAR_SUFFIX = ".json"
 # 7: documentHash binds resolved kinematics to the exact STEP bytes they name.
-# 6: the animation and meshExports sections are gone. Choreography is the render
-#    module beside the document (`<name>.step.js`), loaded by the viewer and never
-#    by a build; a mesh door tessellates the document's tree and writes the file
+# 6: the animation and meshExports sections were removed. A mesh door
+#    tessellates the document's tree and writes the file
 #    it was asked for, and what a model declares lives in its record. A sidecar
 #    is written for kinematics alone. 5 moved provenance OUT of the sidecar.
-# 8: intrinsic PBR finishes are durable, document-bound occurrence annotations.
-SOURCE_SIDECAR_SCHEMA_VERSION = 8
+# 8: intrinsic PBR finishes were inline occurrence annotations.
+# 9: named material libraries + assignments, and embedded animation.
+SOURCE_SIDECAR_SCHEMA_VERSION = 9
 
 # What a sidecar may CONTAIN: declarations plus the exact-document binding.
 # Anything source-derived-as-provenance (paths, closure hashes, timestamps)
 # belongs to the provenance record; a sidecar sits beside the artifact and
 # ships with it.
-_SIDECAR_SECTIONS = ("schemaVersion", "documentHash", "kinematics", "appearance")
-MATERIAL_KEYS = ("roughness", "metalness", "clearcoat", "clearcoatRoughness", "opacity")
+_SIDECAR_SECTIONS = ("schemaVersion", "documentHash", "kinematics", "appearance", "animation")
+MATERIAL_KEYS = ("baseColor", "roughness", "metalness", "clearcoat", "clearcoatRoughness", "opacity")
+_NUMERIC_MATERIAL_KEYS = MATERIAL_KEYS[1:]
+SOURCE_MATERIAL_DEFAULTS = {
+    "roughness": 0.42,
+    "metalness": 0.03,
+    "clearcoat": 0.0,
+    "clearcoatRoughness": 0.26,
+    "opacity": 1.0,
+}
 
 
 def source_sidecar_path(step_path: Path | str) -> Path:
@@ -86,28 +92,120 @@ class SidecarAppearanceError(ValueError):
     """An appearance annotation is invalid or targets a missing occurrence."""
 
 
+def _material_id(value: object, *, where: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise SidecarAppearanceError(f"{where} must be a nonempty string")
+    return value.strip()
+
+
+def _base_color(value: object, *, where: str) -> str:
+    if not isinstance(value, str) or len(value) != 7 or value[0] != "#" or any(
+        character not in "0123456789abcdefABCDEF" for character in value[1:]
+    ):
+        raise SidecarAppearanceError(f"{where} must be a #RRGGBB color")
+    return value.upper()
+
+
+def _channel(value: object, *, where: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
+        raise SidecarAppearanceError(f"{where} must be a finite number between 0 and 1")
+    return float(value)
+
+
+def _normalized_material(value: object, *, material_id: str, authored: bool) -> dict[str, Any]:
+    allowed = set(MATERIAL_KEYS) | ({"name"} if authored else {"name"})
+    if not isinstance(value, dict) or set(value) - allowed:
+        raise SidecarAppearanceError(
+            f"material {material_id!r} must contain only name, {', '.join(MATERIAL_KEYS)}"
+        )
+    name = value.get("name", material_id) if authored else value.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise SidecarAppearanceError(f"material {material_id!r}.name must be a nonempty string")
+    result: dict[str, Any] = {"name": name.strip()}
+    if "baseColor" in value:
+        result["baseColor"] = _base_color(value["baseColor"], where=f"material {material_id!r}.baseColor")
+    for key in _NUMERIC_MATERIAL_KEYS:
+        if key in value:
+            result[key] = _channel(value[key], where=f"material {material_id!r}.{key}")
+    return result
+
+
 def normalize_appearance(block: object) -> dict[str, Any] | None:
-    """Validate resolved, source-free PBR values; return fresh canonical data."""
+    """Validate resolved schema-9 named materials and leaf assignments."""
     if block is None:
         return None
-    if not isinstance(block, dict) or set(block) != {"occurrences"}:
-        raise SidecarAppearanceError("appearance must contain only an occurrences object")
-    occurrences = block["occurrences"]
-    if not isinstance(occurrences, dict):
-        raise SidecarAppearanceError("appearance.occurrences must be an object keyed by occurrence id")
-    if any(not isinstance(key, str) or not key.strip() for key in occurrences):
-        raise SidecarAppearanceError("appearance occurrence ids must be nonempty strings")
-    normalized = {}
-    for occurrence_id, material in sorted(occurrences.items()):
-        if not isinstance(material, dict) or not material or set(material) - set(MATERIAL_KEYS):
-            raise SidecarAppearanceError(f"appearance {occurrence_id}: expected supported PBR channels: {', '.join(MATERIAL_KEYS)}")
-        values = {}
-        for key, value in sorted(material.items()):
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
-                raise SidecarAppearanceError(f"appearance {occurrence_id}.{key}: expected a finite number between 0 and 1")
-            values[key] = float(value)
-        normalized[occurrence_id] = values
-    return {"occurrences": normalized} if normalized else None
+    if not isinstance(block, dict) or set(block) != {"materials", "assignments"}:
+        raise SidecarAppearanceError("appearance must contain only materials and assignments objects")
+    materials, assignments = block["materials"], block["assignments"]
+    if not isinstance(materials, dict) or not isinstance(assignments, dict):
+        raise SidecarAppearanceError("appearance.materials and appearance.assignments must be objects")
+    normalized_materials = {
+        _material_id(key, where="appearance material id"): _normalized_material(value, material_id=key, authored=False)
+        for key, value in sorted(materials.items())
+    }
+    normalized_assignments: dict[str, str] = {}
+    for occurrence_id, material_id in sorted(assignments.items()):
+        occurrence_id = _material_id(occurrence_id, where="appearance assignment occurrence id")
+        material_id = _material_id(material_id, where=f"appearance assignment {occurrence_id}")
+        if material_id not in normalized_materials:
+            raise SidecarAppearanceError(f"appearance assignment {occurrence_id} references unknown material {material_id!r}")
+        normalized_assignments[occurrence_id] = material_id
+    if not normalized_materials and not normalized_assignments:
+        return None
+    return {
+        "materials": normalized_materials,
+        "assignments": normalized_assignments,
+    }
+
+
+def normalize_materials(block: object, *, where: str = "materials") -> dict[str, Any] | None:
+    """Validate the author-facing ``@step(materials=...)`` declaration."""
+    if block is None:
+        return None
+    if not isinstance(block, dict) or set(block) != {"definitions", "assignments"}:
+        raise SidecarAppearanceError(f"{where} must contain only definitions and assignments")
+    definitions, assignments = block["definitions"], block["assignments"]
+    if not isinstance(definitions, dict) or not definitions:
+        raise SidecarAppearanceError("materials.definitions must be a nonempty object")
+    normalized_definitions = {
+        _material_id(key, where="material definition id"): _normalized_material(value, material_id=key, authored=True)
+        for key, value in sorted(definitions.items())
+    }
+    if not isinstance(assignments, list):
+        raise SidecarAppearanceError("materials.assignments must be a list")
+    normalized_assignments = []
+    for index, assignment in enumerate(assignments):
+        if not isinstance(assignment, dict) or set(assignment) != {"targets", "material"}:
+            raise SidecarAppearanceError(f"materials.assignments[{index}] must contain only targets and material")
+        material_id = _material_id(assignment["material"], where=f"materials.assignments[{index}].material")
+        if material_id not in normalized_definitions:
+            raise SidecarAppearanceError(f"materials.assignments[{index}] references unknown material {material_id!r}")
+        targets = assignment["targets"]
+        if not isinstance(targets, list) or not targets:
+            raise SidecarAppearanceError(f"materials.assignments[{index}].targets must be a nonempty list")
+        normalized_targets = []
+        for target in targets:
+            if not isinstance(target, str) or not target.startswith("#") or not target[1:].strip():
+                raise SidecarAppearanceError(f"materials.assignments[{index}] target {target!r} must be a #label or #occurrence")
+            normalized_targets.append("#" + target[1:].strip())
+        normalized_assignments.append({"targets": normalized_targets, "material": material_id})
+    return {"definitions": normalized_definitions, "assignments": normalized_assignments}
+
+
+def normalize_animation(block: object, *, where: str = "animation") -> dict[str, str] | None:
+    if block is None:
+        return None
+    if isinstance(block, str):
+        source = block
+        block = {"language": "javascript", "source": source}
+    if not isinstance(block, dict) or set(block) != {"language", "source"}:
+        raise ValueError(f"{where} must contain only language and source")
+    if block.get("language") != "javascript":
+        raise ValueError(f"{where}.language must be 'javascript'")
+    source = block.get("source")
+    if not isinstance(source, str) or not source.strip():
+        raise ValueError(f"{where}.source must be a nonempty JavaScript module")
+    return {"language": "javascript", "source": source}
 
 
 def appearance_digest(block: object) -> str:
@@ -116,13 +214,120 @@ def appearance_digest(block: object) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _descriptor_nodes(descriptor: Mapping[str, Any]) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    leaves = {str(item.get("id") or "") for item in descriptor.get("occurrences") or []}
+    by_id: dict[str, list[str]] = {}
+    by_name: dict[str, list[str]] = {}
+
+    def visit(node: object) -> list[str]:
+        if not isinstance(node, Mapping):
+            return []
+        node_id = str(node.get("id") or "").strip()
+        members = [node_id] if node_id in leaves else []
+        for child in node.get("children") or []:
+            members.extend(visit(child))
+        if node_id:
+            by_id[node_id] = members
+            name = str(node.get("name") or "").strip()
+            if name:
+                by_name.setdefault(name, []).append(node_id)
+        return members
+
+    assembly = descriptor.get("assembly")
+    root = assembly.get("root") if isinstance(assembly, Mapping) else None
+    visit(root)
+    return by_id, by_name
+
+
+def _available_material_id(existing: Mapping[str, Any], requested: str, *, namespace: str) -> str:
+    if requested not in existing:
+        return requested
+    candidate = f"{namespace}/{requested}"
+    suffix = 2
+    while candidate in existing:
+        candidate = f"{namespace}{suffix}/{requested}"
+        suffix += 1
+    return candidate
+
+
+def resolve_materials(
+    descriptor: Mapping[str, Any], block: object, *, inherited: object = None
+) -> dict[str, Any] | None:
+    """Resolve authored labels/groups to canonical leaf IDs.
+
+    ``inherited`` is the flattened child appearance. It is retained, then each
+    local assignment overrides its selected leaves. Conflicting material IDs
+    receive a stable ``local/`` namespace while keeping their authored names.
+    """
+    declaration = normalize_materials(block, where="materials=")
+    base = normalize_appearance(inherited)
+    if declaration is None:
+        return base
+    materials = deepcopy((base or {}).get("materials") or {})
+    assignments = deepcopy((base or {}).get("assignments") or {})
+    local_ids: dict[str, str] = {}
+    for material_id, definition in declaration["definitions"].items():
+        if materials.get(material_id) == definition:
+            resolved_id = material_id
+        else:
+            resolved_id = _available_material_id(materials, material_id, namespace="local")
+            materials[resolved_id] = deepcopy(definition)
+        local_ids[material_id] = resolved_id
+
+    by_id, by_name = _descriptor_nodes(descriptor)
+    for index, assignment in enumerate(declaration["assignments"]):
+        for target in assignment["targets"]:
+            selector = target[1:]
+            if selector in by_id:
+                node_ids = [selector]
+            else:
+                node_ids = by_name.get(selector) or []
+            if len(node_ids) != 1:
+                if node_ids:
+                    raise SidecarAppearanceError(
+                        f"materials.assignments[{index}] target {target!r} is ambiguous: {', '.join(node_ids)}"
+                    )
+                raise SidecarAppearanceError(
+                    f"materials.assignments[{index}] target {target!r} does not name a part or group"
+                )
+            members = by_id.get(node_ids[0]) or []
+            if not members:
+                raise SidecarAppearanceError(
+                    f"materials.assignments[{index}] target {target!r} contains no leaf occurrences"
+                )
+            for occurrence_id in members:
+                assignments[occurrence_id] = local_ids[assignment["material"]]
+    return normalize_appearance({"materials": materials, "assignments": assignments})
+
+
+def remap_appearance(
+    block: object, occurrence_map: Mapping[str, list[str]]
+) -> dict[str, Any] | None:
+    """Bind authored flattened leaf assignments to exact saved-document leaves."""
+    appearance = normalize_appearance(block)
+    if appearance is None:
+        return None
+    assignments: dict[str, str] = {}
+    for authored_id, material_id in appearance["assignments"].items():
+        document_ids = occurrence_map.get(authored_id) or []
+        if not document_ids:
+            raise SidecarAppearanceError(
+                f"appearance assignment {authored_id} has no exact saved-document occurrence"
+            )
+        for document_id in document_ids:
+            assignments[str(document_id)] = material_id
+    return normalize_appearance({
+        "materials": appearance["materials"], "assignments": assignments,
+    })
+
+
 def validate_appearance_targets(descriptor: Mapping[str, Any], block: object) -> dict[str, Any] | None:
     """Validate annotation targets without copying an assembly for catalog scans."""
     appearance = normalize_appearance(block)
     if appearance is None:
         return None
     occurrences = {str(item.get("id") or ""): item for item in descriptor.get("occurrences") or []}
-    for occurrence_id in appearance["occurrences"]:
+    for occurrence_id in appearance["assignments"]:
         target = occurrences.get(occurrence_id)
         if target is None or not target.get("component"):
             raise SidecarAppearanceError(f"appearance targets missing document occurrence {occurrence_id}")
@@ -134,10 +339,22 @@ def apply_appearance(descriptor: Mapping[str, Any], block: object) -> dict[str, 
     appearance = validate_appearance_targets(descriptor, block)
     result = deepcopy(dict(descriptor))
     if appearance:
-        materials = appearance["occurrences"]
+        materials = appearance["materials"]
+        assignments = appearance["assignments"]
         for occurrence in result.get("occurrences") or []:
-            if occurrence.get("id") in materials:
-                occurrence["material"] = materials[occurrence["id"]]
+            material_id = assignments.get(occurrence.get("id"))
+            if material_id is not None:
+                authored = materials[material_id]
+                occurrence["material"] = {
+                    **SOURCE_MATERIAL_DEFAULTS,
+                    **{key: authored[key] for key in _NUMERIC_MATERIAL_KEYS if key in authored},
+                }
+                occurrence["materialId"] = material_id
+                occurrence["materialName"] = authored["name"]
+                if "baseColor" in authored:
+                    occurrence["baseColor"] = authored["baseColor"]
+                else:
+                    occurrence.pop("baseColor", None)
     return result
 
 
@@ -206,8 +423,13 @@ def read_source_sidecar(
     found = str(payload.get("documentHash") or "").strip().lower()
     if found != expected:
         raise _binding_error(step_path, found, expected)
+    unknown = set(payload) - set(_SIDECAR_SECTIONS)
+    if unknown:
+        raise SidecarSchemaError(f"{source_sidecar_path(step_path).name}: unknown sidecar fields: {', '.join(sorted(unknown))}")
     if "appearance" in payload:
         payload["appearance"] = normalize_appearance(payload["appearance"])
+    if "animation" in payload:
+        payload["animation"] = normalize_animation(payload["animation"])
     return payload
 
 
@@ -241,7 +463,7 @@ def source_sidecar_matches_document(
 
 # The sections that WARRANT a sidecar. Provenance alone does not: it also
 # lives in the assembly.json, and a file per plain model is pure clutter.
-_WARRANTING_SECTIONS = ("kinematics", "appearance")
+_WARRANTING_SECTIONS = ("kinematics", "appearance", "animation")
 
 
 def sidecar_is_warranted(payload: Mapping[str, Any] | None) -> bool:
@@ -270,6 +492,10 @@ def write_source_sidecar(
         body["appearance"] = normalize_appearance(body["appearance"])
         if body["appearance"] is None:
             body.pop("appearance")
+    if "animation" in body:
+        body["animation"] = normalize_animation(body["animation"])
+        if body["animation"] is None:
+            body.pop("animation")
     if not sidecar_is_warranted(body):
         source_sidecar_path(step_path).unlink(missing_ok=True)
         return

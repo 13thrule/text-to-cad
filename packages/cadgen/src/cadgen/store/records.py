@@ -55,7 +55,7 @@ RECORD_KIND = "record"
 # Schema 6 requires declaration/execution-time input hashes, including DXF.
 # Older records may claim current input bytes for geometry built before an edit.
 # Their next source run rebuilds; saved-document mappings and objects stay valid.
-RECORD_SCHEMA_VERSION = 6
+RECORD_SCHEMA_VERSION = 7
 DOCUMENT_SCHEMA_VERSION = 4
 
 

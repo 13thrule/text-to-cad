@@ -31,7 +31,11 @@ import {
 import { VIEWER_PICK_MODE } from "cadgen-js/lib/viewer/constants";
 import { resolveScenePartRendering } from "cadgen-js/lib/viewer/partRendering";
 import { hasMeshGeometry } from "cadgen-js/lib/render/meshCost";
-import { disposeGlbDocument } from "cadgen-js/lib/render/glbMeshData";
+import {
+  detachGlbDocumentScene,
+  disposeGlbDocument,
+  shouldUseNativeGlbScene
+} from "cadgen-js/lib/render/glbMeshData";
 import {
   createGlbAnimationRuntime,
   disposeGlbAnimationRuntime,
@@ -1618,7 +1622,7 @@ function buildNativeGlbCadScene(THREE, document, source, receiveShadows) {
     dispose() {
       // The document owns its native resources across renderer/theme rebuilds.
       // Detach it before the generic scene cleanup recursively disposes children.
-      document.scene.removeFromParent();
+      detachGlbDocumentScene(document);
     }
   };
 }
@@ -4094,7 +4098,10 @@ const CadViewer = forwardRef(function CadViewer({
       },
       receiveShadows
     };
-    const nativeGlbActive = Boolean(glbDocument?.scene && embeddedGlbAnimation?.clip);
+    const nativeGlbActive = shouldUseNativeGlbScene(glbDocument, {
+      renderMode,
+      clip: embeddedGlbAnimation?.clip
+    });
     const reuseScene = !!runtime.cadScene &&
       runtime.hasVisibleModel &&
       runtime.activeModelKey === (modelKey || "") &&
@@ -4533,7 +4540,7 @@ const CadViewer = forwardRef(function CadViewer({
     // This component is the sole owner of an interactive document. Detach the
     // scene before releasing GPU resources so generic group cleanup cannot
     // recursively dispose the same hierarchy.
-    glbDocument?.scene?.removeFromParent?.();
+    detachGlbDocumentScene(glbDocument);
     disposeGlbDocument(glbDocument);
   }, [glbDocument]);
   useEffect(() => {
@@ -4808,6 +4815,8 @@ const CadViewer = forwardRef(function CadViewer({
         displayRecords: runtime.displayRecords,
         syncClip: (activeRuntime) => syncRuntimeStepClipPlane(activeRuntime, clipSettingsRef.current)
       });
+      runtime.invalidateShadows?.();
+      lodCameraChangeRef.current?.();
       runtime.requestRender?.();
       return;
     }
@@ -4916,6 +4925,11 @@ const CadViewer = forwardRef(function CadViewer({
     if (!stepAnimationPlaying) {
       syncDisplayMeshFaceIds(runtime, meshData, effectiveRuntime);
       syncSelectorPickGroups(runtime, effectiveRuntime, modelTransformRef.current.offset, { clearSceneGroup });
+      // A kinematic edit (or a stopped scrub) is a one-shot model-bounds
+      // change for LOD and shadows. Playback stays on its existing bounded
+      // frame loop; an idle posed model schedules no recurring work.
+      runtime.invalidateShadows?.();
+      lodCameraChangeRef.current?.();
     }
     runtime.requestRender?.();
   }, [

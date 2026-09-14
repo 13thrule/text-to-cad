@@ -243,16 +243,27 @@ def _occurrence_color(child: Any) -> list[float] | None:
 _MATERIAL_KEYS = ("roughness", "metalness", "clearcoat", "clearcoatRoughness", "opacity")
 
 
-def _occurrence_material(child: Any) -> dict[str, float] | None:
-    """Optional per-occurrence PBR overrides authored as a plain
-    ``cad_material`` dict attribute on the source shape (keys from
-    ``_MATERIAL_KEYS``, values clamped to [0, 1]). Colors alone cannot
-    express brushed-vs-polished finishing; these ride the assembly.json so the
-    viewer can override its theme material per part."""
-    material = getattr(child, "cad_material", None)
+def _occurrence_material(child: Any) -> dict[str, Any] | None:
+    """Private material metadata restored from a pinned model tree.
+
+    Public ``cad_material`` mutation was replaced by ``@step(materials=...)``;
+    finding that dynamic attribute is therefore a hard authoring error.
+    """
+    if "cad_material" in getattr(child, "__dict__", {}):
+        raise ValueError(
+            "cad_material authoring was removed; declare named materials with "
+            "@step(materials={'definitions': ..., 'assignments': ...})"
+        )
+    material = getattr(child, "_cadgen_material", None)
     if not isinstance(material, dict):
         return None
-    resolved: dict[str, float] = {}
+    resolved: dict[str, Any] = {}
+    name = material.get("name")
+    if isinstance(name, str) and name.strip():
+        resolved["name"] = name.strip()
+    base_color = material.get("baseColor")
+    if isinstance(base_color, str):
+        resolved["baseColor"] = base_color
     for key in _MATERIAL_KEYS:
         value = material.get(key)
         if value is None:

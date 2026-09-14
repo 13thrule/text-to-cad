@@ -87,6 +87,9 @@ export function editingPreviewEntry(state, catalogEntry) {
   if (savedMatchesCatalog && (
     state.previewUnavailable === true || state.preview.revision !== state.revision
   )) return null;
+  const previewAppearance = state.preview.appearance || null;
+  const previewAnimation = state.preview.animation || null;
+  const previewMetadataKey = `${Number(state.preview.revision) || 0}:${Number(state.preview.sequence) || 0}`;
   return {
     ...catalogEntry,
     file: catalogEntry?.file || state.file || state.output,
@@ -97,10 +100,12 @@ export function editingPreviewEntry(state, catalogEntry) {
     documentHash: "",
     sourceUrl: "",
     sourceSidecar: null,
-    appearanceHash: "",
+    appearanceHash: previewAppearance ? state.preview.appearanceHash || `preview:${previewMetadataKey}` : "",
     poseUrl: "",
-    renderModuleUrl: catalogEntry?.renderModuleUrl || state.preview.renderModuleUrl || "",
+    animationHash: previewAnimation ? state.preview.animationHash || `preview:${previewMetadataKey}` : "",
     editingPreview: true,
     previewKinematics: state.preview.kinematics || null,
+    previewAppearance,
+    previewAnimation,
   };
 }

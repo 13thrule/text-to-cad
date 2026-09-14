@@ -236,8 +236,8 @@ function quantizeNormals(normals) {
 
 // The finish a source that authored none gets. A caller supplying no `material` (and a
 // channel a material omits) keeps exactly these numbers, so its bytes are unchanged.
-const DEFAULT_ROUGHNESS = 0.72;
-const DEFAULT_METALNESS = 0.02;
+const DEFAULT_ROUGHNESS = 0.42;
+const DEFAULT_METALNESS = 0.03;
 
 /** One PBR channel off a caller's material, clamped to [0, 1]; null when unauthored. */
 function finishChannel(finish, key) {
@@ -265,7 +265,7 @@ function materialFor(color, name, opacity = null, finish = null) {
     : clamp01(opacity);
   // The authored FINISH, when the caller has one. Metalness especially is not a
   // decoration: a metal has no diffuse lobe, so exporting a brushed-aluminium part at
-  // the plastic default (0.02) inverts its shading and is why an exported file used to
+  // the plastic default inverts its shading and is why an exported file used to
   // look nothing like the same document in the viewer.
   const roughness = finishChannel(finish, "roughness");
   const metalness = finishChannel(finish, "metalness");
@@ -771,7 +771,7 @@ export function writeGlb(mesh, options = {}) {
     materials.push(
       materialFor(
         colorArray ? "#ffffff" : input?.color,
-        input?.name,
+        input?.materialName || input?.name,
         input?.opacity ?? null,
         // The finish is independent of where the colour came from: a per-vertex-coloured
         // primitive whitens its baseColorFactor and keeps its authored metal.

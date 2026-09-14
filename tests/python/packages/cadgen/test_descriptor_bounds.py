@@ -61,7 +61,6 @@ class DescriptorFixture:
             shape = bd.Box(3, 5, 7)
         shape.label = kind
         shape.color = (.6, .7, .8, 1.)
-        shape.cad_material = {"roughness": .35, "metalness": .2}
         shape.cad_face_ordinal_colors = {1: (1., .2, .1, 1.)}
         return build.build_tree_from_compound(shape, root_name=kind)[0]
 
@@ -270,7 +269,6 @@ class LifecycleTests(DescriptorFixture, unittest.TestCase):
             for child in shape.children:
                 child.label = "mutated"
                 child.color = (.2, .1, .8, .5)
-                child.cad_material = {"roughness": .99, "metalness": 1.}
                 child.cad_face_ordinal_colors = {1: (0., 1., 0., 1.)}
                 vertex = TopoDS.Vertex_s(TopExp_Explorer(child.wrapped, TopAbs_VERTEX).Current())
                 BRep_Builder().UpdateVertex(vertex, gp_Pnt(55., 66., 77.), 1e-7)
@@ -318,9 +316,7 @@ class LifecycleTests(DescriptorFixture, unittest.TestCase):
         vertex = TopoDS.Vertex_s(TopExp_Explorer(first.children[0].wrapped, TopAbs_VERTEX).Current())
         BRep_Builder().UpdateVertex(vertex, gp_Pnt(90., 80., 70.), 1e-7)
         self.assertEqual(second_bytes, cp._shape_brep_bytes(second))
-        first.children[0].cad_material["roughness"] = .99
         first.children[0].cad_face_ordinal_colors[1] = (0., 0., 0., 1.)
-        self.assertNotEqual(first.children[0].cad_material, second.children[0].cad_material)
         self.assertNotEqual(first.children[0].cad_face_ordinal_colors, second.children[0].cad_face_ordinal_colors)
         self.assertEqual(original, snapshot.descriptor())
 

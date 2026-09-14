@@ -23,10 +23,13 @@ class MeshDocumentSnapshotTests(unittest.TestCase):
             document = root / "arm.step"
             document.write_bytes(b"selected document")
             document_hash = hashlib.sha256(document.read_bytes()).hexdigest()
-            module = root / "arm.step.js"
+            from cadgen._internal.source_sidecar import source_sidecar_path, write_source_sidecar
+            module = source_sidecar_path(document)
+            def write_animation(source):
+                write_source_sidecar(document, {"animation": {"language": "javascript", "source": source}})
             before = "export const clips = { show: {duration: 1, update(t,m) {}} };"
             after = before.replace("duration: 1", "duration: 2")
-            module.write_text(before, encoding="utf-8")
+            write_animation(before)
             view = root / "view"
             view.mkdir()
             (view / "assembly.json").write_text(json.dumps({
@@ -37,15 +40,15 @@ class MeshDocumentSnapshotTests(unittest.TestCase):
             captured_paths = []
 
             def prepare(*args, **kwargs):
-                module.write_text(after, encoding="utf-8")
+                write_animation(after)
                 return spec, view, None
 
             def node(argv, **kwargs):
-                captured = Path(argv[argv.index("--render-module") + 1])
+                captured = Path(argv[argv.index("--animation-source") + 1])
                 captured_paths.append(captured)
                 self.assertEqual(captured.name, module.name)
                 self.assertNotEqual(captured, module)
-                self.assertEqual(module.read_text(encoding="utf-8"), after)
+                self.assertEqual(json.loads(module.read_text(encoding="utf-8"))["animation"]["source"], after)
                 source = captured.read_text(encoding="utf-8")
                 self.assertEqual(source, before)
                 # Stand in for the Node loader consuming this exact file.
@@ -63,7 +66,7 @@ class MeshDocumentSnapshotTests(unittest.TestCase):
                 self.assertEqual(document_mesh_sha(document_hash, key), hashlib.sha256(before.encode()).hexdigest())
                 self.assertFalse(captured_paths[0].exists(), "private source must be cleaned after Node finishes")
                 # Restoring the selected source may reuse only its own output.
-                module.write_text(before, encoding="utf-8")
+                write_animation(before)
                 door.export_cad_target(document, [("glb", out)], animation="show")
                 self.assertEqual(builder.call_count, 1)
                 self.assertEqual(out.read_text(encoding="utf-8"), before)

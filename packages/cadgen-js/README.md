@@ -22,16 +22,19 @@ snapshot renderer and the node builders in `bin/`).
 
 ## The laws that live here
 
-- **Viewer three-input law**: a client renders from the file, its sidecar
-  (`<name>.step.json`), its optional adjacent render module
-  (`<name>.step.js`), and the cache — never source, never a build. The
+- **Viewer three-input law**: a client renders from the file, its optional
+  sidecar (`<name>.step.json`), and the cache — never source, never a build.
+  Animation source is embedded in that one sidecar; no adjacent JavaScript
+  file is discovered or fetched. The
   code in this package must be writable against exactly those inputs.
   An explicitly attached editing session may provide an immutable preview
   tree and resolved kinematics instead; it must not alias that tree to saved
-  STEP bytes. Saved schema-8 sidecars require a matching document digest.
-  Their appearance section supplies resolved PBR values for canonical leaf
-  occurrences. Composition owns its material overrides and never mutates the
-  stored tree or component tessellation. Session state and UI remain in the app.
+  STEP bytes. Saved schema-9 sidecars require a matching document digest and
+  use a closed declaration envelope. Their appearance section supplies named,
+  sparse PBR materials plus canonical leaf assignments. Composition carries
+  material ids and names into mesh data, owns its overrides, and never mutates
+  the stored tree or component tessellation. Session overlays can patch or
+  duplicate materials and assignments while app workflow state stays in the app.
 - **Resource ownership**: component geometry and edge textures can have more
   than one scene owner; only the last release disposes shared GPU/BVH state.
   Full scene disposal includes host-reparented groups and records attached by
@@ -118,11 +121,10 @@ snapshot renderer and the node builders in `bin/`).
   transforms and is the operation-for-operation twin of the Python
   evaluator (`cadgen/_internal/kinematics_fk.py`) — a viewer slider and an
   exported bake agree to the bit. The animation runtime
-  (`animationRuntime.js`) evaluates the `clips` the render module beside the
-  document (`<name>.step.js`, loaded by `renderModule.js`) exports, with the
+  (`animationRuntime.js`) evaluates the `clips` exported by the self-contained
+  JavaScript source in `sidecar.animation` (compiled by `renderModule.js`), with the
   `m.get(target)` handle contract (premultiplying calls, reset to rest every
-  frame, pure in t). That module is authored, never generated: editing it is
-  a reload, never a rebuild. Neither half references the other; they
+  frame, pure in t). Neither half references the other; they
   meet only in the effect records. Flexible swept bodies use
   [tube deformation](docs/tube-deformation.md), deforming the original STEP
   tessellation through analytic centerlines in that same shared effects pass.
@@ -202,7 +204,10 @@ the rear fill and dim enclosure keep dark and metallic surfaces readable.
 Key and environment brightness are calibrated together at zero EV across
 colored assemblies, gray mechanical models, and authored metal/plastic finishes.
 Render fixes Khronos PBR Neutral tone mapping. STEP package material channels
-remain authored inputs to that scene. Static direct mesh normalization retains
+remain authored inputs to that scene. Assigned sparse materials use roughness
+0.42, metalness 0.03, clearcoat 0, clearcoat roughness 0.26, and opacity 1;
+an absent base color retains the STEP color and authored opacity multiplies its
+source alpha. Static direct mesh normalization retains
 only the appearance data represented by the shared mesh-data contract: GLB base
 or vertex color and opacity, 3MF color, and no authored color for STL. Animated
 direct GLB uses the native hierarchy described above, so its textures and PBR
@@ -224,10 +229,10 @@ frames are downsampled in full before encoding, with labels drawn afterward.
 `quality.tessellation` is a
 normal-CAD-only technical override; Render derives its bounded mesh rung only
 from `render.quality`. Snapshot job validation rejects a Render envelope combined
-with explicit top-level `camera`, `display`, `selection`, `kinematics`,
-`jointValues`, or `quality` fields, including null or empty values, before
+with explicit top-level `camera`, `display`, `selection`, `jointValues`, or
+`quality` fields, including null or empty values, before
 loading assets. Render supports only the `view` capture mode; animation, video,
-per-output cameras, and output sizing remain available. The interactive viewer
+kinematics, per-output cameras, and output sizing remain available. The interactive viewer
 keeps dormant CAD session state separate rather than treating it as a snapshot
 request.
 

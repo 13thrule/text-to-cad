@@ -257,16 +257,23 @@ test("snapshot package appearance composes through the shared source resolver", 
     kind: "step",
     documentHash: "c".repeat(64),
     sourceSidecar: {
-      schemaVersion: 8,
+      schemaVersion: 9,
       documentHash: "c".repeat(64),
-      appearance: { occurrences: { "o1.1": { clearcoat: 0.8, roughness: 0.15 } } }
+      appearance: {
+        materials: { polished: { name: "Polished", clearcoat: 0.8, roughness: 0.15 } },
+        assignments: { "o1.1": "polished" }
+      }
     },
     package: {
       descriptor,
       componentUrls: { "appearance-cid": "/appearance/roller.surf" }
     }
   });
-  assert.deepEqual(source.meshData.parts[0].material, { clearcoat: 0.8, roughness: 0.15 });
+  assert.deepEqual(source.meshData.parts[0].material, {
+    roughness: 0.15, metalness: 0.03, clearcoat: 0.8, clearcoatRoughness: 0.26, opacity: 1
+  });
+  assert.equal(source.meshData.parts[0].materialId, "polished");
+  assert.equal(source.meshData.parts[0].materialName, "Polished");
   assert.equal(descriptor.occurrences[0].material, undefined, "stored package descriptor stays immutable");
 });
 
@@ -313,7 +320,7 @@ test("loadSource rejects STEP parameter options for non-STEP sources", async () 
 // CLI cannot tell one from the other — the declared names live in the model's
 // kinematics block — so a name arrives as a bare string and is resolved here.
 const HINGE_SIDECAR = {
-  schemaVersion: 8,
+  schemaVersion: 9,
   documentHash: "a".repeat(64),
   kinematics: {
     mates: [
@@ -389,7 +396,7 @@ test("pose VALUES still pass straight through", async (t) => {
 test("refuses a pose name against a model that declares no poses", async (t) => {
   const sidecarUrl = "/__cad/sidecar/hinge.step.json";
   stubSidecarFetch(t, sidecarUrl, {
-    schemaVersion: 8,
+    schemaVersion: 9,
     documentHash: HINGE_SIDECAR.documentHash,
     kinematics: { ...HINGE_SIDECAR.kinematics, poses: {} }
   });
@@ -519,7 +526,7 @@ test("loadSource leaves no source scope behind", async (t) => {
 test("loadSource accepts sidecar kinematics for STEP sources", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
-    schemaVersion: 8,
+    schemaVersion: 9,
     documentHash: HINGE_SIDECAR.documentHash,
     kinematics: {
       mates: [{ name: "drive", kind: "revolute", parent: "#base", child: "#rotor",
@@ -544,7 +551,7 @@ test("loadSource accepts sidecar kinematics for STEP sources", async () => {
   }
 });
 
-test("photographic source loading keeps authored data without requesting CAD selectors or poses", async (t) => {
+test("photographic source loading keeps kinematics without requesting CAD selectors", async (t) => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => { throw new Error("Render must not fetch selector topology"); };
   t.after(() => { globalThis.fetch = originalFetch; });
@@ -556,13 +563,14 @@ test("photographic source loading keeps authored data without requesting CAD sel
     glbUrl: "/unused-topology.glb",
     sourceSidecar: HINGE_SIDECAR,
     documentHash: HINGE_SIDECAR.documentHash,
+    kinematics: { swing: 45 },
     selectorRuntime: { stale: true },
     displayEdgeRuntime: { stale: true }
   });
   assert.equal(source.kind, "step");
   assert.equal(source.selectorRuntime, null);
   assert.equal(source.displayEdgeRuntime, null);
-  assert.equal(source.stepParameterSource, null);
+  assert.deepEqual(source.stepParameterSource.renderParameters.values, { swing: 45 });
 });
 
 function binaryStlTriangle() {
@@ -644,7 +652,7 @@ test("photographic requests reject contradictory CAD fields before loading a sou
   let fetches = 0;
   globalThis.fetch = async () => { fetches += 1; throw new Error("unexpected fetch"); };
   t.after(() => { globalThis.fetch = originalFetch; });
-  for (const key of ["camera", "display", "selection", "kinematics", "jointValues", "quality"]) {
+  for (const key of ["camera", "display", "selection", "jointValues", "quality"]) {
     for (const value of [null, {}, ""]) {
       await assert.rejects(() => loadSource({ kind: "step", url: "/never.step", render: {}, [key]: value }),
         new RegExp(`render cannot be combined.*${key}`));

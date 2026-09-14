@@ -551,7 +551,7 @@ export default function CadRenderPane({
         panToolActive={inspectionEnabled && panToolActive}
         renderPartsIndividually={capabilities.sceneScale === "urdf"
           ? true
-          : ((inspectionEnabled && (renderPartsIndividually || Boolean(stepParameters?.definition)))
+          : ((renderPartsIndividually || Boolean(stepParameters?.definition))
             || Boolean(resolvedStepAnimation?.clip))}
         pickableParts={inspectionEnabled && hasParts && !retainingPreviousStepMesh ? assemblyParts : EMPTY_LIST}
         hiddenPartIds={inspectionEnabled && hasParts ? hiddenPartIds : []}
@@ -561,7 +561,7 @@ export default function CadRenderPane({
         selectedReferenceIds={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? selectedReferenceIds : []}
         selectorRuntime={viewerSelectorRuntimeForRenderPane({ renderMode, hasTopology, retainingPreviousStepMesh, selectorRuntime })}
         displayEdgeRuntime={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? displayEdgeRuntime : null}
-        stepParameters={inspectionEnabled && capabilities.params === PARAMETER_SOURCE.SIDECAR ? stepParameters : null}
+        stepParameters={capabilities.params === PARAMETER_SOURCE.SIDECAR ? stepParameters : null}
         stepAnimation={capabilities.params === PARAMETER_SOURCE.SIDECAR ? resolvedStepAnimation : null}
         glbDocument={glbDocument}
         embeddedGlbAnimation={resolvedEmbeddedGlbAnimation}

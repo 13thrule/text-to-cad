@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
-import { buildGlbDocumentFromBuffer, disposeGlbDocument, isPlayableGlbAnimationClip } from "./glbMeshData.js";
+import {
+  buildGlbDocumentFromBuffer,
+  detachGlbDocumentScene,
+  disposeGlbDocument,
+  isPlayableGlbAnimationClip,
+  shouldUseNativeGlbScene
+} from "./glbMeshData.js";
 import { writeGlb } from "../glb/writeGlb.js";
 import { createGlbAnimationRuntime, disposeGlbAnimationRuntime, setGlbAnimationTime } from "./glbAnimationRuntime.js";
 
@@ -100,6 +106,57 @@ test("interactive GLB parsing retains the native animated hierarchy and CAD-spac
   assert.ok(document.animatedBounds.max[0] > document.restBounds.max[0]);
   assert.deepEqual(document.meshData.bounds, document.animatedBounds);
   disposeGlbDocument(document);
+});
+
+test("interactive GLB parsing retains a static native hierarchy for Render only", async () => {
+  const bytes = writeGlb({
+    primitives: [{
+      name: "finished-part",
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      material: { roughness: 0.18, metalness: 0.72 }
+    }]
+  }, { preset: "export" });
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+  const document = await buildGlbDocumentFromBuffer(buffer);
+  assert.equal(document.clips.length, 0);
+  assert.ok(document.scene, "static native hierarchy remains document-owned");
+  assert.equal(shouldUseNativeGlbScene(document), false);
+  assert.equal(shouldUseNativeGlbScene(document, { renderMode: true }), true);
+  assert.equal(shouldUseNativeGlbScene(document, { clip: {} }), true);
+  let material = null;
+  document.scene.traverse((object) => { if (object.isMesh) material = object.material; });
+  assert.equal(material.roughness, 0.18);
+  assert.equal(material.metalness, 0.72);
+  disposeGlbDocument(document);
+});
+
+test("static native GLB resources survive Render to Inspect to Render and dispose once", () => {
+  const scene = new THREE.Group();
+  const geometry = new THREE.BufferGeometry();
+  const texture = new THREE.Texture();
+  const material = new THREE.MeshStandardMaterial({ map: texture });
+  scene.add(new THREE.Mesh(geometry, material));
+  const document = { scene };
+  const host = new THREE.Group();
+  const released = { geometry: 0, material: 0, texture: 0 };
+  geometry.dispose = () => { released.geometry += 1; };
+  material.dispose = () => { released.material += 1; };
+  texture.dispose = () => { released.texture += 1; };
+
+  const present = (renderMode) => {
+    detachGlbDocumentScene(document);
+    if (shouldUseNativeGlbScene(document, { renderMode })) host.add(scene);
+  };
+  present(true);
+  assert.equal(scene.parent, host);
+  present(false);
+  assert.equal(scene.parent, null);
+  present(true);
+  assert.equal(scene.parent, host);
+  assert.deepEqual(released, { geometry: 0, material: 0, texture: 0 });
+
+  disposeGlbDocument(document);
+  assert.deepEqual(released, { geometry: 1, material: 1, texture: 1 });
 });
 
 test("interactive GLB disposal releases shared geometry, materials, textures, and skeleton once", () => {

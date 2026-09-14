@@ -88,18 +88,20 @@ test("rendered file sheet sections include closed-by-default sections", () => {
   }), ["animation", "display"]);
 });
 
-test("Render mode exposes only photographic controls and animation playback", () => {
+test("Render mode orders Studio, Materials, Kinematics and Animation when authored", () => {
   assert.deepEqual(renderedFileSheetSectionIds("step", {
     renderMode: true,
+    hasMaterialsPanel: true,
     hasStepPosePanel: true,
     hasStepAnimationPanel: true
-  }), ["render", "animation"]);
+  }), ["render", "materials", "pose", "animation"]);
   assert.deepEqual(renderedFileSheetSectionIds("step", { renderMode: true }), ["render"]);
   assert.deepEqual(renderedFileSheetSectionIds("mesh", { renderMode: true }), ["render"]);
   assert.deepEqual(renderedFileSheetSectionIds("mesh", {
     renderMode: true,
+    hasMaterialsPanel: true,
     hasEmbeddedGlbAnimationPanel: true
-  }), ["render", "animation"]);
+  }), ["render", "materials", "animation"]);
   assert.deepEqual(renderedFileSheetSectionIds("dxf", { renderMode: true }), ["render"]);
   assert.deepEqual(renderedFileSheetSectionIds("sdf", { renderMode: true }), ["render"]);
   assert.deepEqual(defaultOpenFileSheetSectionIds("step", {

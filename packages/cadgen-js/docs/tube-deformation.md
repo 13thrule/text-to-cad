@@ -19,7 +19,7 @@ const bent = {
     start: [0, 0, 0], sweepDeg: 90
   }]
 };
-// Inside a render module clip update(t, m):
+// Inside an embedded animation clip update(t, m):
 m.get('tendon').deformTube({rest, path: bent, twistDeg: 360 * t});
 ```
 

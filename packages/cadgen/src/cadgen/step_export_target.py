@@ -490,8 +490,13 @@ def _export_mesh_jobs(
             raise RuntimeError("mesh export view is missing its selected STEP document digest")
         from cadgen._internal.source_sidecar import appearance_digest, read_source_sidecar
 
-        sidecar = read_source_sidecar(spec.entry_path, document_hash=document_hash) if spec.entry_path is not None else None
-        appearance = (sidecar or {}).get("appearance")
+        if render_module is not None:
+            if render_module.document_hash != document_hash:
+                raise RuntimeError("STEP changed after its animation was selected; retry the export")
+            appearance = render_module.appearance
+        else:
+            sidecar = read_source_sidecar(spec.entry_path, document_hash=document_hash) if spec.entry_path is not None else None
+            appearance = (sidecar or {}).get("appearance")
         appearance_key = appearance_digest(appearance)
         # A script run (`@stl` beside `@step`) ledgers on the MODEL's record; a
         # document at a bare door ledgers on the DOCUMENT's own index entry, by
@@ -508,7 +513,7 @@ def _export_mesh_jobs(
                 # An animated GLB is a function of the clip and the render
                 # module as well as the bytes, so it is its own variant: a
                 # static file at the same path can never satisfy it, and an
-                # edited .step.js makes the ledgered one a miss.
+                # edited animation source makes the ledgered one a miss.
                 animation_key=job.animation_key,
                 appearance_key=appearance_key,
             )
@@ -759,7 +764,7 @@ def export_cad_target(
     ``outputs`` pairs a format name with an explicit output path, or ``None`` for the
     sibling default beside the document. ``force`` re-exports past the ledger. Nothing here moves geometry: a mesh is the
     document's tree, tessellated — with ONE exception, ``animation``, which does
-    not move it either: it writes the clip the document's render module declares
+    not move it either: it writes the clip the document's sidecar animation declares
     into the GLB as glTF node animation, so a reader moves the geometry itself.
 
     Writes no ``.step`` and no beside-source artifacts; a document missing its render
@@ -808,10 +813,10 @@ def export_cad_target(
         raise ValueError(f"Export target must be a .step/.stp document: {target}")
     step_path: Path = target_path
 
-    # The clip name and the render module are resolved BEFORE any tessellation:
+    # The clip name and embedded animation source are resolved BEFORE any tessellation:
     # a typo must fail as a clean CLI error naming the clips the model has, not
     # after a minute of meshing. The token it returns is what keeps an edited
-    # `.step.js` from being served out of the ledger (mesh_animation). Carry the
+    # animation source from being served out of the ledger. Carry the
     # same captured text to Node so edits during preparation cannot rekey it.
     render_module: RenderModuleSnapshot | None = None
     animation_request: dict[str, object] | None = None

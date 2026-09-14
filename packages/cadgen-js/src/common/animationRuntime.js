@@ -1,7 +1,7 @@
 import { normalizeTubeDeformation } from "./tubeDeformation.js";
 
 // The choreography half: evaluate the clips a document's render module
-// (`<name>.step.js`, loaded by renderModule.js) declares and drive raw
+// (embedded in the schema-v9 sidecar and loaded by renderModule.js) declares and drive raw
 // per-occurrence transforms. Total independence by construction: this module
 // knows nothing of mates, DOFs, presets, or the Pose tab; it targets
 // occurrences by label and pushes matrices/styles through the same effects

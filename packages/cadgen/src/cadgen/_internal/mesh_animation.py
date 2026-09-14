@@ -2,7 +2,7 @@
 
 A GLB is the one mesh format with somewhere to put a clip, so this is the GLB
 door's half of choreography. The other half — the clip itself — is JavaScript in
-the render module beside the document (``<name>.step.js``), evaluated by the
+the document sidecar's ``animation.source``, evaluated by the
 Node builder; nothing here runs it.
 
 Two things live here and nowhere else. The first is the request's shape: a
@@ -11,7 +11,7 @@ closed key set (``clip``, ``fps``, ``seconds``, ``start``, ``drop``, ``deform``,
 the alternative is learning that ``fps: 0`` is nonsense after a tessellation.
 The second is what the export's freshness key has to include beyond the
 document's bytes: the
-choreography is a file the DOCUMENT does not hash, so an edited ``.step.js``
+choreography is an annotation the STEP does not hash, so an edited animation
 must invalidate a ledgered animated GLB (:func:`animation_variant_token`) or the
 door would report an old clip current forever.
 
@@ -101,7 +101,7 @@ def normalize_animation_request(value: object, *, where: str) -> dict[str, objec
 
     clip = value.get("clip")
     if not isinstance(clip, str) or not clip.strip():
-        raise ValueError(f"{where} must name a clip the document's render module declares")
+        raise ValueError(f"{where} must name a clip the document sidecar's animation declares")
 
     raw_fps = value.get("fps", DEFAULT_ANIMATION_FPS)
     if isinstance(raw_fps, bool) or not isinstance(raw_fps, int):
@@ -203,7 +203,7 @@ def parse_animation_option(raw_animation: object, *, where: str = "--animation")
     Already an object when it came from a ``glb.build(animation={...})`` call;
     from argv it is one string, told apart by shape the way ``--kinematics`` is:
     text that opens with ``{`` is the inline JSON request, anything else is the
-    NAME of a clip the document's render module declares. There is no file-path
+    NAME of a clip the document sidecar's animation declares. There is no file-path
     spelling -- a clip request is a handful of keys, not a document.
     """
     if isinstance(raw_animation, dict):
@@ -228,10 +228,8 @@ def animation_variant_token(request: dict[str, object], render_module_text: str)
 
     A static mesh is a pure function of the document's bytes and its tolerances,
     which is what the ledger keys on. An ANIMATED one is also a function of the
-    request and of the render module -- a file no source model build reads
-    and no document hash covers -- so editing a clip would leave a ledgered GLB reported current
-    with the old motion baked in. Folding both into the variant key makes an
-    edited ``.step.js`` a miss, which is a re-export rather than a wrong answer.
+    request and the embedded animation source. Folding both into the variant
+    key makes an annotation edit re-export motion without rebuilding geometry.
     """
     import hashlib
 
@@ -247,14 +245,16 @@ def animation_variant_token(request: dict[str, object], render_module_text: str)
 
 @dataclass(frozen=True)
 class RenderModuleSnapshot:
-    """The selected module's immutable source and original diagnostic name."""
+    """The selected embedded module's immutable source and diagnostic name."""
 
     path: Path
     source: str
+    document_hash: str
+    appearance: dict | None
 
 
 def resolve_animation(document: Path, request: dict[str, object]) -> tuple[RenderModuleSnapshot, str]:
-    """``(render module snapshot, variant token)`` for an animated export.
+    """``(embedded animation snapshot, variant token)`` for an animated export.
 
     The clip NAME is checked HERE against the module the door just read -- a
     typo must fail as a clean CLI error naming the clips the model has, not as a
@@ -263,19 +263,21 @@ def resolve_animation(document: Path, request: dict[str, object]) -> tuple[Rende
     builds its clips indirectly). Both the token and Node execution consume
     this same source snapshot, even if the author edits the file during meshing.
     """
-    from cadgen._internal.render_module import (
-        declared_clip_ids,
-        read_render_module_text,
-        render_module_path,
-    )
+    from cadgen._internal.render_module import declared_clip_ids
+    from cadgen._internal.source_sidecar import read_source_sidecar, source_sidecar_path
+    from cadgen.catalog import artifact_file_hash
 
-    module_path = render_module_path(document)
-    module_text = read_render_module_text(document)
+    document_hash = artifact_file_hash(document)
+    if not document_hash:
+        raise ValueError(f"Could not read STEP document: {document}")
+    sidecar = read_source_sidecar(document, document_hash=document_hash) or {}
+    module_path = source_sidecar_path(document)
+    animation = sidecar.get("animation")
+    module_text = animation["source"] if animation is not None else None
     if module_text is None:
         raise ValueError(
-            f"{Path(document).name} has no render module, so there is no clip to export — "
-            f"author {module_path.name} beside the document (export const clips = {{...}}); "
-            "see the cad skill's kinematics reference"
+            f"{Path(document).name} has no animation in its sidecar. "
+            "Declare animation= on @step or pass --animation to cadgen step build."
         )
     clip_name = str(request["clip"])
     declared = declared_clip_ids(module_text)
@@ -288,4 +290,4 @@ def resolve_animation(document: Path, request: dict[str, object]) -> tuple[Rende
                 else "This model declares no animation clips"
             )
         )
-    return RenderModuleSnapshot(module_path, module_text), animation_variant_token(request, module_text)
+    return RenderModuleSnapshot(module_path, module_text, document_hash, sidecar.get("appearance")), animation_variant_token(request, module_text)

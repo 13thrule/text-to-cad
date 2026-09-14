@@ -37,7 +37,7 @@ def build(
         diagonal, overriding what the document declares.
     mesh_angular_tolerance: max normal spread across a triangle edge in
         radians, overriding what the document declares.
-    animation: carry a clip of the document's render module (<name>.step.js)
+    animation: carry a clip of the document's embedded animation source
         into the file as glTF animation, instead of exporting it static. A clip
         name, or a {clip, fps, seconds, start, drop, deform} object; `fps` is
         the SAMPLING rate of the baked keyframes (default 30). Rotation and

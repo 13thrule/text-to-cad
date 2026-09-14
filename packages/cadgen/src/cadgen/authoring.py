@@ -261,6 +261,10 @@ class ModelDef:
     # Typed mates (kinematics= dict, validated at decoration); axis refs
     # resolve at build and the block lands in the model's sidecar. STEP only.
     kinematics: KinematicsDef | None = None
+    # Named intrinsic material declarations and the document-scoped animation
+    # module. Both are validated at decoration and resolved during publication.
+    materials: dict[str, Any] | None = None
+    animation: dict[str, str] | None = None
     # Declared mesh serializations (@stl/@glb/@threemf). STEP models only.
     mesh_exports: tuple[MeshExportDecl, ...] = ()
     # False for a MESH-ONLY model (@stl/@glb/@threemf with no @step): the same
@@ -453,12 +457,18 @@ def _decorator(
     mesh_tolerance: float | None,
     mesh_angular_tolerance: float | None,
     kinematics: object = None,
+    materials: object = None,
+    animation: object = None,
     step_output: bool = True,
 ) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     with _declaring_here():
         kinematics_def = (
             normalize_kinematics(kinematics, where=f"@{fmt}") if kinematics is not None else None
         )
+        from cadgen._internal.source_sidecar import normalize_animation, normalize_materials
+
+        materials_def = normalize_materials(materials, where=f"@{fmt} materials=")
+        animation_def = normalize_animation(animation, where=f"@{fmt} animation=")
         out = _checked_out(out, where=f"@{fmt}")
         mesh_tolerance = _checked_tolerance(mesh_tolerance, "mesh_tolerance", where=f"@{fmt}")
         mesh_angular_tolerance = _checked_tolerance(
@@ -497,6 +507,8 @@ def _decorator(
             mesh_tolerance=mesh_tolerance,
             mesh_angular_tolerance=mesh_angular_tolerance,
             kinematics=kinematics_def,
+            materials=materials_def,
+            animation=animation_def,
             mesh_exports=pending,
             step_output=step_output,
             stamp=_script_stamp(script_path),
@@ -566,16 +578,19 @@ def step(
     mesh_tolerance: float | None = None,
     mesh_angular_tolerance: float | None = None,
     kinematics: object = None,
+    materials: object = None,
+    animation: str | None = None,
     **unsupported: Any,
 ):
     """Declare a STEP model. Usable bare (``@step``) or configured (``@step(...)``).
 
-    ``kinematics=`` takes the typed-mates dict (see ``cadgen.kinematics``). No
+    ``kinematics=`` takes the typed-mates dict (see ``cadgen.kinematics``).
+    ``materials=`` declares named definitions and label/group assignments;
+    ``animation=`` embeds a self-contained JavaScript ES module. No
     decorator argument changes the geometry a model writes: the geometry is the
     function's return value; the arguments decide where the files land, how
     they are written, and what the sidecar declares. No decorator names
-    JavaScript: choreography is the render module beside the document
-    (``<name>.step.js``), which the viewer loads by name and no build reads.
+    declaration changes the STEP geometry or its authored colors.
     """
     with _declaring_here():
         _reject_unknown_kwargs("step", unsupported)
@@ -585,6 +600,8 @@ def step(
         mesh_tolerance=mesh_tolerance,
         mesh_angular_tolerance=mesh_angular_tolerance,
         kinematics=kinematics,
+        materials=materials,
+        animation=animation,
     )
     return decorator(func) if func is not None else decorator
 

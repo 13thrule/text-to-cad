@@ -232,18 +232,18 @@ test("failures are one JSON error line: bad args, bad package", (t) => {
   }
 });
 
-// --- animation: a package plus the render module beside its document ---------
+// --- animation: a package plus source captured from its document sidecar -----
 //
-// The end-to-end claim, made against a real package and a real .step.js: the
+// The end-to-end claim, made against a real package and embedded animation source: the
 // clip in that module comes back out of the finished .glb as glTF animation a
 // stock loader plays, on a node per occurrence, at the schedule that was asked
 // for. Everything between (the module loader, the sampler, the writer) is
 // pinned by its own unit tests; this is the one that proves they meet.
 
-/** A render module beside the package, rotating ONE of the two occurrences. */
-function writeRenderModule(root) {
-  const modulePath = path.join(root, "gear.step.js");
-  fs.writeFileSync(modulePath, [
+/** Embedded animation source rotating ONE of the two occurrences. */
+function writeAnimationSource(root) {
+  const sourcePath = path.join(root, "animation-source.js");
+  fs.writeFileSync(sourcePath, [
     "export const clips = {",
     "  showcase: {",
     "    label: \"Showcase\",",
@@ -255,7 +255,7 @@ function writeRenderModule(root) {
     "};",
     "",
   ].join("\n"));
-  return modulePath;
+  return sourcePath;
 }
 
 async function parseAnimatedGlb(file) {
@@ -267,13 +267,13 @@ async function parseAnimatedGlb(file) {
 
 test("--animation writes the clip into the GLB as glTF animation", async (t) => {
   const { root, packageDir } = makePackage(t);
-  const modulePath = writeRenderModule(root);
+  const sourcePath = writeAnimationSource(root);
   const out = path.join(root, "animated.glb");
   const result = runCli([
     "--package-dir", packageDir, "--name", "gear",
     "--format", "glb", "--out", out,
     "--animation", JSON.stringify({ clip: "showcase", fps: 10, seconds: 2 }),
-    "--render-module", modulePath,
+    "--animation-source", sourcePath,
   ], sandboxEnv(root));
   assert.equal(result.status, 0, result.stdout + result.stderr);
   const payload = JSON.parse(result.stdout);
@@ -319,10 +319,10 @@ test("--animation writes the clip into the GLB as glTF animation", async (t) => 
 
 test("an animated export refuses a format that cannot carry it without writing output", (t) => {
   const { root, packageDir } = makePackage(t);
-  const modulePath = writeRenderModule(root);
+  const sourcePath = writeAnimationSource(root);
   const out = path.join(root, "refused.stl");
   const result = runCli([
-    "--package-dir", packageDir, "--render-module", modulePath,
+    "--package-dir", packageDir, "--animation-source", sourcePath,
     "--format", "stl", "--out", out,
     "--animation", JSON.stringify({ clip: "showcase" }),
   ], sandboxEnv(root));
@@ -333,14 +333,14 @@ test("an animated export refuses a format that cannot carry it without writing o
   assert.equal(fs.existsSync(out), false, "a refused export writes nothing");
 });
 
-test("--animation without --render-module is refused: the clips live in the .step.js", (t) => {
+test("--animation without --animation-source is refused", (t) => {
   const { root, packageDir } = makePackage(t);
   const result = runCli([
     "--package-dir", packageDir, "--format", "glb", "--out", path.join(root, "x.glb"),
     "--animation", JSON.stringify({ clip: "showcase" }),
   ], sandboxEnv(root));
   assert.equal(result.status, 1);
-  assert.match(JSON.parse(result.stdout).error, /--animation needs --render-module/);
+  assert.match(JSON.parse(result.stdout).error, /--animation needs --animation-source/);
 });
 
 test("a reveal clip — hidden at start AND moving — exports with a warning, not a writer error", async (t) => {
@@ -350,8 +350,8 @@ test("a reveal clip — hidden at start AND moving — exports with a warning, n
   // with a glTF invariant. It has to come out the other end as a file, with the
   // lost motion said out loud.
   const { root, packageDir } = makePackage(t);
-  const modulePath = path.join(root, "reveal.step.js");
-  fs.writeFileSync(modulePath, [
+  const sourcePath = path.join(root, "reveal-animation.js");
+  fs.writeFileSync(sourcePath, [
     "export const clips = {",
     "  reveal: {",
     "    duration: 4,",
@@ -369,7 +369,7 @@ test("a reveal clip — hidden at start AND moving — exports with a warning, n
     "--package-dir", packageDir, "--name", "gear",
     "--format", "glb", "--out", out,
     "--animation", JSON.stringify({ clip: "reveal", fps: 10, seconds: 2, drop: ["visible"] }),
-    "--render-module", modulePath,
+    "--animation-source", sourcePath,
   ], sandboxEnv(root));
   assert.equal(result.status, 0, result.stdout + result.stderr);
   const { animation } = JSON.parse(result.stdout).files[0];
@@ -394,15 +394,15 @@ test("a reveal clip — hidden at start AND moving — exports with a warning, n
 //
 // The end-to-end claim for a DEFORMING tube, which is per-vertex motion no node
 // transform carries: what a stock GLTFLoader blends out of the finished file at
-// a given moment is where the render module's own deformation puts those
+// a given moment is where the embedded animation's own deformation puts those
 // vertices at that same moment. Everything between — the fit, the delta bake,
 // the colour partitioning, the change of basis, the weights schedule — is
 // pinned by its own unit tests; this is the one that proves they meet.
 
-/** A render module whose clip BENDS the first gear off a straight rest line. */
+/** Embedded animation whose clip BENDS the first gear off a straight rest line. */
 function writeDeformingModule(root) {
-  const modulePath = path.join(root, "gear-flex.step.js");
-  fs.writeFileSync(modulePath, [
+  const sourcePath = path.join(root, "gear-flex-animation.js");
+  fs.writeFileSync(sourcePath, [
     "const REST = { normal: [0, 0, 1], segments: [",
     "  { kind: \"line\", start: [-30, 0, 4], end: [30, 0, 4] },",
     "] };",
@@ -429,17 +429,17 @@ function writeDeformingModule(root) {
     "};",
     "",
   ].join("\n"));
-  return modulePath;
+  return sourcePath;
 }
 
 /** What the RENDER MODULE puts those vertices at, in the file's own space. */
-async function renderModuleWorldPositions(root, moduleSource, timeSec) {
+async function animationSourceWorldPositions(root, moduleSource, timeSec) {
   const THREE = await import("three");
   const { parseSurf } = await import("../surf/container.js");
   const { DEFAULT_OPTIONS, tessellateComponent } = await import("../surf/tessellate.js");
   const { applyRecordTubeDeformation } = await import("../../common/tubeDeformation.js");
   const { evaluateAnimationClip, normalizeAnimationClips } = await import("../../common/animationRuntime.js");
-  const { importRenderModule } = await import("../../common/renderModule.js");
+  const { compileAnimationSource } = await import("../../common/renderModule.js");
   const { animationTargetsFromDescriptor } = await import("./packageAnimation.js");
 
   const bytes = fs.readFileSync(FIXTURE_SURF);
@@ -458,8 +458,8 @@ async function renderModuleWorldPositions(root, moduleSource, timeSec) {
   }
   geometry.setIndex(new THREE.BufferAttribute(Uint32Array.from(flat), 1));
 
-  const namespace = await importRenderModule(moduleSource, { name: "gear-flex.step.js" });
-  const clip = normalizeAnimationClips(namespace.clips).flex;
+  const compiled = await compileAnimationSource(moduleSource, { name: "embedded animation" });
+  const clip = normalizeAnimationClips(compiled.clips).flex;
   const descriptor = JSON.parse(fs.readFileSync(path.join(root, "pkg", "assembly.json"), "utf8"));
   const frame = evaluateAnimationClip(
     THREE, animationTargetsFromDescriptor(descriptor), clip, timeSec,
@@ -510,16 +510,16 @@ function cloudDistanceMm(a, b) {
   return Math.sqrt(worst) * 1000;
 }
 
-test('deform: "morph" bakes the deformation, and the file replays what the render module draws', async (t) => {
+test('deform: "morph" bakes the deformation, and the file replays what the embedded animation draws', async (t) => {
   const { root, packageDir } = makePackage(t);
-  const modulePath = writeDeformingModule(root);
+  const sourcePath = writeDeformingModule(root);
   const out = path.join(root, "flex.glb");
   const request = { clip: "flex", fps: 12, seconds: 2, deform: "morph", deformTolerance: 0.5 };
   const result = runCli([
     "--package-dir", packageDir, "--name", "gear",
     "--format", "glb", "--out", out,
     "--animation", JSON.stringify(request),
-    "--render-module", modulePath,
+    "--animation-source", sourcePath,
   ], sandboxEnv(root));
   assert.equal(result.status, 0, result.stdout + result.stderr);
   const { animation } = JSON.parse(result.stdout).files[0];
@@ -574,16 +574,16 @@ test('deform: "morph" bakes the deformation, and the file replays what the rende
     return out;
   };
 
-  const moduleSource = fs.readFileSync(modulePath, "utf8");
+  const moduleSource = fs.readFileSync(sourcePath, "utf8");
   // Moments deliberately BETWEEN the fit's own targets, which is where a bake at
   // the clip's keyframes looks perfect in a still and is wrong in motion.
   for (const moment of [0, 0.2917, 0.5, 1.1667, 1.9167]) {
-    const truth = await renderModuleWorldPositions(root, moduleSource, moment);
+    const truth = await animationSourceWorldPositions(root, moduleSource, moment);
     const actual = blendAt(moment);
     const worst = Math.max(cloudDistanceMm(actual, truth), cloudDistanceMm(truth, actual));
     assert.ok(
       worst <= 0.5 + 1e-3,
-      `t=${moment}s: the file's morphed vertices are ${worst.toFixed(4)}mm off the render module's`,
+      `t=${moment}s: the file's morphed vertices are ${worst.toFixed(4)}mm off the embedded animation's`,
     );
   }
 });

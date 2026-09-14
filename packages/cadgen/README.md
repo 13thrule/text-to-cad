@@ -84,9 +84,9 @@ the root is an internal Compound subclass, so exact-type introspection differs;
 eligibility and escape boundaries.
 
 - Nothing a renderer reads references the source tree: the sidecar's
-  kinematics are resolved numbers and labels, and choreography is the
-  authored render module beside the document (`<name>.step.js`), read live
-  by the renderer and never copied into the sidecar; a tree and its
+  kinematics are resolved numbers and labels, its appearance uses canonical
+  leaf occurrence IDs, and its animation is an embedded self-contained ES
+  module; a tree and its
   components carry no path, script or record key
   ([`STORE.md`](STORE.md) §2, the two-sides law).
 - A door never refuses a document and never auto-rebuilds: whether a
@@ -123,7 +123,7 @@ to finish; missing derived artifacts are resolved through the build pool.
 ### 3. One sidecar per artifact, and it belongs to that artifact alone
 
 `part.step` gets `part.step.json` — schema-versioned sections (kinematics,
-appearance). New capability = new section + schema bump, never a second sidecar
+appearance, animation). New capability = new section + schema bump, never a second sidecar
 file. Model-side, beside the artifact, so it travels with the file it
 describes — and it exists only when law 17 says it must.
 
@@ -231,32 +231,45 @@ to its source, a repo script, or a repo workflow does not.
 A `@step`/`@dxf`/`@stl`/`@glb`/`@threemf` decorator's arguments never change
 the geometry a model produces. They decide where the files land (`out=`),
 how they are written (the mesh tolerances), and what the sidecar declares
-(`kinematics=`). The geometry is the function's return value and nothing
+(`kinematics=`, `materials=`, `animation=`). The geometry is the function's return value and nothing
 else: a `Compound` placing children is packaged as occurrences, a single
 solid as one component, and `part`/`assembly` is read off the resulting tree.
 A posed or differently configured export is authored geometry, or another
-model.
+model. Intrinsic appearance participates in the authored tree identity so it
+inherits through pinned children, while component identities and STEP bytes
+remain unchanged.
+
+A source fast path may refresh literal `kinematics=`, `materials=`, and
+`animation=` annotations from the model module without executing geometry.
+It requires an exact executed-byte closure attestation, unchanged dependencies
+and child pins, complete cached baseline/document trees, and same-module
+literals used only by those decorator arguments. A computed or imported
+annotation may coexist: its expression remains in the geometry fingerprint and
+its recorded value is reused only while that expression and its dependencies
+are unchanged. Reflection, another use of a stripped literal constant, or a
+change to computed annotation code falls back to the ordinary model build.
 
 Two features were deleted for violating this: the kinematics bake point
 (`kinematics={..., "at": pose}`), which transformed the tree through its mates
 before writing it, and `kind="part"|"assembly"`, whose only effect was to steer
 whether the build packaged the return as one component or as occurrences.
-*Pressure-test*: strip every argument off a model's decorators and rebuild;
-the tree hash must not change.
+*Pressure-test*: change only `materials=` or `animation=` and rebuild; component
+identities and STEP bytes must not change.
 
 ### 17. A sidecar only when strictly necessary
 
 Never write a JSON sidecar unless something beside the artifact has to read
-it. Kinematics and intrinsic PBR finishes need durable artifact annotations;
-a model with neither writes no sidecar. A rebuild removes sections the model
+it. Kinematics, named intrinsic materials, and animation need durable artifact annotations;
+a model with none writes no sidecar. A rebuild removes sections the model
 no longer declares and deletes an empty sidecar. Metadata with no reader
 beside the artifact — what a model declares about its own outputs, where a
 build came from, when it ran — belongs in the store record, never in a
 file next to the geometry.
 
-Schema 8 sidecars contain only `schemaVersion`, the saved STEP's `documentHash`,
-and optional `kinematics` and `appearance` sections. Appearance maps canonical
-document occurrence IDs to resolved PBR values; it is applied to an owned
+Schema 9 sidecars contain only `schemaVersion`, the saved STEP's `documentHash`,
+and optional `kinematics`, `appearance`, and `animation` sections. Appearance
+stores named material definitions plus canonical leaf occurrence assignments;
+animation stores a self-contained JavaScript ES module. Appearance is applied to an owned
 render/export descriptor, never to the byte-derived tree. Appearance-sensitive
 export variants include its digest, including the absence of overrides.
 The document digest binds those declarations to the artifact; it is
@@ -264,12 +277,11 @@ not provenance. An old schema or a mismatched digest must be rebuilt or
 re-annotated, never silently applied. Compiling an imported STEP preserves
 its authored sidecar bytes.
 
-Two sections were deleted for violating this: `meshExports`, a copy of the
-mesh decorators' declarations that only a door read back (a door now
-tessellates the document's tree and writes the file it was asked for), and
-the animation text copied from the `.anim.js` module (animation is a render
-module beside the STEP, read live by the viewer).
-*Pressure-test*: build a part that declares meshes and no kinematics; no
+The retired `meshExports` section copied mesh decorator declarations that only
+a door read back; a door now tessellates the document's tree and writes the
+file it was asked for.
+*Pressure-test*: build a part that declares meshes but no kinematics,
+materials, or animation; no
 `.step.json` may appear beside it.
 
 ## The shape of the package

@@ -75,7 +75,7 @@ class ScannerTestCase(unittest.TestCase):
     def sidecar(self, rel: str, payload: dict) -> str:
         document = Path(self.root, rel)
         body = dict(payload)
-        body["schemaVersion"] = 8
+        body["schemaVersion"] = 9
         body["documentHash"] = hashlib.sha256(document.read_bytes()).hexdigest()
         return self.write(f"{rel}.json", json.dumps(body))
 
@@ -198,12 +198,12 @@ class StoreResults(ScannerTestCase):
             "components": {"cid": {}},
             "occurrences": [{"id": "o1.1", "name": "part", "component": "cid", "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}],
         })
-        self.sidecar("finish.step", {"appearance": {"occurrences": {"o1.1": {"roughness": 0.2}}}})
+        self.sidecar("finish.step", {"appearance": {"materials": {"finish": {"name": "Finish", "roughness": 0.2}}, "assignments": {"o1.1": "finish"}}})
         first = self.entry("finish.step")
-        self.sidecar("finish.step", {"appearance": {"occurrences": {"o1.1": {"roughness": 0.9}}}})
+        self.sidecar("finish.step", {"appearance": {"materials": {"finish": {"name": "Finish", "roughness": 0.9}}, "assignments": {"o1.1": "finish"}}})
         second = self.entry("finish.step")
         self.assertNotEqual(first["appearanceHash"], second["appearanceHash"])
-        self.assertEqual(second["sourceSidecar"]["appearance"]["occurrences"]["o1.1"]["roughness"], 0.9)
+        self.assertEqual(second["sourceSidecar"]["appearance"]["materials"]["finish"]["roughness"], 0.9)
 
     def test_same_bytes_share_one_tree_and_each_document_has_its_own_record(self):
         self.write("a.step", "same bytes\n")
@@ -321,7 +321,7 @@ class SidecarTruthiness(ScannerTestCase):
     def test_appearance_has_a_scene_identity_without_changing_the_tree_identity(self):
         self.write("finish.step", "x\n")
         self.sidecar("finish.step", {
-            "appearance": {"occurrences": {"o1.1": {"roughness": 0.25}}}
+            "appearance": {"materials": {"finish": {"name": "Finish", "roughness": 0.25}}, "assignments": {"o1.1": "finish"}}
         })
         self.package("finish.step", {
             "kind": "assembly-package",
@@ -332,7 +332,7 @@ class SidecarTruthiness(ScannerTestCase):
         self.assertIn("appearanceHash", entry)
         self.assertEqual(len(entry["appearanceHash"]), 64)
         self.assertEqual(entry["sourceSidecar"]["appearance"], {
-            "occurrences": {"o1.1": {"roughness": 0.25}}
+            "materials": {"finish": {"name": "Finish", "roughness": 0.25}}, "assignments": {"o1.1": "finish"}
         })
         self.assertTrue(entry["sourceUrl"].startswith("/finish.step.json?v="))
         self.assertEqual(entry["hash"], result_tree(Path(self.root, "finish.step")))
@@ -343,8 +343,8 @@ class SidecarTruthiness(ScannerTestCase):
         import cadgen.viewer.scanner as scanner
 
         self.write("race.step", "x\n")
-        first = {"occurrences": {"o1.1": {"roughness": 0.2}}}
-        second = {"occurrences": {"o1.1": {"roughness": 0.9}}}
+        first = {"materials": {"finish": {"name": "Finish", "roughness": 0.2}}, "assignments": {"o1.1": "finish"}}
+        second = {"materials": {"finish": {"name": "Finish", "roughness": 0.9}}, "assignments": {"o1.1": "finish"}}
         self.sidecar("race.step", {"appearance": first})
         self.package("race.step", {
             "kind": "assembly-package",
@@ -388,14 +388,15 @@ class SidecarTruthiness(ScannerTestCase):
         self.assertNotEqual(entry["documentHash"], hashlib.sha256(path.read_bytes()).hexdigest())
 
 
-    def test_a_render_module_beside_the_document_is_published_by_url(self):
-        self.write("s.step.js", "export const clips = {};\n")
-        entry = self._entry(None)
-        self.assertEqual(entry["renderModuleUrl"], "/s.step.js")
+    def test_embedded_animation_is_pinned_to_the_catalog_snapshot(self):
+        animation = {"language": "javascript", "source": "export const clips = {};"}
+        entry = self._entry(json.dumps({"animation": animation}))
+        self.assertEqual(entry["sourceSidecar"]["animation"], animation)
+        self.assertEqual(len(entry["animationHash"]), 64)
+        self.assertNotIn("renderModuleUrl", entry)
 
-    def test_no_render_module_no_url(self):
-        self.assertNotIn("renderModuleUrl", self._entry(None))
-
+    def test_no_animation_no_hash(self):
+        self.assertNotIn("animationHash", self._entry(None))
 
     def test_the_catalog_publishes_no_provenance(self):
         entry = self._entry(json.dumps({"sourceKind": "step"}))
@@ -430,19 +431,19 @@ class SidecarTruthiness(ScannerTestCase):
         self.package("old.step", {"kind": "assembly-package", "components": {"c0": {}}})
 
         entry = self.entry("old.step")
-        self.assertIn("unsupported sidecar schema 6 (expected 8)", entry["annotationError"])
+        self.assertIn("unsupported sidecar schema 6 (expected 9)", entry["annotationError"])
         self.assertNotIn("sourceUrl", entry)
         self.assertNotIn("poseUrl", entry)
 
     def test_invalid_appearance_is_a_catalog_annotation_error(self):
         self.write("bad-finish.step", "x\n")
         self.sidecar("bad-finish.step", {
-            "appearance": {"occurrences": {"o1.1": {"roughness": "glossy"}}}
+            "appearance": {"materials": {"finish": {"name": "Finish", "roughness": "glossy"}}, "assignments": {"o1.1": "finish"}}
         })
         self.package("bad-finish.step", {"kind": "assembly-package", "components": {"c0": {}}})
 
         entry = self.entry("bad-finish.step")
-        self.assertIn("expected a finite number between 0 and 1", entry["annotationError"])
+        self.assertIn("must be a finite number between 0 and 1", entry["annotationError"])
         self.assertNotIn("sourceUrl", entry)
         self.assertNotIn("appearanceHash", entry)
 
@@ -576,8 +577,8 @@ class ServedAssetGate(unittest.TestCase):
         self.assertFalse(is_served_cad_asset("/root/random.js"))
         self.assertFalse(is_served_cad_asset("/root/part.anim.js"))
         # The render module beside a document IS served, on its full pair of suffixes.
-        self.assertTrue(is_served_cad_asset("/root/part.step.js"))
-        self.assertTrue(is_served_cad_asset("/root/PART.STP.JS"))
+        self.assertFalse(is_served_cad_asset("/root/part.step.js"))
+        self.assertFalse(is_served_cad_asset("/root/PART.STP.JS"))
         self.assertFalse(is_served_cad_asset("/root/.hidden.step.js"))
         self.assertFalse(is_served_cad_asset("/root/secrets.json"))
         self.assertTrue(is_served_cad_asset("/root/part.step"))

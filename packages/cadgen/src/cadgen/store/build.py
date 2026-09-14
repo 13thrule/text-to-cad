@@ -138,6 +138,7 @@ def build_tree_from_compound(
     force: bool = False,
     progress: Any | None = None,
     extra: dict[str, Any] | None = None,
+    materials: object = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """Return ``(tree_hash, tree, stats)``. ``extra`` are content-pure fields
     recorded on the tree (capabilities, edgeRendering) — never paths or times.
@@ -152,8 +153,15 @@ def build_tree_from_compound(
     through it (:func:`build_tree_through_step`)."""
     progress = resolve_progress(progress)
     walk = _walk_compound(compound, root_name=root_name, progress=progress)
+    from cadgen._internal.source_sidecar import resolve_materials
+    from cadgen.store.trees import flatten_tree
+
+    descriptor = flatten_tree(walk.draft_tree(root_name=root_name))
+    inherited_appearance = descriptor.get("appearance")
+    appearance = resolve_materials(descriptor, materials, inherited=inherited_appearance)
     return _publish_tree(
-        walk, bbox_shape=compound, root_name=root_name, force=force, progress=progress, extra=extra
+        walk, bbox_shape=compound, root_name=root_name, force=force, progress=progress,
+        extra=extra, appearance=appearance, base_appearance=inherited_appearance,
     )
 
 
@@ -389,6 +397,9 @@ def _walk_compound(compound: Any, *, root_name: str, progress: Any) -> _Walk:
         material = _occurrence_material(node)
         if material is not None:
             occurrence["material"] = material
+            material_id = getattr(node, "_cadgen_material_id", None)
+            if isinstance(material_id, str) and material_id:
+                occurrence["materialId"] = material_id
         occurrences.append(occurrence)
         progress.advance(detail=name)
         return {"id": occ_id, "name": name, "nodeType": "part", "leafPartIds": [occ_id], "children": []}
@@ -523,6 +534,8 @@ def _publish_tree(
     descriptor_bounds: bool = False,
     prepared_occurrence_bounds: bool = False,
     bbox_override: dict[str, list[float]] | None = None,
+    appearance: dict[str, Any] | None = None,
+    base_appearance: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any]]:
     """Publish verified geometry inputs before any disposable surface work."""
     from cadgen._internal.component_package import _bbox_from_shape, validate_geometry_component
@@ -557,6 +570,13 @@ def _publish_tree(
         progress.advance(detail=cid)
 
     progress.phase(PHASE_FINALIZE)
+    # Resolved intrinsic appearance has one home in schema-2 trees. Transient
+    # materialized wrappers may have supplied inline private metadata while a
+    # child became parent-owned geometry; flattening above already folded it
+    # into the named library and assignments.
+    for occurrence in occurrences:
+        occurrence.pop("material", None)
+        occurrence.pop("materialId", None)
     tree: dict[str, Any] = dict(extra or {})
     tree.update(
         {
@@ -568,6 +588,8 @@ def _publish_tree(
             "assembly": {"root": root},
         }
     )
+    if appearance is not None:
+        tree["appearance"] = appearance
     from cadgen.store.trees import tree_kind
 
     from cadgen.store.trees import TREE_KIND, TREE_SCHEMA, _validate_structure
@@ -586,6 +608,15 @@ def _publish_tree(
     if bbox is not None:
         tree["bbox"] = bbox
     tree["stats"] = {"occurrenceCount": len(occurrences), "linkCount": len(links)}
+    # The metadata-only refresh baseline: identical source geometry and child
+    # pins with local @step materials removed, while inherited child appearance
+    # remains. Publishing it is content-only and performs no kernel work.
+    unannotated = dict(tree)
+    if base_appearance is not None:
+        unannotated["appearance"] = base_appearance
+    else:
+        unannotated.pop("appearance", None)
+    unannotated_hash = put_tree(unannotated, repair=repair_objects)
     tree_hash = put_tree(tree, repair=repair_objects)
     stats = {
         "occurrences": len(occurrences),
@@ -593,6 +624,7 @@ def _publish_tree(
         "unique_components": len(components),
         "components_built": len(built),
         "components_reused": len(reused),
+        "unannotatedTree": unannotated_hash,
     }
     return tree_hash, tree, stats
 
@@ -862,6 +894,7 @@ def build_tree_through_step(
     logger: Any | None = None,
     on_preview: Callable[[str, dict[str, Any]], None] | None = None,
     _internal_source_publication: bool = False,
+    materials: object = None,
 ) -> tuple[str, dict[str, Any], dict[str, Any], str]:
     """Write STEP and return ``(result_hash, result_tree, stats, step_hash)``.
 
@@ -946,6 +979,12 @@ def build_tree_through_step(
             shape = decode_geometry_component(prepared["entry"], prepared["payload"])
         own_shapes[cid] = shape
     descriptor = snapshot.descriptor() if snapshot is not None else flatten_tree(walk.draft_tree(root_name=root_name))
+    from cadgen._internal.source_sidecar import apply_appearance, resolve_materials
+
+    inherited_appearance = descriptor.get("appearance")
+    appearance = resolve_materials(descriptor, materials, inherited=inherited_appearance)
+    if appearance is not None:
+        descriptor = apply_appearance(descriptor, appearance)
     document = None
     if snapshot is None:
         with timed("tree: prepare document"):
@@ -960,6 +999,8 @@ def build_tree_through_step(
             force=force, progress=progress, extra=extra,
             descriptor_bounds=snapshot is None,
             bbox_override=captured_bbox if snapshot is not None else None,
+            appearance=appearance,
+            base_appearance=inherited_appearance,
         )
         if not tree_complete(tree_hash):
             raise RuntimeError("source result components disappeared before publication")

@@ -200,7 +200,7 @@ class TheFreshnessVariant(unittest.TestCase):
         request = parse_animation_option("showcase")
         base = animation_variant_token(request, MODULE_SOURCE)
         self.assertEqual(base, animation_variant_token(dict(request), MODULE_SOURCE))
-        # An edited .step.js is a DIFFERENT export of the same document bytes.
+        # Edited embedded animation is a DIFFERENT export of the same document bytes.
         self.assertNotEqual(base, animation_variant_token(request, MODULE_SOURCE + "\n"))
         # So is a different span of the same clip.
         self.assertNotEqual(
@@ -254,15 +254,15 @@ class ResolvingTheClip(unittest.TestCase):
         self.document.write_text("ISO-10303-21;\n", encoding="utf-8")
 
     def _write_module(self) -> Path:
-        module = self.root / "arm.step.js"
-        module.write_text(MODULE_SOURCE, encoding="utf-8")
-        return module
+        from cadgen._internal.source_sidecar import write_source_sidecar, source_sidecar_path
+        write_source_sidecar(self.document, {"animation": {"language": "javascript", "source": MODULE_SOURCE}})
+        return source_sidecar_path(self.document)
 
     def test_a_document_with_no_render_module_says_what_to_author(self):
         with self.assertRaises(ValueError) as caught:
             resolve_animation(self.document, parse_animation_option("showcase"))
-        self.assertIn("arm.step has no render module", str(caught.exception))
-        self.assertIn("arm.step.js", str(caught.exception))
+        self.assertIn("arm.step has no animation in its sidecar", str(caught.exception))
+        self.assertIn("animation=", str(caught.exception))
 
     def test_a_clip_the_module_does_not_declare_fails_with_the_ones_it_does(self):
         self._write_module()
@@ -289,7 +289,8 @@ class WhatCannotCarryAClip(unittest.TestCase):
         root = Path(stack.enter_context(tempfile.TemporaryDirectory())).resolve()
         self.document = root / "arm.step"
         self.document.write_text("ISO-10303-21;\n", encoding="utf-8")
-        (root / "arm.step.js").write_text(MODULE_SOURCE, encoding="utf-8")
+        from cadgen._internal.source_sidecar import write_source_sidecar
+        write_source_sidecar(self.document, {"animation": {"language": "javascript", "source": MODULE_SOURCE}})
 
     def test_the_stl_and_3mf_doors_refuse_a_clip_rather_than_dropping_it(self):
         # mesh_build IS those doors' body, so this is where a clip reaching a
@@ -357,7 +358,8 @@ class TheDoorPassesItThrough(unittest.TestCase):
         root = Path(stack.enter_context(tempfile.TemporaryDirectory())).resolve()
         self.document = root / "arm.step"
         self.document.write_text("ISO-10303-21;\n", encoding="utf-8")
-        (root / "arm.step.js").write_text(MODULE_SOURCE, encoding="utf-8")
+        from cadgen._internal.source_sidecar import write_source_sidecar
+        write_source_sidecar(self.document, {"animation": {"language": "javascript", "source": MODULE_SOURCE}})
         self.out = root / "arm-demo.glb"
 
     @contextlib.contextmanager
@@ -493,7 +495,8 @@ class WhatTheLedgerServes(unittest.TestCase):
         root = Path(stack.enter_context(tempfile.TemporaryDirectory())).resolve()
         self.document = root / "arm.step"
         self.document.write_text("ISO-10303-21;\n", encoding="utf-8")
-        (root / "arm.step.js").write_text(MODULE_SOURCE, encoding="utf-8")
+        from cadgen._internal.source_sidecar import write_source_sidecar
+        write_source_sidecar(self.document, {"animation": {"language": "javascript", "source": MODULE_SOURCE}})
         self.out = root / "arm-demo.glb"
 
     def _run(self, animation, *, written, baked):

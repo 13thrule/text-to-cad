@@ -610,9 +610,9 @@ function sampledAnimatedBounds(scene, clips, cadRootMatrix) {
 }
 
 /**
- * Parse an interactive direct GLB once. The flattened mesh remains the static
- * inspection fallback; the native hierarchy is retained only when the file has
- * playable glTF transform, skeletal, or morph-weight animation tracks.
+ * Parse an interactive direct GLB once. The flattened mesh remains the Inspect
+ * path for picking and matte CAD presentation; the native hierarchy remains
+ * document-owned so Render can retain its textures and PBR materials.
  */
 export async function buildGlbDocumentFromBuffer(buffer) {
   const [{ GLTFLoader }, decoder] = await Promise.all([
@@ -629,10 +629,9 @@ export async function buildGlbDocumentFromBuffer(buffer) {
     // CadViewer mounts the native hierarchy. Give both modes the same stable
     // animation-aware frame; triangle inspection is disabled on this path.
     const meshData = animatedBounds ? { ...restMeshData, bounds: animatedBounds } : restMeshData;
-    if (!clips.length) disposeGlbDocument({ scene: gltf.scene });
     return {
       meshData,
-      scene: clips.length ? gltf.scene : null,
+      scene: gltf.scene,
       clips,
       cadRootMatrix: cadRootMatrix.toArray(),
       animatedBounds,
@@ -642,6 +641,20 @@ export async function buildGlbDocumentFromBuffer(buffer) {
     disposeGlbDocument({ scene: gltf.scene });
     throw error;
   }
+}
+
+// Animated GLBs need their native hierarchy in both modes. A static GLB uses
+// it only in photographic Render; Inspect keeps the normalized mesh and its
+// CAD interaction behavior.
+export function shouldUseNativeGlbScene(document, { renderMode = false, clip = null } = {}) {
+  return Boolean(document?.scene && (renderMode || clip));
+}
+
+// Scene hosts detach native GLBs when changing presentation. Detachment is not
+// disposal: the document retains geometry, material and texture ownership for
+// the next mode toggle.
+export function detachGlbDocumentScene(document) {
+  document?.scene?.removeFromParent?.();
 }
 
 /** Release resources owned by one uncached interactive GLB document. */
@@ -671,5 +684,5 @@ export function disposeGlbDocument(document) {
   for (const material of materials) material.dispose?.();
   for (const texture of textures) texture.dispose?.();
   for (const image of images) image.close?.();
-  document?.scene?.removeFromParent?.();
+  detachGlbDocumentScene(document);
 }

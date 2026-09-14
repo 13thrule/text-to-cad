@@ -109,13 +109,16 @@ Rules the decorator enforces:
   record, build, no-op and composition — that writes its meshes and no
   `.step`, no sidecar. STEP is one output kind, not a requirement.
 - Options on `@step`: `out=`, `mesh_tolerance=`, `mesh_angular_tolerance=`,
-  `kinematics=` (`kinematics.md`). **No decorator argument changes the
+  `kinematics=`, `materials=`, and `animation=` (`kinematics.md`). **No decorator argument changes the
   geometry a model produces**: they decide where the files land, how they are
-  written, and what the sidecar declares. No decorator names JavaScript:
-  choreography is the render module beside the document
-  (`STEP/<name>.step.js`), which the viewer loads by name and no build reads.
+  written, and what the sidecar declares. `animation=` is a self-contained
+  JavaScript ES module string embedded in that sidecar. `materials=` is
+  `{"definitions": {id: material}, "assignments": [{"targets": ["#label", "#group"], "material": id}]}`;
+  definitions remain available even when unassigned, and every target must
+  resolve exactly. See `build123d-modeling.md` for the material channels.
   Everything a model declares about itself lives in its decorators, and a
-  child's declarations never ride up into a parent.
+  child's intrinsic materials inherit through its pinned tree. Kinematics and
+  animation are document-scoped and never inherit into a parent.
 
 **Imports:** `from cadgen import build123d as bd` is the canonical import — a
 lazy, transparent re-export (same names, same objects on first touch), so a
@@ -142,11 +145,10 @@ These two terms classify a STEP file by what its source is:
 - An **imported STEP file** is its own source: authored or downloaded
   elsewhere. There is nothing upstream to regenerate.
 
-A STEP model with kinematics or intrinsic `cad_material` finishes writes a
-sidecar beside its output (`<name>.step.json`) containing resolved `kinematics`
-and/or `appearance` sections, bound to the saved STEP's byte hash. A model with
-neither writes no sidecar; its store record makes reruns no-op. Mesh declarations
-stay in that record, and animation clips stay in the authored `.step.js`.
+A STEP model with `kinematics=`, `materials=`, or `animation=` writes a sidecar
+beside its output (`<name>.step.json`) containing the corresponding resolved
+sections, bound to the saved STEP's byte hash. A model with none writes no
+sidecar; its store record makes reruns no-op. Mesh declarations stay in that record.
 Compiling an imported STEP preserves any authored sidecar. The written STEP file
 itself carries NO cadgen metadata and no link back to source code, ever — a
 bare artifact copied anywhere is a plain importable file, and every door
@@ -282,9 +284,9 @@ What an importer TAKES from a model file decides how that file counts:
 
 Inputs join the closure too: a `read_step` document is hashed as a build
 input, and so is any other data file the model declares with
-`cadgen.declare_input` (below). The render module beside the document
-(`<name>.step.js`) is NOT one — it is the viewer's, and editing it never makes
-a model stale.
+`cadgen.declare_input` (below). Embedded `animation=` source and named
+`materials=` are decorator annotations. Imported values and helper calls
+remain ordinary source dependencies.
 
 Every decorator argument is ordinary Python, evaluated when the module is
 imported: `out=f"{FOLDER}/{NAME}.step"`, `mesh_tolerance=TOL` with `TOL` from
@@ -294,6 +296,17 @@ source text. The values feeding them are tracked like any other input (a
 constant behind an `out=` makes the model stale. The module top must still stay
 kernel-free: what a door pays to learn a model's declarations is one import of
 the file.
+
+For a narrow annotation-only edit, cadgen can refresh the authored tree and
+sidecar without running the model or rewriting STEP. The edited value must be
+a literal in the model module, or a same-module literal constant used
+exclusively by those decorator arguments. An unchanged computed or imported
+annotation may coexist: its expression remains in the geometry fingerprint and
+cadgen reuses its recorded value. Editing that expression or dependency,
+reflection, another use of a stripped literal constant, a changed child pin,
+or missing cached geometry uses the ordinary build path. Keeping a shared
+material library in `lib/` is still correct; edits to it rebuild
+conservatively.
 
 ### Models inside a package
 
@@ -517,9 +530,10 @@ A STEP written by another kernel round-trips through cadgen with
 canonical writer emits it, so OUT's bytes are deterministic and identical on
 every run. The same command ANNOTATES a document that has no model script —
 `--kinematics` takes the whole space (`{mates, couplings, poses, at}`, the same
-vocabulary the decorator takes, as inline JSON or a `.json` path). Choreography
-is not a build argument: it lives in the render module written beside OUT
-(`OUT.js`) and is read live by the renderer — see `kinematics.md`.
+vocabulary the decorator takes, as inline JSON or a `.json` path);
+`--materials` takes the named declaration as inline JSON or a `.json` path;
+and `--animation` takes a JavaScript module file or its source text. All
+three resolve into OUT's unified schema-9 sidecar.
 
 ```bash
 cadgen step build vendor/hinge.step STEP/hinge.step \
@@ -529,8 +543,8 @@ cadgen step build vendor/hinge.step STEP/hinge.step \
                  "poses": {"open": {"swing": 45}}}'
 ```
 
-Re-running is a no-op; editing only the kinematics refreshes the sidecar without
-re-emitting a byte. Vendor metadata (PMI, GD&T) does not survive the round trip.
+Re-running is a no-op; editing only these annotations refreshes the sidecar
+without re-emitting a byte. Vendor metadata (PMI, GD&T) does not survive the round trip.
 **Choose the door by how the model will evolve**: a shape you will keep changing
 belongs in a model script (a thin wrapper that reads the foreign STEP), while
 a one-shot canonicalization or annotation of a file you do not own is exactly

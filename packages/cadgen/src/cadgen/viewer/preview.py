@@ -123,12 +123,8 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
                 result[output_key]["url"] += "&" + urlencode({
                     "surfaceProducer": json.dumps(selected_producer, sort_keys=True, separators=(",", ":")),
                 })
-            module = Path(file_path).with_suffix(Path(file_path).suffix + ".js")
-            if module.is_file():
-                from .encoding import local_asset_url_for_path
-
-                require_contained(root_path, str(module))
-                result[output_key]["renderModuleUrl"] = local_asset_url_for_path(str(module))
+            result[output_key]["appearance"] = copy.deepcopy(payload.get("appearance"))
+            result[output_key]["animation"] = copy.deepcopy(payload.get("animation"))
         else:
             # A completed write is only labelled saved if these are still the
             # actual bytes. It never aliases a live preview into index/document.

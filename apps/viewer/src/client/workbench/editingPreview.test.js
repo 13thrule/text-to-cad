@@ -66,6 +66,23 @@ test("a successful save keeps the current authored preview in Follow edits", () 
   assert.equal(editingPreviewEntry(state, { ...entry, file: "relative/part.step" }).file, "relative/part.step");
 });
 
+test("editing previews expose appearance and animation metadata independently of geometry", () => {
+  const appearance = {
+    materials: { metal: { name: "Metal", metalness: 0.9 } },
+    assignments: { finger: "metal" }
+  };
+  const animation = { language: "javascript", source: "export const clips = {};" };
+  const state = reduceEditingPreview(initialEditingPreview(), update(8, "same-tree", {
+    preview: { tree: "same-tree", url: "/same-tree", sequence: 3, appearance, animation }
+  }));
+  const entry = editingPreviewEntry(state, { file: "/hand.step", hash: "saved" });
+  assert.equal(entry.previewAppearance, appearance);
+  assert.equal(entry.previewAnimation, animation);
+  assert.equal(entry.appearanceHash, "preview:8:3");
+  assert.equal(entry.animationHash, "preview:8:3");
+  assert.equal(Object.hasOwn(entry, "renderModuleUrl"), false);
+});
+
 test("a successful no-op without a matching current preview falls back to validated saved bytes", () => {
   const entry = { file: "/part.step", kind: "assembly", hash: "saved-1", documentHash: "bytes-1" };
   const first = reduceEditingPreview(initialEditingPreview(), update(1, "preview-1", {

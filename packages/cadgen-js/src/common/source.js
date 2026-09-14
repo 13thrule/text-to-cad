@@ -543,7 +543,7 @@ export async function loadSource(input, options = {}) {
   const rawTessellation = photographicRender ? null : inputObject.quality?.tessellation;
   const tessellation = tessellationForSnapshotQuality(inputObject);
   assertStepOnlyOption(kind, rawTessellation, "quality.tessellation");
-  const kinematics = photographicRender ? undefined : inputObject.kinematics ?? options.kinematics;
+  const kinematics = inputObject.kinematics ?? options.kinematics;
   const stepParameterUrl = String(
     inputObject.stepParameterUrl || resolved.stepParameterUrl || options.stepParameterUrl || ""
   ).trim();
@@ -583,7 +583,7 @@ export async function loadSource(input, options = {}) {
       // Parameter sidecars resolve features against composed occurrence ids, so
       // they stay fully functional for package sources even without a selector
       // runtime (feature refs prefix-match meshData part occurrence ids).
-      stepParameterSource: photographicRender ? null : await loadStepParameters({
+      stepParameterSource: await loadStepParameters({
         kind: "step",
         kinematics,
         stepParameterUrl,
@@ -592,6 +592,7 @@ export async function loadSource(input, options = {}) {
         selectorRuntime: packageSelectorRuntime,
         sourceSidecar
       }),
+      sourceSidecar,
       resolved,
       url: "",
       glbUrl: "",
@@ -619,6 +620,7 @@ export async function loadSource(input, options = {}) {
       selectorRuntime: null,
       displayEdgeRuntime: null,
       stepParameterSource: null,
+      sourceSidecar,
       resolved,
       url,
       glbUrl: "",
@@ -654,7 +656,7 @@ export async function loadSource(input, options = {}) {
     const displayEdgeRuntime = photographicRender ? null : inputObject.displayEdgeRuntime || options.displayEdgeRuntime || (
       stepSidecarsEnabled ? await loadDisplayEdgeRuntime(glbUrl || url) : null
     );
-    const stepParameterSource = photographicRender ? null : await loadStepParameters({
+    const stepParameterSource = await loadStepParameters({
       kind,
       kinematics,
       stepParameterUrl,
@@ -670,6 +672,7 @@ export async function loadSource(input, options = {}) {
       selectorRuntime,
       displayEdgeRuntime,
       stepParameterSource,
+      sourceSidecar,
       resolved,
       url,
       glbUrl,

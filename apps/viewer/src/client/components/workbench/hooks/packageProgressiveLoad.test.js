@@ -649,7 +649,7 @@ test("recomposition cost per publish: 3000 occurrences / 800 components", async 
   // publish as the final batch. Doubling turns 800/32 = 25 recompositions into 8.
   assert.equal(result.publishes, 8);
   // Per-frame animation binding (label index over every part) at this size —
-  // the cost the render module pays on each publish/frame, not a separate attach.
+  // the cost embedded animation pays on each publish/frame, not a separate attach.
   let bindMs = 0;
   {
     const lastPublish = buildComposedPackageMeshData(descriptor, Object.fromEntries(
@@ -701,7 +701,7 @@ test("window.__cadMeshCost updates on every publish and clears on cancel", async
   }
 });
 
-test("the render module attaches on the FIRST publish; absent labels are no-ops until they arrive; validation waits for the complete model", async () => {
+test("embedded animation attaches on the FIRST publish; absent labels are no-ops until they arrive; validation waits for the complete model", async () => {
   const descriptor = makeDescriptor({ componentCount: 9, occurrenceCount: 18 });
   const { loadComponent } = makeLoader(descriptor);
   // A real clip over the real runtime handle: rotates every occurrence by label.

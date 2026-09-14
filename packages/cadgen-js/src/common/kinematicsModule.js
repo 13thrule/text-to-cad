@@ -3,9 +3,8 @@
 // step-module definition — one number slider per DOF, an update pass that
 // folds slider values through the shared FK evaluator into per-occurrence
 // matrix effects. Pure data in, arithmetic out: no authored JS is involved on
-// this path. Choreography is the render module BESIDE the document
-// (`<name>.step.js`, renderModule.js) and never touches the sidecar or this
-// module; the two meet only in the effect records.
+// this path. Choreography is the sidecar's embedded animation module; the two
+// sections meet only in the effect records.
 
 import {
   kinematicsAtRest,

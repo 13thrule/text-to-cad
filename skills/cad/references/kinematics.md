@@ -14,16 +14,13 @@ There are THREE systems with different lifecycles, deliberately independent:
   Python at render time — and never moves the geometry a model writes. It
   lives in the model's sidecar (`<name>.step.json`, written beside the
   artifact), alongside any intrinsic material appearance.
-- **Animation** is choreography in the RENDER MODULE beside the document:
-  `STEP/<name>.step.js`, next to `<name>.step` and `<name>.step.json`. It is
-  authored and committed, discovered by name, loaded by the viewer and the
-  snapshot door, and by explicit animated GLB exports. Source model builds
-  never read it: no decorator names it, the sidecar carries no copy, and the
-  source gate has no clause for it. Animated GLB export pins its text and hashes
-  it with the clip request, so a module edit invalidates that export. It targets occurrences
-  directly and knows nothing about mates. Editing it is a reload in the
-  viewer, never a rebuild; editing kinematics never changes the tree either,
-  but it does rewrite the sidecar, so a kinematics edit is a (cheap) run.
+- **Animation** is choreography declared as a self-contained JavaScript ES
+  module string via `animation=` on `@step`. The build embeds it in
+  `<name>.step.json`; the viewer, snapshot door, and animated GLB export read
+  that document-bound copy. Animated GLB export hashes the source with the clip
+  request, so an animation edit invalidates that export. Animation targets
+  occurrences directly and knows nothing about mates. Like materials and
+  kinematics, it never changes STEP geometry or bytes.
 
 ## Kinematics: typed mates
 
@@ -116,9 +113,9 @@ if __name__ == "__main__":
 A document with no model script gets its kinematics from
 `cadgen step build IN OUT`, whose `--kinematics` takes the whole SPACE — the
 same `{mates, couplings, poses, at}` vocabulary, as inline JSON or a `.json`
-path. Choreography is not a build argument at all: write the render module
-`OUT.js` beside the document you wrote (see "Animation: the render module"
-below), and the renderer loads it live. The input is read with OCCT and
+path. `--materials` accepts the named material declaration as inline JSON or
+a `.json` path, and `--animation` accepts a self-contained JavaScript module
+file or source string. The input is read with OCCT and
 re-emitted by the canonical writer, so OUT's bytes are deterministic whichever
 kernel wrote IN:
 
@@ -135,21 +132,18 @@ script — a thin `@step` function that imports the foreign STEP and re-exports
 it, so the kinematics live beside the geometry decisions and every edit is one
 `python model.py`. Reach for `step build` when the geometry is fixed and not
 yours: a one-shot annotation or canonicalization of a vendor file. Re-running it
-is a no-op, editing only the kinematics refreshes the sidecar without
+is a no-op, editing only these annotations refreshes the sidecar without
 re-emitting a byte, and vendor metadata (PMI, GD&T) does not survive the trip.
 
-## Animation: the render module (`<name>.step.js`)
+## Animation: the embedded module
 
-A STEP document may carry ONE JavaScript module beside it, named after the
-document: `STEP/arm.step` → `STEP/arm.step.js`. It is the place for
-render-only behaviour — today choreography, as the `clips` export below;
-other render-only exports will join it, and an export the renderer does not
-know is a load ERROR, never ignored. It is an ES module with no imports,
-authored by you and COMMITTED even though it lives in a format folder (the
-project's `.gitignore` whitelists `*.step.js`; see `project-layout.md`).
+A STEP document may carry one self-contained JavaScript animation module in
+its unified sidecar. Author the module as a Python string and pass it to
+`@step(animation=...)`. It exports `clips`; an export the renderer does not
+know is a load error, never ignored. The module has no imports.
 
-```js
-// STEP/arm.step.js — beside arm.step; the viewer loads it by name.
+```python
+ANIMATION = r"""
 export const clips = {
   demo: {
     label: "Demo",
@@ -162,6 +156,10 @@ export const clips = {
     },
   },
 };
+"""
+
+@step(out="../STEP/arm.step", kinematics=KINEMATICS, animation=ANIMATION)
+def arm(): ...
 ```
 
 - `m.get(target)` takes a LABEL (canonical) or occurrence-id refs
@@ -196,15 +194,14 @@ export const clips = {
   mates: animating a jointed part re-describes the motion (a few lines of
   ratio math). That independence is what guarantees choreography edits can
   never invalidate builds.
-- No build reads the file. Nothing declares it: drop it beside the document
-  and the viewer's Animation tab appears on the next load; delete it and the
-  tab goes. A model without one is simply a model without animation.
+- The model build validates and embeds the declaration. A model without
+  `animation=` is simply a model without animation.
 - Targets are checked at LOAD, against the compiled tree: every clip's
   `update(0, m)` runs once when the module loads, and a label or occurrence
   id no part carries is reported in the viewer's Status tab and in
   `snapshot --animation`'s error — not at the first frame that reaches it.
-- Mesh-only models (no `.step`) have no document to sit beside, and so no
-  render module; animation is a STEP-document concern.
+- Mesh-only models (no `.step`) have no document sidecar; animation is a
+  STEP-document concern.
 
 ## Reviewing motion
 
@@ -225,7 +222,7 @@ cadgen step snapshot STEP/arm.step tmp/open.png --kinematics open
 ```
 
 For still evidence of a CLIP, freeze one frame: `--animation` names a clip
-the document's render module (`STEP/arm.step.js`) declares and `--time` the
+the document sidecar's embedded animation declares and `--time` the
 moment in seconds (default 0). The frame
 is composed exactly as the viewer composes it: `--kinematics` sets the base
 pose, and the clip's `update(t, m)` is evaluated at that time on top of it.
@@ -394,7 +391,7 @@ What morph does not carry, said in the summary every time:
 
 The CAD Viewer plays a GLB's embedded rigid, skinned and morph animation through
 its Animation tab in both Inspect and Render. These are baked clips: the STEP
-render module's procedural controls are not available in the exported GLB.
+sidecar module's procedural controls are not available in the exported GLB.
 
 A tube the clip holds in a fixed non-rest shape still ships **posed**, with no
 targets: the rest shape would be the silent freeze this mode exists to prevent.
@@ -403,7 +400,7 @@ An animated export writes ONE node per occurrence instead of the flat,
 colour-grouped mesh a static one writes, so the file is bigger and its parts are
 individually addressable. Only occurrences the clip actually MOVES get channels;
 an occurrence held at a constant offset carries it on its node and nothing else.
-Freshness folds the clip request and the `.step.js` into the export's key, so
+Freshness folds the clip request and the sidecar animation source into the export's key, so
 editing the choreography re-exports even though the STEP has not changed.
 
 `--animation` is GLB's alone, and the CLI is generated from each door's

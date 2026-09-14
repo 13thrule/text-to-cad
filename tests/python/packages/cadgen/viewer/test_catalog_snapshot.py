@@ -93,15 +93,15 @@ def _build_fixture(root: str, cache: str) -> None:
     write("n_array_descriptor.step", "arrd\n")
     package("n_array_descriptor.step", None, raw="[1,2,3]")
     write("o_no_package.step", "nopkg\n")
-    # The render module beside a document: authored, discovered by name.
+    # Animation is embedded in the document-bound JSON sidecar.
     write("r_render_module.step", "render\n")
-    write("r_render_module.step.js", "export const clips = {};\n")
+    write("r_render_module.step.json", json.dumps({"schemaVersion": 9, "documentHash": hashlib.sha256(b"render\n").hexdigest(), "animation": {"language": "javascript", "source": "export const clips = {};"}}))
     package("r_render_module.step", valid)
 
     # --- sidecar variants -------------------------------------------------
     for name, sidecar in (
         ("e_kin", json.dumps({"kinematics": {"joints": []}})),
-        ("f_anim", json.dumps({"animation": {"text": "x"}})),
+        ("f_anim", json.dumps({"animation": {"language": "javascript", "source": "export const clips = {};"}})),
         ("g_array", "[1,2]"),
         ("h_empty_kin", json.dumps({"kinematics": {}})),
         ("i_nulls", json.dumps({"kinematics": None, "animation": None})),
@@ -111,7 +111,7 @@ def _build_fixture(root: str, cache: str) -> None:
         write(f"{name}.step", f"{name}\n")
         if name in {"e_kin", "f_anim", "h_empty_kin", "i_nulls"}:
             payload = json.loads(sidecar)
-            payload["schemaVersion"] = 8
+            payload["schemaVersion"] = 9
             payload["documentHash"] = hashlib.sha256(f"{name}\n".encode()).hexdigest()
             sidecar = json.dumps(payload)
         write(f"{name}.step.json", sidecar)
@@ -126,7 +126,7 @@ def _build_fixture(root: str, cache: str) -> None:
         "p_upper.STP.json",
         json.dumps(
             {
-                "schemaVersion": 8,
+                "schemaVersion": 9,
                 "documentHash": hashlib.sha256(b"upper\n").hexdigest(),
                 "kinematics": {"j": 1},
             }
@@ -231,7 +231,7 @@ def _shape(entries) -> list:
                 "hash" if entry.get("hash") else "",
                 "sourceUrl" if "sourceUrl" in entry else "",
                 "poseUrl" if "poseUrl" in entry else "",
-                "renderModuleUrl" if "renderModuleUrl" in entry else "",
+                "animationHash" if "animationHash" in entry else "",
                 sorted((entry.get("relations") or {}).keys()),
             ]
         )
@@ -301,7 +301,7 @@ class CatalogShapeSnapshot(unittest.TestCase):
         self.assertGreater(len(entries), 100)
         self.assertGreaterEqual(sum(1 for e in entries if e["kind"] == "assembly"), 2)
         self.assertGreaterEqual(sum(1 for e in entries if "poseUrl" in e), 3)
-        self.assertGreaterEqual(sum(1 for e in entries if "renderModuleUrl" in e), 1)
+        self.assertGreaterEqual(sum(1 for e in entries if "animationHash" in e), 1)
         self.assertGreaterEqual(sum(1 for e in entries if "sourceUrl" in e), 5)
         self.assertGreaterEqual(sum(1 for e in entries if "relations" in e), 4)
         self.assertGreaterEqual(sum(1 for e in entries if e["hash"] == ""), 4)

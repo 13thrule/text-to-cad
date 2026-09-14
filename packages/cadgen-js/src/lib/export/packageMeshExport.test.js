@@ -333,11 +333,8 @@ test("a colour run larger than the primitive cap splits into same-colour primiti
 
 // --- the authored PBR finish --------------------------------------------------
 //
-// An occurrence may carry a "material" (cadgen's component_package
-// ._occurrence_material writes it from a shape's `cad_material`): the same five
-// channels the viewer overrides its theme with. It has to reach the file, or an export
-// and the viewport disagree about the same document -- and by triangle area most of a
-// real assembly is metal, which the writer's plastic default inverts rather than dulls.
+// Named sidecar materials resolve onto occurrence PBR channels. Export must
+// preserve the same finish the viewer uses for that document.
 
 const BRUSHED = { roughness: 0.35, metalness: 0.9 };
 const POLISHED = { roughness: 0.08, metalness: 0.9, clearcoat: 0.7, clearcoatRoughness: 0.1 };
@@ -366,6 +363,23 @@ test("an occurrence's material reaches the GLB's pbrMetallicRoughness and clearc
   assert.equal(gltf.extensionsRequired, undefined);
 });
 
+test("named material opacity multiplies the STEP occurrence alpha", () => {
+  const descriptor = descriptorWith([
+    {
+      id: "o1",
+      component: "c0",
+      transform: IDENTITY,
+      color: [0.5, 0.5, 0.5, 0.4],
+      material: { roughness: 0.42, opacity: 0.5 },
+    },
+  ]);
+  const mesh = buildPackageMeshPrimitives(descriptor, new Map([["c0", triangleTessellation()]]));
+  assert.equal(mesh.primitives[0].material.opacity, 0.2);
+  const gltf = exportGltf(mesh, { name: "alpha" });
+  assert.ok(Math.abs(gltf.materials[0].pbrMetallicRoughness.baseColorFactor[3] - 0.2) < 1e-12);
+  assert.equal(gltf.materials[0].alphaMode, "BLEND");
+});
+
 test("two same-colour bodies with different finishes stay TWO materials", () => {
   // The grouping key was the colour alone, so a brushed and a polished part sharing a
   // colour used to weld into one primitive and the file could only show one finish.
@@ -391,6 +405,33 @@ test("two same-colour bodies with different finishes stay TWO materials", () => 
   );
 });
 
+test("distinct named materials stay distinct when their current channels match", () => {
+  const descriptor = descriptorWith([
+    {
+      id: "o1",
+      component: "c0",
+      transform: IDENTITY,
+      color: [0.5, 0.5, 0.5, 1],
+      materialId: "brushed-a",
+      materialName: "Brushed A",
+      material: BRUSHED,
+    },
+    {
+      id: "o2",
+      component: "c0",
+      transform: IDENTITY,
+      color: [0.5, 0.5, 0.5, 1],
+      materialId: "brushed-b",
+      materialName: "Brushed B",
+      material: BRUSHED,
+    },
+  ]);
+  const mesh = buildPackageMeshPrimitives(descriptor, new Map([["c0", triangleTessellation()]]));
+  assert.deepEqual(mesh.primitives.map((primitive) => primitive.materialId), ["brushed-a", "brushed-b"]);
+  const gltf = exportGltf(mesh, { name: "named" });
+  assert.deepEqual(gltf.materials.map((material) => material.name), ["Brushed A", "Brushed B"]);
+});
+
 test("an occurrence with no material collapses with its same-colour neighbours as before", () => {
   const descriptor = descriptorWith([
     { id: "o1", component: "c0", transform: IDENTITY, color: [0.5, 0.5, 0.5, 1] },
@@ -404,7 +445,7 @@ test("an occurrence with no material collapses with its same-colour neighbours a
 // Whole-file byte identity, including colour grouping, mirrored geometry, and defaults
 // for an unauthored finish. Linear RGB is serialized at canonical Float32 precision;
 // the previous Float64 pin varied with the JS engine's exponentiation implementation.
-const MATERIALLESS_GLB_SHA256 = "4c699fd6a2cdf5e8b24231ec2a09d5be72c61aa84607f11b2afc1cc4c557f064";
+const MATERIALLESS_GLB_SHA256 = "7c81308a9424856f853480176143b3f8b0cb862fd8be8865787fdf391ea6f8f1";
 
 test("a materialless package has canonical deterministic GLB bytes", () => {
   const tessellation = () => triangleTessellation({

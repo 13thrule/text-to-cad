@@ -99,7 +99,7 @@ console.log(JSON.stringify(cases.map((job) => {{
                 python_accepted.append(False)
             else:
                 python_accepted.append(True)
-        self.assertEqual([True] * 5 + [False] * 15, python_accepted)
+        self.assertEqual([True] * 5 + [False] * 6 + [True] * 2 + [False] * 7, python_accepted)
         self.assertEqual(python_accepted, json.loads(completed.stdout))
 
     def test_render_envelope_keys_match(self):

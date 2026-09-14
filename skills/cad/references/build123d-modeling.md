@@ -177,26 +177,33 @@ looks like it worked if you only check the STEP. Colour every leaf.
 ## Finish
 
 Colour alone cannot tell cast from machined from carbon: those differ in how
-they respond to light. A leaf shape may carry a `cad_material` dict for its
-intrinsic finish. These values survive cached composition into parent assemblies,
-and Render, snapshots and GLB exports consume the same resolved appearance.
-Inspect retains color and opacity but uses matte workbench shading:
+they respond to light. Declare reusable named materials on `@step`; target a
+part label or a group label, which expands to its leaf occurrences. These
+values survive cached composition into parent assemblies, and Render,
+snapshots and GLB exports consume the same resolved appearance. Inspect
+retains color and opacity but uses matte workbench shading:
 
 ```python
-housing.cad_material = {"roughness": 0.85, "metalness": 0.2}            # as-cast
-journal.cad_material = {"roughness": 0.25, "metalness": 0.9}            # ground steel
-lacquer.cad_material = {"roughness": 0.4, "clearcoat": 1.0, "clearcoatRoughness": 0.1}
-window.cad_material = {"opacity": 0.35}
+@step(materials={
+    "definitions": {
+        "cast": {"name": "As-cast steel", "roughness": 0.85, "metalness": 0.2},
+        "ground": {"name": "Ground steel", "roughness": 0.25, "metalness": 0.9},
+    },
+    "assignments": [
+        {"targets": ["#housing"], "material": "cast"},
+        {"targets": ["#journal"], "material": "ground"},
+    ],
+})
+def gearbox():
+    ...
 ```
 
-Keys: `roughness`, `metalness`, `clearcoat`, `clearcoatRoughness`, `opacity`,
-each clamped to 0..1; unknown keys are ignored. Like colour, it belongs on the
-LEAF — a group compound's `cad_material` reaches nothing — and it is a
-material appearance declaration, not a geometry change. STEP cannot carry these
-PBR channels, so a generated STEP's `.step.json` preserves them in `appearance`,
-bound to canonical occurrences and the saved document hash. They also remain in
-the pinned source tree for composition. The adjacent `.step.js` holds document
-animation clips; it does not currently declare material overrides.
+Keys: optional `name`, `baseColor`, `roughness`, `metalness`, `clearcoat`,
+`clearcoatRoughness`, and `opacity`. Numeric channels are strict finite 0..1
+values; `baseColor` is `#RRGGBB`. STEP cannot carry these PBR channels, so a
+generated STEP's `.step.json` preserves the named library and its canonical
+leaf assignments. `baseColor` annotates rendering and export only; it does not
+change STEP colors or bytes. Setting `cad_material` dynamically is an error.
 
 ## Rotating a plane
 

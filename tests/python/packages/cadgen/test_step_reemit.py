@@ -17,6 +17,7 @@ re-emitting.
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -62,6 +63,9 @@ ANIM_JS = "export const clips = { demo: { duration: 2, update(t, m) {} } };\n"
 
 class StepReemitTests(unittest.TestCase):
     def setUp(self) -> None:
+        offline = mock.patch.dict(os.environ, {"CADGEN_DAEMON": "0"})
+        offline.start()
+        self.addCleanup(offline.stop)
         self._roots = IsolatedCadRoots(self, prefix="cadreemit-")
         self._tempdir = self._roots.temporary_cad_directory(prefix="tmp-cadreemit-")
         self.root = Path(self._tempdir.name)
@@ -118,7 +122,7 @@ class StepReemitTests(unittest.TestCase):
         self.assertFalse(result.skipped)
 
         sidecar = self._sidecar()
-        self.assertEqual(8, sidecar["schemaVersion"])
+        self.assertEqual(9, sidecar["schemaVersion"])
         # Declarations only: no source tie of any kind in the file
         # beside the artifact. The freshness identity — sourceKind "step", the
         # INPUT's content hash — lives in the provenance RECORD.
@@ -135,8 +139,7 @@ class StepReemitTests(unittest.TestCase):
         self.assertEqual("o1.1", mate["parentId"])
         self.assertEqual("o1.2", mate["childId"])
         self.assertEqual({"value": [0.0, 90.0]}, mate["limits"])
-        # Choreography is not an annotation: the render module beside OUT is
-        # the viewer's, and the sidecar carries kinematics only.
+        # This build declares kinematics only.
         self.assertNotIn("animation", sidecar)
 
     def test_the_output_is_ours_and_byte_deterministic(self) -> None:
@@ -194,8 +197,18 @@ class StepReemitTests(unittest.TestCase):
         from cadgen.store.gate import stale
         from cadgen.store.records import read_record
 
-        self._build(kinematics=json.dumps(KINEMATICS))
-        result = self._build()
+        materials = {"definitions": {"paint": {"baseColor": "#336699"}},
+                     "assignments": [{"targets": ["#arm"], "material": "paint"}]}
+        self._build(kinematics=json.dumps(KINEMATICS), materials=materials, animation=ANIM_JS)
+        before = self.out.read_bytes()
+        materials["definitions"]["paint"]["baseColor"] = "#996633"
+        with mock.patch("cadgen._internal.step_reemit._emit", side_effect=AssertionError("annotation edit emitted STEP")):
+            updated = self._build(kinematics=json.dumps(KINEMATICS), materials=materials, animation=ANIM_JS.replace("demo", "swing"))
+            self.assertTrue(updated.sidecar_only)
+            self.assertEqual("#996633", self._sidecar()["appearance"]["materials"]["paint"]["baseColor"])
+            self.assertIn("swing", self._sidecar()["animation"]["source"])
+            result = self._build()
+        self.assertEqual(before, self.out.read_bytes())
         sidecar = source_sidecar_path(self.out).resolve()
         self.assertTrue(result.sidecar_only)
         self.assertFalse(sidecar.exists())
@@ -209,7 +222,7 @@ class StepReemitTests(unittest.TestCase):
         sidecar = source_sidecar_path(self.out)
         write_source_sidecar(
             self.out,
-            {"appearance": {"occurrences": {"unexpected": {"roughness": 0.2}}}},
+            {"appearance": {"materials": {"finish": {"name": "Finish", "roughness": 0.2}}, "assignments": {"unexpected": "finish"}}},
         )
         self.assertTrue(sidecar.is_file())
         result = self._build()
@@ -222,10 +235,10 @@ class StepReemitTests(unittest.TestCase):
         from cadgen.store.records import read_record, write_record
 
         input_leaf = (result_descriptor_for(self.vendor) or {})["occurrences"][0]["id"]
-        material = {"roughness": 0.2, "metalness": 0.7, "opacity": 0.8}
+        material = {"name": "Finish", "roughness": 0.2, "metalness": 0.7, "opacity": 0.8}
         write_source_sidecar(
             self.vendor,
-            {"appearance": {"occurrences": {input_leaf: material}}},
+            {"appearance": {"materials": {"finish": material}, "assignments": {input_leaf: "finish"}}},
         )
         self._build(kinematics=json.dumps(KINEMATICS))
 
@@ -239,7 +252,7 @@ class StepReemitTests(unittest.TestCase):
             self.out,
             {
                 "kinematics": current["kinematics"],
-                "appearance": {"occurrences": {output_leaf: material}},
+                "appearance": {"materials": {"finish": material}, "assignments": {output_leaf: "finish"}},
             },
         )
         record = read_record(self.out) or {}
@@ -247,6 +260,7 @@ class StepReemitTests(unittest.TestCase):
         output_sidecar = source_sidecar_path(self.out).resolve()
         outputs[str(output_sidecar)] = {"sha256": artifact_file_hash(output_sidecar)}
         record["outputs"] = outputs
+        record["intrinsicAppearance"] = {"materials": {"finish": material}, "assignments": {output_leaf: "finish"}}
         write_record(self.out, record)
 
         widened = json.loads(json.dumps(KINEMATICS))
@@ -254,8 +268,8 @@ class StepReemitTests(unittest.TestCase):
         result = self._build(kinematics=json.dumps(widened))
         self.assertTrue(result.sidecar_only)
         self.assertEqual(
-            {output_leaf: material},
-            (read_source_sidecar(self.out) or {})["appearance"]["occurrences"],
+            {"materials": {"finish": material}, "assignments": {output_leaf: "finish"}},
+            (read_source_sidecar(self.out) or {})["appearance"],
         )
 
     def test_reemit_refuses_when_the_parsed_snapshot_is_not_the_hashed_input(self) -> None:
@@ -297,9 +311,13 @@ class StepReemitTests(unittest.TestCase):
         self._build(kinematics=str(spec))
         self.assertEqual("swing", self._sidecar()["kinematics"]["mates"][0]["name"])
 
-    def test_animation_is_not_a_build_argument(self) -> None:
-        with self.assertRaisesRegex(TypeError, "unexpected keyword argument 'animation'"):
-            self._build(animation=self.root / "nope.anim.js")
+    def test_animation_file_is_embedded_without_a_path_dependency(self) -> None:
+        module = self.root / "source.js"
+        module.write_text(ANIM_JS, encoding="utf-8")
+        self._build(animation=str(module))
+        self.assertEqual({"language": "javascript", "source": ANIM_JS}, self._sidecar()["animation"])
+        module.unlink()
+        self.assertEqual(ANIM_JS, self._sidecar()["animation"]["source"])
 
 
 if __name__ == "__main__":

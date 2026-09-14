@@ -1,10 +1,9 @@
 """kinematics= end to end: declaration -> resolved sidecar.
 
 The decoration-time vocabulary is pinned in test_kinematics_def; this covers
-the BUILD half (design/pose-animation-split.md): mate refs validate against
+the build half: mate refs validate against
 real occurrences, axis selector refs resolve to world numbers, the block lands
-in the ``.step.json`` sidecar (kinematics only — choreography is the render
-module beside the document, which no build reads). No declaration moves
+in the unified ``.step.json`` sidecar. No declaration moves
 geometry: the tree is the model's return value as stored.
 """
 
@@ -127,7 +126,7 @@ class KinematicsBuildTests(unittest.TestCase):
         self.assertEqual(0, self._build(script))
 
         sidecar = self._sidecar(script)
-        self.assertEqual(sidecar["schemaVersion"], 8)
+        self.assertEqual(sidecar["schemaVersion"], 9)
         # The sidecar file carries the branded suffix.
         self.assertTrue((self.root / "hinge.step.json").is_file())
 
@@ -239,13 +238,6 @@ class KinematicsBuildTests(unittest.TestCase):
             encoding="utf-8",
         )
         with self.assertRaisesRegex(ValueError, "'#wrist' does not name an occurrence"):
-            self._build(script)
-
-    def test_animation_is_not_a_decorator_argument(self) -> None:
-        # No decorator names JavaScript: the render module beside the document
-        # is discovered by name. `animation=` is an unknown argument like any other.
-        script = self._write("noanim.py", extra=', animation="nope.anim.js"')
-        with self.assertRaisesRegex(TypeError, "unexpected keyword argument: animation"):
             self._build(script)
 
     def test_the_root_exposes_no_pose_surface(self) -> None:

@@ -39,8 +39,14 @@ from cadgen.store.records import (
 from tests.python.support.tmp_root import generated_cad_directory
 
 
-ROUGH = {"occurrences": {"o1": {"roughness": 0.8, "metalness": 0.1}}}
-POLISHED = {"occurrences": {"o1": {"roughness": 0.1, "metalness": 0.8}}}
+ROUGH = {
+    "materials": {"rough": {"name": "Rough", "roughness": 0.8, "metalness": 0.1}},
+    "assignments": {"o1": "rough"},
+}
+POLISHED = {
+    "materials": {"polished": {"name": "Polished", "roughness": 0.1, "metalness": 0.8}},
+    "assignments": {"o1": "polished"},
+}
 
 
 class SavedAppearanceTest(unittest.TestCase):
@@ -55,52 +61,50 @@ class SavedAppearanceTest(unittest.TestCase):
 
     def test_normalization_is_canonical_owned_and_strict(self) -> None:
         source = {
-            "occurrences": {
-                "o2": {"opacity": 1, "clearcoatRoughness": 0.75},
-                "o1": {"roughness": 0, "metalness": 0.25, "clearcoat": 0.5},
-            }
+            "materials": {
+                "coat": {"name": "Coat", "opacity": 1, "clearcoatRoughness": 0.75},
+                "metal": {"name": "Metal", "roughness": 0, "metalness": 0.25, "clearcoat": 0.5},
+            },
+            "assignments": {"o2": "coat", "o1": "metal"},
         }
         normalized = normalize_appearance(source)
 
         self.assertEqual(
             {
-                "occurrences": {
-                    "o1": {"clearcoat": 0.5, "metalness": 0.25, "roughness": 0.0},
-                    "o2": {"clearcoatRoughness": 0.75, "opacity": 1.0},
-                }
+                "materials": {
+                    "coat": {"name": "Coat", "clearcoatRoughness": 0.75, "opacity": 1.0},
+                    "metal": {"name": "Metal", "clearcoat": 0.5, "metalness": 0.25, "roughness": 0.0},
+                },
+                "assignments": {"o1": "metal", "o2": "coat"},
             },
             normalized,
         )
         self.assertIsNot(source, normalized)
-        self.assertIsNot(source["occurrences"]["o1"], normalized["occurrences"]["o1"])
-        normalized["occurrences"]["o1"]["roughness"] = 0.9
-        self.assertEqual(0, source["occurrences"]["o1"]["roughness"])
+        self.assertIsNot(source["materials"]["metal"], normalized["materials"]["metal"])
+        normalized["materials"]["metal"]["roughness"] = 0.9
+        self.assertEqual(0, source["materials"]["metal"]["roughness"])
 
         invalid = (
             {},
-            {"occurrences": {}, "extra": 1},
-            {"occurrences": []},
-            {"occurrences": {"": {"roughness": 0.5}}},
-            {"occurrences": {"   ": {"roughness": 0.5}}},
-            {"occurrences": {"o1": {}}},
-            {"occurrences": {"o1": {"color": 0.5}}},
-            {"occurrences": {"o1": {"roughness": True}}},
-            {"occurrences": {"o1": {"roughness": "0.5"}}},
-            {"occurrences": {"o1": {"roughness": float("nan")}}},
-            {"occurrences": {"o1": {"roughness": float("inf")}}},
-            {"occurrences": {"o1": {"roughness": -0.01}}},
-            {"occurrences": {"o1": {"roughness": 1.01}}},
+            {"materials": {}, "assignments": {}, "extra": 1},
+            {"materials": [], "assignments": {}},
+            {"materials": {"m": {"name": "M"}}, "assignments": {"": "m"}},
+            {"materials": {"m": {"name": "M"}}, "assignments": {"o1": "missing"}},
+            {"materials": {"m": {"name": "M", "color": 0.5}}, "assignments": {"o1": "m"}},
+            {"materials": {"m": {"name": "M", "roughness": True}}, "assignments": {"o1": "m"}},
+            {"materials": {"m": {"name": "M", "roughness": float("nan")}}, "assignments": {"o1": "m"}},
+            {"materials": {"m": {"name": "M", "roughness": 1.01}}, "assignments": {"o1": "m"}},
         )
         for block in invalid:
             with self.subTest(block=block), self.assertRaises(SidecarAppearanceError):
                 normalize_appearance(block)
 
     def test_digest_is_canonical_and_includes_absence(self) -> None:
-        reordered = {"occurrences": {"o1": {"metalness": 0.1, "roughness": 0.8}}}
+        reordered = {"assignments": {"o1": "rough"}, "materials": {"rough": {"metalness": 0.1, "roughness": 0.8, "name": "Rough"}}}
 
         self.assertEqual(appearance_digest(ROUGH), appearance_digest(reordered))
         self.assertNotEqual(appearance_digest(ROUGH), appearance_digest(POLISHED))
-        self.assertEqual(appearance_digest(None), appearance_digest({"occurrences": {}}))
+        self.assertEqual(appearance_digest(None), appearance_digest({"materials": {}, "assignments": {}}))
         self.assertNotEqual(appearance_digest(None), appearance_digest(ROUGH))
 
     def test_apply_appearance_returns_a_fresh_descriptor_and_rejects_missing_targets(self) -> None:
@@ -113,26 +117,39 @@ class SavedAppearanceTest(unittest.TestCase):
             "assembly": {"root": {"children": [{"id": "o1"}]}},
         }
         block = {
-            "occurrences": {
-                "o1": {"roughness": 0.8},
-                "o2": {"metalness": 0.25},
-            }
+            "materials": {
+                "rough": {"name": "Rough", "baseColor": "#123456", "roughness": 0.8},
+                "metal": {"name": "Metal", "metalness": 0.25},
+            },
+            "assignments": {"o1": "rough", "o2": "metal"},
         }
 
         applied = apply_appearance(descriptor, block)
-        self.assertEqual({"roughness": 0.8}, applied["occurrences"][0]["material"])
-        self.assertEqual({"metalness": 0.25}, applied["occurrences"][1]["material"])
+        self.assertEqual(
+            {"roughness": 0.8, "metalness": 0.03, "clearcoat": 0.0, "clearcoatRoughness": 0.26, "opacity": 1.0},
+            applied["occurrences"][0]["material"],
+        )
+        self.assertEqual(
+            {"roughness": 0.42, "metalness": 0.25, "clearcoat": 0.0, "clearcoatRoughness": 0.26, "opacity": 1.0},
+            applied["occurrences"][1]["material"],
+        )
+        self.assertEqual("rough", applied["occurrences"][0]["materialId"])
+        self.assertEqual("Rough", applied["occurrences"][0]["materialName"])
+        self.assertEqual("#123456", applied["occurrences"][0]["baseColor"])
+        self.assertEqual("metal", applied["occurrences"][1]["materialId"])
+        self.assertEqual("Metal", applied["occurrences"][1]["materialName"])
+        self.assertNotIn("baseColor", applied["occurrences"][1])
         self.assertEqual({"roughness": 0.4}, descriptor["occurrences"][0]["material"])
         self.assertNotIn("material", descriptor["occurrences"][1])
         second_consumer = apply_appearance(descriptor, block)
-        self.assertIsNot(applied["occurrences"][0]["material"], block["occurrences"]["o1"])
+        self.assertIsNot(applied["occurrences"][0]["material"], block["materials"]["rough"])
         self.assertIsNot(
             applied["occurrences"][0]["material"],
             second_consumer["occurrences"][0]["material"],
         )
         applied["occurrences"][0]["material"]["roughness"] = 0.2
         self.assertEqual(0.8, second_consumer["occurrences"][0]["material"]["roughness"])
-        self.assertEqual(0.8, block["occurrences"]["o1"]["roughness"])
+        self.assertEqual(0.8, block["materials"]["rough"]["roughness"])
         applied["components"]["c1"]["surf"] = "changed"
         applied["assembly"]["root"]["children"][0]["id"] = "changed"
         self.assertEqual("a", descriptor["components"]["c1"]["surf"])
@@ -144,14 +161,14 @@ class SavedAppearanceTest(unittest.TestCase):
         self.assertIsNot(descriptor["occurrences"], absent["occurrences"])
 
         with self.assertRaisesRegex(SidecarAppearanceError, "missing document occurrence missing"):
-            apply_appearance(descriptor, {"occurrences": {"missing": {"opacity": 0.5}}})
+            apply_appearance(descriptor, {"materials": {"m": {"name": "M", "opacity": 0.5}}, "assignments": {"missing": "m"}})
         with self.assertRaisesRegex(SidecarAppearanceError, "missing document occurrence group"):
             apply_appearance(
                 {"occurrences": [{"id": "group", "children": []}]},
-                {"occurrences": {"group": {"opacity": 0.5}}},
+                {"materials": {"m": {"name": "M", "opacity": 0.5}}, "assignments": {"group": "m"}},
             )
 
-    def test_schema_eight_sidecars_bind_appearance_to_actual_step_bytes(self) -> None:
+    def test_schema_nine_sidecars_bind_appearance_to_actual_step_bytes(self) -> None:
         first = self.root / "first.step"
         second = self.root / "renamed.step"
         step_bytes = b"ISO-10303-21;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n"
@@ -165,7 +182,7 @@ class SavedAppearanceTest(unittest.TestCase):
         expected_hash = hashlib.sha256(step_bytes).hexdigest()
 
         self.assertEqual(SOURCE_SIDECAR_SCHEMA_VERSION, first_sidecar["schemaVersion"])
-        self.assertEqual(8, first_sidecar["schemaVersion"])
+        self.assertEqual(9, first_sidecar["schemaVersion"])
         self.assertEqual(expected_hash, first_sidecar["documentHash"])
         self.assertEqual(expected_hash, second_sidecar["documentHash"])
         self.assertEqual(ROUGH, first_sidecar["appearance"])
@@ -178,14 +195,14 @@ class SavedAppearanceTest(unittest.TestCase):
         invalid = self.root / "invalid.step"
         invalid.write_bytes(step_bytes)
         with self.assertRaises(SidecarAppearanceError):
-            write_source_sidecar(invalid, {"appearance": {"occurrences": {"o1": {"opacity": False}}}})
+            write_source_sidecar(invalid, {"appearance": {"materials": {"m": {"name": "M", "opacity": False}}, "assignments": {"o1": "m"}}})
         self.assertFalse(source_sidecar_path(invalid).exists())
 
     def test_model_records_cut_over_to_six_while_documents_remain_four(self) -> None:
         current_tree = "c" * 64
         model = self.root / "model.step"
         model.write_bytes(b"model")
-        for schema in (4, 5):
+        for schema in (4, 5, 6):
             with self.subTest(retired_schema=schema):
                 write_entry(
                     "model",
@@ -197,7 +214,7 @@ class SavedAppearanceTest(unittest.TestCase):
         write_record(model, {"tree": current_tree, "outputs": {}})
         current_record = read_record(model)
         self.assertEqual(RECORD_SCHEMA_VERSION, current_record["schemaVersion"])
-        self.assertEqual(6, current_record["schemaVersion"])
+        self.assertEqual(7, current_record["schemaVersion"])
         self.assertEqual(current_tree, current_record["tree"])
 
         document_hash = "d" * 64

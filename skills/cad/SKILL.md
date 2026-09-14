@@ -61,7 +61,7 @@ The command surface (the `cadgen` console script, installed with the package):
 
 ```bash
 python <model>.py            # its __main__ calls the model, which builds it
-cadgen step build IN OUT     # re-emit an existing STEP as a new one, with kinematics
+cadgen step build IN OUT     # re-emit an existing STEP with durable annotations
 cadgen stl build ...         # one door per mesh format; `3mf` and `glb` are the others
 cadgen step inspect ...      # refs, measure, align, frame, diff
 cadgen step snapshot ...     # PNG visual review packets (and clip videos), for STEP
@@ -72,7 +72,7 @@ cadgen daemon status         # the warm workers and the jobs they are running
 
 **Scripts are RUN; commands take DOCUMENTS.** `python model.py` is the one
 source door — it writes every output the model declares and, for STEP files
-with kinematics or intrinsic material finishes, their sidecar. Every
+with kinematics, intrinsic material finishes, or animation, their sidecar. Every
 command above takes a `.step`/`.stl`/`.dxf` FILE, and one handed a `.py` says
 so. A door asks one question of a document: does the store have a tree for
 this file's bytes? If so it reads it; if not it compiles one from the bytes as
@@ -129,18 +129,19 @@ The rules, each enforced by the decorator or the build:
   print-only parts and render assets. `references/supported-exports.md`.
 - **Decorator arguments never change the geometry.** They decide where the
   files land (`out=`), how they are written (`mesh_tolerance=`,
-  `mesh_angular_tolerance=`) and what the sidecar declares (`kinematics=`).
+  `mesh_angular_tolerance=`) and what the sidecar declares (`kinematics=`,
+  `materials=`, `animation=`).
   The geometry is the return value and nothing else: a `Compound` placing
   children is packaged as occurrences, a single solid as one component, and
   `part`/`assembly` is read off the tree. There is no `kind=` and no bake
   point — a posed or differently configured export is authored geometry, or
   another model.
 - **A sidecar only when strictly necessary.** `<name>.step.json` is written
-  only for `kinematics=` or intrinsic `cad_material` finishes on leaf shapes.
-  It contains resolved declarations bound to the saved STEP's byte hash; a
-  model with neither has no sidecar. Rebuilding removes dropped sections and
-  deletes an empty sidecar. Mesh-output declarations live in the store record;
-  animation clips live in the authored `.step.js` beside the document.
+  only when `kinematics=`, `materials=`, or `animation=` declares useful
+  annotations. It contains resolved declarations bound to the saved STEP's
+  byte hash; a model with none has no sidecar. Rebuilding removes dropped
+  sections and deletes an empty sidecar. Mesh-output declarations live in the
+  store record.
 - **One model per file, as a rule of thumb.** A model's identity is its file
   plus its function (`plate.py::plate`); a file holding one model is named by
   its path alone. A file MAY hold several (a small family of variants): each is
@@ -348,7 +349,7 @@ Load these files only when their trigger applies:
 - `references/inspection-and-validation.md` — validation sequence, selector refs, facts, planes, measurements, alignment, diff, frame, and validation reporting.
 - `references/snapshot-review.md` — mandatory snapshot policy, packet sizing, targeted views, and converting visual findings into geometry checks.
 - `references/positioning.md` — part-local datums and origins, assembly transforms, build123d joints, CLI alignment validation, and positioning reports.
-- `references/kinematics.md` — articulating, posing, or animating a STEP model: typed mates (`kinematics=` on the decorators — mates, couplings, pose presets, export-at-pose), and the render module beside the document (`<name>.step.js`: the choreography contract, loaded by the viewer, read by no build). Also how a clip leaves the repo: `snapshot --video` for pixels, `glb build --animation` for a GLB that carries the motion itself.
+- `references/kinematics.md` — articulating, posing, or animating a STEP model: typed mates (`kinematics=` on the decorators — mates, couplings, pose presets, export-at-pose), and the embedded `animation=` JavaScript module. Also how a clip leaves the repo: `snapshot --video` for pixels, `glb build --animation` for a GLB that carries the motion itself.
 - `references/supported-exports.md` — STL/3MF/native GLB outputs: declared exports, mesh-only models, the `cadgen stl|3mf|glb build` doors, and `glb build --animation` (a clip baked into the file as glTF animation).
 - `references/repair-loop.md` — diagnosis and repair procedures.
 - `references/project-layout.md` — project structure for anything bigger than a couple of loose models: `src/` for model scripts and shared code, format folders (`STEP/`, `DXF/`, `STL/`) for raw outputs, naming, and commit policy; `references/project-template.md` is the copyable exemplar. Read them when a project has more than a couple of models or when asked how to organise CAD code and artifacts.

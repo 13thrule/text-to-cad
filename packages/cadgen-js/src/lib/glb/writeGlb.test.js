@@ -397,8 +397,8 @@ test("a primitive with no material keeps the writer's plastic defaults", () => {
     primitives: [{ positions: cubeSoup(4), color: "#b0b6bb" }],
   }, { preset: "export" }));
   const pbr = gltf.materials[0].pbrMetallicRoughness;
-  assert.equal(pbr.roughnessFactor, 0.72);
-  assert.equal(pbr.metallicFactor, 0.02);
+  assert.equal(pbr.roughnessFactor, 0.42);
+  assert.equal(pbr.metallicFactor, 0.03);
   assert.equal(gltf.materials[0].extensions, undefined);
 });
 
@@ -408,7 +408,7 @@ test("a material's channels are independent: an unauthored one falls back, not t
   }, { preset: "export" }));
   const pbr = gltf.materials[0].pbrMetallicRoughness;
   assert.equal(pbr.metallicFactor, 1);
-  assert.equal(pbr.roughnessFactor, 0.72);
+  assert.equal(pbr.roughnessFactor, 0.42);
 });
 
 test("clearcoat rides KHR_materials_clearcoat, declared USED but never REQUIRED", () => {

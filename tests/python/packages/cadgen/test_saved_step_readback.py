@@ -36,18 +36,18 @@ class SavedStepReadbackTest(unittest.TestCase):
         shape.cad_face_ordinal_colors = {1: (1., 0., 0., 1.), 3: (0., 0., 1., 1.)}
         return shape
 
-    def build(self, shape=None, *, force=False):
+    def build(self, shape=None, *, force=False, materials=None):
         from cadgen.store.build import build_tree_through_step
 
         return build_tree_through_step(
             self.shape() if shape is None else shape, self.root / "part.step",
-            root_name="root", force=force,
+            root_name="root", force=force, materials=materials,
         )
 
-    def seed(self, shape=None):
+    def seed(self, shape=None, *, materials=None):
         from cadgen.store.records import note_document_tree
 
-        result = self.build(shape)
+        result = self.build(shape, materials=materials)
         note_document_tree(result[3], result[2]["documentTree"])
         return result
 
@@ -144,17 +144,21 @@ class SavedStepReadbackTest(unittest.TestCase):
 
     def test_current_pbr_is_rebound_without_reading_source_records_or_staged_sidecars(self):
         shape = self.shape()
-        shape.cad_material = {"roughness": .2, "metalness": .6}
-        expected = self.seed(shape)
+        first_finish = {"name": "First", "roughness": .2, "metalness": .6}
+        second_finish = {"name": "Second", "roughness": .8, "metalness": .1}
+        declaration = lambda finish: {
+            "definitions": {"finish": finish},
+            "assignments": [{"targets": ["#part"], "material": "finish"}],
+        }
+        expected = self.seed(shape, materials=declaration(first_finish))
         (self.root / "part.step.json").write_text("not a sidecar", encoding="utf-8")
-        shape.cad_material = {"roughness": .8, "metalness": .1}
         with mock.patch("cadgen._internal.step_scene_loader.load_step_scene", side_effect=AssertionError("cache hit parsed STEP")), \
                 mock.patch("cadgen.store.records.read_record", side_effect=AssertionError("read source record")):
-            changed = self.build(shape)
+            changed = self.build(shape, materials=declaration(second_finish))
         self.assertEqual(expected[3], changed[3])
         self.assertEqual(expected[2]["documentTree"], changed[2]["documentTree"])
         self.assertNotEqual(expected[2]["documentAppearance"], changed[2]["documentAppearance"])
-        self.assertTrue(all(value == shape.cad_material for value in changed[2]["documentAppearance"].values()))
+        self.assertTrue(all(value == second_finish for value in changed[2]["documentAppearance"].values()))
 
     def test_nested_located_root_and_repeated_prototypes_keep_names_placements_and_colors(self):
         from build123d import Compound, Location
@@ -163,14 +167,17 @@ class SavedStepReadbackTest(unittest.TestCase):
         first.label, first.color = "first", (1, 0, 0, 1)
         second = self.shape().moved(Location((8, 0, 0)))
         second.label, second.color = "second", (0, 1, 0, 1)
-        second.cad_material = {"roughness": .7}
         group = Compound(children=[first, second], label="pair").moved(Location((20, 5, 0), (0, 0, 30)))
         shape = Compound(children=[group], label="root").moved(Location((3, 4, 5), (10, 0, 0)))
-        expected = self.seed(shape)
+        materials = {
+            "definitions": {"finish": {"name": "Finish", "roughness": .7}},
+            "assignments": [{"targets": ["#second"], "material": "finish"}],
+        }
+        expected = self.seed(shape, materials=materials)
         with mock.patch("cadgen._internal.step_scene_loader.load_step_scene", side_effect=AssertionError("cache hit parsed STEP")):
-            warm = self.build(shape)
+            warm = self.build(shape, materials=materials)
         self.assert_same_document(expected, warm)
-        self.assert_same_document(expected, self.build(shape, force=True))
+        self.assert_same_document(expected, self.build(shape, force=True, materials=materials))
 
     def test_indexed_missing_or_digest_mismatched_objects_reparse_and_repair(self):
         from cadgen._internal.step_scene_loader import load_step_scene

@@ -432,6 +432,12 @@ export function composedPackageOwnsPartRow(meshData, part) {
 function equalAssemblyLeaf(previous, part) {
   return previous.componentId === part?.componentId
     && previous.color === part?.color
+    && previous.sourceColor === part?.sourceColor
+    && previous.materialId === part?.materialId
+    && previous.materialName === part?.materialName
+    && equalJsonValue(previous.material, part?.material)
+    && previous.opacity === part?.opacity
+    && previous.sourceOpacity === part?.sourceOpacity
     && equalVector(previous.transform, part?.transform)
     && equalBounds(previous.bounds, part?.bounds)
     && equalBounds(previous.sourceBounds, part?.sourceBounds);
@@ -506,6 +512,9 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid,
     const mirrored = matrixDeterminant3(matrix) < 0;
     const cid = String(occurrence?.component || "").trim();
     const overrideColor = toVectorArray(occurrence?.color);
+    const overrideBaseColor = /^#[0-9a-fA-F]{6}$/.test(String(occurrence?.baseColor || ""))
+      ? String(occurrence.baseColor).toUpperCase()
+      : "";
     // Optional per-occurrence PBR overrides (descriptor "material") and
     // opacity (4th color channel or material.opacity). linearRgbToHex drops
     // alpha by design, so opacity must ride separately.
@@ -519,16 +528,22 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid,
     const overrideAlpha = Array.isArray(rawColor) && rawColor.length >= 4 && Number.isFinite(Number(rawColor[3]))
       ? Number(rawColor[3])
       : null;
-    const overrideOpacity = overrideAlpha !== null && overrideAlpha < 0.999
-      ? overrideAlpha
-      : (overrideMaterial && Number.isFinite(Number(overrideMaterial.opacity)) ? Number(overrideMaterial.opacity) : null);
+    const materialOpacity = overrideMaterial && Number.isFinite(Number(overrideMaterial.opacity))
+      ? Math.min(Math.max(Number(overrideMaterial.opacity), 0), 1)
+      : 1;
+    const componentOpacity = Number(sourceParts[0]?.opacity);
+    const sourceOpacity = overrideAlpha === null
+      ? (Number.isFinite(componentOpacity) ? Math.min(Math.max(componentOpacity, 0), 1) : 1)
+      : Math.min(Math.max(overrideAlpha, 0), 1);
+    const overrideOpacity = sourceOpacity * materialOpacity;
+    const sourceColor = (overrideColor && linearRgbToHex(overrideColor)) || sourceParts[0]?.color || null;
     const sourceVertices = componentMeshData?.vertices || new Float32Array(0);
     const sourceColors = componentMeshData?.colors || new Float32Array(0);
     const hasComponentColors = sourceColors.length === sourceVertices.length && sourceColors.length > 0;
     // A per-occurrence override colour drives the material (part.color) — it can't bake into
     // shared vertices. A component's own COLOR_0 rides on the shared geometry and is used only
     // when there is no override.
-    const useComponentVertexColors = !overrideColor && hasComponentColors;
+    const useComponentVertexColors = !overrideColor && !overrideBaseColor && hasComponentColors;
 
     // Selector face ranges: triangle offsets into the COMPONENT's own geometry (the render
     // mesh via sourceMesh), so buildGlbFaceIdsForPart maps render triangles -> faces. These are
@@ -553,9 +568,13 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid,
       mirrored,
       bounds,
       sourceBounds: bounds,
-      color: (overrideColor && linearRgbToHex(overrideColor)) || sourceParts[0]?.color || null,
+      color: overrideBaseColor || sourceColor,
+      sourceColor,
+      materialId: String(occurrence?.materialId || "").trim() || undefined,
+      materialName: String(occurrence?.materialName || "").trim() || undefined,
       material: overrideMaterial,
-      opacity: overrideOpacity !== null ? overrideOpacity : undefined,
+      opacity: overrideOpacity < 0.999 ? overrideOpacity : undefined,
+      sourceOpacity,
       hasSourceColors: useComponentVertexColors,
       // Shared component geometry: cadScene caches one BufferGeometry per sourceMeshKey and
       // reuses it across every occurrence of this cid (+ colour mode). A viewport-LOD level
@@ -592,6 +611,7 @@ export function buildComposedPackageMeshData(descriptor, componentMeshDataByCid,
     colors: new Float32Array(0),
     edge_indices: new Uint32Array(0),
     parts,
+    appearance: descriptor?.appearance || null,
     assemblyRoot,
     bounds: assemblyRoot && assemblyRoot === previous?.assemblyRoot
       ? previous.bounds
@@ -647,6 +667,12 @@ function enrichPackageAssemblyNode(node, partById, previous = null) {
       out.bounds = part.bounds;
       out.sourceBounds = part.sourceBounds;
       out.color = part.color;
+      out.sourceColor = part.sourceColor;
+      out.materialId = part.materialId;
+      out.materialName = part.materialName;
+      out.material = part.material;
+      out.opacity = part.opacity;
+      out.sourceOpacity = part.sourceOpacity;
     }
   } else {
     out.transform = [...IDENTITY_TRANSFORM];

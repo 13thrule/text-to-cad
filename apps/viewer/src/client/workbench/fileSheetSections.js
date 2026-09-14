@@ -3,8 +3,7 @@ export const FILE_SHEET_SECTION_IDS = Object.freeze({
   STEP_MEASUREMENTS: "measurements",
   STEP_REFERENCE: "reference",
   // Two tabs, two independent systems: Pose drives the sidecar's mate graph
-  // (sliders per DOF + named presets), Animation plays the clips of the render
-  // module beside the document (<name>.step.js).
+  // (sliders per DOF + named presets), Animation plays the sidecar's clips.
   // A model may ship either, both, or neither, so they are gated separately.
   STEP_POSE: "pose",
   STEP_ANIMATION: "animation",
@@ -16,6 +15,7 @@ export const FILE_SHEET_SECTION_IDS = Object.freeze({
   DXF_LAYERS: "dxfLayers",
   THEME_DISPLAY: "display",
   THEME_RENDER: "render",
+  THEME_MATERIALS: "materials",
   FILE_METADATA: "metadata"
 });
 
@@ -35,6 +35,10 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
   if (options.renderMode === true) {
     return [
       FILE_SHEET_SECTION_IDS.THEME_RENDER,
+      ...(options.hasMaterialsPanel ? [FILE_SHEET_SECTION_IDS.THEME_MATERIALS] : []),
+      ...(normalizedKind === "step" && options.hasStepPosePanel
+        ? [FILE_SHEET_SECTION_IDS.STEP_POSE]
+        : []),
       ...(normalizedKind === "step" && options.hasStepAnimationPanel
         ? [FILE_SHEET_SECTION_IDS.STEP_ANIMATION]
         : []),

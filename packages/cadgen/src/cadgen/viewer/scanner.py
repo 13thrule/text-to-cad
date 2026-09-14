@@ -43,7 +43,6 @@ import re
 import stat as stat_module
 import threading
 
-from cadgen._internal.render_module import is_render_module_name, render_module_path
 
 from .content_types import extension_of
 from .encoding import encode_uri_component, encode_url_path, file_version
@@ -220,8 +219,8 @@ _HASH_CACHE: dict[tuple[str, int, int], str] = {}
 _HASH_CACHE_LIMIT = 4096
 _HASH_CACHE_LOCK = threading.Lock()
 
-# A STEP catalog row is derived from immutable geometry plus two mutable files:
-# the document-bound sidecar and the optional adjacent render module. Catalog
+# A STEP catalog row is derived from immutable geometry plus the document-bound
+# sidecar, including its optional embedded animation. Catalog
 # refreshes still resolve the document digest to its current tree on every
 # scan; only the expensive flattened-tree validation and annotation shaping is
 # reused when all of those inputs are unchanged. Misses build outside the lock;
@@ -274,7 +273,6 @@ def catalog_input_fingerprint(source_path) -> tuple:
     if extension in (".step", ".stp"):
         related = (
             _stat_identity(source_sidecar_path(source_path)),
-            _stat_identity(render_module_path(source_path)),
         )
     elif extension == ".srdf":
         directory = os.path.dirname(source_path)
@@ -627,7 +625,6 @@ def _create_step_entry(repo_root, root_path, source_path, extension) -> dict:
         sidecar_stat.st_mtime_ns,
         sidecar_stat.st_ctime_ns,
     ) if sidecar_stat is not None else None
-    render_module = render_module_path(source_path)
     cache_key = (
         cadgen_cache_root_dir(),
         os.path.abspath(str(repo_root)),
@@ -636,7 +633,6 @@ def _create_step_entry(repo_root, root_path, source_path, extension) -> dict:
         document_hash,
         tree,
         sidecar_identity,
-        render_module.is_file(),
     )
     with _STEP_ENTRY_CACHE_LOCK:
         cached = _STEP_ENTRY_CACHE.get(cache_key)
@@ -645,7 +641,6 @@ def _create_step_entry(repo_root, root_path, source_path, extension) -> dict:
     entry = _build_step_entry(
         repo_root, root_path, source_path, extension,
         document_hash=document_hash, tree=tree,
-        render_module=render_module,
     )
     with _STEP_ENTRY_CACHE_LOCK:
         cached = _STEP_ENTRY_CACHE.get(cache_key)
@@ -658,7 +653,7 @@ def _create_step_entry(repo_root, root_path, source_path, extension) -> dict:
 
 
 def _build_step_entry(
-    repo_root, root_path, source_path, extension, *, document_hash, tree, render_module,
+    repo_root, root_path, source_path, extension, *, document_hash, tree,
 ) -> dict:
     descriptor = result_descriptor(tree) if tree else None
     metadata = read_step_catalog_metadata(
@@ -706,11 +701,11 @@ def _build_step_entry(
         entry["poseUrl"] = entry.get("sourceUrl") or _asset_url_for_path(
             repo_root, source_sidecar_path(source_path)
         )
-    if render_module.is_file():
-        # The render module beside the document (<name>.step.js): authored,
-        # discovered by name, loaded by the client. Its presence is the only
-        # thing the catalog says about it.
-        entry["renderModuleUrl"] = _asset_url_for_path(repo_root, render_module)
+    animation = (metadata.get("sourceSidecar") or {}).get("animation")
+    if animation is not None:
+        entry["animationHash"] = hashlib.sha256(
+            json.dumps(animation, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
     return entry
 
 
@@ -725,17 +720,14 @@ def is_served_cad_asset(file_path) -> bool:
     The sidecar test matches the FULL pair of suffixes, never
     ``SOURCE_SIDECAR_SUFFIX`` alone — that is ``.json``, and serving every JSON
     file under the root would hand out configs, secrets and anything else that
-    happens to be there. The same goes for ``.js``: only the render module,
-    matched on its full ``.step.js``/``.stp.js`` pair, is served — a loose
-    script beside a model is not.
+    happens to be there. JavaScript files are not model assets; animation
+    source is embedded in the document-bound JSON sidecar.
     """
     text = str(file_path or "")
     if is_hidden_name(node_basename(text)):
         return False
     lowered = text.lower()
     if any(lowered.endswith(name) for name in SOURCE_SIDECAR_NAMES):
-        return True
-    if is_render_module_name(lowered):
         return True
     return extension_of(text) in SOURCE_EXTENSIONS
 

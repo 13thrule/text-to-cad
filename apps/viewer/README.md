@@ -24,8 +24,7 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   from outside this directory (`scripts/selfContained.test.mjs` is the fence).
   The backend is not here: its code, its tests and its laws live with cadgen.
 - **Three-input law**: everything renders from the artifact file, its
-  sidecar (`<name>.step.json`), its optional adjacent render module
-  (`<name>.step.js`), and the cache. The viewer never reads
+  sidecar (`<name>.step.json`), and the cache. The viewer never reads
   source code and never rebuilds on source changes — generated outputs are
   detached, and a stale artifact stays stale until someone runs its script.
   STEP entries automatically follow active edits: the runtime announces
@@ -35,8 +34,8 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   the viewer reads the saved artifact.
 - **Kinematics/animation independence**: the Kinematics tab drives the sidecar's
   mate data through the shared FK runtime; the Animation tab evaluates the
-  `clips` the authored render module beside the artifact (`<name>.step.js`)
-  exports, fetched live — an edit to it is a reload, never a rebuild. They
+  `clips` exported by the sidecar's embedded JavaScript animation. Sidecar
+  metadata revisions reload without rebuilding geometry. They
   compose in the effect records and nowhere else.
 - **Loud failure**: a missing entry, an unresolvable ref, or a failed
   compile surfaces as an alert — never a silently wrong scene.
@@ -74,7 +73,9 @@ The navbar's **Viewing mode** icon menu switches between **Inspect** and
 **Render**, showing the active mode's cube or clapperboard icon. Inspect shows only
 CAD inspection tabs and restores their saved split, order, and active selection unchanged.
 Render enters an isolated photographic view with **Studio** first and active;
-**Animation** follows when the model provides clips. The Render tabs start in
+**Materials** follows when the model declares named materials, **Kinematics**
+follows when it declares pose controls, and **Animation** follows when it
+provides clips. The Render tabs start in
 one row on each entry. Dragging and splitting them is temporary and never
 overwrites the durable per-kind CAD arrangement. The default Light or Dark
 studio follows global app appearance. Backdrop customizations remain local to the model session.
@@ -88,9 +89,9 @@ are checked against colored assemblies, mechanical models, and material samples
 in both studios. STEP package material properties remain intact. A direct GLB
 with embedded animation retains its native hierarchy, skin/morph data, textures,
 and PBR materials for playback; its Animation tab appears in both Inspect and
-Render. A static direct GLB is normalized to base or vertex color and opacity,
-3MF retains color, and STL has no authored color; textures and other static
-direct-GLB PBR channels are not carried into that normalized mesh. Animated GLB
+Render. A static direct GLB uses that native hierarchy in Render, retaining
+textures and PBR materials, while Inspect uses its normalized base or vertex
+color and opacity for CAD interaction. 3MF retains color, and STL has no authored color. Animated GLB
 measurement is unavailable because the normalized triangle picks describe only
 the rest pose. A bounded load-time animation sample estimates stable framing;
 the camera, floor, and studio do not refit on every playback frame.
@@ -119,7 +120,8 @@ with a photographic snapshot request.
 Normal CAD settings and Render settings are separate per-model session state.
 Entering Render applies its perspective camera and fixed presentation view
 (shaded authored colors; guides, edges, clipping, exploded transforms, and
-selection effects are off). Animation playback remains available. Returning to
+selection effects are off). Kinematics and animation remain available and
+compose through the same model pose state used in Inspect. Returning to
 CAD restores the CAD camera and inspection state; returning to Render restores
 the photographic view.
 Render zoom uses the subject's bounds for a stable pivot depth. Inspect zoom
@@ -131,6 +133,11 @@ geometry and lighting have drawn their first frame. This transition owns no
 second GPU scene and does not return during orbit or detail refinement. Render
 does not receive inspection selectors or DXF bend-guide overlays; STEP and
 embedded GLB animation remain independent of those inspection resources.
+The conditional Materials tab lists named material usage, edits base color and
+the five supported PBR channels, and assigns or duplicates materials for chosen
+components or groups. Its per-model overlay uses the existing browser-tab
+session state and Reset authored clears it; an authored appearance revision
+drops stale edits, and the Viewer never writes a sidecar or cache.
 These settings use sessionStorage with other per-model
 ephemeral state; they are not written beside models, into the geometry cache,
 or into global app appearance. A normal geometry rebuild preserves the
@@ -225,7 +232,7 @@ the build — detection only; it keeps serving.
   Complete plain STEP assemblies also remain visible while replacement meshes
   load. Selection, measurements and reference copying wait for matching new
   geometry. A failed replacement preserves the view and reports its error;
-  only that file/hash stops retrying automatically. STEP pose/render modules
+  only that file/hash stops retrying automatically. STEP pose and animation metadata
   use their normal loading path, without a promise to retain the previous pose.
   Restarting the daemon expires the ephemeral session, and rerunning the model
   reconnects it. Source files hold authored changes; there is no hidden durable
@@ -264,7 +271,7 @@ the build — detection only; it keeps serving.
   refinement until the camera or viewport changes, preventing upgrade/downgrade
   loops. Mesh-bound and clip-plane updates do not reset that cap. An idle
   scheduler reports memory-limited targets separately from settled quality.
-  Scenes with joints, render modules, drawing poses or an active/collapsing
+  Scenes with joints, embedded animation, drawing poses or an active/collapsing
   exploded view keep conservative eligibility, including paused/disabled pose
   capabilities. Authored visibility and material flags are not LOD filters.
   Admission can reclaim idle tessellation workers and retry while preserving
@@ -337,7 +344,7 @@ the build — detection only; it keeps serving.
   A component that cannot fit even at the coarse level
   reports a limitation and preserves the current view. Estimates and sampled
   resource totals are a soft budget, not a hard browser RSS limit.
-- A schema-8 STEP sidecar includes the STEP byte digest. A mismatch displays
+- A schema-9 STEP sidecar includes the STEP byte digest. A mismatch displays
   **Annotations unavailable** while permitting saved geometry to render.
   Rebuild or re-annotate the pair to repair it; importing a file never rewrites
   its authored sidecar.

@@ -176,12 +176,3 @@ export function entrySourceSidecarUrl(entry) {
     ? normalizeString(entry?.sourceUrl)
     : "";
 }
-
-export function entryRenderModuleUrl(entry) {
-  // The render module beside a STEP document (<name>.step.js), published by
-  // the catalog when the file exists. Authored, discovered by name, loaded by
-  // the client — the source of the viewer's Animation tab.
-  return entrySourceFormat(entry) === RENDER_FORMAT.STEP
-    ? normalizeString(entry?.renderModuleUrl)
-    : "";
-}

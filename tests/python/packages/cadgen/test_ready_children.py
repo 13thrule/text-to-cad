@@ -143,14 +143,7 @@ class ReadyChildren(unittest.TestCase):
     def test_ready_geometry_prepares_without_force_or_author_callbacks(self):
         events = []
         late = self.child('late', tree=self.tree)
-        class Metadata(dict):
-            def __deepcopy__(self, memo):
-                events.append('authored-metadata')
-                return dict(self)
-        late.cad_material = Metadata(roughness=.2)
         late = late.moved(bd.Location((3, 4, 5), (0, 0, 15)))
-        events.clear()  # moved() already has its own existing metadata-copy semantics.
-        late.cad_material = Metadata(roughness=.2)
         class Label(str):
             def __bool__(self):
                 events.append('authored-label')
@@ -447,7 +440,6 @@ class ReadyChildren(unittest.TestCase):
 
     def test_children_preparation_preserves_attachment_and_metadata_order(self):
         late = self.child('late', tree=self.tree).moved(bd.Location((5, 6, 7), (11, 19, 23)))
-        late.cad_material = {'roughness': .7}
         events = []
 
         class Label(str):
@@ -472,7 +464,6 @@ class ReadyChildren(unittest.TestCase):
         self.assertEqual(result.children, (first, late))
         self.assertTrue(first.parent is result and late.parent is result)
         self.assertEqual(events, ['first-wait', 'late-label'])
-        self.assertEqual(late.cad_material, {'roughness': .7})
         self.assertEqual(self.stats['consumed'], 1)
         self.assertAlmostEqual(late.bounding_box().center().X, 5., places=7)
         self.assertIsNone(candidate._STATE.construction)
@@ -658,7 +649,6 @@ class ReadyChildren(unittest.TestCase):
 
         curved = bd.Solid.make_cylinder(2, 5)
         curved.label, curved.color = 'curved', bd.Color('red')
-        curved.cad_material = {'roughness': .2, 'metalness': .4}
         curved.cad_face_ordinal_colors = {1: (0., 1., 0., 1.)}
         moved = bd.Solid.make_box(1, 2, 3).mirror(bd.Plane.YZ).moved(
             bd.Location((7, -2, 3), (13, 19, 31)))
@@ -698,7 +688,6 @@ class ReadyChildren(unittest.TestCase):
                 export_build123d_step_file(ready, path)
                 authored = (prepared_brep, path.read_bytes(),
                             [(child.label, tuple(child.color) if child.color else None,
-                              child.__dict__.get('cad_material'),
                               child.__dict__.get('cad_face_ordinal_colors'))
                              for child in ready.children[0].children])
                 if previous is not None:
@@ -717,11 +706,11 @@ class ReadyChildren(unittest.TestCase):
         BRep_Tool.Surface_s(first.faces()[0].wrapped).Translate(gp_Vec(2, 3, 4))
         first.wrapped.Free(True)
         BRep_Builder().Remove(first.wrapped, _native_children(first.wrapped)[0])
-        first.children[0].children[0].cad_material['roughness'] = .9
+        first.children[0].children[0].cad_face_ordinal_colors[1] = (0., 0., 0., 1.)
         self.assertIsNone(_tagged_intact(first))
         self.assertEqual([_write_brep(child.wrapped) for child in consumers[1:]], unchanged)
         self.assertTrue(all(
-            child.children[0].children[0].cad_material['roughness'] == .2
+            child.children[0].children[0].cad_face_ordinal_colors[1] == (0., 1., 0., 1.)
             for child in consumers[1:]
         ))
 

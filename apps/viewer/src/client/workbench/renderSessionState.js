@@ -42,7 +42,10 @@ export function createRenderSessionState(value = null) {
     payload,
     openSectionIds: Array.isArray(source.openSectionIds)
       ? normalizeFileSheetOpenSectionIds(source.openSectionIds, [
-          FILE_SHEET_SECTION_IDS.THEME_RENDER, FILE_SHEET_SECTION_IDS.STEP_ANIMATION
+          FILE_SHEET_SECTION_IDS.THEME_RENDER,
+          FILE_SHEET_SECTION_IDS.THEME_MATERIALS,
+          FILE_SHEET_SECTION_IDS.STEP_POSE,
+          FILE_SHEET_SECTION_IDS.STEP_ANIMATION
         ])
       : [FILE_SHEET_SECTION_IDS.THEME_RENDER],
     cadCamera: renderCameraSnapshot(source.cadCamera),

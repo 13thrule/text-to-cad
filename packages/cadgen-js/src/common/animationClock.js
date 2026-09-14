@@ -1,7 +1,7 @@
 // The animation TRANSPORT, shared by every client (viewer Animation tab,
 // the docs hero, any embed): which clip is active, where the clock
 // is, and how fast it runs. Choreography itself lives in the render module
-// beside the document (<name>.step.js), loaded by cadgen-js/common/renderModule
+// embedded in the document sidecar, loaded by cadgen-js/common/renderModule
 // and compiled by cadgen-js/common/animationRuntime; this module owns only the
 // transport around it.
 //
