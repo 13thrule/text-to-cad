@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildViewerEditAlert, buildViewerMeshAlert } from "./viewerAlerts.js";
+import {
+  buildViewerAnnotationAlert,
+  buildViewerEditAlert,
+  buildViewerMeshAlert,
+  fileStatusAlertKey,
+  resolveFileStatusAlert
+} from "./viewerAlerts.js";
 
 const step = { file: "STEP/moonwatch.step", kind: "part" };
 
@@ -171,4 +177,48 @@ test("edit worker failures are distinct from invalid-model failures", () => {
   assert.equal(invalid.summary, "Open failed");
   assert.match(invalid.recovery, /correct the model/i);
   assert.equal(invalid.reason, "Fillet radius is too large");
+});
+
+test("invalid model annotations retain diagnostics without blocking geometry", () => {
+  const entry = { ...step, annotationError: "unsupported sidecar schema" };
+  const alert = buildViewerAnnotationAlert(entry);
+  assert.equal(alert.severity, "warning");
+  assert.equal(alert.blocking, false);
+  assert.match(alert.details, /unsupported sidecar schema/);
+  assert.match(alert.recovery, /Rebuild/);
+  assert.equal(buildViewerAnnotationAlert({ ...entry, editingPreview: true }), null);
+  assert.equal(buildViewerAnnotationAlert(step), null);
+});
+
+test("file status alerts stay unavailable while the displayed status is busy", () => {
+  const annotation = buildViewerAnnotationAlert({ ...step, annotationError: "invalid settings" });
+  assert.equal(resolveFileStatusAlert({ label: "Opening", tone: "info", busy: true }, null, annotation), null);
+  assert.equal(resolveFileStatusAlert(null, { severity: "error", title: "Failed" }), null);
+
+  assert.equal(
+    resolveFileStatusAlert({ label: "Model warning", title: annotation.message, tone: "warning", busy: false }, null, annotation),
+    annotation
+  );
+});
+
+test("file status alert identity tracks warning diagnostics and selected file", () => {
+  const first = buildViewerAnnotationAlert({ ...step, annotationError: "schema 1" });
+  const changed = buildViewerAnnotationAlert({ ...step, annotationError: "schema 2" });
+  assert.equal(fileStatusAlertKey("STEP/moonwatch.step", null), "");
+  assert.notEqual(
+    fileStatusAlertKey("STEP/moonwatch.step", first),
+    fileStatusAlertKey("STEP/moonwatch.step", changed)
+  );
+  assert.notEqual(
+    fileStatusAlertKey("STEP/moonwatch.step", first),
+    fileStatusAlertKey("STEP/other.step", first)
+  );
+});
+
+test("progressive geometry is valid while loading but cannot mask a failed first load", () => {
+  assert.equal(buildViewerMeshAlert(step, true, "", null, { partial: true }), null);
+  const failed = buildViewerMeshAlert(step, true, "Decode failed", null, { partial: true });
+  assert.notEqual(failed.blocking, false);
+  assert.equal(failed.severity, "error");
+  assert.doesNotMatch(failed.message, /existing model remains visible/);
 });

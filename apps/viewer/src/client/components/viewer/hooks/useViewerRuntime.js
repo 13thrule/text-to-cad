@@ -1,5 +1,5 @@
 import { disposeViewerCadScene } from "../../../render/lodSceneCleanup.js";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { isEditableTarget } from "../../../ui/dom";
 import {
   isWebGlContextCreationError,
@@ -95,6 +95,16 @@ export function useViewerRuntime({
   preserveInteractionPixelRatio = false,
   runtimeResetToken = 0
 }) {
+  // A dependency change replaces this WebGL runtime while CadViewer remains
+  // mounted. Layout cleanup runs before passive runtime cleanup on a final
+  // unmount, so the latter can distinguish a renderer handoff from the last
+  // owner going away.
+  const viewerMountedRef = useRef(false);
+  useLayoutEffect(() => {
+    viewerMountedRef.current = true;
+    return () => { viewerMountedRef.current = false; };
+  }, []);
+
   useEffect(() => {
     if (runtimeRef.current) {
       runtimeRef.current.preserveInteractionPixelRatio = preserveInteractionPixelRatio === true;
@@ -857,7 +867,7 @@ export function useViewerRuntime({
         document.removeEventListener("visibilitychange", handleVisibilityChange);
         runtime.controls.dispose();
         const disposedSource = disposeViewerCadScene(runtime, { clearSceneGroup });
-        onSceneDisposed?.(disposedSource);
+        onSceneDisposed?.(disposedSource, { handoff: viewerMountedRef.current });
         disposeSceneObject(runtime.gridHelper);
         disposeSceneObject(runtime.axesHelper);
         disposeTexture(runtime.sceneBackgroundTexture);

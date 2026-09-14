@@ -67,7 +67,57 @@ function failureAlert(fileRef, error, failure, compile = false) {
   };
 }
 
-export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = null) {
+export function buildViewerAnnotationAlert(entry) {
+  if (!entry?.annotationError || entry.editingPreview) return null;
+  return {
+    severity: "warning", blocking: false,
+    title: "Some model settings are unavailable",
+    message: "The geometry is visible, but its saved settings could not be read. Kinematics or appearance settings may be missing.",
+    recovery: "Rebuild the model with the current cadgen version, then reload.",
+    details: `File: ${fileKey(entry)}\n${entry.annotationError}`,
+  };
+}
+
+export function resolveFileStatusAlert(fileStatus, viewerAlert = null, annotationAlert = null) {
+  if (!fileStatus || fileStatus.busy) {
+    return null;
+  }
+  if (viewerAlert) {
+    return viewerAlert;
+  }
+  if (annotationAlert) {
+    return annotationAlert;
+  }
+  if (!["error", "warning"].includes(fileStatus.tone)) {
+    return null;
+  }
+  return {
+    severity: fileStatus.tone,
+    title: fileStatus.label,
+    message: fileStatus.title,
+    reload: fileStatus.tone === "error",
+    blocking: false,
+  };
+}
+
+export function fileStatusAlertKey(fileRef, alert) {
+  if (!alert) {
+    return "";
+  }
+  return JSON.stringify([
+    String(fileRef || ""),
+    alert.severity || "",
+    alert.kind || "",
+    alert.summary || "",
+    alert.title || "",
+    alert.message || "",
+    alert.reason || "",
+    alert.recovery || "",
+    alert.details || "",
+  ]);
+}
+
+export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = null, { partial = false } = {}) {
   const fileRef = fileKey(entry);
   if (!fileRef) {
     return null;
@@ -77,7 +127,7 @@ export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = n
 
   if (artifact?.status === "failed") {
     const alert = failureAlert(fileRef, artifact.error, artifact.failure, true);
-    return hasMeshData ? {
+    return hasMeshData && !partial ? {
       ...alert,
       blocking: false,
       message: `${alert.message} The existing model remains visible.`
@@ -107,7 +157,7 @@ export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = n
 
   if (loadError) {
     const alert = failureAlert(fileRef, loadError?.message || loadError, loadError?.failure);
-    return hasMeshData ? {
+    return hasMeshData && !partial ? {
       ...alert,
       blocking: false,
       message: `${alert.message} The existing model remains visible.`

@@ -387,6 +387,7 @@ export function FileSheetValueInput({
           event.currentTarget.blur();
         }
         if (event.key === "Escape") {
+          event.preventDefault();
           skipCommitRef.current = true;
           setDraftValue(displayValue);
           event.currentTarget.blur();

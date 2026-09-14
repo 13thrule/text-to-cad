@@ -74,7 +74,7 @@ test("32ms deadline publishes three beside a hung carryover without starting a f
   f.batches[1].gate.resolve(true); await flush(); await cancel(f);
 });
 
-test("Viewer-sized collection window coalesces serialized cached reads and stays bounded", async () => {
+test("a bounded collection window coalesces serialized cached reads", async () => {
   const pending = [];
   const f = fixture({ collectionMs: 128, loadLevel: cid => {
     const read = deferred(); pending.push({ cid, read }); return read.promise;

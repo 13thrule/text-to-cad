@@ -89,11 +89,15 @@ test("a failed save explains that the updated model remains visible", () => {
   });
 });
 
-test("only blocked missing previews and limited detail produce remaining badges", () => {
+test("warnings remain actionable while successful background work stays quiet", () => {
   assert.equal(resolveFileStatus({
     ...ready,
-    error: { severity: "warning", message: "Optional annotations are unavailable." }
-  }), null);
+    error: { severity: "warning", message: "Saved model settings are unavailable." }
+  }).label, "Model warning");
+  assert.equal(resolveFileStatus({
+    ...ready, opening: true,
+    error: { severity: "warning", message: "Saved model settings are unavailable." }
+  }).label, "Opening");
   assert.equal(resolveFileStatus({
     ...ready,
     editingState: { state: "done", previewUnavailable: true, saved: { tree: "saved" } }
@@ -123,9 +127,10 @@ test("the resolver emits only the approved filename labels", () => {
     { ...ready, updating: true },
     { hasFile: true, error: "bad" },
     { ...ready, error: "bad" },
-    { ...ready, qualityStatus: { state: "limited" } }
+    { ...ready, qualityStatus: { state: "limited" } },
+    { ...ready, error: { severity: "warning", message: "Missing settings" } }
   ];
-  const allowed = new Set(["Opening", "Updating", "Open failed", "Update failed", "Limited detail"]);
+  const allowed = new Set(["Opening", "Updating", "Open failed", "Update failed", "Limited detail", "Model warning"]);
   for (const input of inputs) {
     assert.ok(allowed.has(resolveFileStatus(input).label));
   }

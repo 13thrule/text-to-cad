@@ -40,8 +40,9 @@ export const PROGRESSIVE_PUBLISH_MAX_BYTES = 128 * 1024 * 1024;
 // surf worker whose intermediates count against the renderer process, and a
 // hand component reaches ~90 MB of meshData. A count cap alone (8 wide) admits
 // 8 of those at once. Admission is therefore ALSO byte-aware: the estimated
-// decoded bytes of everything in flight stay under this budget. A component
-// estimated above the budget is refused explicitly before decode.
+// decoded bytes of ordinary concurrent work stay under this budget. The
+// Viewer may opt one larger component into serial admission only after its
+// global owned-memory ledger reserves the complete estimate.
 export const PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES = 256 * 1024 * 1024;
 // Estimated decoded size of a component before anything is known about the
 // model — a quarter of the budget, so at most four unmeasured components are
@@ -294,6 +295,7 @@ export function orderComponentsForProgressiveLoad(descriptor) {
  *   sizeHint?(cid, component),         // -> Promise<number|{sourceBytes,cacheProbe}> before admission
  *   retryCacheProbeMiss?(error, probe),// true re-enters metadata + admission after a stale body
  *   maxInFlightBytes?,                 // estimated decoded bytes in flight (PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES)
+ *   allowOversizedSingle?,             // one > maxInFlightBytes decode after reserveLoad accepts it
  *   sourceExpansionRatio?,             // conservative decoded/source estimate floor for this concrete tier
  *   retainedComponent?(cid, component),// already-owned exact meshData, bypassing decode admission
  *   initialComposition?,               // immediately preceding same-file composition
@@ -308,8 +310,9 @@ export function orderComponentsForProgressiveLoad(descriptor) {
  *
  * Admission is count- AND byte-capped: a component starts decoding only when
  * fewer than `concurrency` are in flight and the estimated decoded bytes in
- * flight (createDecodeSizeEstimator over the sizeHint) fit `maxInFlightBytes`,
- * or nothing else is in flight. Every publish re-checks isCurrent() first; a superseded or aborted load
+ * flight (createDecodeSizeEstimator over the sizeHint) fit `maxInFlightBytes`.
+ * With `allowOversizedSingle`, one larger estimate may run alone after
+ * `reserveLoad` accepts it. Every publish re-checks isCurrent() first; a superseded or aborted load
  * publishes nothing further, drops its references to every component it
  * loaded (retainedComponentCount() -> 0) and rejects with an AbortError.
  * Composition is `{ ...loadedSoFar, ...swappedComponents() }`, so a viewport
@@ -325,6 +328,7 @@ export function createProgressivePackageLoader({
   sizeHint = null,
   retryCacheProbeMiss = null,
   maxInFlightBytes = PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
+  allowOversizedSingle = false,
   sourceExpansionRatio = 0,
   retainedComponent = null,
   initialComposition = null,
@@ -429,7 +433,14 @@ export function createProgressivePackageLoader({
   }
 
   function canAdmit(estimate) {
-    return inFlight < concurrency && inFlightBytes + estimate <= maxInFlightBytes;
+    if (inFlight >= concurrency) return false;
+    if (inFlightBytes + estimate <= maxInFlightBytes) return true;
+    // The fixed byte cap bounds aggregate concurrency, not a second global
+    // memory envelope. A larger single component can proceed only through a
+    // real external reservation; once admitted, its own occupancy keeps every
+    // sibling waiting until it releases.
+    return allowOversizedSingle === true && typeof reserveLoad === "function"
+      && inFlight === 0 && estimate > maxInFlightBytes;
   }
 
   // Re-estimates on every wake: a decode finishing while this one waited has
@@ -477,7 +488,8 @@ export function createProgressivePackageLoader({
         inFlight += 1;
         inFlightBytes += estimate;
         peakInFlight = Math.max(peakInFlight, inFlight);
-        return { estimate, estimator, reservation: reservation.token, sourceBytes, cacheProbe };
+        return { estimate, estimator, reservation: reservation.token, sourceBytes, cacheProbe,
+          oversized: estimate > maxInFlightBytes };
       }
       if (inFlight > 0) {
         await new Promise((resolve) => waiters.push(resolve));
@@ -572,6 +584,25 @@ export function createProgressivePackageLoader({
           cacheProbe: admission.cacheProbe,
         });
         if (!active()) stop();
+        const decodedBytes = estimateMeshRenderCost(meshData).typedArrayBytes;
+        const decodedLimit = admission.oversized ? admission.estimate : maxInFlightBytes;
+        if (decodedBytes > decodedLimit) {
+          const detail = {
+            cid,
+            requestedBytes: decodedBytes,
+            availableBytes: decodedLimit,
+            category: "workerInFlight",
+            preservingCurrentView: true,
+            actualDecodedBytes: decodedBytes,
+            decodedEstimateBytes: admission.estimate,
+          };
+          onMemoryLimitation?.(detail);
+          throw new ViewerMemoryLimitError(
+            `Component ${cid} decoded to ${Math.ceil(decodedBytes / (1024 * 1024))} MiB, above its admitted ${Math.floor(decodedLimit / (1024 * 1024))} MiB component estimate. The current view was kept.`,
+            detail,
+          );
+        }
+        admission.decodedBytes = decodedBytes;
         releaseSlot(admission);
         break;
       } catch (error) {
@@ -589,22 +620,7 @@ export function createProgressivePackageLoader({
         throw error;
       }
     }
-    const decodedBytes = estimateMeshRenderCost(meshData).typedArrayBytes;
-    if (decodedBytes > maxInFlightBytes) {
-      const detail = {
-        cid,
-        requestedBytes: decodedBytes,
-        availableBytes: maxInFlightBytes,
-        category: "workerInFlight",
-        preservingCurrentView: true,
-        actualDecodedBytes: decodedBytes,
-      };
-      onMemoryLimitation?.(detail);
-      throw new ViewerMemoryLimitError(
-        `Component ${cid} decoded to ${Math.ceil(decodedBytes / (1024 * 1024))} MiB, above the viewer's ${Math.floor(maxInFlightBytes / (1024 * 1024))} MiB component limit. The current view was kept.`,
-        detail,
-      );
-    }
+    const decodedBytes = admission.decodedBytes;
     if (!admission.cacheProbe) admission.estimator.observe(admission.sourceBytes, decodedBytes);
     loadedByCid[cid] = meshData;
     loaded += 1;

@@ -108,7 +108,7 @@ export function createLodPublication({ currentContext, now = () => performance.n
       }
       return false;
     },
-    disposed(source, { recover = false, terminal = false } = {}) {
+    disposed(source, { recover = false, terminal = false, handoff = false } = {}) {
       const request = pending;
       if (!request) return;
       // A no-op clear from a stale render proves nothing about a queued
@@ -118,6 +118,17 @@ export function createLodPublication({ currentContext, now = () => performance.n
       if (source && source !== request.source && source !== request.baseSource &&
           !request.matchesCandidate(source) && !request.matchesBase?.(source) &&
           !request.recognizesCandidate?.(source) && !request.recognizesBase?.(source)) return;
+      // Inspect/Render use different WebGL runtimes. Disposing the old
+      // runtime is a handoff while this model context remains current: the
+      // replacement runtime will acknowledge the already-queued candidate or
+      // restoration. Treating that planned teardown as a scene failure stops
+      // every remaining refinement before the replacement can adopt it.
+      // A failed cleanup is never a handoff; it keeps the ordinary fatal
+      // ownership path below.
+      if (handoff && !request.cleanupFailed && !request.cancelled && isCurrent(request)) {
+        request.sceneOwned = false;
+        return;
+      }
       request.cleanupFailed = false;
       request.sceneOwned = false;
       if (request.phase === "restoring") {

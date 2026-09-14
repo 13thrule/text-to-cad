@@ -357,7 +357,8 @@ export function useCadAssets({
   }, [meshEnvelope.receipt]);
   const onMeshSourceAdoption = useCallback((source, ok, detail) => {
     if (detail?.disposed) {
-      lodSceneAdoptionRef.current.disposed(source, { recover: detail.recover === true, terminal: detail.terminal === true });
+      lodSceneAdoptionRef.current.disposed(source, { recover: detail.recover === true,
+        terminal: detail.terminal === true, handoff: detail.handoff === true });
       return { recovering: lodSceneAdoptionRef.current.snapshot().phase === "restoring" };
     }
     if (ok) return lodSceneAdoptionRef.current.adopted(source);
@@ -975,6 +976,10 @@ export function useCadAssets({
             // added owner; failure clears it and success drops it with the load.
             initialComposition: previousCompleteLodPackage?.meshData || null,
             concurrency: packageComponentLoadConcurrency(),
+            // The local cap controls package concurrency. A single larger L0
+            // leaf may run alone only if reserveLoad below can charge its full
+            // worker estimate to the shared Viewer memory envelope.
+            allowOversizedSingle: true,
             sourceExpansionRatio: (cid) => (
               initialPlanByCid.get(cid) || defaultInitialPlan
             ).sourceExpansionRatio,

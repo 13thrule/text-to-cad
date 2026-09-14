@@ -196,6 +196,36 @@ test("a stale empty clear is not disposal, while final renderer teardown retires
   assert.equal((await promise).status, "cancelled");
 });
 
+test("Inspect to Render runtime handoff keeps an in-flight refinement adoptable", async () => {
+  const f = fixture();
+  const promise = f.expect();
+  f.publish();
+
+  // Inspect is still showing the base scene when its WebGL runtime is
+  // replaced. That teardown releases the old scene but does not invalidate
+  // the same model context or the candidate already queued in React state.
+  f.tracker.disposed(f.base, { handoff: true });
+  assert.equal(f.tracker.snapshot().pending, 1);
+  assert.deepEqual(f.counts, { commits: 0, recoveries: 0, failures: 0 });
+
+  // The new Render runtime constructs and acknowledges the queued candidate.
+  assert.equal(f.tracker.adopted(f.candidate), true);
+  assert.equal((await promise).status, "adopted");
+  assert.deepEqual(f.counts, { commits: 1, recoveries: 0, failures: 0 });
+});
+
+test("runtime handoff remains fatal when the replacement cannot initialize", async () => {
+  const f = fixture();
+  const promise = f.expect();
+  f.publish();
+
+  f.tracker.disposed(f.base, { handoff: true });
+  f.tracker.disposed(null, { terminal: true });
+
+  assert.equal((await promise).status, "disposed-failed");
+  assert.deepEqual(f.counts, { commits: 0, recoveries: 0, failures: 1 });
+});
+
 test("a rejected replay cannot abandon geometry after cleanup failed, even with its exact receipt", async () => {
   const f = fixture(), command = { source: f.candidate }, promise = f.expect(null, { command }); f.publish();
   f.tracker.failed(f.candidate, { cleanupFailed: true });

@@ -21,12 +21,12 @@ import { lodPayloadMemory, setLodStaging, lodStagingBuffers, lodStagingSnapshot,
 import { lodPayloadRequest } from "./lodPayloadRequest.js";
 
 // LOD runs after the model is already visible. Cached component reads are
-// serialized through one loader lane, so a first-ready window shorter than a
-// typical decode publishes one component at a time and makes a large animated
-// scene repeat its whole-scene effects pass for every component. Keep the
-// scheduler's general low-latency default for other hosts; the Viewer can
-// afford this bounded window to fill its four-CID ownership limit.
-export const VIEWPORT_LOD_COLLECTION_MS = 128;
+// serialized through one loader lane. A long collection window becomes pure
+// latency whenever the next decode cannot join the ready batch: a 918-component
+// model accumulated 33 seconds in 128 ms windows while publishing mostly
+// singletons. Keep the scheduler's bounded default so fast reads can still
+// coalesce without delaying the common singleton path as heavily.
+export const VIEWPORT_LOD_COLLECTION_MS = 32;
 
 function publishLodMemoryLimitation(detail) {
   if (typeof window === "undefined") return;

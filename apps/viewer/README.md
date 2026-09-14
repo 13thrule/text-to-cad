@@ -191,10 +191,12 @@ the build — detection only; it keeps serving.
   tree verification are reused; loading one model does not wait for every model.
 - STEP entries always follow active edits, showing the root preview before its
   STEP save. The filename badge reports only **Opening**, **Updating**, **Open failed**,
-  **Update failed**, or **Limited detail**. Once a usable current view is displayed,
+  **Update failed**, **Limited detail**, or **Model warning**. Once a usable current view is displayed,
   saving, successful completion, idle edit-feed state and routine refinement stay quiet.
   Busy badges have a spinner; failures and detail limits have an icon and open their
-  explanation on click. Existing usable views remain visible during updates and failures.
+  explanation on click. Invalid saved settings produce a nonblocking model warning,
+  with rebuild guidance and full diagnostics; geometry remains usable. Existing usable
+  views remain visible during updates and failures.
   Opening uses one headline with **Finding file**, **Reading model**, **Loading geometry**,
   or **Preparing view** underneath. Counts measure completed geometry items in the current
   stage, not assembly occurrences or an overall ETA. Uncounted stages are indeterminate.
@@ -229,7 +231,9 @@ the build — detection only; it keeps serving.
   tessellation when standard meshes are not cached. Cached standard meshes are
   preferred immediately, subject to their probed decode size and admission.
   Smaller assemblies start at the standard level, except an individually
-  oversized component may start coarse if its estimate fits. Coarse geometry
+  oversized component may start coarse. A component above the concurrent
+  decode cap runs alone only when the shared Viewer memory envelope can reserve
+  its complete estimate. Coarse geometry
   is a temporary preview: visible components automatically reach at least the
   standard level, preserving its angular smoothness even when projected chord
   error alone would permit a coarser mesh. Close inspection can request finer

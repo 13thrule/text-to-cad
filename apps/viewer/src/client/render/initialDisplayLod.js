@@ -53,7 +53,8 @@ export function estimateInitialSurfDecodeBytes(
 // explicit coarse tier throughout. In a smaller package, any individual leaf
 // takes that tier when its conservative default estimate cannot be admitted.
 // The caller still applies the independent memory reservation; an unfit coarse
-// estimate is reported, never run alone.
+// estimate can run only through the caller's serial, globally reserved
+// oversized-component path.
 export function initialDisplayLodPlan({
   componentCount,
   surfBytes = null,

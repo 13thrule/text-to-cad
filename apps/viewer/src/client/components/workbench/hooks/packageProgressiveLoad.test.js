@@ -977,7 +977,7 @@ test("a no-progress recovery is attempted once and reports worker-temporary byte
   assert.equal(recoveries, 1, "no release progress means no repeated recovery loop");
 });
 
-test("an oversized component is rejected explicitly instead of running alone", async () => {
+test("an oversized component is rejected when the global envelope cannot reserve it", async () => {
   const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
   let started = false;
   const limitations = [];
@@ -985,6 +985,9 @@ test("an oversized component is rejected explicitly instead of running alone", a
   const externallyBounded = createProgressivePackageLoader({
     descriptor,
     maxInFlightBytes: 100,
+    allowOversizedSingle: true,
+    sizeHint: async () => 2,
+    sourceExpansionRatio: 100,
     loadComponent: async () => {
       started = true;
       return fakeComponent("c0");
@@ -1000,6 +1003,82 @@ test("an oversized component is rejected explicitly instead of running alone", a
   assert.equal(started, false, "decode never starts");
   assert.equal(policy.snapshot().reservationCount, 0);
   assert.equal(limitations.length, 1);
+});
+
+test("one globally reserved warm oversized decode runs alone and then restores ordinary concurrency", async () => {
+  const descriptor = makeDescriptor({ componentCount: 3, occurrenceCount: 3 });
+  const policy = createViewerMemoryPolicy({ budgetBytes: 1000, gpuHeadroomBytes: 0 });
+  const warmProbe = { object: "warm-large", byteLength: 50, decodedBytes: 150 };
+  const oversizedMayFinish = deferred();
+  const oversizedStarted = deferred();
+  const started = [];
+  const reservations = [];
+  const run = createProgressivePackageLoader({
+    descriptor,
+    concurrency: 3,
+    maxInFlightBytes: 100,
+    allowOversizedSingle: true,
+    sizeHint: async cid => cid === "c0"
+      ? { sourceBytes: null, cacheProbe: warmProbe }
+      : { sourceBytes: 0.1, cacheProbe: null },
+    sourceExpansionRatio: 100,
+    reserveLoad: ({ cid, estimatedBytes, cacheProbe }) => {
+      reservations.push([cid, estimatedBytes, cacheProbe]);
+      return policy.reserve({ category: "workerInFlight",
+        bytes: cacheProbe ? estimatedBytes : estimatedBytes * 2, label: cid });
+    },
+    releaseLoad: token => policy.release(token),
+    loadComponent: async (cid, _component, { estimatedBytes, cacheProbe }) => {
+      started.push([cid, estimatedBytes, cacheProbe]);
+      if (cid === "c0") {
+        oversizedStarted.resolve();
+        await oversizedMayFinish.promise;
+      }
+      return fakeComponent(cid);
+    },
+    onPublish: () => {},
+  }).run();
+
+  await oversizedStarted.promise;
+  await Promise.resolve();
+  assert.deepEqual(started, [["c0", 200, warmProbe]], "no sibling enters while the oversized reservation is live");
+  assert.equal(policy.snapshot().inFlightBytes, 200, "the global ledger owns the exact warm decode estimate");
+  oversizedMayFinish.resolve();
+  await run;
+
+  assert.equal(started.length, 3);
+  assert.deepEqual(reservations[0], ["c0", 200, warmProbe]);
+  assert.equal(policy.snapshot().reservationCount, 0);
+});
+
+test("an oversized decode that outgrows its admitted estimate is not published", async () => {
+  const descriptor = makeDescriptor({ componentCount: 1, occurrenceCount: 1 });
+  const policy = createViewerMemoryPolicy({ budgetBytes: 1000, gpuHeadroomBytes: 0 });
+  const publications = [];
+  const limitations = [];
+  const loader = createProgressivePackageLoader({
+    descriptor,
+    maxInFlightBytes: 100,
+    allowOversizedSingle: true,
+    sizeHint: async () => 2,
+    sourceExpansionRatio: 75,
+    reserveLoad: ({ cid, estimatedBytes }) => policy.reserve({
+      category: "workerInFlight", bytes: estimatedBytes * 2, label: cid,
+    }),
+    releaseLoad: token => policy.release(token),
+    loadComponent: async () => fakeComponent("c0", { floats: 40 }),
+    onMemoryLimitation: detail => limitations.push(detail),
+    onPublish: publication => publications.push(publication),
+  });
+
+  await assert.rejects(loader.run(), error => {
+    assert.equal(error.detail.decodedEstimateBytes, 150);
+    assert.ok(error.detail.actualDecodedBytes > 150);
+    return error.code === "VIEWER_MEMORY_LIMIT";
+  });
+  assert.deepEqual(publications, []);
+  assert.equal(limitations.length, 1);
+  assert.equal(policy.snapshot().reservationCount, 0);
 });
 
 test("an underestimated component that actually exceeds the cap is never published", async () => {

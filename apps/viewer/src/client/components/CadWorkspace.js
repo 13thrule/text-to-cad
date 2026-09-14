@@ -119,8 +119,11 @@ import {
   VIEWPORT_CONTENT
 } from "cadgen-js/lib/renderCapabilities";
 import {
+  buildViewerAnnotationAlert,
   buildViewerMeshAlert,
-  buildViewerEditAlert
+  buildViewerEditAlert,
+  fileStatusAlertKey,
+  resolveFileStatusAlert
 } from "@/workbench/viewerAlerts";
 import {
   buildParameterValuesCopyText,
@@ -2703,7 +2706,7 @@ export default function CadWorkspace({
     : 1;
 
   const viewerAlert = useMemo(() => {
-    const editFailure = buildViewerEditAlert(editingPreview.state, currentPreviewVisible, Boolean(selectedMeshData));
+    const editFailure = buildViewerEditAlert(editingPreview.state, currentPreviewVisible, Boolean(selectedMeshData && !selectedMeshPartial));
     if (editFailure) return editFailure;
     if (catalogError && !selectedMeshData) return {
       severity: "error", kind: "status", title: "Couldn’t open the model",
@@ -2735,7 +2738,8 @@ export default function CadWorkspace({
       selectedMeshData && !selectedMeshPartial &&
         !["submitted", "queued", "building"].includes(editingPreview.state?.state) &&
         ["network", "timeout", "status"].includes(selectedArtifact.failure?.kind)
-        ? null : selectedArtifact
+        ? null : selectedArtifact,
+      { partial: selectedMeshPartial }
     );
     return meshAlert || viewerRuntimeAlert;
   }, [
@@ -2758,14 +2762,6 @@ export default function CadWorkspace({
     viewerLoading,
     viewerRuntimeAlert
   ]);
-  const viewerAlertKey = viewerAlert
-    ? [
-      fileKey(selectedEntry),
-      viewerAlert.severity,
-      viewerAlert.summary,
-      viewerAlert.title
-    ].join(":")
-    : "";
   const focusedAssemblyTopologyActive = Boolean(
     isAssemblyView &&
     requestedStepTreeTopologyNodeIds.length > 0 &&
@@ -3981,10 +3977,6 @@ export default function CadWorkspace({
   }, [effectiveRenderFormat, selectedKey, selectedEntryHasReferences]);
 
   useEffect(() => {
-    setViewerAlertOpen(false);
-  }, [viewerAlertKey]);
-
-  useEffect(() => {
     setViewerRuntimeAlert(null);
   }, [selectedKey]);
 
@@ -4845,25 +4837,25 @@ export default function CadWorkspace({
     finding: !catalogHydrated || selectedCatalogPending || fileParamSelectionPending,
     preparing: presentationPending && !effectiveViewerLoading && !selectedMeshPartial,
   });
+  const annotationAlert = buildViewerAnnotationAlert(selectedEntry);
   const fileStatus = resolveFileStatus({
     hasFile: Boolean(selectedEntry || explicitFileParam),
     error: viewerAlert || (catalogError && !selectedMeshData ? catalogError : null) || (missingFileRef
       ? { title: "File unavailable", message: "The selected file could not be found." }
-      : null) || (selectedEntry?.annotationError && !selectedEntry.editingPreview
-      ? { severity: "warning", title: "Annotations unavailable", message: selectedEntry.annotationError }
-      : null),
+      : null) || annotationAlert,
     opening: loading.opening,
     updating: loading.updating,
     loadingTitle: loading.progress.connectionLost ? "Waiting for a response. Retrying…" : loading.progress.label,
     editingState: editingAvailable ? editingPreview.state : null,
     showingPreview: currentPreviewVisible,
     qualityStatus: viewportQualityStatus,
-    hasGeometry: Boolean(selectedMeshData || selectedEntryIsDrawingDocument)
+    hasGeometry: Boolean((selectedMeshData && !selectedMeshPartial) || selectedEntryIsDrawingDocument)
   });
-  const fileStatusAlert = viewerAlert || (fileStatus && !fileStatus.busy && ["error", "warning"].includes(fileStatus.tone) ? {
-    severity: fileStatus.tone, title: fileStatus.label, message: fileStatus.title,
-    reload: fileStatus.tone === "error", blocking: false,
-  } : null);
+  const fileStatusAlert = resolveFileStatusAlert(fileStatus, viewerAlert, annotationAlert);
+  const currentFileStatusAlertKey = fileStatusAlertKey(fileKey(selectedEntry), fileStatusAlert);
+  useEffect(() => {
+    setViewerAlertOpen(false);
+  }, [currentFileStatusAlertKey]);
   const selectedWholeTopologyReferencePartIds = useMemo(() => (
     uniqueStringList(
       selectedReferenceIds.flatMap((referenceId) => renderPartIdsForWholeTopologyReference(referenceId))

@@ -96,6 +96,10 @@ export function resolveFileStatus({
     );
   }
 
+  if (error?.severity === "warning") {
+    return status("Model warning", text(error.message || error.title), "warning");
+  }
+
   if (qualityStatus?.state === "limited" || qualityStatus?.state === "error") {
     return status(
       "Limited detail",

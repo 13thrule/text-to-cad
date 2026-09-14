@@ -3501,7 +3501,9 @@ const CadViewer = forwardRef(function CadViewer({
   }, []);
 
   const handleRuntimeInitializationError = useCallback((runtimeError) => {
-    meshSourceAdoptionRef.current?.(null, false);
+    // A replacement runtime that cannot initialize has no future scene that
+    // can finish an in-flight LOD handoff.
+    meshSourceAdoptionRef.current?.(null, false, { disposed: true, terminal: true });
     viewerAlertChangeRef.current?.(buildRuntimeInitializationAlert(runtimeError));
   }, []);
   const handleRuntimeContextLost = useCallback(() => { meshSourceAdoptionRef.current?.(null, false); }, []);
@@ -3538,7 +3540,8 @@ const CadViewer = forwardRef(function CadViewer({
     applyInitialPerspective,
     updateGridHelper: updateActiveGridHelper,
     clearSceneGroup,
-    onSceneDisposed: source => meshSourceAdoptionRef.current?.(source, false, { disposed: true, terminal: true }),
+    onSceneDisposed: (source, { handoff = false } = {}) => meshSourceAdoptionRef.current?.(source, false,
+      { disposed: true, terminal: !handoff, handoff }),
     disposeSceneObject,
     disposeTexture,
     syncViewPlaneOrientation,
