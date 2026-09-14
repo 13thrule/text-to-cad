@@ -2225,8 +2225,7 @@ function normalizeSettings(settings = {}) {
   const sourceTheme = settings.theme || settings.themeSettings || settings.settings || undefined;
   const normalizedTheme = normalizeThemeSettings(sourceTheme);
   const displayEdgeSettings = resolveCadEdgeSettings(
-    settings.edgeSettings || settings.display?.edges,
-    { colorMode: settings.appearance || normalizedTheme.colorMode }
+    settings.edgeSettings || settings.display?.edges
   );
   const applyDisplayModeEdgePolicy = settings.applyDisplayModeEdgePolicy !== false;
   const edgeSettings = applyDisplayModeEdgePolicy

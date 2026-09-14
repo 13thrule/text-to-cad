@@ -66,8 +66,9 @@ the model's lighting and materials.
 **Display** owns the CAD inspection projection, style, edge visibility, grid,
 origin axes, part colors, clipping, and exploded view. **Shaded with edges**
 shows shaded surfaces with CAD edges; **Shaded** shows those surfaces without
-edges. Edge colors and weights are fixed by edge type and app appearance. The
-grid is an on/off world reference; origin axes remain independently configurable.
+edges. Inspect uses the same model lighting, materials, and dark edge colors in
+light and dark appearance; only the canvas and guides adapt. Edge weights are
+fixed by edge type. The grid is an on/off world reference; origin axes remain independently configurable.
 
 The navbar's **Viewing mode** icon menu switches between **Inspect** and
 **Render**, showing the active mode's cube or clapperboard icon. Inspect shows only

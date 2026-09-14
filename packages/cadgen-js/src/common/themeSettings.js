@@ -306,13 +306,6 @@ const WORKBENCH_FILL_COLORS = Object.freeze([
   "#f2a7d9"
 ]);
 
-const CHARCOAL_FILL_COLORS = Object.freeze([
-  "#b6c4ce",
-  "#8f9aa3",
-  "#d3dae0",
-  "#68737d"
-]);
-
 function mixHexColors(colorA, colorB, amount = 0.5) {
   const from = normalizeColor(colorA, "#000000");
   const to = normalizeColor(colorB, from);
@@ -325,21 +318,6 @@ function mixHexColors(colorA, colorB, amount = 0.5) {
       .padStart(2, "0");
   };
   return `#${channel(1)}${channel(3)}${channel(5)}`;
-}
-
-function midpointPalette(primaryColors, secondaryColors) {
-  const primary = Array.isArray(primaryColors) ? primaryColors : [];
-  const secondary = Array.isArray(secondaryColors) ? secondaryColors : [];
-  const colorCount = Math.max(primary.length, secondary.length);
-  if (!colorCount) {
-    return Object.freeze(["#ffffff"]);
-  }
-
-  return Object.freeze(Array.from({ length: colorCount }, (_, index) => {
-    const primaryColor = primary[index] || primary.at(-1) || "#ffffff";
-    const secondaryColor = secondary[index] || secondary.at(-1) || primaryColor;
-    return mixHexColors(primaryColor, secondaryColor);
-  }));
 }
 
 function createFloorAxisSettings(floorColor, options = {}) {
@@ -487,152 +465,6 @@ const CINEMATIC_THEME_SETTINGS = Object.freeze({
   }
 });
 
-const DARK_STUDIO_THEME_SETTINGS = Object.freeze({
-  materials: {
-    defaultColor: WORKBENCH_FILL_COLORS[0],
-    fillColors: WORKBENCH_FILL_COLORS,
-    cycleColors: false,
-    overrideSourceColors: false,
-    tintMode: "blend",
-    tintStrength: 0,
-    saturation: 1.2,
-    contrast: 1.14,
-    brightness: 1.06,
-    roughness: 0.54,
-    metalness: 0.02,
-    clearcoat: 0.14,
-    clearcoatRoughness: 0.4,
-    opacity: 1,
-    envMapIntensity: 0.5,
-    emissiveIntensity: 0.03
-  },
-  background: {
-    type: "linear",
-    solidColor: "#081b2d",
-    linearStart: "#18304a",
-    linearEnd: "#030914",
-    linearAngle: 135,
-    radialInner: "#174267",
-    radialOuter: "#030914"
-  },
-  floor: {
-    mode: THEME_FLOOR_MODES.STAGE,
-    color: "#0a2238",
-    roughness: 0.38,
-    reflectivity: 0.1,
-    shadowOpacity: 0.42,
-    horizonBlend: 0.1,
-    ...createFloorGridSettings("#0a2238", { opacity: 0.22 }),
-    enabled: false
-  },
-  environment: {
-    enabled: true,
-    presetId: "studio-hdri-43",
-    intensity: 0.18,
-    rotationY: -0.25,
-    useAsBackground: false
-  },
-  lighting: {
-    toneMappingExposure: 1.22,
-    directional: {
-      enabled: true,
-      color: "#ffffff",
-      intensity: 1.42,
-      position: {
-        x: -210,
-        y: 260,
-        z: 270
-      }
-    },
-    spot: {
-      enabled: true,
-      color: "#70c4ff",
-      intensity: 0.24,
-      angle: 0.74,
-      distance: 0,
-      position: {
-        x: 190,
-        y: 210,
-        z: 170
-      }
-    },
-    point: {
-      enabled: true,
-      color: "#9bd0ff",
-      intensity: 0.36,
-      distance: 0,
-      position: {
-        x: -240,
-        y: 110,
-        z: -210
-      }
-    },
-    ambient: {
-      enabled: true,
-      color: "#c6d8ea",
-      intensity: 0.24
-    },
-    hemisphere: {
-      enabled: true,
-      skyColor: "#ffffff",
-      groundColor: "#020713",
-      intensity: 0.98
-    }
-  }
-});
-
-const CODEX_DARK_STUDIO_THEME_SETTINGS = Object.freeze({
-  ...DARK_STUDIO_THEME_SETTINGS,
-  materials: {
-    ...DARK_STUDIO_THEME_SETTINGS.materials,
-    defaultColor: CHARCOAL_FILL_COLORS[0],
-    fillColors: CHARCOAL_FILL_COLORS
-  },
-  background: {
-    ...DARK_STUDIO_THEME_SETTINGS.background,
-    solidColor: "#151617",
-    linearStart: "#2a2b2d",
-    linearEnd: "#070809",
-    radialInner: "#303133",
-    radialOuter: "#070809"
-  },
-  floor: {
-    ...DARK_STUDIO_THEME_SETTINGS.floor,
-    color: "#171819",
-    ...createFloorGridSettings("#171819", { opacity: 0.22 })
-  }
-});
-
-const DARKOAL_FILL_COLORS = midpointPalette(
-  DARK_STUDIO_THEME_SETTINGS.materials.fillColors,
-  CODEX_DARK_STUDIO_THEME_SETTINGS.materials.fillColors
-);
-
-const DARKOAL_THEME_SETTINGS = Object.freeze({
-  ...DARK_STUDIO_THEME_SETTINGS,
-  materials: {
-    ...DARK_STUDIO_THEME_SETTINGS.materials,
-    defaultColor: DARKOAL_FILL_COLORS[0],
-    fillColors: DARKOAL_FILL_COLORS
-  },
-  background: {
-    ...DARK_STUDIO_THEME_SETTINGS.background,
-    solidColor: mixHexColors(DARK_STUDIO_THEME_SETTINGS.background.solidColor, CODEX_DARK_STUDIO_THEME_SETTINGS.background.solidColor),
-    linearStart: mixHexColors(DARK_STUDIO_THEME_SETTINGS.background.linearStart, CODEX_DARK_STUDIO_THEME_SETTINGS.background.linearStart),
-    linearEnd: mixHexColors(DARK_STUDIO_THEME_SETTINGS.background.linearEnd, CODEX_DARK_STUDIO_THEME_SETTINGS.background.linearEnd),
-    radialInner: mixHexColors(DARK_STUDIO_THEME_SETTINGS.background.radialInner, CODEX_DARK_STUDIO_THEME_SETTINGS.background.radialInner),
-    radialOuter: mixHexColors(DARK_STUDIO_THEME_SETTINGS.background.radialOuter, CODEX_DARK_STUDIO_THEME_SETTINGS.background.radialOuter)
-  },
-  floor: {
-    ...DARK_STUDIO_THEME_SETTINGS.floor,
-    color: mixHexColors(DARK_STUDIO_THEME_SETTINGS.floor.color, CODEX_DARK_STUDIO_THEME_SETTINGS.floor.color),
-    ...createFloorGridSettings(
-      mixHexColors(DARK_STUDIO_THEME_SETTINGS.floor.color, CODEX_DARK_STUDIO_THEME_SETTINGS.floor.color),
-      { opacity: 0.22 }
-    )
-  }
-});
-
 // Workbench light mode counterpart to the dark treatment below: the canvas
 // sits a few steps below pure white and the floor a step below that, so
 // white parts (which light toward pure white under the shared exposure)
@@ -677,19 +509,14 @@ const WORKBENCH_BASE_THEME_SETTINGS = Object.freeze({
   }
 });
 
-// Workbench dark mode treatment: a neutral charcoal canvas. Mode
-// overrides can only swap colors, not light intensities, so dark-part
-// visibility is tuned entirely through these colors: lifted ambient and
-// hemisphere-ground fill so shaded faces of dark parts keep their form and
-// a canvas/floor luminance step for silhouette separation. Edges stay deep
-// navy so they read as subtle technical linework on light fills; wireframe
-// display relies on the automatic light-edge contrast fallback.
+// Inspect appearance changes the canvas and guide contrast, never the model's
+// materials or illumination. Both presets inherit the same workbench rig.
 const WORKBENCH_DARK_FLOOR_COLOR = "#383838";
 
 const WORKBENCH_DARK_THEME_SETTINGS = Object.freeze({
-  ...DARKOAL_THEME_SETTINGS,
+  ...WORKBENCH_BASE_THEME_SETTINGS,
   background: {
-    ...DARKOAL_THEME_SETTINGS.background,
+    ...WORKBENCH_BASE_THEME_SETTINGS.background,
     solidColor: "#333333",
     linearStart: "#3b3b3b",
     linearEnd: "#2b2b2b",
@@ -697,33 +524,10 @@ const WORKBENCH_DARK_THEME_SETTINGS = Object.freeze({
     radialOuter: "#2b2b2b"
   },
   floor: {
-    ...DARKOAL_THEME_SETTINGS.floor,
+    ...WORKBENCH_BASE_THEME_SETTINGS.floor,
     color: WORKBENCH_DARK_FLOOR_COLOR,
-    enabled: false,
-    // Only the colors here reach the dark preset: mode overrides swap colors,
-    // not booleans or opacities, so enablement and opacity come from the light
-    // base above and are deliberately not restated.
     ...createFloorGridSettings(WORKBENCH_DARK_FLOOR_COLOR, { enabled: true, opacity: 0.16 }),
     ...createFloorAxisSettings(WORKBENCH_DARK_FLOOR_COLOR, { enabled: true, opacity: 0.28 })
-  },
-  lighting: {
-    ...DARKOAL_THEME_SETTINGS.lighting,
-    spot: {
-      ...DARKOAL_THEME_SETTINGS.lighting.spot,
-      color: "#b3d4f2"
-    },
-    point: {
-      ...DARKOAL_THEME_SETTINGS.lighting.point,
-      color: "#bfd8f0"
-    },
-    ambient: {
-      ...DARKOAL_THEME_SETTINGS.lighting.ambient,
-      color: "#dfe7f0"
-    },
-    hemisphere: {
-      ...DARKOAL_THEME_SETTINGS.lighting.hemisphere,
-      groundColor: "#333d4b"
-    }
   }
 });
 
@@ -734,10 +538,7 @@ const WORKBENCH_LIGHT_THEME_PRESET_SETTINGS = withThemeColorMode(
   WORKBENCH_BASE_THEME_SETTINGS,
   THEME_COLOR_MODES.LIGHT
 );
-// Workbench Dark keeps the shared Workbench materials and lighting intensities,
-// swapping in the dark canvas/floor/light colors (the same color set the old
-// system theme applied for its dark mode) so the two variants read as one theme
-// on two canvases.
+// Dark changes only the canvas/floor colors of the shared Workbench rig.
 const WORKBENCH_DARK_BAKED_SETTINGS = deepClone(WORKBENCH_BASE_THEME_SETTINGS);
 applyThemeModeColorOverrides(
   WORKBENCH_DARK_BAKED_SETTINGS,

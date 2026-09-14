@@ -841,7 +841,7 @@ export function renderJobContext(meshData, job = {}) {
     renderScale: job.output?.renderScale ?? sceneSettings.quality.renderScale
   });
   const displayEdgeSettings = resolveCadEdgeSettings(
-    resolveDisplayEdgeSettings(displaySettings), { colorMode: sceneSettings.appearance }
+    resolveDisplayEdgeSettings(displaySettings)
   );
   const edgeSettings = {
     ...displayEdgeSettings,

@@ -226,7 +226,7 @@ test("snapshot and shared CAD scene use the same appearance ink", () => {
     const context = renderJobContext(mesh, { input: "part.step", kind: "step", appearance });
     const scene = buildModel(THREE, mesh, modelOptionsForRenderJob(context));
     assert.deepEqual(scene.runtime.edgeSettings.classes, context.edgeSettings.classes);
-    assert.equal(scene.runtime.edgeSettings.color, appearance === "dark" ? "#96a5b5" : "#253443");
+    assert.equal(scene.runtime.edgeSettings.color, "#253443");
     scene.dispose();
   }
 });

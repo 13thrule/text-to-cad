@@ -26,17 +26,16 @@ test("fixed CAD classes retain distinct restrained device-pixel ink at every pix
   segments.texture.dispose();
 });
 
-test("light and dark have fixed distinct class colours and grid ink", () => {
+test("model ink is fixed while grid ink adapts to appearance", () => {
+  const edges = resolveCadEdgeSettings({ color: "#ff0000", thickness: 6 });
+  assert.equal(edges.thickness, 1);
+  assert.equal(edges.color, "#253443");
+  assert.equal(new Set(["feature", "tangent", "seam"].map((id) => edges.classes[id].color)).size, 3);
   for (const colorMode of ["light", "dark"]) {
-    const edges = resolveCadEdgeSettings({ color: "#ff0000", thickness: 6 }, { colorMode });
-    assert.equal(edges.thickness, 1);
-    assert.notEqual(edges.color, "#ff0000");
-    assert.equal(new Set(["feature", "tangent", "seam"].map((id) => edges.classes[id].color)).size, 3);
     const grid = resolveCadGridSettings({ enabled: true, density: 4, opacity: 1, centerColor: "#ff0000" }, { colorMode });
     assert.equal(grid.enabled, true);
     assert.equal(grid.density, 1);
     assert.equal(grid.opacity, 0.16);
     assert.notEqual(grid.centerColor, "#ff0000");
   }
-  assert.notDeepEqual(resolveCadEdgeSettings().classes, resolveCadEdgeSettings(null, { colorMode: "dark" }).classes);
 });

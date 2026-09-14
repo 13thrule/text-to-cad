@@ -821,7 +821,7 @@ test("a deformed tube leaves the instanced edge draw for a private, bendable lin
   assert.equal(scene.displayRecords[0], record);
   assert.deepEqual(record.edges.children.map((line) => line.geometry), basicGeometries);
   assert.deepEqual(record.edgeMaterials, basicMaterials);
-  assert.deepEqual(record.edgeMaterials.map((material) => material.color.getHexString()), ["96a5b5", "657787"]);
+  assert.deepEqual(record.edgeMaterials.map((material) => material.color.getHexString()), ["253443", "667788"]);
   scene.update({ selection: { selectedPartIds: ["tube"] } });
   assert.ok(record.edgeMaterials.every((material) => material.color.getHexString() === "8dc5ff"));
   scene.update({ selection: { selectedPartIds: [] }, appearance: "light" });
@@ -833,7 +833,7 @@ test("a deformed tube leaves the instanced edge draw for a private, bendable lin
   scene.dispose();
 });
 
-test("appearance changes only CAD ink uniforms, retaining geometry, instance slots and segment textures", () => {
+test("appearance preserves CAD ink, geometry, instance slots and segment textures", () => {
   const source = surfComponentMeshData();
   const scene = buildModel(THREE, source, {
     appearance: "light", displayMode: CAD_DISPLAY_MODE.SHADED_EDGES, renderPartsIndividually: true
@@ -852,24 +852,24 @@ test("appearance changes only CAD ink uniforms, retaining geometry, instance slo
     assert.equal(record.edgeInstance.set, set);
     assert.equal(record.edgeInstance.slot, slot);
     assert.equal(set.segments, segments);
-    assertClose(set.uniforms.cadClassColor.value.elements.slice(0, 3), linearRgb(appearance === "dark" ? "#96a5b5" : "#253443"), "current palette");
+    assertClose(set.uniforms.cadClassColor.value.elements.slice(0, 3), linearRgb("#253443"), "current palette");
     assert.deepEqual(set.uniforms.cadClassWidth.value.toArray(), [1, 0.65, 0, 0]);
   }
   second.dispose();
   scene.dispose();
 });
 
-test("wireframe appearance updates fixed ink without rebuilding its geometry", () => {
+test("wireframe appearance preserves fixed ink and geometry", () => {
   const scene = buildModel(THREE, sampleMeshData(), {
     appearance: "light", displayMode: CAD_DISPLAY_MODE.WIREFRAME,
     edgeRendering: { mode: "screen-space", LineSegments2, LineSegmentsGeometry, LineMaterial }
   });
   const record = scene.displayRecords[0];
   const geometry = record.edges.geometry;
-  scene.update({ appearance: "dark", edgeRendering: { mode: "screen-space", LineSegments2, LineSegmentsGeometry, LineMaterial, wireframeEdgeColor: "#96a5b5" } });
+  scene.update({ appearance: "dark", edgeRendering: { mode: "screen-space", LineSegments2, LineSegmentsGeometry, LineMaterial } });
   assert.equal(scene.displayRecords[0], record);
   assert.equal(record.edges.geometry, geometry);
-  assert.equal(record.edges.material.color.getHexString(), "96a5b5");
+  assert.equal(record.edges.material.color.getHexString(), "253443");
   scene.dispose();
 });
 
@@ -1859,7 +1859,7 @@ test("a deformed tube's private edges keep per-class thickness", () => {
   assert.deepEqual(Array.from(record.edges.children[0].geometry.attributes.instanceStart.data.array).slice(0, 3), [0, 0, 0]);
   scene.update({ appearance: "dark" });
   assert.deepEqual(record.edges.children.map((line) => line.geometry), privateGeometry);
-  assert.deepEqual(record.edgeMaterials.map((material) => material.color.getHexString()), ["96a5b5", "657787"]);
+  assert.deepEqual(record.edgeMaterials.map((material) => material.color.getHexString()), ["253443", "667788"]);
   scene.dispose();
 });
 

@@ -23,6 +23,9 @@ test("normal CAD stays an orthographic responsive inspection scene", () => {
   assert.equal(light.quality.id, SCENE_QUALITY.INTERACTIVE);
   assert.equal(light.render.settings.background.solidColor, "#f0f4f9");
   assert.equal(dark.render.settings.background.solidColor, "#333333");
+  assert.deepEqual(dark.render.settings.materials, light.render.settings.materials);
+  assert.deepEqual(dark.render.settings.lighting, light.render.settings.lighting);
+  assert.deepEqual(dark.render.settings.environment, light.render.settings.environment);
 });
 
 test("omitted Render fields stay sparse while configuration expands effective defaults", () => {

@@ -263,12 +263,12 @@ component (`cadEdgeInstances.js`): the instances are every (segment,
 occurrence) pair, decoded in the vertex shader from a per-component segment
 texture (32 B per drawn segment, cached on the component) and a per-set
 instance texture (128 B per occurrence: matrix, colour, opacity, visibility,
-highlight). `cadInk.js` fixes the light/dark palette and nominal widths per
+highlight). `cadInk.js` fixes one dark model-edge palette and nominal widths per
 class: feature 1, tangent 0.65, seam 0.8, and degenerate 0 (hidden). Public
 `display.edges` keeps only enabled/silhouette choices; grid settings keep only
 enabled. Viewer and snapshots share the same grid spacing and fixed ink.
-Appearance updates change class uniforms while retaining geometry, segment
-textures and occurrence slots. A thickness is a FULL width in DEVICE pixels — every line shader
+Appearance updates preserve model lighting, materials, class ink, geometry,
+segment textures and occurrence slots; only the canvas and guides adapt. A thickness is a FULL width in DEVICE pixels — every line shader
 normalises its extrusion by the drawing buffer, never the CSS size, and the
 fragment stage filters a box with a symmetric ±0.75 px kernel. Integrated
 coverage equals the nominal width even for subpixel lines, and zero width

@@ -2002,8 +2002,8 @@ const CadViewer = forwardRef(function CadViewer({
   const shouldUseCadEdgeSource = hasCapability(renderFormat, "topology");
   const displayEdgeSettingsKey = JSON.stringify(normalizedDisplaySettings.edges);
   const displayEdgeSettings = useMemo(
-    () => resolveCadEdgeSettings(normalizedDisplaySettings.edges, { colorMode: appearance }),
-    [displayEdgeSettingsKey, appearance]
+    () => resolveCadEdgeSettings(normalizedDisplaySettings.edges),
+    [displayEdgeSettingsKey]
   );
   const wireframeMode = displayModeIsWireframe(normalizedDisplayMode);
   const displayModeForceEdges = displayModeForcesEdges(normalizedDisplayMode);
