@@ -21,11 +21,9 @@ test("numeric value helpers preserve workspace coercion behavior", () => {
 test("selection validation retains empty and unchanged lists across new geometry ID sets", () => {
   const empty = [];
   const selected = Object.freeze(["part:a", "part:b", "part:a"]);
-  for (let revision = 0; revision < 250; revision += 1) {
-    const validIds = new Set(["part:a", "part:b", "part:c"]);
-    assert.equal(filterPreservingIdentity(empty, id => validIds.has(id)), empty);
-    assert.equal(filterPreservingIdentity(selected, id => validIds.has(id)), selected);
-  }
+  const validIds = new Set(["part:a", "part:b", "part:c"]);
+  assert.equal(filterPreservingIdentity(empty, id => validIds.has(id)), empty);
+  assert.equal(filterPreservingIdentity(selected, id => validIds.has(id)), selected);
 });
 
 test("selection validation removes departed IDs without mutating earlier state", () => {

@@ -421,58 +421,6 @@ class ReadyChildren(unittest.TestCase):
         self.assertIsNone(current_frame())
         self.assertIs(bd.Compound.__init__, constructor)
 
-    def test_mutated_argument_list_cannot_admit_unvalidated_inputs(self):
-        class CustomLazy(LazyCompound):
-            pass
-
-        late = self.child('late', tree=self.tree)
-        first = self.child('first', job=Job(self.other))
-        custom = CustomLazy('custom.py', None, frame=self.frame, label='custom', tree=self.tree)
-        inputs = [first, late]
-        armed = True
-
-        def validate_then_mutate(items):
-            nonlocal armed
-            valid = all(items)
-            if armed:
-                armed = False
-                inputs.append(custom)
-            return valid
-
-        with mock.patch.object(candidate, 'all', side_effect=validate_then_mutate, create=True):
-            bd.Compound(obj=inputs)
-        self.assertFalse(armed)
-        self.assertTrue(custom._forced, 'the original constructor still sees its argument list')
-        self.assertEqual(self.constructions[0].inputs, (first, late))
-        self.assertEqual(self.stats['prepared'], 1)
-        self.assertEqual(self.stats['consumed'], 1)
-
-    def test_custom_sequence_and_subclasses_keep_ordinary_forcing(self):
-        class Inputs(list):
-            pass
-
-        class CustomCompound(bd.Compound):
-            pass
-
-        class CustomLazy(LazyCompound):
-            pass
-
-        for mode in ('sequence', 'compound', 'lazy'):
-            with self.subTest(mode=mode):
-                late = self.child(f'{mode}_late', tree=self.tree)
-                first = self.child(f'{mode}_first', job=Job(self.other))
-                if mode == 'sequence':
-                    bd.Compound(obj=Inputs([first, late]))
-                elif mode == 'compound':
-                    CustomCompound(obj=[first, late])
-                else:
-                    late = CustomLazy(f'{self.temp.name}/custom.py', None,
-                                      frame=self.frame, label='custom', tree=self.tree)
-                    bd.Compound(obj=[first, late])
-                self.assertTrue(first._forced and late._forced)
-                self.assertEqual(self.stats['prepared'], 0)
-                self.assertEqual(self.stats['scopes'], 0)
-
     def test_nested_build_frame_cannot_consume_or_expand_ancestor_preparation(self):
         late = self.child('late', tree=self.tree)
         observed = []

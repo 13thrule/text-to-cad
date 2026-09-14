@@ -2,13 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  RENDER_BACKDROP_KEYS,
-  RENDER_LIGHTING_KEYS,
-  RENDER_PAYLOAD_KEYS,
-  RENDER_QUALITY,
-  RENDER_QUALITY_PRESETS,
-  RENDER_STUDIO,
-  RENDER_STUDIO_PRESETS,
   SCENE_QUALITY,
   normalizeRenderPayload,
   resolveDisplayMaterialSettings,
@@ -16,24 +9,6 @@ import {
   resolveRenderQuality,
   resolveSceneSettings
 } from "./sceneSettings.js";
-
-test("the public Render vocabulary is compact and closed", () => {
-  assert.deepEqual(RENDER_STUDIO, { LIGHT: "light", DARK: "dark" });
-  assert.deepEqual(RENDER_STUDIO_PRESETS, [
-    { id: "light", label: "Light studio" },
-    { id: "dark", label: "Dark studio" }
-  ]);
-  assert.deepEqual(RENDER_QUALITY, { PREVIEW: "preview", FINAL: "final" });
-  assert.deepEqual(RENDER_QUALITY_PRESETS, [
-    { id: "preview", label: "Preview", sceneQuality: "standard" },
-    { id: "final", label: "Final", sceneQuality: "high" }
-  ]);
-  assert.deepEqual(RENDER_PAYLOAD_KEYS, [
-    "studio", "quality", "exposure", "lighting", "backdrop", "camera"
-  ]);
-  assert.deepEqual(RENDER_LIGHTING_KEYS, ["rotation", "size", "fill"]);
-  assert.deepEqual(RENDER_BACKDROP_KEYS, ["color", "transparent", "ground"]);
-});
 
 test("normal CAD stays an orthographic responsive inspection scene", () => {
   const light = resolveSceneSettings({ appearance: "light" });

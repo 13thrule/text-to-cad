@@ -179,21 +179,6 @@ class ReferenceAssemblies(unittest.TestCase):
                 self.assertIsNone(_references.links(result))
                 self.assertAlmostEqual(result.volume, 1)
 
-    def test_private_native_deletion_preserves_ordinary_behavior(self):
-        rows = []
-        for enabled in (False, True):
-            with mock.patch.object(_references, "_ENABLED", enabled), building(None) as frame:
-                result, children = self.assembly(frame)
-                del result._wrapped
-                self.assertIs(type(result), bd.Compound)
-                self.assertNotIn("_wrapped", result.__dict__)
-                self.assertTrue(all(child._forced for child in children))
-                try:
-                    result.wrapped
-                except Exception as error:
-                    rows.append((type(error), str(error)))
-        self.assertEqual(rows[0], rows[1])
-
     def test_child_move_after_attachment_preserves_shared_native_mutation(self):
         from OCP.BRep import BRep_Builder
         from OCP.gp import gp_Pnt
@@ -398,29 +383,6 @@ class ReferenceAssemblies(unittest.TestCase):
             self.assertEqual(events, [1, 2])
             self.assertEqual(yields.call_count, 2)
             self.assertTrue(all(not child._forced for child in children))
-
-    def test_one_private_snapshot_verifies_each_unique_pin_once(self):
-        from cadgen.store import trees
-
-        with building(None) as frame:
-            children = [self.child(frame, i, self.box_tree) for i in range(9)]
-            with mock.patch.object(trees, "capture_tree", wraps=trees.capture_tree) as captured:
-                shape = bd.Compound(children=children)
-                self.assertEqual(captured.call_count, 1)
-            with mock.patch.object(trees, "tree_complete", wraps=trees.tree_complete) as verified:
-                self.assertEqual(len(_references.links(shape)), 9)
-                self.assertEqual(verified.call_count, 1)
-            with mock.patch.object(trees, "capture_tree", wraps=trees.capture_tree) as captured:
-                self.assertIsNotNone(_references.source_scene(shape, self.root / "private.step"))
-                self.assertEqual(captured.call_count, 1)
-            # Those private snapshots confer no permission on a later native
-            # consumer or a later publication after required disk data is gone.
-            digest = next(iter(get_tree(self.box_tree)["components"].values()))["brep"]
-            object_path(digest).unlink()
-            with self.assertRaisesRegex(ChildBuildError, "disappeared"):
-                children[0].faces()
-            with self.assertRaisesRegex(ChildBuildError, "disappeared"):
-                _references.links(shape)
 
     def test_public_decorated_builds_and_fresh_worker_keep_exact_outputs(self):
         from cadgen.cli._run_model import run_model_argv

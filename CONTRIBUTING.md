@@ -122,7 +122,11 @@ temporary-directory helper retains the Windows cleanup retries used by the suite
 Keep regression tests focused on observable behavior. Reuse setup within a test
 when several assertions concern the same result; do not repeatedly build the
 same geometry to test unrelated metadata or duplicate an existing integration
-case. Real kernel and browser tests remain necessary for geometry fidelity,
+case. Each new test should protect a distinct contract or credible failure not
+already covered. Test a shared validator's cases once; callers need wiring
+checks, not copies of its full matrix. Avoid pinning private helpers, source
+spelling or UI copy when observable behavior already covers the requirement.
+Real kernel and browser tests remain necessary for geometry fidelity,
 cache reuse, rendering, and process-lifecycle behavior.
 
 For manual skill prompts and model review, work inside this repository and keep

@@ -752,6 +752,7 @@ class TShapeDigestPurityTest(unittest.TestCase):
         must inherit the same property. Sphere rather than box because a box's
         mesh is two triangles a face at any tolerance.
         """
+        from OCP.BRepTools import BRepTools
         from build123d.topology import Solid
 
         sphere = Solid.make_sphere(10).wrapped
@@ -761,19 +762,9 @@ class TShapeDigestPurityTest(unittest.TestCase):
         self._mesh(sphere, linear=0.005, angular=0.05)
         self.assertEqual(coarse_digest, self._digest(sphere))
         self.assertEqual(coarse_key, op_memo.placed_shape_key(sphere))
-
-    def test_removing_a_tessellation_does_not_move_the_digest(self):
-        """The other direction, and the one that says the bytes are geometry:
-        a shape carrying a mesh and the same shape with the mesh dropped
-        (``BRepTools::Clean``) digest alike."""
-        from OCP.BRepTools import BRepTools
-        from build123d.topology import Solid
-
-        sphere = Solid.make_sphere(10).wrapped
-        self._mesh(sphere, linear=0.05, angular=0.2)
-        meshed = self._digest(sphere)
         BRepTools.Clean_s(sphere)
-        self.assertEqual(meshed, self._digest(sphere))
+        self.assertEqual(coarse_digest, self._digest(sphere))
+        self.assertEqual(coarse_key, op_memo.placed_shape_key(sphere))
 
     def test_the_location_is_still_out_of_the_digest_and_in_the_key(self):
         from build123d.geometry import Location
@@ -838,83 +829,3 @@ class CurrentInputKeyTest(unittest.TestCase):
         key = op_memo._build_key("caller-conversion", (shape, converter, shape), {})
         self.assertEqual(calls, [True])
         self.assertNotEqual(key[2][0], key[2][2])
-
-    def test_custom_iterator_can_mutate_between_repeated_shape_arguments(self):
-        from build123d import Solid
-        from OCP.BRep import BRep_Builder
-        from OCP.gp import gp_Pnt
-
-        shape = Solid.make_box(10, 8, 6)
-        calls = []
-
-        class MutatingList(list):
-            def __iter__(self):
-                calls.append(True)
-                yield shape
-                BRep_Builder().UpdateVertex(shape.vertices()[0].wrapped, gp_Pnt(0.25, 0, 6), 1e-7)
-                yield shape
-
-        key = op_memo._build_key("caller-iterator", (MutatingList(),), {})
-        self.assertEqual(calls, [True], "key construction consumed the custom iterator twice")
-        first, second = key[2][0][1]
-        self.assertNotEqual(first, second)
-
-    def test_value_property_preserves_mutation_of_a_later_input(self):
-        from build123d import Solid
-        from OCP.BRep import BRep_Builder
-        from OCP.gp import gp_Pnt
-
-        shape = Solid.make_box(10, 8, 6)
-        calls = []
-
-        class ConvertingValue:
-            __module__ = "build123d.custom"
-
-            @property
-            def to_tuple(self):
-                calls.append(True)
-                BRep_Builder().UpdateVertex(shape.vertices()[0].wrapped, gp_Pnt(0.25, 0, 6), 1e-7)
-                return lambda: (1, 2, 3)
-
-        key = op_memo._build_key("caller-property", (shape, ConvertingValue(), shape), {})
-        self.assertEqual(calls, [True])
-        self.assertNotEqual(key[2][0], key[2][2])
-
-    def test_exact_shape_class_property_mutation_cannot_reuse_an_earlier_digest(self):
-        from build123d import Solid
-        from OCP.BRep import BRep_Builder
-        from OCP.gp import gp_Pnt
-
-        original_wrapped = Solid.wrapped
-
-        def construct(attribute, ordinary):
-            shape = Solid.make_box(10, 8, 6)
-            trigger = Solid.make_box(1, 1, 1)
-            vertex = shape.vertices()[0].wrapped
-            calls = []
-
-            def getter(node):
-                if node is trigger and not calls:
-                    calls.append(True)
-                    BRep_Builder().UpdateVertex(vertex, gp_Pnt(0.25, 0, 6), 1e-7)
-                return original_wrapped.fget(node) if attribute == "wrapped" else None
-
-            with mock.patch.object(Solid, attribute, property(getter), create=True):
-                args = (shape, trigger, shape)
-                if ordinary:
-                    parts = []
-                    for value in args:
-                        op_memo._reject_lazy(value)
-                        parts.append(op_memo._normalize(value))
-                    key = (op_memo._OP_MEMO_VERSION, "class-callback", tuple(parts), ())
-                else:
-                    key = op_memo._build_key("class-callback", args, {})
-            self.assertEqual(calls, [True])
-            self.assertNotEqual(key[2][0], key[2][2])
-            return key
-
-        for attribute in ("wrapped", "to_tuple"):
-            with self.subTest(attribute=attribute):
-                expected = construct(attribute, ordinary=True)
-                actual = construct(attribute, ordinary=False)
-                self.assertEqual(repr(actual).encode(), repr(expected).encode())

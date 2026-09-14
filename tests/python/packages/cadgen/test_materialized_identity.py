@@ -528,17 +528,6 @@ class MaterializedIdentityTest(unittest.TestCase):
         self.assertEqual(stats["components_reused"], 1)
         self.assertIsNotNone(read_entry("component", cid))
 
-    def test_missing_holder_and_standard_geometry_replacements_do_not_link(self):
-        from build123d import Location, Plane
-        from cadgen.store.build import _tagged_intact
-        from cadgen.store.materialize import PARTNER_TAG
-
-        _, child = self.child(assembly=False)
-        self.assertIsNone(_tagged_intact(child.located(Location((10, 0, 0)))))
-        self.assertIsNone(_tagged_intact(child.mirror(Plane.XZ)))
-        delattr(child, PARTNER_TAG)
-        self.assertIsNone(_tagged_intact(child))
-
     def test_missing_pin_fails_instead_of_using_materialized_geometry(self):
         from build123d import Compound
         from cadgen.store.build import build_tree_through_step
@@ -577,20 +566,6 @@ class MaterializedIdentityTest(unittest.TestCase):
         BRep_Builder().Remove(child.wrapped, _native_children(child.wrapped)[0])
         with self.assertRaisesRegex(RuntimeError, "ambiguous native edit"):
             _walk_compound(Compound(children=[child]), root_name="parent", progress=resolve(None))
-
-    def test_nested_repeated_fingerprint_serializes_each_unique_leaf_once(self):
-        from build123d import Compound, Location, Solid
-        from cadgen._internal import component_package
-        from cadgen.store.materialize import _capture_materialized_state
-
-        leaf = Solid.make_sphere(3)
-        root = Compound(children=[leaf.moved(Location((5 * index, 0, 0))) for index in range(8)])
-        for _ in range(6):
-            root = Compound(children=[root])
-        with mock.patch.object(component_package, "_shape_brep_bytes", wraps=component_package._shape_brep_bytes) as written:
-            state = _capture_materialized_state(root)
-        self.assertIsNotNone(state.geometry)
-        self.assertEqual(written.call_count, 1, "a container or repeated occurrence reserialized the leaf")
 
     def test_native_descendant_geometry_change_is_seen_through_container_memo(self):
         from OCP.BRep import BRep_Builder

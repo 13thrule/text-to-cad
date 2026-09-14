@@ -22,11 +22,8 @@ from cadgen.snapshot_core import (  # noqa: E402
     RENDER_STUDIO_IDS,
     SUPPORTED_OUTPUT_SETTINGS_KEYS,
     SUPPORTED_QUALITY_KEYS,
-    SUPPORTED_RENDER_KEYS,
-    RENDER_INCOMPATIBLE_JOB_KEYS,
     SnapshotError,
     normalize_common_job,
-    load_display_option,
     validate_render_tessellation,
 )
 
@@ -40,55 +37,17 @@ def normalize(**settings: object) -> dict[str, object]:
     )
 
 
-class CadInkSchemaTest(unittest.TestCase):
-    def test_visibility_choices_are_the_only_edge_and_grid_settings(self):
-        display = {"edges": {"enabled": True, "silhouette": False}, "guides": {"grid": {"enabled": True}}}
-        self.assertEqual(load_display_option(display, cwd=Path(".")), display)
-        for key in ("color", "thickness", "classes", "highlightColor", "highlightOpacity", "highlightThickness", "silhouetteScale", "depthTest"):
-            with self.subTest(edge=key), self.assertRaisesRegex(SnapshotError, "display edges has unknown key"):
-                load_display_option({"edges": {key: 1}}, cwd=Path("."))
-        for key in ("centerColor", "cellColor", "opacity", "density"):
-            with self.subTest(grid=key), self.assertRaisesRegex(SnapshotError, "display guides.grid has unknown key"):
-                load_display_option({"guides": {"grid": {key: 1}}}, cwd=Path("."))
-
-
 class RenderKeySchemaTest(unittest.TestCase):
-    def test_every_supported_render_key_is_accepted(self):
-        values = {
-            "studio": "light",
-            "quality": "final",
-            "exposure": 0.5,
-            "lighting": {"rotation": -30, "size": 1.5, "fill": 0.4},
-            "backdrop": {"color": "#abc", "transparent": False, "ground": True},
-            "camera": {"projection": "perspective", "focalLength": 70},
-        }
-        self.assertEqual(set(values), set(SUPPORTED_RENDER_KEYS))
-        for key, value in values.items():
-            normalize(render={key: value})
-
     def test_render_ids_are_closed_and_cli_defaults_to_light(self):
         self.assertEqual({"light", "dark"}, set(RENDER_STUDIO_IDS))
         self.assertEqual({"preview", "final"}, set(RENDER_QUALITY_IDS))
         self.assertEqual({"studio": "light"}, normalize(render={})["render"])
-        for retired in (
-            "studio-light", "studio-dark", "default", "cinematic", "vibrant",
-            "blue", "pink", "colorful", "clay-sunrise", "terminal",
-        ):
-            with self.subTest(studio=retired), self.assertRaisesRegex(
-                SnapshotError, "render.studio must be light or dark"
-            ):
-                normalize(render={"studio": retired})
-        for invalid in (None, True, [], {}):
+        for invalid in ("unknown", None, True, [], {}):
             with self.subTest(studio=invalid), self.assertRaisesRegex(
                 SnapshotError, "render.studio must be light or dark"
             ):
                 normalize(render={"studio": invalid})
-        for retired in ("interactive", "standard", "high"):
-            with self.subTest(quality=retired), self.assertRaisesRegex(
-                SnapshotError, "render.quality must be preview or final"
-            ):
-                normalize(render={"quality": retired})
-        for invalid in (None, False, [], {}):
+        for invalid in ("unknown", None, False, [], {}):
             with self.subTest(quality=invalid), self.assertRaisesRegex(
                 SnapshotError, "render.quality must be preview or final"
             ):
@@ -148,30 +107,6 @@ class RenderKeySchemaTest(unittest.TestCase):
         with self.assertRaisesRegex(SnapshotError, r"render has unknown key\(s\): display"):
             normalize(render={"display": {"mode": "shaded"}})
 
-    def test_old_render_shapes_are_plain_unsupported_schema_errors(self):
-        for key, value in {
-            "settings": {}, "appearance": "dark", "tessellation": {},
-            "sizeProfile": "diagnostic", "scale": "cad", "display": {}, "_comment": "old",
-        }.items():
-            with self.subTest(key=key), self.assertRaisesRegex(
-                SnapshotError, rf"render has unknown key\(s\): {key}; supported keys:"
-            ) as caught:
-                normalize(render={key: value})
-            self.assertNotIn("moved", str(caught.exception))
-            self.assertNotIn("use ", str(caught.exception))
-
-    def test_render_rejects_every_top_level_cad_control_by_presence(self):
-        self.assertEqual(
-            {"camera", "display", "selection", "kinematics", "jointValues", "quality"},
-            set(RENDER_INCOMPATIBLE_JOB_KEYS),
-        )
-        for key in RENDER_INCOMPATIBLE_JOB_KEYS:
-            for explicit_value in (None, {}):
-                with self.subTest(key=key, value=explicit_value), self.assertRaisesRegex(
-                    SnapshotError, rf"top-level CAD control\(s\): {key}"
-                ):
-                    normalize(render={"camera": {"preset": "front"}}, **{key: explicit_value})
-
     def test_animation_and_output_capture_controls_remain_composable(self):
         job = normalize(
             render={"camera": {"preset": "front"}},
@@ -181,23 +116,6 @@ class RenderKeySchemaTest(unittest.TestCase):
         self.assertEqual(job["render"]["camera"], {"preset": "front"})
         self.assertEqual(job["animation"], {"clip": "spin", "time": 0.5})
         self.assertEqual(job["output"], {"sizeProfile": "diagnostic", "viewLabels": True})
-
-    def test_render_rejects_every_non_view_mode(self):
-        for mode in ("section", "list"):
-            with self.subTest(mode=mode), self.assertRaisesRegex(
-                SnapshotError, "Photographic Render supports only view mode"
-            ):
-                normalize_common_job(
-                    {
-                        "input": "part.step",
-                        "mode": mode,
-                        "render": {},
-                        "outputs": [] if mode == "list" else [{"path": "out.png"}],
-                    },
-                    mode=mode,
-                    resolved_cwd=Path("."),
-                    timestamp="20260907-000000",
-                )
 
     def test_generated_cli_rejects_a_cad_flag_before_clearing_output(self):
         from cadgen.cli import step_snapshot

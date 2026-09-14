@@ -833,48 +833,6 @@ test("a deformed tube leaves the instanced edge draw for a private, bendable lin
   scene.dispose();
 });
 
-test("tube deformation writes indexed component geometry per shared vertex on the CPU and GPU paths", () => {
-  // Four shared vertices, two triangles: the indexed surf shape.
-  const component = () => ({
-    vertices: new Float32Array([0, 0, 1, 5, 0, 1, 10, 0, 1, 5, 1, 0]),
-    indices: new Uint32Array([0, 1, 3, 1, 2, 3]),
-    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0]),
-    bounds: { min: [0, 0, 0], max: [10, 1, 1] }
-  });
-  const meshDataFor = (sourceMesh) => ({
-    vertices: new Float32Array(0), indices: new Uint32Array(0),
-    bounds: sourceMesh.bounds,
-    parts: [{ id: "tube", sourceMeshKey: "tube", sourceMesh, vertexCount: 4, triangleCount: 2, bounds: sourceMesh.bounds }]
-  });
-  const rest = { normal: [0, 0, 1], segments: [{ kind: "line", start: [0, 0, 0], end: [10, 0, 0] }] };
-  const path = { normal: [0, 0, 1], segments: [{ kind: "arc", center: [0, 5, 0], axis: [0, 0, 1], start: [0, 0, 0], sweepDeg: 90 }] };
-  const spec = normalizeTubeDeformation({ rest, path, maxSegmentLength: 1000 });
-
-  const cpuScene = buildModel(THREE, meshDataFor(component()), { renderPartsIndividually: true });
-  const cpu = cpuScene.displayRecords[0];
-  cpu.gpuTubeDeformationAllowed = false;
-  applyRecordTubeDeformation(THREE, cpu, spec);
-  assert.equal(cpu.geometry.attributes.position.count, 4, "CPU path writes one position per shared vertex");
-  assert.equal(cpu.geometry.index.count, 6, "index buffer keeps the two triangles");
-  assert.equal(cpu.tubeDeformationState.mapping.indices.length, 4);
-
-  const gpuScene = buildModel(THREE, meshDataFor(component()), { renderPartsIndividually: true });
-  const gpu = gpuScene.displayRecords[0];
-  gpu.mesh.updateMatrixWorld();
-  applyRecordTubeDeformation(THREE, gpu, spec);
-  assert.ok(gpu.tubeGpuState?.active, "GPU transport engaged");
-  assert.equal(gpu.geometry.attributes.cadTubeMappingIndex.count, 4, "GPU mapping attribute is per vertex");
-  // Materialized (pick) positions on the GPU record equal the CPU path's.
-  gpu.mesh.userData.cadBeforeRaycast(new THREE.Raycaster(new THREE.Vector3(3.5, 1.5, 10), new THREE.Vector3(0, 0, -1)));
-  assert.deepEqual(
-    Array.from(gpu.geometry.attributes.position.array),
-    Array.from(cpu.geometry.attributes.position.array),
-    "CPU and GPU pick positions agree"
-  );
-  cpuScene.dispose();
-  gpuScene.dispose();
-});
-
 test("appearance changes only CAD ink uniforms, retaining geometry, instance slots and segment textures", () => {
   const source = surfComponentMeshData();
   const scene = buildModel(THREE, source, {

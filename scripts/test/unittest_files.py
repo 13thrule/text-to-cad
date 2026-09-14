@@ -177,11 +177,6 @@ def _run_one_file(path: str, top: str, verbose: bool) -> tuple[str, int, str]:
 
 def run_in_parallel(files: list[str], top: str, jobs: int, verbose: bool) -> int:
     top = os.path.realpath(top)
-    # This native equivalence suite is the measured long tail; start it early so it
-    # overlaps the rest of the isolated modules instead of extending the whole run.
-    files = sorted(files, key=lambda path: not path.replace("\\", "/").endswith(
-        "tests/python/packages/cadgen/test_warm_output_equivalence.py"
-    ))
     started = time.perf_counter()
     totals = {"tests": 0, "failures": 0, "errors": 0, "skipped": 0, "expected failures": 0, "unexpected successes": 0}
     failed_modules: list[str] = []

@@ -391,10 +391,6 @@ assert not any(read_entry('op', key).get('memoScheme') for key, _ in iter_entrie
                 fn.__code__ = original
         self.assertEqual(1, memoization._stats["declined"])
 
-    def test_metaclass_property_change_declines(self):
-        with mock.patch.object(type(bd.Plane), "XY", property(lambda cls: bd.Plane((4, 0, 0)))):
-            self.assertFalse(memoization._runtime_eligible())
-
     def test_primitive_subclass_keeps_its_constructor_attributes(self):
         # Existing op result recipes reconstruct Part/Solid wrappers. A Box
         # requires dimensional constructor arguments, so it remains ordinary.

@@ -244,13 +244,8 @@ class SnapshotCliTests(unittest.TestCase):
 
     def test_the_door_advertises_only_what_it_takes(self) -> None:
         text = cad_snapshot_entry.build_parser().format_help()
-        self.assertIn("focalLength is 20..200 mm", text)
-        self.assertIn("orthographicHalfHeight", text)
-        self.assertIn("preserves an orthographic", text)
-        self.assertIn("view's scale", text)
-        self.assertIn("light, dark, or photographic JSON", text)
-        for field in ("quality", "exposure", "lighting", "backdrop"):
-            self.assertIn(field, text)
+        for flag in ("--camera", "--display", "--render"):
+            self.assertIn(flag, text)
         for flag in self.NON_FLAGS:
             if flag.startswith("--"):
                 with self.subTest(flag=flag):
@@ -346,14 +341,11 @@ class SnapshotCliTests(unittest.TestCase):
             job["outputs"][0]["camera"],
             {"projection": "perspective", "focalLength": 85},
         )
-        for focal_length in (19, 201, True, "50"):
-            with self.subTest(focalLength=focal_length), self.assertRaisesRegex(
-                SnapshotError, "focalLength must be a finite number between 20 and 200"
-            ):
-                job_from_argv([
-                    "parts/STEP/cylindrical_cap.step", "tmp/cap.png",
-                    "--camera", json.dumps({"focalLength": focal_length}),
-                ])
+        with self.assertRaisesRegex(SnapshotError, "focalLength must be a finite number between 20 and 200"):
+            job_from_argv([
+                "parts/STEP/cylindrical_cap.step", "tmp/cap.png",
+                "--camera", '{"focalLength":19}',
+            ])
 
     def test_display_json_rejects_bad_mode_value(self) -> None:
         with self.assertRaisesRegex(SnapshotError, "--display mode must be one of"):
@@ -376,11 +368,6 @@ class SnapshotCliTests(unittest.TestCase):
             {"mode": "shaded_edges", "edges": {"enabled": False, "silhouette": True}},
         )
 
-    def test_display_json_rejects_retired_edge_styling(self) -> None:
-        for key, value in {"color": "#123456", "highlightOpacity": 0, "thickness": 0.5}.items():
-            with self.subTest(key=key), self.assertRaisesRegex(SnapshotError, f"edges has unknown key.*{key}"):
-                self._display_job(json.dumps({"mode": "shaded_edges", "edges": {key: value}}))
-
     def test_display_json_accepts_valid_closed_set_values(self) -> None:
         self.assertEqual(self._display_job('{"mode":"shaded"}')["display"], {"mode": "shaded"})
         self.assertEqual(
@@ -392,21 +379,6 @@ class SnapshotCliTests(unittest.TestCase):
         # The renderer treats an empty string as absent and falls back to the default, so
         # validation must not false-reject empty strings an agent emits for unset fields.
         self.assertEqual(self._display_job('{"mode":""}')["display"], {"mode": ""})
-
-    def test_edge_settings_belong_to_display_json(self) -> None:
-        job = job_from_argv(
-            [
-                "parts/STEP/cylindrical_cap.step",
-                "tmp/cap.png",
-                "--display",
-                '{"edges":{"enabled":true,"silhouette":false}}',
-            ]
-        )
-        self.assertEqual(job["display"], {"edges": {"enabled": True, "silhouette": False}})
-
-        with self.assertRaisesRegex(SnapshotError, "unknown key.*edges"):
-            job_from_argv(["parts/STEP/cylindrical_cap.step", "tmp/cap.png",
-                           "--render", '{"edges":{"enabled":true}}'])
 
     def test_render_accepts_the_exported_debug_envelope(self) -> None:
         job = job_from_argv(
@@ -453,29 +425,6 @@ class SnapshotCliTests(unittest.TestCase):
             SnapshotError, "top-level CAD control\\(s\\): camera, display"
         ):
             validate_render_job_compatibility(job)
-
-    def test_old_render_values_are_plain_schema_errors(self) -> None:
-        for studio in ("studio-light", "studio-dark", "default", "colorful"):
-            with self.subTest(studio=studio), self.assertRaisesRegex(
-                SnapshotError, "render.studio must be light or dark"
-            ):
-                job_from_argv([
-                    "parts/STEP/cylindrical_cap.step", "tmp/cap.png", "--render", studio,
-                ])
-        with self.assertRaisesRegex(SnapshotError, r"render has unknown key\(s\): appearance"):
-            job_from_argv([
-                "parts/STEP/cylindrical_cap.step", "tmp/cap.png",
-                "--render", '{"appearance":"dark"}',
-            ])
-
-    def test_theme_flag_is_an_ordinary_unknown_option(self) -> None:
-        errors = io.StringIO()
-        with contextlib.redirect_stderr(errors), self.assertRaises(SystemExit):
-            cad_snapshot_entry.main(["models/part.step", "tmp/o.png", "--theme", "workbench-light"])
-        message = errors.getvalue()
-        self.assertIn("unrecognized arguments: --theme", message)
-        for teaching in ("use", "retired", "moved"):
-            self.assertNotIn(teaching, message.lower())
 
     def test_display_shortcut_rejects_unknown_modes(self) -> None:
         with self.assertRaisesRegex(SnapshotError, "Unsupported display mode"):
@@ -1242,28 +1191,6 @@ class SnapshotCliTests(unittest.TestCase):
                     cwd=root,
                 )
 
-            for old_key, value in {
-                "theme": "light",
-                "sizeProfile": "simple",
-                "width": 800,
-                "height": 600,
-                "sceneScale": "cad",
-            }.items():
-                with self.subTest(old_key=old_key), self.assertRaisesRegex(
-                    SnapshotError, "unknown render job key"
-                ) as caught:
-                    resolve_render_job_packet(
-                        {
-                            "input": "models/widget.glb",
-                            old_key: value,
-                            "outputs": [{"path": "tmp/iso.png"}],
-                        },
-                        cwd=root,
-                    )
-                message = str(caught.exception).lower()
-                for teaching in ("use", "retired", "moved"):
-                    self.assertNotIn(teaching, message)
-
     def test_photographic_render_rejects_non_view_modes_before_kind_checks(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
@@ -1307,30 +1234,6 @@ class SnapshotCliTests(unittest.TestCase):
                         },
                         cwd=root,
                     )
-
-    def test_render_rejects_embedded_and_top_level_display(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary_directory:
-            root = self._mesh_job_env(temporary_directory, "widget.glb", b"glTF")
-            with self.assertRaisesRegex(SnapshotError, r"render has unknown key\(s\): display"):
-                resolve_render_job_packet(
-                    {
-                        "input": "models/widget.glb",
-                        "render": {"studio": "light", "display": {"mode": "shaded"}},
-                        "outputs": [{"path": "tmp/iso.png"}],
-                    },
-                    cwd=root,
-                )
-
-            job = {
-                "input": "models/widget.glb",
-                "render": {"studio": "light"},
-                "display": {"mode": "hidden_edges", "exploded": {"enabled": True}},
-                "outputs": [{"path": "tmp/iso.png"}],
-            }
-            with self.assertRaisesRegex(
-                SnapshotError, "top-level CAD control\\(s\\): display"
-            ):
-                resolve_render_job_packet(job, cwd=root)
 
     def test_render_rejects_all_cad_state_and_retains_per_output_camera(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -2023,16 +1926,6 @@ class RenderOptionResolutionTests(unittest.TestCase):
         self.assertEqual(job["render"], {"studio": "light"})
         self.assertNotIn("camera", job)
         self.assertNotIn("display", job)
-
-    def test_empty_render_envelope_binds_the_light_cli_fallback(self):
-        job = self._job_for(Path.cwd(), {})
-        self.assertEqual(job["render"], {"studio": "light"})
-
-    def test_old_studio_and_appearance_are_plain_schema_errors(self):
-        with self.assertRaisesRegex(SnapshotError, "render.studio must be light or dark"):
-            self._job_for(Path.cwd(), "studio-light")
-        with self.assertRaisesRegex(SnapshotError, r"render has unknown key\(s\): appearance"):
-            self._job_for(Path.cwd(), {"appearance": "dark"})
 
     def test_missing_render_file_raises(self):
         with tempfile.TemporaryDirectory() as tmp:

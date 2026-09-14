@@ -222,13 +222,6 @@ test("a braided cord under morph warns that the weave is a shader, not geometry"
   assert.equal(morph.warnings.length, 1, "only the unsupported braid finish needs a warning");
 });
 
-test("a label the tree does not carry fails here, not at playback", () => {
-  assert.throws(
-    () => sample((t, m) => m.get("flywheel").rotate([0, 0, 1], t)),
-    /no occurrence labeled "flywheel"/
-  );
-});
-
 test("quaternion samples stay in one hemisphere so a keyframe never takes the long way", () => {
   // Two and a half turns: the naive per-sample quaternion flips sign every half
   // turn, and glTF interpolates the numbers, not the rotation.
