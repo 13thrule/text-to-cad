@@ -129,6 +129,10 @@ spelling or UI copy when observable behavior already covers the requirement.
 Real kernel and browser tests remain necessary for geometry fidelity,
 cache reuse, rendering, and process-lifecycle behavior.
 
+Keep reusable manual edge-case and debugging models in `models/tests/`, with
+reproduction instructions. Despite its name, that folder is never CI input;
+see [its manual-validation policy](models/tests/README.md).
+
 For manual skill prompts and model review, work inside this repository and keep
 samples and CAD/robot-description artifacts under `models/`. Create a scratch
 project in the fixture bucket it belongs in: a standalone part

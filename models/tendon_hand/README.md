@@ -16,9 +16,8 @@ modules, choreography generator, and standalone HTML presentation.
 
 - `src/` contains runnable CAD models, render-job JSON, design reports, and
   shared factories in `src/lib/`.
-- `STEP/` is the generated geometry folder. Its small committed `.step.js`
-  files are authored render modules; the R13 showcase module is generated and
-  ignored because its solved keyframes are roughly 12 MB.
+- `STEP/` is the generated geometry folder. Animation source is embedded in
+  each owning model's `@step(animation=...)` declaration.
 - `validation/` contains validation and regeneration programs. Its `.gitignore`
   keeps generated reports, checkpoints, logs, and NumPy data local.
 - `website/` contains the standalone HTML presentation and its behavior test.
@@ -165,8 +164,8 @@ example:
 
 After the R13 STEP and its frame manifest exist, generate its render module.
 The generator solves the common timeline, tendon routes, payout, moving guide
-frames, and actuator transforms, then writes the ignored
-`STEP/hand_mechanical_candidate_r13.step.js`:
+frames, and actuator transforms, then refreshes `ANIMATION_JS` in
+`src/hand_mechanical_candidate_r13.py`:
 
 ```sh
 ./.venv/bin/python models/tendon_hand/validation/write_showcase_presentation.py
