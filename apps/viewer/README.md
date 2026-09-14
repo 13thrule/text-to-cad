@@ -90,8 +90,9 @@ Render. A static direct GLB is normalized to base or vertex color and opacity,
 direct-GLB PBR channels are not carried into that normalized mesh. Animated GLB
 measurement is unavailable because the normalized triangle picks describe only
 the rest pose. A bounded load-time animation sample estimates stable framing;
-the camera, floor, and studio do not refit on every playback frame. A small ground-only fill keeps floor
-shadows readable in both studios without changing model illumination;
+the camera, floor, and studio do not refit on every playback frame.
+Backdrop-colored ground fill and a restrained diffuse response keep floor
+shadows and the spotlight pool subtle without changing model illumination;
 transparent backgrounds retain their shadow catcher. The existing toolbar owns
 image capture.
 

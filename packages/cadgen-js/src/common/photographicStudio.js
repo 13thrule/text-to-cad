@@ -3,6 +3,7 @@ import {
   DEFAULT_RENDER_LIGHTING
 } from "./sceneSettings.js";
 import {
+  PHOTOGRAPHIC_STUDIO_GROUND_DIFFUSE_WEIGHT,
   PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY,
   PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX,
   PHOTOGRAPHIC_STUDIO_KEY_DIRECTION,
@@ -86,7 +87,7 @@ function disposeGround(state) {
 }
 
 function updatePhysicalGroundColor(material, color) {
-  material.color.set(color);
+  material.color.set(color).multiplyScalar(PHOTOGRAPHIC_STUDIO_GROUND_DIFFUSE_WEIGHT);
   material.emissive.set(color);
   // A tiny neutral component gives near-black backdrop colors enough linear
   // energy to remain visible without perceptibly cooling ordinary colors.

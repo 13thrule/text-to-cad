@@ -8,6 +8,7 @@ import {
   disposePhotographicStudio
 } from "./photographicStudio.js";
 import {
+  PHOTOGRAPHIC_STUDIO_GROUND_DIFFUSE_WEIGHT,
   PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY,
   PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX,
   PHOTOGRAPHIC_STUDIO_KEY_DIRECTION,
@@ -189,8 +190,11 @@ test("opaque ground fill follows backdrop color without changing studio illumina
 
   applyPhotographicStudio(THREE, value, configuration({ color: "#663322" }));
 
-  assert.equal(state.ground.material.color.getHexString(), "663322");
   const customColor = new THREE.Color("#663322");
+  assert.deepEqual(
+    state.ground.material.color.toArray(),
+    customColor.clone().multiplyScalar(PHOTOGRAPHIC_STUDIO_GROUND_DIFFUSE_WEIGHT).toArray()
+  );
   const customColorHsl = customColor.getHSL({});
   const customEmissiveHsl = state.ground.material.emissive.getHSL({});
   assert.ok(Math.abs(customEmissiveHsl.h - customColorHsl.h) < 1e-12);
