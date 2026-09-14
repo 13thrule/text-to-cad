@@ -929,12 +929,12 @@ reports that its geometry is unavailable. Already displayed browser resources
 remain owned until replaced or closed, but reopening requires a new build.
 The durable source and saved STEP remain the recovery path.
 
-The viewer's explicit **Follow edits** mode (`?file=part.step&mode=editing`)
-reads this channel via `GET /__cad/preview`, validates transitive object
-availability, and fetches geometry from the existing object routes. The server
-does no kernel work and exposes no source/closure/model record. Plain file
-links stay in **Saved file** mode. Preview kinematics are resolved against the
-preview tree; the saved sidecar is resolved separately against the read-back
+The viewer automatically follows active edits for STEP entries. It reads this
+channel via `GET /__cad/preview`, validates transitive object availability, and
+fetches geometry from the existing object routes. The server
+does no kernel work and exposes no source/closure/model record. Without an
+available preview, the viewer reads the saved file. Preview kinematics are
+resolved against the preview tree; the saved sidecar is resolved separately against the read-back
 tree and bound to the saved bytes. Within one build, successful authored-tree
 kinematics resolution may be reused for that exact tree hash, with independent
 copies for preview and saved-document remapping. No resolution survives the

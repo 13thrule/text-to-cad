@@ -1109,16 +1109,6 @@ export default function CadWorkspace({
   const manifestEntries = Array.isArray(manifestEntriesProp) ? manifestEntriesProp : [];
   const catalogEntries = manifestEntries;
   const explicitFileParam = readCadParam();
-  const [followEdits, setFollowEdits] = useState(() => typeof window === "undefined" ||
-    new URL(window.location.href).searchParams.get("mode") !== "saved");
-  const handleFollowEditsChange = useCallback((enabled) => {
-    const next = enabled === true;
-    const url = new URL(window.location.href);
-    if (next) url.searchParams.delete("mode");
-    else url.searchParams.set("mode", "saved");
-    window.history.replaceState(null, "", url);
-    setFollowEdits(next);
-  }, []);
   // Session state is namespaced per origin, and an origin (host + port) is one viewer
   // serving one root. This used to be keyed on the directory in the URL path, back when
   // one instance could show any folder.
@@ -1453,7 +1443,7 @@ export default function CadWorkspace({
   const editingFile = catalogSelectedEntry ? fileKey(catalogSelectedEntry) : explicitFileParam;
   const editingAvailable = /\.st(?:ep|p)$/i.test(editingFile || "");
   const editingPreview = useEditingPreview(editingFile, {
-    enabled: followEdits && editingAvailable,
+    enabled: editingAvailable,
     catalogEntry: catalogSelectedEntry,
   });
   // Unified render-artifact status for the selected entry: ready (render) | generating (loading) |
@@ -1471,7 +1461,7 @@ export default function CadWorkspace({
       freshnessKey: `${catalogSelectedEntry?.hash || ""}:${manifestRevision}`,
     }
   );
-  const editingHasView = Boolean(editingPreview.entry || (followEdits && entryHasMesh(catalogSelectedEntry)));
+  const editingHasView = Boolean(editingPreview.entry || entryHasMesh(catalogSelectedEntry));
   const selectedArtifactGenerating = selectedArtifact.status === "compiling" && !editingHasView;
   // The in-flight build's own report of where it is (null until it reports, and for
   // every loading state that is not an artifact build). Only meaningful while
@@ -1500,7 +1490,7 @@ export default function CadWorkspace({
   const selectedEntry = useMemo(
     () => {
       const base = editingPreview.entry || (!catalogSelectedEntry || selectedArtifact.status === "compiled" ||
-        (followEdits && entryHasMesh(catalogSelectedEntry))
+        entryHasMesh(catalogSelectedEntry)
         ? catalogSelectedEntry
         : entryWithoutRenderAssets(catalogSelectedEntry));
       if (!base) {
@@ -1509,7 +1499,7 @@ export default function CadWorkspace({
       const fileRefPrefix = fileRefPrefixByPath.get(cadFileParamForEntry(base)) || "";
       return fileRefPrefix ? { ...base, fileRefPrefix } : base;
     },
-    [catalogSelectedEntry, selectedArtifact.status, fileRefPrefixByPath, editingPreview.entry, followEdits]
+    [catalogSelectedEntry, selectedArtifact.status, fileRefPrefixByPath, editingPreview.entry]
   );
   const previousPreviewTree = useRef(null);
   useEffect(() => {
@@ -4987,7 +4977,7 @@ export default function CadWorkspace({
       ? { severity: "warning", title: "Annotations unavailable", message: selectedEntry.annotationError }
       : null),
     activity: filenameLoadActivity || (effectiveViewerLoading ? { loading: true, title: viewerLoadingLabel } : null),
-    editingState: followEdits && editingAvailable ? editingPreview.state : null,
+    editingState: editingAvailable ? editingPreview.state : null,
     showingPreview: Boolean(editingPreview.entry),
     qualityStatus: viewportQualityStatus,
     hasGeometry: Boolean(selectedMeshData || selectedEntryIsDrawingDocument)
@@ -7608,9 +7598,6 @@ export default function CadWorkspace({
       <SidebarInset className="pointer-events-none relative z-10 h-svh min-w-0 overflow-hidden bg-transparent">
         <CadWorkspaceTopBar
           previewMode={previewMode}
-          editingAvailable={editingAvailable}
-          followEdits={followEdits}
-          onFollowEditsChange={handleFollowEditsChange}
           fileStatus={fileStatus}
           renderMode={renderSession.enabled}
           onRenderModeChange={handleRenderEnabledChange}

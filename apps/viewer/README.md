@@ -28,11 +28,11 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   (`<name>.step.js`), and the cache. The viewer never reads
   source code and never rebuilds on source changes — generated outputs are
   detached, and a stale artifact stays stale until someone runs its script.
-  Generated STEP entries default to **Follow edits**: the runtime announces
+  STEP entries automatically follow active edits: the runtime announces
   complete immutable preview trees while an already-running decorated build
   saves its outputs. The viewer consumes those trees and resolved kinematics,
-  never source or model/output records. **Inspect saved STEP** in the file
-  breadcrumb, or `?mode=saved`, selects the artifact read-back instead.
+  never source or model/output records. Without an available editing preview,
+  the viewer reads the saved artifact.
 - **Kinematics/animation independence**: the Kinematics tab drives the sidecar's
   mate data through the shared FK runtime; the Animation tab evaluates the
   `clips` the authored render module beside the artifact (`<name>.step.js`)
@@ -185,12 +185,9 @@ the build — detection only; it keeps serving.
 
 ## Behaviours worth knowing before concluding something is broken
 
-- Generated STEP entries open in **Follow edits** by default, showing the root
-  preview before its STEP save. Choose **Inspect saved STEP** from the file
-  breadcrumb menu (or open `?file=part.step&mode=saved`) to inspect the artifact
-  read-back; choose **Follow edits** there to return to the live preview. The
-  compact badge beside the filename reports loading, edits, save outcomes and
-  detail failures or limits in one or two words. Orbit-driven refinement stays
+- STEP entries always follow active edits, showing the root preview before its
+  STEP save. The compact badge beside the filename reports loading, edits,
+  save outcomes and detail failures or limits in one or two words. Orbit-driven refinement stays
   in the background without changing the badge. A loaded saved file has no badge.
   Loading uses an inline spinner;
   warnings and errors use their own icons. Tooltips explain the state.
@@ -211,8 +208,7 @@ the build — detection only; it keeps serving.
   reconnects it. Source files hold authored changes; there is no hidden durable
   preview document. Every explicit model run still waits for declared outputs.
   A successful save leaves that revision's authored preview displayed, labelled
-  **Saved**. Choose **Inspect saved STEP** to inspect the STEP read-back
-  and its bound sidecar. A later successful no-op run without a new preview, or
+  **Saved**. A later successful no-op run without a new preview, or
   an expired preview with a validated saved result, uses the saved file instead.
   Complete displayed component arrays remain available while a replacement
   stages or fails. Reuse requires the same runtime surface input, concrete

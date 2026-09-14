@@ -42,7 +42,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
-  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -359,10 +358,7 @@ function BreadcrumbNodeDropdown({
   selectedStepSourceStatus = null,
   canCopyFileAssetPaths = false,
   onRevealInExplorerView,
-  onCopyFileAssetReference,
-  editingAvailable = false,
-  followEdits = true,
-  onFollowEditsChange
+  onCopyFileAssetReference
 }) {
   const label = String(node?.label || "");
   const title = String(node?.title || label);
@@ -370,10 +366,7 @@ function BreadcrumbNodeDropdown({
     ? node?.menuDirectory || null
     : null;
   const canBrowse = !!menuDirectory && listSidebarItems(menuDirectory).length > 0;
-  const canChooseInput = current && node?.type === "entry" && editingAvailable &&
-    typeof onFollowEditsChange === "function";
-
-  if (!canBrowse && !canChooseInput) {
+  if (!canBrowse) {
     const labelNode = (
       <span
         className={cn(
@@ -445,24 +438,6 @@ function BreadcrumbNodeDropdown({
     <DropdownMenu>
       {trigger}
       <DropdownMenuContent align="start" sideOffset={6} className="w-max max-w-80">
-        {canChooseInput ? (
-          <>
-            <DropdownMenuLabel className="text-xs">Model updates</DropdownMenuLabel>
-            <DropdownMenuRadioGroup value={followEdits ? "live" : "saved"}
-              onValueChange={(value) => onFollowEditsChange(value === "live")}>
-              <DropdownMenuRadioItem value="live" className="text-xs"
-                title="Show completed build previews while STEP is saving.">
-                Follow edits
-              </DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="saved" className="text-xs"
-                title="Inspect the saved STEP file and its matching annotations.">
-                Inspect saved STEP
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-            {canBrowse ? <DropdownMenuSeparator /> : null}
-          </>
-        ) : null}
-        {canBrowse ? (
         <DropdownMenuScrollArea>
           <BreadcrumbDirectoryMenuItems
             directory={menuDirectory}
@@ -479,7 +454,6 @@ function BreadcrumbNodeDropdown({
             onCopyFileAssetReference={onCopyFileAssetReference}
           />
         </DropdownMenuScrollArea>
-        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1006,9 +980,6 @@ function VersionReleaseLink({ version, releaseUrl, releaseCheck = emptyLatestRel
 
 export default function CadWorkspaceTopBar({
   previewMode,
-  editingAvailable = false,
-  followEdits = true,
-  onFollowEditsChange,
   fileStatus = null,
   renderMode = false,
   onRenderModeChange,
@@ -1123,9 +1094,6 @@ export default function CadWorkspaceTopBar({
                   canCopyFileAssetPaths={canCopyFileAssetPaths}
                   onRevealInExplorerView={onRevealInExplorerView}
                   onCopyFileAssetReference={onCopyFileAssetReference}
-                  editingAvailable={editingAvailable}
-                  followEdits={followEdits}
-                  onFollowEditsChange={onFollowEditsChange}
                 />
               </BreadcrumbItem>
             </BreadcrumbList>
@@ -1167,9 +1135,6 @@ export default function CadWorkspaceTopBar({
                       canCopyFileAssetPaths={canCopyFileAssetPaths}
                       onRevealInExplorerView={onRevealInExplorerView}
                       onCopyFileAssetReference={onCopyFileAssetReference}
-                      editingAvailable={editingAvailable}
-                      followEdits={followEdits}
-                      onFollowEditsChange={onFollowEditsChange}
                     />
                   )}
                 </BreadcrumbItem>

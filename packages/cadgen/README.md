@@ -46,13 +46,13 @@ in the store is compiled from those bytes (`cadgen step compile` semantics),
 never from source. Deleting every `.py` in a project must not change what
 renders.
 
-An explicit editing session can instead follow a build's immutable preview
-tree before STEP persistence ([`STORE.md`](STORE.md) §9b). This is a separate
-runtime input: it does not change what opening a saved file means and does not
-allow artifact readers to inspect source or model records.
+The viewer automatically follows an active build's immutable preview tree
+before STEP persistence ([`STORE.md`](STORE.md) §9b). This is a separate
+runtime input: it does not change saved-artifact read-back or allow artifact
+readers to inspect source or model records.
 Following edits keeps the authored preview after a successful STEP save, with
-the save status reported separately. Switching to the saved file resolves its
-actual bytes and corresponding topology and annotations.
+the save status reported separately. Without an available editing preview,
+the viewer resolves the saved bytes and corresponding topology and annotations.
 Native geometry completeness is separate from display-surface readiness.
 Canonical trees pin encoded BREP and effective intrinsic face colors; surface
 extraction is an artifact-only build-pool job selected by an attested producer.
