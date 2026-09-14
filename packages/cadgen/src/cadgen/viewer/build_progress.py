@@ -33,14 +33,17 @@ _RUNNING = ("submitted", "queued", "building")
 
 _guard = threading.Lock()
 _cache: tuple[float, list[dict]] = (0.0, [])
+_poll_sequence = 0
 
 
 def _daemon_jobs(now: float, *, max_age: float = FEED_CACHE_SECONDS) -> list[dict]:
-    global _cache
+    global _cache, _poll_sequence
     with _guard:
         stamp, jobs = _cache
         if now - stamp < max_age:
             return jobs
+        _poll_sequence += 1
+        poll_sequence = _poll_sequence
     from cadgen.daemon import client
 
     try:
@@ -49,7 +52,11 @@ def _daemon_jobs(now: float, *, max_age: float = FEED_CACHE_SECONDS) -> list[dic
         status = None
     jobs = [job for job in ((status or {}).get("jobs") or []) if isinstance(job, dict)]
     with _guard:
-        _cache = (now, jobs)
+        # Status reads happen outside the guard so one slow daemon round-trip
+        # does not serialize every Viewer request.  Do not let that older read
+        # overwrite a newer snapshot that completed while it was in flight.
+        if poll_sequence == _poll_sequence:
+            _cache = (now, jobs)
     return jobs
 
 

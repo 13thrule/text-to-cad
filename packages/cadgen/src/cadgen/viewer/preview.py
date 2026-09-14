@@ -21,6 +21,7 @@ from cadgen.store.trees import capture_tree
 
 from .backend import normalized_file_ref, require_contained
 from .build_progress import _daemon_jobs
+from .store_paths import result_snapshot
 
 
 def _preview_target(root_path: str, file_ref: str) -> str:
@@ -89,11 +90,9 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
             # A no-op model run has no new publication event. Resolve its
             # saved output from actual bytes so an earlier failed preview is
             # not kept forever after a successful current-file request.
-            from cadgen.catalog import artifact_file_hash, result_tree_for
-
-            current_tree = result_tree_for(Path(target))
-            if current_tree:
-                payload = {"tree": current_tree, "documentHash": artifact_file_hash(Path(target))}
+            current = result_snapshot(target)
+            if current:
+                payload = {"tree": current[1], "documentHash": current[0]}
         if not isinstance(payload, dict):
             continue
         tree_hash = str(payload.get("tree") or "")
@@ -133,10 +132,8 @@ def preview_status(root_path: str, file_ref: str, *, jobs: list[dict] | None = N
         else:
             # A completed write is only labelled saved if these are still the
             # actual bytes. It never aliases a live preview into index/document.
-            from cadgen.catalog import artifact_file_hash, result_tree_for
-
             digest = payload.get("documentHash")
-            if not digest or artifact_file_hash(Path(target)) != digest or result_tree_for(Path(target)) != tree_hash:
+            if not digest or result_snapshot(target) != (digest, tree_hash):
                 result.pop(output_key)
                 result["error"] = "The saved file has changed since this build completed"
             else:

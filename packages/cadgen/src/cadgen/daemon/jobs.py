@@ -157,12 +157,21 @@ class JobLedger:
         }
         with self._guard:
             if adopt_announced and subject:
-                existing = self._running_for(subject)
-                if existing is not None and existing.get("announced"):
+                # A concurrent real request for the same model must not hide
+                # the child's earlier announcement.  If it does, that
+                # announcement is never adopted or finished and remains a
+                # permanently submitted Viewer progress row.
+                existing = self._announced_for(subject)
+                if existing is not None:
                     existing["tool"] = str(tool)
                     existing["argv"] = [str(a) for a in (argv or [])]
                     existing["storeRoot"] = job["storeRoot"]
                     existing["editingProducer"] = bool(editing_producer)
+                    # Announcements are hints that a request is coming, not
+                    # accepted editing revisions.  Order the adopted row by
+                    # this request's actual acceptance.
+                    existing["sequence"] = sequence
+                    existing["startedAt"] = now
                     existing["updatedAt"] = now
                     existing.pop("announced", None)
                     self._notify(existing)
@@ -356,6 +365,12 @@ class JobLedger:
     def _running_for(self, subject: str, *, exclude: dict[str, Any] | None = None) -> dict[str, Any] | None:
         for job in reversed(list(self._jobs.values())):
             if job is not exclude and job["subject"] == subject and job["state"] in _RUNNING:
+                return job
+        return None
+
+    def _announced_for(self, subject: str) -> dict[str, Any] | None:
+        for job in reversed(list(self._jobs.values())):
+            if job["subject"] == subject and job["state"] in _RUNNING and job.get("announced"):
                 return job
         return None
 

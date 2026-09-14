@@ -216,7 +216,10 @@ the build — detection only; it keeps serving.
   ledger changes. Unrelated jobs do not wake the tab. The server admits 32
   waiters independently of kernel workers; excess tabs retry every 500 ms.
   An idle heartbeat revalidates saved bytes and missing geometry;
-  closing or switching the tab cancels the request.
+  closing or switching the tab cancels the request. Overlapping geometry and
+  reference loads own their cancellation independently; a superseded request cannot
+  cancel its replacement. Older status responses cannot overwrite newer cached
+  progress, and saved revisions are verified from one coherent file snapshot.
   Complete plain STEP assemblies also remain visible while replacement meshes
   load. Selection, measurements and reference copying wait for matching new
   geometry. A failed replacement preserves the view and reports its error;

@@ -299,13 +299,21 @@ class Channel:
         self.close()
 
 
+class AuthenticationError(OSError):
+    """A live peer rejected the key; spawning another daemon cannot repair it."""
+
+
 def connect(address: str, authkey: bytes) -> Channel:
     """Open a channel to a listening daemon. Raises OSError when there is none."""
     try:
         return Channel(mpc.Client(address, family=_family(), authkey=authkey))
-    except (mpc.AuthenticationError, ValueError) as exc:
-        # Callers recover on OSError; a bad key or a malformed address is the same
-        # outcome for them as no daemon at all -- run cold, do not crash the command.
+    except mpc.AuthenticationError as exc:
+        raise AuthenticationError(
+            "The geometry service rejected its local connection key. Its running "
+            "process and saved key no longer match; restart the geometry service "
+            "after active builds finish."
+        ) from exc
+    except ValueError as exc:
         raise OSError(str(exc)) from exc
 
 
@@ -452,6 +460,7 @@ def keys_match(left: bytes | None, right: bytes | None) -> bool:
 __all__ = [
     "PROTOCOL",
     "Channel",
+    "AuthenticationError",
     "Server",
     "address_for",
     "address_is_stale",

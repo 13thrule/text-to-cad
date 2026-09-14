@@ -172,6 +172,25 @@ class Lifecycle(unittest.TestCase):
         self.ledger.finish(child, 0)
         self.assertEqual("done", [j for j in self.ledger.snapshot() if j["subject"] == self.model][0]["state"])
 
+    def test_a_concurrent_request_cannot_orphan_a_childs_announced_row(self):
+        self.ledger.observe(self._event(self.model, "submitted", parent="rig.py"))
+        announced = self.ledger.snapshot()[0]
+        self.clock.now += 1
+        concurrent = self.ledger.start(tool="run", subject=self.model, store_root="/other")
+        self.clock.now += 1
+
+        child = self.ledger.start(
+            tool="run", subject=self.model, store_root=self.tmp.name,
+            adopt_announced=True,
+        )
+
+        jobs = self.ledger.snapshot()
+        self.assertEqual(2, len(jobs), "the announcement must not remain submitted forever")
+        self.assertEqual(announced["id"], child["id"])
+        self.assertNotIn("announced", child)
+        self.assertGreater(child["sequence"], concurrent["sequence"])
+        self.assertEqual(self.clock.now, child["startedAt"])
+
     def test_finished_jobs_are_retained_then_swept(self):
         job = self.ledger.start(tool="step-compile", subject=str(Path(self.tmp.name) / "vendor.step"))
         self.ledger.finish(job, 1)

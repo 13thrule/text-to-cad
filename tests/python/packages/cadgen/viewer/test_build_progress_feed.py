@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -62,9 +63,9 @@ class ProgressFeed(unittest.TestCase):
         self.document.write_bytes(STEP_BYTES)
         self.script = str(self.root / "src" / "widget.py")
         self.jobs: list[dict] = []
-        feed = mock.patch.object(build_progress, "_daemon_jobs", side_effect=lambda now: list(self.jobs))
-        feed.start()
-        self.addCleanup(feed.stop)
+        self.feed = mock.patch.object(build_progress, "_daemon_jobs", side_effect=lambda now: list(self.jobs))
+        self.feed.start()
+        self.addCleanup(self.feed.stop)
         self.ops = CadgenOps(str(self.root), client=_NeverCompiles())
 
     def status(self) -> dict:
@@ -142,6 +143,41 @@ class ProgressFeed(unittest.TestCase):
             build_progress._cache = (0.0, [])
             self.assertEqual([], build_progress._daemon_jobs(now=10.0))
         self.assertIsNone(build_progress.build_progress_snapshot(self.document, jobs=[]))
+
+    def test_a_slow_older_poll_cannot_replace_a_newer_cached_ledger(self):
+        self.feed.stop()
+        older = job(self.script, [str(self.document)], "building", id="older")
+        newer = job(self.script, [str(self.document)], "done", id="newer", started=2.0)
+        first_started = threading.Event()
+        release_first = threading.Event()
+        calls = 0
+
+        def status():
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                first_started.set()
+                self.assertTrue(release_first.wait(3))
+                return {"jobs": [older]}
+            if calls == 2:
+                return {"jobs": [newer]}
+            raise AssertionError("the protected newer cache should satisfy this read")
+
+        build_progress._cache = (0.0, [])
+        with mock.patch("cadgen.daemon.client.status", side_effect=status):
+            slow_result = []
+            thread = threading.Thread(
+                target=lambda: slow_result.extend(build_progress._daemon_jobs(10.0, max_age=0.0))
+            )
+            thread.start()
+            self.assertTrue(first_started.wait(3))
+            self.assertEqual([newer], build_progress._daemon_jobs(10.0, max_age=0.0))
+            release_first.set()
+            thread.join(3)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual([older], slow_result)
+            self.assertEqual([newer], build_progress._daemon_jobs(10.1, max_age=1.0))
+        self.assertEqual(2, calls)
 
     def test_the_snapshot_shape_the_status_machine_reads(self):
         running = build_progress.build_progress_snapshot(

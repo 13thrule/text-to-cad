@@ -10,6 +10,7 @@ from __future__ import annotations
 import concurrent.futures
 import os
 import pathlib
+import queue
 import sys
 import time
 import unittest
@@ -18,6 +19,8 @@ from unittest import mock
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from cadgen.daemon import pool as pool_mod  # noqa: E402
+
+_RealWorker = pool_mod.Worker
 
 
 class _StubWorker:
@@ -293,6 +296,34 @@ class Spares(_PoolFixture):
 
 
 class Lifecycle(_PoolFixture):
+    def test_worker_kill_never_closes_a_reader_owned_by_the_pump_thread(self):
+        class LockedReader:
+            def close(self):
+                raise AssertionError("cross-thread close would wait on the active readline lock")
+
+        proc = mock.Mock()
+        proc.poll.return_value = 0
+        proc.stdin = mock.Mock()
+        proc.stdout = LockedReader()
+        worker = _RealWorker.__new__(_RealWorker)
+        worker.proc = proc
+
+        worker.kill()
+
+        proc.stdin.close.assert_called()
+
+    def test_the_pump_thread_closes_its_own_stdout_after_eof(self):
+        stream = mock.Mock()
+        stream.__iter__ = mock.Mock(return_value=iter(()))
+        worker = _RealWorker.__new__(_RealWorker)
+        worker.proc = mock.Mock(stdout=stream)
+        worker._frames = queue.Queue()
+
+        worker._pump()
+
+        stream.close.assert_called_once_with()
+        self.assertIsNone(worker._frames.get_nowait())
+
     def test_a_crashed_worker_is_dropped_and_its_model_rebinds_fresh(self):
         with self._spares(0):
             worker = self.pool.acquire("/m/a.py")

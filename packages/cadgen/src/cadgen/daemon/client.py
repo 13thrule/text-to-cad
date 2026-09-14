@@ -1,9 +1,9 @@
 """Stdlib-only client for the warm CAD CLI daemon.
 
 The tool launchers' ``CADGEN_DAEMON`` shim imports this module BEFORE any heavy
-import, so it must stay dependency-free and cheap to import. Everything here
-falls back to ``None`` (caller runs inline, cold) on any spawn or protocol
-problem — the daemon is a fast path, never a requirement.
+import, so it must stay dependency-free and cheap to import. Ordinary CLI paths
+retain their cold fallback. Artifact requests require a matched result and
+report transport failures without replaying the work.
 """
 
 from __future__ import annotations
@@ -291,11 +291,18 @@ def run_artifact(payload: dict, *, subscriber=None):
         if subscriber is not None:
             subscriber._bind_detach(conn.close if conn is not None else None)
 
-    code = _run_with_retry(payload, on_stream=chunks.append, on_artifact_result=receive, strict=True,
-                           on_connection=connected, cancelled=(lambda: subscriber.detached) if subscriber is not None else None)
+    try:
+        code = _run_with_retry(payload, on_stream=chunks.append, on_artifact_result=receive, strict=True,
+                               on_connection=connected, cancelled=(lambda: subscriber.detached) if subscriber is not None else None)
+    except transport.AuthenticationError as error:
+        raise ArtifactJobError(f"artifact request failed: {error}") from error
     if code is None or code != 0 or not results:
         detail = "".join(chunks).strip()
-        raise ArtifactJobError("artifact request failed or lost its protocol; no cold retry" + (f": {detail}" if detail else ""))
+        if not detail:
+            detail = ("The geometry service completed without returning the requested geometry."
+                      if code == 0 else f"The geometry service failed (exit {code})."
+                      if code is not None else "The geometry service could not accept the request.")
+        raise ArtifactJobError(f"artifact request failed: {detail}")
     return results[0]
 
 
@@ -305,7 +312,14 @@ def _run_with_retry(payload: dict, *, on_stream=None, on_event=None,
     for attempt in range(2):
         if cancelled is not None and cancelled():
             return None
-        conn = _connect_or_spawn(address)
+        try:
+            conn = _connect_or_spawn(address)
+        except transport.AuthenticationError:
+            if strict:
+                raise
+            # No request was submitted: preserve the ordinary source/CLI
+            # fallback, without spawning repeatedly over a live listener.
+            return None
         if conn is None:
             return None
         try:
@@ -324,6 +338,8 @@ def _run_with_retry(payload: dict, *, on_stream=None, on_event=None,
                 on_connection(None)
         if outcome is _RESTART and attempt == 0:
             continue  # stale daemon exited; respawn once and retry
+        if outcome is _RESTART and strict and on_stream is not None:
+            on_stream("The geometry service is updating while existing builds finish. Retry after those builds finish.")
         return outcome if isinstance(outcome, int) else None
     return None
 
@@ -340,6 +356,8 @@ def _connect(address: str) -> transport.Channel:
 def _connect_or_spawn(address: str) -> transport.Channel | None:
     try:
         return _connect(address)
+    except transport.AuthenticationError:
+        raise
     except OSError:
         pass
     # Never unlink the address here. Only the daemon that holds the singleton lock
@@ -356,6 +374,8 @@ def _connect_or_spawn(address: str) -> transport.Channel | None:
             # released it. If the daemon answers now, there is nothing to spawn.
             try:
                 return _connect(address)
+            except transport.AuthenticationError:
+                raise
             except OSError:
                 pass
             process = _spawn_daemon(address)
@@ -366,12 +386,16 @@ def _connect_or_spawn(address: str) -> transport.Channel | None:
         while time.monotonic() < deadline:
             try:
                 return _connect(address)
+            except transport.AuthenticationError:
+                raise
             except OSError:
                 if process is not None and process.poll() is not None:
                     # Our daemon exited: it failed, or it stood down because one is
                     # already bound. One more connect tells the two apart.
                     try:
                         return _connect(address)
+                    except transport.AuthenticationError:
+                        raise
                     except OSError:
                         return None
                 time.sleep(0.05)
@@ -550,10 +574,15 @@ def _run_request(
     Stream frames go to the process's own stdout/stderr unless ``on_stream`` is
     given (a nested child build captures them); ``event`` frames — the build
     tree's model transitions — go to ``on_event``."""
+    def protocol_failure(reason):
+        if strict and on_stream is not None:
+            on_stream(f"The geometry service {reason}.\n")
+        return None
+
     if cancelled is not None and cancelled():
         return None
     if not _send_json(channel, payload):
-        return None
+        return protocol_failure("disconnected before the request was sent")
     # Applies per frame, not to the whole request: a daemon that is streaming output keeps
     # resetting it, so only genuine silence trips the deadline.
     timeout = request_timeout() or None
@@ -567,7 +596,7 @@ def _run_request(
         if message is _TIMED_OUT:
             if strict:
                 if deadline is not None and time.monotonic() >= deadline:
-                    return None
+                    return protocol_failure(f"stopped responding for {timeout:.0f} seconds")
                 continue
             # Silent past the deadline: either the daemon is wedged, or it is still
             # grinding through a queued build we cannot see. Either way, fall back to
@@ -581,11 +610,12 @@ def _run_request(
             )
             return None
         if message is None:
-            return None  # closed without an exit frame
+            return protocol_failure("closed the connection before the request finished")
         deadline = time.monotonic() + timeout if timeout else None
         if message.get("restart"):
             if strict and observed_work:
-                return None  # an uncertain completed/partial operation cannot replay
+                # An uncertain completed/partial operation cannot replay.
+                return protocol_failure("restarted before confirming the completed request")
             return _RESTART
         if "exit" in message:
             return int(message["exit"])
@@ -597,7 +627,7 @@ def _run_request(
             continue
         if "event" in message:
             if strict:
-                return None
+                return protocol_failure("sent a build update instead of a geometry response")
             if on_event is not None and isinstance(message["event"], dict):
                 on_event(message["event"])
             continue
@@ -617,7 +647,7 @@ def _run_request(
         data = message.get("data")
         stream = message.get("stream")
         if stream not in streams or not isinstance(data, str):
-            return None
+            return protocol_failure("sent an invalid response")
         observed_work = observed_work or bool(data)
         if on_stream is not None:
             on_stream(data)

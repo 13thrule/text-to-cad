@@ -5,7 +5,6 @@ import {
   loadRenderGlb,
   loadRenderGlbDocument,
   loadRenderSurf,
-  loadRenderJson,
   loadRenderSelectorBundle,
   loadRenderSurfSelectorBundle,
   loadRenderSdf,
@@ -40,6 +39,10 @@ import {
   probeCachedTessellationEntries
 } from "cadgen-js/lib/surf/tessellationCache.js";
 import { resolvePackageAssetUrl } from "./packageAssetUrl.js";
+import {
+  installRuntimePackageDescriptor,
+  loadPackageDescriptor
+} from "./packageDescriptorCache.js";
 import {
   createProgressivePackageLoader,
   PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
@@ -243,40 +246,6 @@ function loadRenderMeshForEntry(entry, options) {
     preferWorker: shouldUseGlbMeshWorkerForEntry(entry)
   });
 }
-
-// One fetch per descriptor URL: the mesh path and the selector path both
-// resolve the same descriptor when a model opens, and the URL carries a ?v=
-// version token, so a keyed cache is naturally invalidated when the underlying
-// file changes. Bounded to keep long sessions flat. The store descriptor
-// (assembly.json) is a pure function of the STEP bytes; nothing source-derived
-// is merged into it here.
-const PACKAGE_DESCRIPTOR_CACHE = new Map();
-const PACKAGE_DESCRIPTOR_CACHE_LIMIT = 32;
-
-async function loadPackageDescriptor(packageAssetUrl, { signal } = {}) {
-  const descriptorUrl = resolvePackageAssetUrl(packageAssetUrl, "assembly.json");
-  if (PACKAGE_DESCRIPTOR_CACHE.has(descriptorUrl)) {
-    return PACKAGE_DESCRIPTOR_CACHE.get(descriptorUrl);
-  }
-  const promise = loadRenderJson(descriptorUrl, { signal }).catch(() => null);
-  if (PACKAGE_DESCRIPTOR_CACHE.size >= PACKAGE_DESCRIPTOR_CACHE_LIMIT) {
-    PACKAGE_DESCRIPTOR_CACHE.clear();
-  }
-  PACKAGE_DESCRIPTOR_CACHE.set(descriptorUrl, promise);
-  promise.then((value) => {
-    // Never cache a failed/aborted resolve: the next caller should retry.
-    if (!value) {
-      PACKAGE_DESCRIPTOR_CACHE.delete(descriptorUrl);
-    }
-  });
-  return promise;
-}
-
-function installRuntimePackageDescriptor(packageAssetUrl, descriptor) {
-  const descriptorUrl = resolvePackageAssetUrl(packageAssetUrl, "assembly.json");
-  PACKAGE_DESCRIPTOR_CACHE.set(descriptorUrl, Promise.resolve(descriptor));
-}
-
 
 function createAssemblyPreviewMeshData(meshData, topologyManifest = null) {
   return {

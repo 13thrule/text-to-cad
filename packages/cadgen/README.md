@@ -49,7 +49,8 @@ renders.
 The viewer automatically follows an active build's immutable preview tree
 before STEP persistence ([`STORE.md`](STORE.md) §9b). This is a separate
 runtime input: it does not change saved-artifact read-back or allow artifact
-readers to inspect source or model records.
+readers to inspect source or model records. Concurrent child requests adopt their
+announced jobs before execution, so completed builds leave no orphaned pending status.
 Following edits keeps the authored preview after a successful STEP save.
 The viewer reports incomplete or failed updates without announcing background file writes. Without an available editing preview,
 the viewer resolves the saved bytes and corresponding topology and annotations.

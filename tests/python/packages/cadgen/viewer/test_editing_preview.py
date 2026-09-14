@@ -179,6 +179,29 @@ class EditingPreviewTests(unittest.TestCase):
         self.assertNotIn("saved", result)
         self.assertIn("changed", result["error"])
 
+    def test_saved_validation_selects_digest_and_tree_from_one_file_revision(self):
+        from cadgen.store.records import note_document_tree
+
+        old_digest = "a" * 64
+        Path(self.output).write_bytes(b"old saved document")
+        note_document_tree(old_digest, self.tree)
+        hashes = 0
+
+        def replace_after_selection(_path):
+            nonlocal hashes
+            hashes += 1
+            Path(self.output).write_bytes(b"new saved document")
+            return old_digest if hashes == 1 else "b" * 64
+
+        job = self.job(state="done", savedResults={
+            self.output: {"tree": self.tree, "documentHash": old_digest},
+        })
+        with mock.patch("cadgen.catalog.artifact_file_hash", side_effect=replace_after_selection):
+            result = preview_status(str(self.root), self.output, jobs=[job])
+        self.assertEqual(1, hashes, "saved validation must not hash a replacement revision")
+        self.assertEqual((old_digest, self.tree),
+                         (result["saved"]["documentHash"], result["saved"]["tree"]))
+
     def test_noop_completion_resolves_current_saved_bytes_without_a_record(self):
         from cadgen.catalog import artifact_file_hash
         from cadgen.store.records import note_document_tree

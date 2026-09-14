@@ -180,12 +180,20 @@ class Worker:
         if stream is None:
             self._frames.put(None)
             return
-        for line in stream:
-            try:
-                self._frames.put(json.loads(line))
-            except ValueError:
-                self._frames.put({"stream": "stderr", "data": line})
-        self._frames.put(None)
+        try:
+            for line in stream:
+                try:
+                    self._frames.put(json.loads(line))
+                except ValueError:
+                    self._frames.put({"stream": "stderr", "data": line})
+        finally:
+            # This thread owns stdout's buffered reader.  Closing it from a
+            # retirement thread while this loop is blocked in readline waits
+            # forever on TextIOWrapper's internal lock when a descendant still
+            # holds the pipe open.
+            with contextlib.suppress(OSError, ValueError):
+                stream.close()
+            self._frames.put(None)
 
     def _read_frame(self, timeout: float | None = None) -> dict | None | object:
         """The next frame; None when the pipe closed; ``_TIMED_OUT`` when ``timeout`` elapsed.
@@ -257,13 +265,17 @@ class Worker:
                         proc.wait(timeout=2)
                     except subprocess.TimeoutExpired:
                         proc.kill()
+                        with contextlib.suppress(subprocess.TimeoutExpired):
+                            proc.wait(timeout=2)
         except OSError:
             pass
         finally:
-            for stream in (proc.stdin, proc.stdout):
-                if stream is not None:
-                    with contextlib.suppress(OSError):
-                        stream.close()
+            # stdin has no independent reader.  stdout belongs exclusively to
+            # _pump, which closes it after EOF; cross-thread close can deadlock
+            # inside the buffered IO lock.
+            if proc.stdin is not None:
+                with contextlib.suppress(OSError, ValueError):
+                    proc.stdin.close()
 
 
 class Pool:

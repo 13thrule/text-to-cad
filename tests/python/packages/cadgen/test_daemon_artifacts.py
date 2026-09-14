@@ -16,7 +16,7 @@ import types
 import unittest
 from unittest import mock
 
-from cadgen.daemon import artifacts, broker, client, server, worker
+from cadgen.daemon import artifacts, broker, client, server, transport, worker
 from cadgen.daemon.jobs import JobLedger
 from tests.python.support.tmp_root import generated_cad_directory
 
@@ -266,15 +266,41 @@ class ArtifactTransport(unittest.TestCase):
         return {"tool": "artifact", "argv": [], "artifact": {"kind": "producer"}, "store_root": "/store"}
 
     def test_protocol_loss_failure_and_missing_result_never_retry_cold(self):
-        for frames in ([], [{"exit": 0}], [{"exit": 1}], [{"event": {"sourceResult": {"tree": "wrong"}}}], [{"unexpected": 1}]):
+        for frames, reason in (
+            ([], "closed the connection"),
+            ([{"exit": 0}], "completed without returning"),
+            ([{"exit": 1}], "exit 1"),
+            ([{"event": {"sourceResult": {"tree": "wrong"}}}], "build update instead"),
+            ([{"unexpected": 1}], "invalid response"),
+        ):
             raw = [json.dumps(frame).encode() for frame in frames] + [b""]
             conn = Connection(raw)
             with self.subTest(frames=frames), mock.patch.object(client, "_connect_or_spawn", return_value=conn) as connect, \
                  mock.patch("cadgen.daemon.artifacts._run_transient", side_effect=AssertionError("cold retry")):
-                with self.assertRaises(artifacts.ArtifactJobError):
+                with self.assertRaisesRegex(artifacts.ArtifactJobError, reason):
                     client.run_artifact(self.payload())
                 self.assertEqual(connect.call_count, 1)
                 self.assertTrue(conn.closed)
+
+    def test_rejected_key_fails_immediately_without_spawning_over_live_service(self):
+        with mock.patch.object(transport, "read_authkey", return_value=b"test-key"), \
+             mock.patch.object(transport.mpc, "Client", side_effect=transport.mpc.AuthenticationError("rejected")), \
+             mock.patch.object(client, "_spawn_daemon") as spawn, \
+             mock.patch.object(transport, "spawn_lock") as election:
+            with self.assertRaisesRegex(artifacts.ArtifactJobError, "connection key"):
+                client.run_artifact(self.payload())
+            self.assertIsNone(client._run_with_retry({"tool": "run", "argv": []}),
+                              "ordinary source requests keep their pre-submission fallback")
+        spawn.assert_not_called()
+        election.assert_not_called()
+
+    def test_silent_geometry_service_reports_the_timeout(self):
+        with mock.patch.object(client, "_connect_or_spawn", return_value=Connection()), \
+             mock.patch.object(client, "_recv_json", return_value=client._TIMED_OUT), \
+             mock.patch.object(client, "request_timeout", return_value=1), \
+             mock.patch.object(client.time, "monotonic", side_effect=[0, 2]):
+            with self.assertRaisesRegex(artifacts.ArtifactJobError, "stopped responding for 1 seconds"):
+                client.run_artifact(self.payload())
 
     def test_restart_is_allowed_only_before_observed_work(self):
         result = {"artifactResult": artifacts.result_frame({"kind": "producer"}, PRODUCER)}
@@ -321,7 +347,7 @@ class ArtifactStartup(unittest.TestCase):
                  mock.patch.object(artifacts, "_run_transient", side_effect=AssertionError("unaccounted cold retry")), \
                  mock.patch.object(artifacts, "execute", side_effect=AssertionError("native work in caller")):
                 future = artifacts.submit_artifact({"kind": "producer"}, store_root=self.root / "store")
-                with self.assertRaisesRegex(artifacts.ArtifactJobError, "no cold retry"):
+                with self.assertRaisesRegex(artifacts.ArtifactJobError, "geometry service could not accept"):
                     future.result(timeout=10)
                 self.assertTrue(future.done())
                 self.assertEqual(launched.call_count, 1)
@@ -357,7 +383,7 @@ class ArtifactStartup(unittest.TestCase):
              mock.patch.object(artifacts, "_run_transient", side_effect=AssertionError("unaccounted cold retry")):
             future = artifacts.submit_artifact({"kind": "producer"}, store_root=self.root / "store")
             try:
-                with self.assertRaisesRegex(artifacts.ArtifactJobError, "no cold retry"):
+                with self.assertRaisesRegex(artifacts.ArtifactJobError, "geometry service could not accept"):
                     future.result(timeout=3)
                 self.assertTrue(future.done())
                 spawn.assert_not_called()
