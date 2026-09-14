@@ -1282,7 +1282,10 @@ export async function captureModel(viewport, captureOptions = {}) {
     if (outputTimings) outputTimings.frameCameraMs = Math.round(performance.now() - stageStarted);
     if (viewport.studioRuntime) {
       stageStarted = performance.now();
-      fitCameraDepthToBounds(renderCamera, outputBounds);
+      fitCameraDepthToBounds(renderCamera, outputBounds, {
+        displayRecords: viewport.model.displayRecords,
+        modelGroup: viewport.model.runtime.modelGroup
+      });
       applyPhotographicStudio(THREE, viewport.studioRuntime, viewport.studioConfiguration, {
         bounds: outputBounds,
         sceneScale,

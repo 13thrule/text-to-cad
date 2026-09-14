@@ -104,7 +104,10 @@ environment. Final requests a 0.25-pixel screen-error target, 4096-pixel shadow 
 environment. Quality changes refine the view without rebuilding exact CAD
 geometry or the model scene. Entering Render creates an ordinary-depth WebGL
 runtime so the photographic ground can receive shadows; returning to CAD restores
-its wide-range logarithmic-depth runtime while decoded geometry stays cached. The
+its wide-range logarithmic-depth runtime while decoded geometry stays cached.
+Close-ups fit the depth range to visible rigid components when the camera enters
+the assembly bounds, preserving fine layered details without changing lighting.
+Optical zoom and cropped viewports also contribute to the detail target. The
 filename badge reports Limited detail when memory limits prevent requested detail. Snapshots use the same policy:
 Final selects the existing finest L3 STEP tessellation and 2× capture scale unless
 an explicit output scale overrides it. CAD tessellation controls cannot be combined

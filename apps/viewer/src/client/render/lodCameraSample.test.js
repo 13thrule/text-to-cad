@@ -3,6 +3,7 @@ import test from "node:test";
 import * as THREE from "three";
 import { lodSceneMayMove, sampleLodCamera, resampleLodAfterViewportResize } from "./lodCameraSample.js";
 import { createLodScheduler } from "./lodScheduler.js";
+import { desiredLevel } from "cadgen-js/lib/surf/lodPolicy.js";
 
 const bounds = (min, max) => ({ min, max });
 const cube = (x, y = 0, z = 0) => bounds([x - .5, y - .5, z - .5], [x + .5, y + .5, z + .5]);
@@ -117,6 +118,35 @@ test("perspective cameras also retain intersecting boxes and see camera-parent t
   parent.position.x = 20;
   assert.equal(sample(f).distanceFor("offscreen"), 10);
   assert.equal(sample(f).visibleFor("center"), false);
+});
+
+test("camera samples preserve optical zoom and vertical view crops in projected LOD error", () => {
+  const f = fixture([["part", cube(0)]]);
+  const camera = new THREE.PerspectiveCamera(45, 1, 1, 20);
+  camera.position.set(0, 0, 10); camera.lookAt(0, 0, 0); f.runtime.camera = camera;
+  const levelFor = (result) => desiredLevel({
+    diagonal: 2,
+    cameraDistance: result.distanceFor("part"),
+    camera: result.camera,
+    viewportHeightPx: result.viewportHeightPx,
+  });
+  const base = sample(f);
+  assert.equal(levelFor(base), 0);
+  camera.zoom = 4; camera.updateProjectionMatrix();
+  const zoomed = sample(f);
+  assert.ok(Math.abs(zoomed.camera.fovYDeg - camera.getEffectiveFOV()) < 1e-12);
+  assert.equal(levelFor(zoomed), 2, "optical zoom must refine like the equivalent narrower FOV");
+
+  camera.zoom = 1;
+  camera.setViewOffset(1000, 1000, 0, 0, 1000, 500);
+  const cropped = sample(f);
+  assert.ok(cropped.camera.fovYDeg < base.camera.fovYDeg);
+  assert.equal(levelFor(cropped), 1, "a half-height view doubles vertical pixel density");
+
+  const ortho = new THREE.OrthographicCamera(-5, 5, 5, -5, 1, 20);
+  ortho.position.set(0, 0, 10); ortho.lookAt(0, 0, 0);
+  ortho.setViewOffset(1000, 1000, 0, 0, 1000, 500); f.runtime.camera = ortho;
+  assert.equal(sample(f).camera.visibleWorldHeight, 5);
 });
 
 test("visibility exclusion defers the floor until a camera resample reveals the component", async () => {

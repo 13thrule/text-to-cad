@@ -408,7 +408,10 @@ export function useViewerRuntime({
         ) {
           return;
         }
-        fitCameraDepthToBounds(activeCamera, runtime?.modelBounds);
+        fitCameraDepthToBounds(activeCamera, runtime?.modelBounds, {
+          displayRecords: runtime?.displayRecords,
+          modelGroup: runtime?.modelGroup
+        });
       };
 
       let rafId = 0;

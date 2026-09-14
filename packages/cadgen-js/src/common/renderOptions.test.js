@@ -288,6 +288,35 @@ test("photographic depth fitting preserves the subject at CAD and robot scales a
   }
 });
 
+test("macro views fit visible occurrences without collapsing depth inside an assembly box", () => {
+  for (const scale of [0.001, 1, 1000]) {
+    const bounds = { min: [-100 * scale, -100 * scale, 0], max: [100 * scale, 100 * scale, 20 * scale] };
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.01 * scale, 10000 * scale);
+    camera.position.set(0, -20 * scale, 15 * scale); camera.lookAt(0, 0, 10 * scale);
+    const partBounds = { min: [-2 * scale, -2 * scale, 9 * scale], max: [2 * scale, 2 * scale, 11 * scale] };
+    const records = [{ partBounds }, { partBounds, effectMatrix: new THREE.Matrix4().makeTranslation(100 * scale, -20 * scale, 0) }];
+    fitCameraDepthToBounds(camera, bounds);
+    const aggregateNear = camera.near;
+    fitCameraDepthToBounds(camera, bounds, { displayRecords: records });
+    assert.ok(camera.near > aggregateNear * 1000, "offscreen assembly extents cannot destroy closeup precision");
+    for (const point of boundsCorners(partBounds)) {
+      const projected = point.project(camera);
+      assert.ok(projected.z > -1 && projected.z < 1, "visible part is retained");
+    }
+    records[0].effectMatrix = new THREE.Matrix4().makeTranslation(0, -10 * scale, 0);
+    const previousNear = camera.near;
+    fitCameraDepthToBounds(camera, bounds, { displayRecords: records });
+    assert.ok(camera.near < previousNear, "animated occurrences update the depth fit");
+    for (const point of boundsCorners(partBounds)) {
+      const projected = point.applyMatrix4(records[0].effectMatrix).project(camera);
+      assert.ok(projected.z > -1 && projected.z < 1);
+    }
+    records[0].tubeGpuState = { active: true };
+    fitCameraDepthToBounds(camera, bounds, { displayRecords: records });
+    assertClose(camera.near, aggregateNear, 1e-8 * scale);
+  }
+});
+
 test("photographic depth fitting retains foreground ground at oblique and low camera angles", () => {
   for (const scale of [0.001, 1, 1000]) {
     const bounds = { min: [-20 * scale, -10 * scale, 0], max: [20 * scale, 10 * scale, 8 * scale] };

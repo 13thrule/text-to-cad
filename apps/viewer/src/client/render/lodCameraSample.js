@@ -31,6 +31,20 @@ function invalidMatrix(matrix) {
   return matrix && (!matrix.isMatrix4 || !matrix.elements.every(Number.isFinite));
 }
 
+function verticalViewScale(camera) {
+  const view = camera?.view;
+  if (!view?.enabled) return 1;
+  const fullHeight = Number(view.fullHeight), height = Number(view.height);
+  return fullHeight > 0 && height > 0 ? height / fullHeight : 1;
+}
+
+function perspectiveFovYDeg(camera) {
+  const fovY = Number(camera?.fov) * Math.PI / 180;
+  const zoom = Number(camera?.zoom);
+  const effectiveZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  return 2 * Math.atan(Math.tan(fovY / 2) * verticalViewScale(camera) / effectiveZoom) * 180 / Math.PI;
+}
+
 function selectedPartId(partId, selected) {
   if (!selected.size) return false;
   if (selected.has("__model__")) return true;
@@ -142,8 +156,8 @@ export function sampleLodCamera(THREE, runtime, { components = new Map(), dynami
     cameraKey: JSON.stringify([...camera.matrixWorld.elements, ...projectionIntent, ...viewIntent,
       viewportWidthPx, viewportHeightPx]),
     camera: camera.isOrthographicCamera
-      ? { kind: "orthographic", visibleWorldHeight: (camera.top - camera.bottom) / (camera.zoom || 1) }
-      : { kind: "perspective", fovYDeg: camera.fov },
+      ? { kind: "orthographic", visibleWorldHeight: (camera.top - camera.bottom) * verticalViewScale(camera) / (camera.zoom || 1) }
+      : { kind: "perspective", fovYDeg: perspectiveFovYDeg(camera) },
     viewportWidthPx,
     viewportHeightPx,
     distanceFor: cid => distances.get(cid) ?? NaN,

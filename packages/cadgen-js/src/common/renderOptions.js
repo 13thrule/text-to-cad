@@ -647,12 +647,62 @@ function groundPlaneFrustumDepths(camera, groundZ) {
   return depths;
 }
 
+// A close camera can enter an assembly's mostly empty aggregate box while
+// remaining well outside every visible part. Fit those parts independently so
+// the near plane does not collapse and make thin surfaces fight for depth.
+// This uses existing occurrence bounds, never vertex scans or CAD picking.
+function closeupSubjectNear(camera, displayRecords, modelGroup) {
+  if (!displayRecords?.length) return null;
+  const frustum = new THREE.Frustum().setFromProjectionMatrix(
+    new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse),
+    camera.coordinateSystem, camera.reversedDepth
+  );
+  // Only the side planes: the previous near/far must not exclude a part that
+  // the camera has just moved through or approached.
+  const sides = frustum.planes.slice(0, 4);
+  const box = new THREE.Box3(), point = new THREE.Vector3();
+  const center = new THREE.Vector3(), halfSize = new THREE.Vector3();
+  const world = new THREE.Matrix4(), view = new THREE.Matrix4();
+  modelGroup?.updateWorldMatrix?.(true, false);
+  let nearest = Infinity;
+  for (const record of displayRecords) {
+    if (record.mesh?.visible === false) continue;
+    const bounds = record.partBounds;
+    if (!Array.isArray(bounds?.min) || !Array.isArray(bounds?.max)
+      || bounds.min.length !== 3 || bounds.max.length !== 3
+      || !bounds.min.every(Number.isFinite) || !bounds.max.every(Number.isFinite)
+      || bounds.max.some((value, axis) => value < bounds.min[axis])
+      || record.effectDeformation || record.tubeDeformationState?.active || record.tubeGpuState?.active) return null;
+    world.identity();
+    if (record.effectMatrix) world.premultiply(record.effectMatrix);
+    if (record.explodedViewMatrix) world.premultiply(record.explodedViewMatrix);
+    if (modelGroup) world.premultiply(modelGroup.matrixWorld);
+    if (!world.elements.every(Number.isFinite)) return null;
+    box.min.fromArray(bounds.min); box.max.fromArray(bounds.max);
+    box.getCenter(center); box.getSize(halfSize).multiplyScalar(0.5);
+    box.applyMatrix4(world);
+    if (sides.some(plane => {
+      point.set(plane.normal.x >= 0 ? box.max.x : box.min.x,
+        plane.normal.y >= 0 ? box.max.y : box.min.y,
+        plane.normal.z >= 0 ? box.max.z : box.min.z);
+      return plane.distanceToPoint(point) < 0;
+    })) continue;
+    view.multiplyMatrices(camera.matrixWorldInverse, world);
+    const depth = -center.applyMatrix4(view).z;
+    const extent = Math.abs(view.elements[2]) * halfSize.x
+      + Math.abs(view.elements[6]) * halfSize.y + Math.abs(view.elements[10]) * halfSize.z;
+    if (depth + extent <= 0) continue;
+    nearest = Math.min(nearest, depth - extent);
+  }
+  return Number.isFinite(nearest) ? nearest * 0.98 : null;
+}
+
 // Ordinary depth is required for the photographic shadow pass. Fit its range
 // to the subject as the camera moves, retaining room behind it for the stage.
 // The bounds corners cover the model; frustum-corner intersections cover the
 // foreground ground that is actually visible without forcing an arbitrary
 // scene-scale near plane.
-export function fitCameraDepthToBounds(camera, bounds) {
+export function fitCameraDepthToBounds(camera, bounds, { displayRecords, modelGroup } = {}) {
   if (!camera?.isCamera || !Array.isArray(bounds?.min) || !Array.isArray(bounds?.max)
     || bounds.min.length < 3 || bounds.max.length < 3
     || !bounds.min.every(Number.isFinite) || !bounds.max.every(Number.isFinite)
@@ -661,7 +711,10 @@ export function fitCameraDepthToBounds(camera, bounds) {
   const corners = boundsCorners(bounds);
   const depths = corners.map((point) => -point.applyMatrix4(camera.matrixWorldInverse).z);
   const radius = Math.max(Math.hypot(...bounds.max.map((value, axis) => value - bounds.min[axis])) / 2, 1e-6);
-  const subjectNear = Math.min(...depths) - radius * 0.1;
+  let subjectNear = Math.min(...depths) - radius * 0.1;
+  if (subjectNear <= radius * 1e-5) {
+    subjectNear = closeupSubjectNear(camera, displayRecords, modelGroup) ?? subjectNear;
+  }
   const groundDepths = groundPlaneFrustumDepths(camera, bounds.min[2]);
   const groundNear = groundDepths.length
     ? Math.min(...groundDepths) * 0.98
