@@ -87,7 +87,7 @@ export function summarizeIntervals(values) {
   return { samples: sorted.length, p50: at(.5), p95: at(.95), max: at(1) };
 }
 
-// Same process-tree accounting as measure.mjs. Input is ps text so tests do not
+// Process-tree accounting takes ps text so tests do not
 // need a browser and can prove that a second renderer is not summed into a cap.
 export function processMemoryFromPs(output, profileDirectory) {
   const rows = output.split('\n').flatMap(line => {

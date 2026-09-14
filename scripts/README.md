@@ -111,6 +111,10 @@ when staged paths touch `packages`, `apps`, `skills` or `scripts/bundle`.
 `utils/list-skills.sh` — prints every `skills/*/SKILL.md` directory. Used by the
 install scripts and `test-python.sh`.
 
+`bench/` — manual warm-build and viewer performance commands. See
+[benchmark usage](bench/cadgen-performance/README.md). Reports and profiler
+captures are local output under `tmp/`, never committed here.
+
 ## CI
 
 | Workflow | Branches/events | Purpose |

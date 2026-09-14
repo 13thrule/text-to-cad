@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Default camera-policy acceptance, separate from measure.mjs's forced LOD gate.
+// Bounded loading and interaction checks using the default camera-driven LOD.
 // Uses one caller-owned viewer and one disposable browser. Never starts/stops a server.
 import fs from 'node:fs';
 import os from 'node:os';

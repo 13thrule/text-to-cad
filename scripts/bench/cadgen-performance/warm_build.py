@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Unprofiled in-process edit timings, with normal stage logs and preview events.
 
-Run with the checkout's cadgen on PYTHONPATH. The default substitutions target
-the repository's nine-part planetary fixture; other models supply exact pairs.
+Run with the checkout's cadgen on PYTHONPATH and exact source substitutions
+for a disposable model copy.
 The source is restored in finally, including when a build fails.
 """
 from __future__ import annotations
@@ -37,10 +37,10 @@ def main() -> int:
     parser.add_argument("--child-daemon-socket", help="Use a caller-owned dedicated warm daemon for child builds; default uses transient workers")
     parser.add_argument("--skip-imports", action="store_true", help="Measure builds only, omitting the separate import study")
     parser.add_argument("--assert-child-pins", action="store_true", help="Require geometry to change only its child pin and placement to preserve all pins")
-    parser.add_argument("--geometry-from", default="CARRIER_DIAMETER = 105.0")
-    parser.add_argument("--geometry-to", default="CARRIER_DIAMETER = 106.0")
-    parser.add_argument("--placement-from", default="        _make_carrier_plate(),")
-    parser.add_argument("--placement-to", default="        _make_carrier_plate().moved(bd.Location((0.0, 0.0, -0.5))),")
+    parser.add_argument("--geometry-from", required=True)
+    parser.add_argument("--geometry-to", required=True)
+    parser.add_argument("--placement-from", required=True)
+    parser.add_argument("--placement-to", required=True)
     parser.add_argument("--novel-geometry-to", action="append", default=[],
                         help="Additional replacement measured once, without priming; repeat for distinct edits")
     parser.add_argument("--novel-placement-to", action="append", default=[],
