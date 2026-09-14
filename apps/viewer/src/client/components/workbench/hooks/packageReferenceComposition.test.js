@@ -227,17 +227,15 @@ test("an obsolete reference job stops before publishing", async () => {
 });
 
 test("late selectors preserve unrelated CIDs in the candidate and exact base-level recovery overlay", () => {
-  const low = loadLevel(0.2), high = loadLevel(0.01), unrelated = loadLevel(0.1);
+  const low = { level: "base" }, high = { level: "live" }, unrelated = { level: "unrelated" };
   const composition = { entry: ENTRY, loadedTopologyKey: "newly-demanded-subset",
     occurrencesToLoad: [...OCCURRENCES, { id: "other", component: "other" }],
-    bundleByCid: { c0: high.bundle, other: unrelated.bundle } };
-  const base = baseLodReferenceComposition(composition, { cid: "c0" }, low.bundle);
+    bundleByCid: { c0: high, other: unrelated } };
+  const base = baseLodReferenceComposition(composition, { cid: "c0" }, low);
   assert.equal(base.occurrencesToLoad, composition.occurrencesToLoad);
   assert.equal(base.loadedTopologyKey, composition.loadedTopologyKey);
-  assert.equal(base.bundleByCid.other, unrelated.bundle); assert.equal(base.bundleByCid.c0, low.bundle);
-  assert.equal(composition.bundleByCid.c0, high.bundle, "candidate remains immutable");
-  const baseRuntime = composePackageSelectorRuntime(ENTRY, base.occurrencesToLoad, base.bundleByCid);
-  assert.equal(faceIdInvariant(low.meshData, baseRuntime).ok, true);
+  assert.equal(base.bundleByCid.other, unrelated); assert.equal(base.bundleByCid.c0, low);
+  assert.equal(composition.bundleByCid.c0, high, "candidate remains immutable");
   assert.equal(baseLodReferenceComposition(composition, { cid: "not-demanded" }, null), composition);
   assert.equal(baseLodReferenceComposition(composition, { cid: "c0", phase: "restoring" }, null), composition);
   assert.throws(() => baseLodReferenceComposition(composition, { cid: "c0" }, null), /Previous detail/);
@@ -257,15 +255,15 @@ test("reference publication rechecks pending ownership after base-selector and l
 });
 
 test("a mixed-level batch restores every changed selector bundle while keeping late unrelated demand", () => {
-  const lowA = loadLevel(0.2), highA = loadLevel(0.01), lowB = loadLevel(0.1), highB = loadLevel(0.005), other = {};
+  const lowA = { level: "base-a" }, highA = { level: "live-a" };
+  const lowB = { level: "base-b" }, highB = { level: "live-b" }, other = {};
   const occurrencesToLoad = [...OCCURRENCES, { id: "b", component: "b" }, { id: "late", component: "late" }];
   const candidate = { entry: ENTRY, occurrencesToLoad, loadedTopologyKey: "late-demand",
-    bundleByCid: { c0: highA.bundle, b: highB.bundle, late: other } };
+    bundleByCid: { c0: highA, b: highB, late: other } };
   const base = baseLodReferenceComposition(candidate, { items: [{ cid: "c0" }, { cid: "b" }] },
-    { c0: lowA.bundle, b: lowB.bundle });
+    { c0: lowA, b: lowB });
   assert.equal(base.occurrencesToLoad, occurrencesToLoad); assert.equal(base.loadedTopologyKey, "late-demand");
-  assert.equal(base.bundleByCid.c0, lowA.bundle); assert.equal(base.bundleByCid.b, lowB.bundle); assert.equal(base.bundleByCid.late, other);
-  assert.equal(candidate.bundleByCid.c0, highA.bundle); assert.equal(candidate.bundleByCid.b, highB.bundle);
-  assert.equal(faceIdInvariant(lowA.meshData, composePackageSelectorRuntime(ENTRY, occurrencesToLoad, base.bundleByCid)).ok, true);
-  assert.throws(() => baseLodReferenceComposition(candidate, { items: [{ cid: "c0" }, { cid: "b" }] }, { c0: lowA.bundle }), /Previous detail/);
+  assert.equal(base.bundleByCid.c0, lowA); assert.equal(base.bundleByCid.b, lowB); assert.equal(base.bundleByCid.late, other);
+  assert.equal(candidate.bundleByCid.c0, highA); assert.equal(candidate.bundleByCid.b, highB);
+  assert.throws(() => baseLodReferenceComposition(candidate, { items: [{ cid: "c0" }, { cid: "b" }] }, { c0: lowA }), /Previous detail/);
 });

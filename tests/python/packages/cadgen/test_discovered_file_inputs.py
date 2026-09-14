@@ -29,6 +29,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.python.support.paths import add_repo_path
 
@@ -145,44 +146,19 @@ class DiscoveredFileInputTests(unittest.TestCase):
         (self.project / name).write_text(source, encoding="utf-8")
         return name
 
-    def test_new_bytes_at_the_same_path_rebuild_the_drawing(self) -> None:
-        model = self._write_model("bracket_profile.py", _DXF_MODEL)
-        self._write_vendor_step(20.0)
-        self._run(model)
-        first = (self.project / "bracket_profile.dxf").read_bytes()
-
-        self._run(model)
-        self.assertEqual(first, (self.project / "bracket_profile.dxf").read_bytes())
-
-        # The vendor part changes. Nothing in the model's Python changed, so the
-        # old gate would have called this current and skipped.
-        self._write_vendor_step(30.0)
-        self._run(model)
-        self.assertNotEqual(
-            first,
-            (self.project / "bracket_profile.dxf").read_bytes(),
-            "a replaced vendor STEP must make the drawing stale",
-        )
-
-    def test_identical_bytes_replaced_in_place_stay_a_no_op(self) -> None:
-        """The input is the file's CONTENT, not its mtime.
-
-        Rewriting a file with the same bytes — a checkout, a sync, an rsync —
-        must not rebuild anything, or every `git checkout` would invalidate every
-        model that reads a committed STEP.
-
-        The bytes are replayed rather than re-exported on purpose: build123d's
-        STEP writer stamps its own header, so a re-export of identical geometry
-        is a genuinely different file and SHOULD rebuild.
-        """
+    def test_input_bytes_control_drawing_rebuild_and_missing_input_fails(self) -> None:
+        """The input is its content, while absence remains a loud error."""
         model = self._write_model("bracket_profile.py", _DXF_MODEL)
         self._write_vendor_step(20.0)
         vendor = self.project / "vendor.step"
         payload = vendor.read_bytes()
         self._run(model)
         drawing = self.project / "bracket_profile.dxf"
+        first = drawing.read_bytes()
         before = drawing.stat().st_mtime_ns
 
+        # A checkout or sync may replace an input without changing its bytes.
+        # The artifact remains current even though the input looks newer.
         vendor.unlink()
         vendor.write_bytes(payload)
         self.assertNotEqual(
@@ -192,13 +168,19 @@ class DiscoveredFileInputTests(unittest.TestCase):
         )
         self._run(model)
         self.assertEqual(before, drawing.stat().st_mtime_ns)
+        self.assertEqual(first, drawing.read_bytes())
 
-    def test_a_missing_input_fails_loudly(self) -> None:
-        model = self._write_model("bracket_profile.py", _DXF_MODEL)
-        self._write_vendor_step(20.0)
+        # The vendor part changes. Nothing in the model's Python changed, so the
+        # old gate would have called this current and skipped.
+        self._write_vendor_step(30.0)
         self._run(model)
+        self.assertNotEqual(
+            first,
+            drawing.read_bytes(),
+            "a replaced vendor STEP must make the drawing stale",
+        )
 
-        (self.project / "vendor.step").unlink()
+        vendor.unlink()
         completed = subprocess.run(
             [sys.executable, str(self.project / model)],
             cwd=str(self.project),
@@ -327,6 +309,13 @@ class RenderModuleIsNotABuildInputTests(unittest.TestCase):
 
     def test_editing_the_render_module_never_makes_the_model_stale(self) -> None:
         self.assertEqual(self._run(), "built")
+        from cadgen.store.records import read_record
+
+        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": self.environment["CADGEN_CACHE_DIR"]}):
+            recorded = read_record(self.project / "hinge.py")
+        self.assertIsNotNone(recorded, "the build must leave a record for the model")
+        files = sorted(os.path.basename(f) for f in recorded["closure"]["files"])
+        self.assertEqual(files, ["hinge.py"])
         self.assertEqual(self._run(), "current")
         self.assertNotIn("animation", self._sidecar(), "the sidecar carries no copy of the module")
 
@@ -338,18 +327,6 @@ class RenderModuleIsNotABuildInputTests(unittest.TestCase):
     def test_force_still_rebuilds_a_current_model(self) -> None:
         self.assertEqual(self._run(), "built")
         self.assertEqual(self._run("--force"), "built")
-
-    def test_the_render_module_is_not_in_the_closure(self) -> None:
-        self._run()
-        from unittest import mock
-
-        from cadgen.store.records import read_record
-
-        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": self.environment["CADGEN_CACHE_DIR"]}):
-            recorded = read_record(self.project / "hinge.py")
-        self.assertIsNotNone(recorded, "the build must leave a record for the model")
-        files = sorted(os.path.basename(f) for f in recorded["closure"]["files"])
-        self.assertEqual(files, ["hinge.py"])
 
 
 class ReaderSurfaceTests(unittest.TestCase):
@@ -466,10 +443,6 @@ class DiscoveredInputRecordingTests(unittest.TestCase):
             self.assertFalse(closure_hash_matches(closure.closure_hash, closure.files, base=root))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class DeclaredDataInputTests(unittest.TestCase):
     """A model's own data file is a build input once it says so.
 
@@ -518,22 +491,15 @@ class DeclaredDataInputTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         return json.loads(completed.stdout.strip().splitlines()[-1])["outcome"]
 
-    def test_a_changed_json_makes_the_model_stale(self) -> None:
+    def test_declared_input_is_content_addressed_recorded_and_required(self) -> None:
         self._write_atlas(30.0)
         self.assertEqual(self._run_outcome(), "built")
-        self.assertEqual(self._run_outcome(), "current")
+        from cadgen.store.records import read_record
 
-        self._write_atlas(45.0)
-        self.assertEqual(
-            self._run_outcome(), "built", "a changed data file must make the model stale"
-        )
-        self.assertEqual(self._run_outcome(), "current")
-
-    def test_identical_bytes_rewritten_stay_current(self) -> None:
-        """The input is the CONTENT. A checkout or an rsync rewrites a file
-        without changing it, and must not invalidate anything."""
-        self._write_atlas(30.0)
-        self.assertEqual(self._run_outcome(), "built")
+        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": self.environment["CADGEN_CACHE_DIR"]}):
+            recorded = read_record(self.project / "plate.py")
+        self.assertIsNotNone(recorded, "the build must leave a record for the model")
+        self.assertIn("atlas.json", sorted(recorded["closure"]["files"]))
 
         payload = self.atlas.read_bytes()
         before = self.atlas.stat().st_mtime_ns
@@ -546,21 +512,12 @@ class DeclaredDataInputTests(unittest.TestCase):
         )
         self.assertEqual(self._run_outcome(), "current")
 
-    def test_the_declared_file_is_in_the_closure_by_name(self) -> None:
-        self._write_atlas(30.0)
-        self._run_outcome()
-        from unittest import mock
+        self._write_atlas(45.0)
+        self.assertEqual(
+            self._run_outcome(), "built", "a changed data file must make the model stale"
+        )
+        self.assertEqual(self._run_outcome(), "current")
 
-        from cadgen.store.records import read_record
-
-        with mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": self.environment["CADGEN_CACHE_DIR"]}):
-            recorded = read_record(self.project / "plate.py")
-        self.assertIsNotNone(recorded, "the build must leave a record for the model")
-        self.assertIn("atlas.json", sorted(recorded["closure"]["files"]))
-
-    def test_a_missing_declared_file_fails_loudly(self) -> None:
-        self._write_atlas(30.0)
-        self._run_outcome()
         self.atlas.unlink()
         completed = subprocess.run(
             [sys.executable, str(self.project / "plate.py")],
@@ -665,3 +622,7 @@ class DeclaredDataInputTests(unittest.TestCase):
                 self.assertTrue(stale(script).stale)
                 self.assertEqual(result_snapshot_for(document), (document_hash, tree))
                 self.assertEqual(read_verified_object(tree), payload)
+
+
+if __name__ == "__main__":
+    unittest.main()

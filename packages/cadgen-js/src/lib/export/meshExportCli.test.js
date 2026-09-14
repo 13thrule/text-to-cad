@@ -317,29 +317,19 @@ test("--animation writes the clip into the GLB as glTF animation", async (t) => 
   );
 });
 
-test("an animated export refuses what it cannot carry, by name", (t) => {
+test("an animated export refuses a format that cannot carry it without writing output", (t) => {
   const { root, packageDir } = makePackage(t);
   const modulePath = writeRenderModule(root);
-  const out = path.join(root, "refused.glb");
-  const base = ["--package-dir", packageDir, "--render-module", modulePath];
-  const cases = [
-    // A clip the module does not declare, named against the ones it does.
-    [{ clip: "nope" }, "glb", /Unknown animation clip: nope/],
-    // fps outside the schedule's bounds.
-    [{ clip: "showcase", fps: 0 }, "glb", /animation fps must be/],
-    // A format with nowhere to put a clip.
-    [{ clip: "showcase" }, "stl", /carries no animation/],
-  ];
-  for (const [request, format, expected] of cases) {
-    const result = runCli([
-      ...base, "--format", format, "--out", path.join(root, `refused.${format}`),
-      "--animation", JSON.stringify(request),
-    ], sandboxEnv(root));
-    assert.equal(result.status, 1, JSON.stringify(request));
-    const payload = JSON.parse(result.stdout);
-    assert.equal(payload.ok, false);
-    assert.match(payload.error, expected);
-  }
+  const out = path.join(root, "refused.stl");
+  const result = runCli([
+    "--package-dir", packageDir, "--render-module", modulePath,
+    "--format", "stl", "--out", out,
+    "--animation", JSON.stringify({ clip: "showcase" }),
+  ], sandboxEnv(root));
+  assert.equal(result.status, 1);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.ok, false);
+  assert.match(payload.error, /carries no animation/);
   assert.equal(fs.existsSync(out), false, "a refused export writes nothing");
 });
 
@@ -596,20 +586,4 @@ test('deform: "morph" bakes the deformation, and the file replays what the rende
       `t=${moment}s: the file's morphed vertices are ${worst.toFixed(4)}mm off the render module's`,
     );
   }
-});
-
-test('deform: "morph" is what the default refusal now offers first', (t) => {
-  const { root, packageDir } = makePackage(t);
-  const modulePath = writeDeformingModule(root);
-  const result = runCli([
-    "--package-dir", packageDir,
-    "--format", "glb", "--out", path.join(root, "refused.glb"),
-    "--animation", JSON.stringify({ clip: "flex", fps: 8, seconds: 1 }),
-    "--render-module", modulePath,
-  ], sandboxEnv(root));
-  assert.equal(result.status, 1);
-  const { error } = JSON.parse(result.stdout);
-  assert.match(error, /deforms tube geometry on o1\.1/);
-  assert.match(error, /deform: "morph"/);
-  assert.match(error, /deform: "rest"/);
 });

@@ -133,7 +133,7 @@ if __name__ == "__main__":
 
 PARENT_B = PARENT_A.replace("parent_a", "parent_b").replace("bd.Box(10, 10, 1)", "bd.Box(12, 12, 1)")
 
-LEAVES = 6  # more than the limit so the broker must queue; small so the build stays cheap
+LEAVES = 3  # one beyond the two-slot limit proves queueing without redundant native builds
 
 
 def _write_fixture(src: Path) -> None:

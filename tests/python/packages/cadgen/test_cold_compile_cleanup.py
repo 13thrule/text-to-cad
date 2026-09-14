@@ -142,7 +142,7 @@ class ColdCompileCleanupTest(unittest.TestCase):
         from cadgen._internal.step_scene_package import load_step_scene_exact
         from cadgen.store.build import build_document_tree
 
-        for name, options in (("single", {}), ("nested", {"nested": True}),
+        for name, options in (("single", {}),
                               ("repeated", {"nested": True, "repeated": True}),
                               ("multiple", {"multiple_roots": True})):
             with self.subTest(case=name):

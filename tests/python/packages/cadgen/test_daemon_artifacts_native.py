@@ -300,7 +300,16 @@ surfaces.derive=derive
         with self.daemon(prelude) as (workers, ledger, processes):
             first = artifacts.submit_artifact(self.request, store_root=self.store)
             self.addCleanup(first.detach)
-            self.wait_for(entered.exists, "daemon native operation did not begin")
+            # This first job includes cold native imports. Ownership assertions
+            # begin at the operation barrier, independently of startup speed.
+            self.wait_for(
+                lambda: entered.exists() or first.done(),
+                lambda: f"daemon native operation did not begin: broker={self.private.broker.snapshot()}",
+                timeout=60,
+            )
+            if not entered.exists():
+                first.result()
+                self.fail("native artifact finished without entering its operation")
             second = artifacts.submit_artifact(self.request, store_root=self.store)
             self.addCleanup(second.detach)
             self.wait_for(lambda: self.private.broker.snapshot()["coalesced"] == 1, "daemon subscriber did not attach")

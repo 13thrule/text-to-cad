@@ -104,10 +104,23 @@ class CoalescedPreviewRequests(unittest.TestCase):
         env = mock.patch.dict(os.environ, {"CADGEN_CACHE_DIR": str(self.store)})
         env.start()
         self.addCleanup(env.stop)
-        from build123d import Box
-        from cadgen.store.build import build_tree_from_compound
+        from cadgen.store.trees import put_tree
 
-        self.tree = build_tree_from_compound(Box(1, 1, 1), root_name="part")[0]
+        self.tree = put_tree({
+            "units": "mm",
+            "entryKind": "assembly",
+            "components": {},
+            "occurrences": [],
+            "links": [],
+            "assembly": {
+                "root": {
+                    "id": "o1",
+                    "name": "part",
+                    "nodeType": "assembly",
+                    "children": [],
+                },
+            },
+        })
         self.ledger, self.broker = JobLedger(), Broker()
 
     def request(self, *, closure="same source", coalesce=True):

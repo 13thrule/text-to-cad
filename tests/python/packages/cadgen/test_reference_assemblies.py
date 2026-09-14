@@ -55,11 +55,26 @@ class ReferenceAssemblies(unittest.TestCase):
         self.addCleanup(patch.stop)
         reset_memo()
         self.addCleanup(reset_memo)
-        self.box_tree = build_tree_from_compound(bd.Solid.make_box(2, 3, 4), root_name="box")[0]
+        self._box_tree = None
+        self._curved_tree = None
+
+    @property
+    def box_tree(self):
+        if self._box_tree is None:
+            self._box_tree = build_tree_from_compound(
+                bd.Solid.make_box(2, 3, 4), root_name="box"
+            )[0]
+        return self._box_tree
+
+    @property
+    def curved_tree(self):
+        if self._curved_tree is not None:
+            return self._curved_tree
         placed = bd.Solid.make_torus(7, 1).moved(bd.Location((2, 3, 5), (13, 27, 39)))
         placed.color = "red"
         placed.cad_material = {"roughness": 0.3}
-        self.curved_tree = build_tree_from_compound(placed, root_name="curved")[0]
+        self._curved_tree = build_tree_from_compound(placed, root_name="curved")[0]
+        return self._curved_tree
 
     def child(self, frame, index, tree=None, job=None):
         return LazyCompound(self.root / f"child{index}.py", job, frame=frame,

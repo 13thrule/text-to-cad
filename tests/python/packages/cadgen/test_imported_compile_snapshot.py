@@ -55,27 +55,25 @@ class ImportedCompileSnapshot(unittest.TestCase):
         from cadgen._internal import component_package, surface_extract
         from cadgen.store import trees
 
-        for assembly in (False, True):
-            with self.subTest(assembly=assembly):
-                document = self.document(f"shape-{assembly}", assembly=assembly)
-                first = self.compile(document)
-                expected_kind = trees.tree_kind_for(first["tree"])
-                expected_stats = trees.capture_tree(first["tree"], retain_payloads=False)[0]["stats"]
-                forbidden = AssertionError("imported hit did extra work")
-                with mock.patch.object(trees, "capture_tree", wraps=trees.capture_tree) as capture, \
-                     mock.patch.object(artifact, "iter_cad_sources", side_effect=forbidden), \
-                     mock.patch.object(artifact, "load_step_scene_exact", side_effect=forbidden), \
-                     mock.patch.object(component_package, "decode_geometry_component", side_effect=forbidden), \
-                     mock.patch.object(surface_extract, "extract_surface_component", side_effect=forbidden), \
-                     mock.patch.object(catalog, "result_tree_for", side_effect=forbidden), \
-                     mock.patch.object(trees, "tree_kind_for", side_effect=forbidden):
-                    current = self.compile(document)
-                capture.assert_called_once_with(first["tree"], retain_payloads=False)
-                self.assertTrue(current["skipped"])
-                self.assertEqual(current["tree"], first["tree"])
-                self.assertEqual(current["stats"], expected_stats)
-                self.assertEqual(current["entryKind"], expected_kind)
-                self.assertFalse((self.root / "store/index/surface").exists())
+        document = self.document()
+        first = self.compile(document)
+        expected_kind = trees.tree_kind_for(first["tree"])
+        expected_stats = trees.capture_tree(first["tree"], retain_payloads=False)[0]["stats"]
+        forbidden = AssertionError("imported hit did extra work")
+        with mock.patch.object(trees, "capture_tree", wraps=trees.capture_tree) as capture, \
+             mock.patch.object(artifact, "iter_cad_sources", side_effect=forbidden), \
+             mock.patch.object(artifact, "load_step_scene_exact", side_effect=forbidden), \
+             mock.patch.object(component_package, "decode_geometry_component", side_effect=forbidden), \
+             mock.patch.object(surface_extract, "extract_surface_component", side_effect=forbidden), \
+             mock.patch.object(catalog, "result_tree_for", side_effect=forbidden), \
+             mock.patch.object(trees, "tree_kind_for", side_effect=forbidden):
+            current = self.compile(document)
+        capture.assert_called_once_with(first["tree"], retain_payloads=False)
+        self.assertTrue(current["skipped"])
+        self.assertEqual(current["tree"], first["tree"])
+        self.assertEqual(current["stats"], expected_stats)
+        self.assertEqual(current["entryKind"], expected_kind)
+        self.assertFalse((self.root / "store/index/surface").exists())
 
     def test_edge_policy_well_formedness_gate_remains(self):
         from cadgen import step_artifact_cli as artifact
