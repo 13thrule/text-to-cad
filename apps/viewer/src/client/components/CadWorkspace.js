@@ -7282,8 +7282,8 @@ export default function CadWorkspace({
     viewerLoading
   ]);
 
-  // Exit orbit/preview mode and restore the pre-preview UI, from the floating
-  // toolbar's "Exit orbit" button. Mirrors the Escape-key exit in
+  // Exit fullscreen and restore the pre-preview UI, from the floating
+  // toolbar's "Exit fullscreen" button. Mirrors the Escape-key exit in
   // useCadWorkspaceShortcuts; keep the two restore paths in sync.
   const handleExitPreviewMode = useCallback(() => {
     if (!previewMode) {
@@ -7575,6 +7575,8 @@ export default function CadWorkspace({
       <SidebarInset className="pointer-events-none relative z-10 h-svh min-w-0 overflow-hidden bg-transparent">
         <CadWorkspaceTopBar
           previewMode={previewMode}
+          onEnterPreviewMode={handleEnterPreviewMode}
+          previewDisabled={viewerLoading || !selectedViewportContent}
           fileStatus={fileStatus}
           onFileStatusClick={fileStatusAlert ? () => setViewerAlertOpen(true) : undefined}
           renderMode={renderSession.enabled}
@@ -7671,7 +7673,6 @@ export default function CadWorkspace({
                 canUndoDrawing={canUndoDrawing}
                 canRedoDrawing={canRedoDrawing}
                 drawingStrokes={drawingStrokes}
-                handleEnterPreviewMode={handleEnterPreviewMode}
                 handleExitPreviewMode={handleExitPreviewMode}
                 handleScreenshotCopy={handleScreenshotCopy}
               />

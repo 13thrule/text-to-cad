@@ -79,6 +79,9 @@ provides clips. The Render tabs start in
 one row on each entry. Dragging and splitting them is temporary and never
 overwrites the durable per-kind CAD arrangement. The default Light or Dark
 studio follows global app appearance. Backdrop customizations remain local to the model session.
+The rightmost navbar button opens **Fullscreen**, hiding panels and orbiting the
+model. Escape or the floating toolbar’s **Exit fullscreen** button restores the previous layout.
+
 The compact editor controls lens and exposure, softbox rotation, size and fill,
 plus backdrop color, transparency, ground visibility and position. The translucent
 ground stays at the model's original Z=0 plane by default; **Lowest point**

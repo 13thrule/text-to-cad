@@ -3,12 +3,11 @@ import {
   Focus,
   Hand,
   MousePointer2,
-  Orbit,
   Pause,
   Play,
   PenTool,
   Ruler,
-  X
+  Minimize
 } from "lucide-react";
 import {
   renderCapabilities,
@@ -133,7 +132,6 @@ function DesktopFloatingToolBar({
   canUndoDrawing,
   canRedoDrawing,
   drawingStrokes,
-  handleEnterPreviewMode,
   handleScreenshotCopy,
   selectedEntry
 }) {
@@ -244,13 +242,12 @@ function DesktopFloatingToolBar({
           onPointerLeave={onToolbarLeave}
         >
           {previewMode ? (
-            // Orbit mode: only tools that make sense while orbiting, plus an
-            // explicit exit (X). No select/draw/pose/orbit/export here.
+            // Fullscreen keeps playback, capture, and an explicit exit available.
             <>
               {animationButton}
               {screenshotButton}
-              <ToolbarButton label="Exit orbit" onClick={handleExitPreviewMode}>
-                <X className="size-3" strokeWidth={2} aria-hidden="true" />
+              <ToolbarButton label="Exit fullscreen" onClick={handleExitPreviewMode}>
+                <Minimize className="size-3" strokeWidth={2} aria-hidden="true" />
               </ToolbarButton>
             </>
           ) : (
@@ -305,14 +302,6 @@ function DesktopFloatingToolBar({
                 </>
               ) : null}
               {renderMode ? animationButton : null}
-
-              <ToolbarButton
-                label="Orbit"
-                onClick={handleEnterPreviewMode}
-                disabled={captureDisabled}
-              >
-                <Orbit className="size-3" strokeWidth={2} aria-hidden="true" />
-              </ToolbarButton>
 
               {screenshotButton}
             </>
