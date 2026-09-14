@@ -614,15 +614,41 @@ class ObjectRepairTest(unittest.TestCase):
         path.write_bytes(b"corrupt bytes")
         barrier = threading.Barrier(2)
         original = objects._object_matches
+        original_replace = objects.replace_atomic
+        original_unlink = Path.unlink
+        observation_lock = threading.Lock()
+        publication_lock = threading.Lock()
+        observations = 0
+        published = False
 
         def both_observe_damage(target, expected):
+            nonlocal observations
             matches = original(target, expected)
             if target == path:
-                barrier.wait(timeout=5)
+                with observation_lock:
+                    observations += 1
+                    initial = observations <= 2
+                if initial:
+                    barrier.wait(timeout=5)
             return matches
 
+        def deny_the_losing_writer(temp, target):
+            nonlocal published
+            with publication_lock:
+                if not published:
+                    original_replace(temp, target)
+                    published = True
+                    return
+            raise PermissionError(5, "destination was just replaced", str(target))
+
+        def keep_the_canonical_object(candidate, *args, **kwargs):
+            if candidate == path:
+                raise AssertionError("repair unlinked the canonical object")
+            return original_unlink(candidate, *args, **kwargs)
+
         with mock.patch.object(objects, "_object_matches", side_effect=both_observe_damage), \
-                mock.patch.object(Path, "unlink", side_effect=AssertionError("repair unlinked an object")), \
+                mock.patch.object(objects, "replace_atomic", side_effect=deny_the_losing_writer), \
+                mock.patch.object(Path, "unlink", autospec=True, side_effect=keep_the_canonical_object), \
                 ThreadPoolExecutor(max_workers=2) as pool:
             futures = [pool.submit(objects.put_object, payload, repair=True) for _ in range(2)]
             self.assertEqual([future.result(timeout=5) for future in futures], [digest, digest])

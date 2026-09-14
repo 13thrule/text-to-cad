@@ -8,6 +8,7 @@ match their address; a valid existing object is left alone.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import shutil
 from pathlib import Path
@@ -61,6 +62,20 @@ def _object_matches(path: Path, digest: str) -> bool:
     return observed.hexdigest() == digest
 
 
+def _replace_object(tmp: Path, target: Path, digest: str, *, repair: bool) -> None:
+    try:
+        replace_atomic(tmp, target)
+    except OSError:
+        # Two repair writers may both observe damage before either publishes. On
+        # Windows the loser can be denied replacing the winner's newly valid file.
+        # Exact canonical bytes make that idempotent success; every other denial
+        # remains a real error.
+        if not repair or not _object_matches(target, digest):
+            raise
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+
+
 def put_object(data: bytes, *, repair: bool = False) -> str:
     """Store ``data``; return its hash. Idempotent and atomic."""
     digest = object_hash(data)
@@ -71,7 +86,7 @@ def put_object(data: bytes, *, repair: bool = False) -> str:
     tmp = target.with_name(f".{target.name}{temp_suffix()}")
     with open(tmp, "wb") as handle:
         handle.write(data)
-    replace_atomic(tmp, target)
+    _replace_object(tmp, target, digest, repair=repair)
     return digest
 
 
@@ -92,7 +107,7 @@ def put_object_from_file(path: Path, *, repair: bool = False) -> str:
     if repair and not _object_matches(tmp, hexdigest):
         tmp.unlink(missing_ok=True)
         raise ValueError(f"object source changed while repairing {hexdigest}")
-    replace_atomic(tmp, target)
+    _replace_object(tmp, target, hexdigest, repair=repair)
     return hexdigest
 
 
