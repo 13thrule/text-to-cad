@@ -895,6 +895,7 @@ export function useCadAssets({
       // package with one occurrence); compose it the same way. Only non-STEP meshes
       // (STL/3MF/OBJ) fall through to the monolithic single-file loader below.
       if (entrySourceFormat(entry) === RENDER_FORMAT.STEP) {
+        setMeshLoadStage("loading structure");
         const meshUrl = entryAssetUrl(entry, "glb");
         if (!meshUrl) {
           throw new Error(`STEP file is missing GLB asset: ${entry.file || "(unknown)"}`);
@@ -975,6 +976,9 @@ export function useCadAssets({
               if (!identity?.surfaceObject) {
                 throw new Error(`Component ${cid} has no resolved surface identity`);
               }
+              if (requestId === requestIdRef.current && !controller.signal.aborted) {
+                setMeshLoadStage(cacheProbe ? "loading cached meshes" : "tessellating surfaces");
+              }
               const meshData = await loadRenderSurf(
                 identity.surfUrl || "",
                 {
@@ -1025,6 +1029,9 @@ export function useCadAssets({
                   byteLength: null,
                 };
               } else {
+                if (requestId === requestIdRef.current && !controller.signal.aborted) {
+                  setMeshLoadStage("preparing surfaces");
+                }
                 const resolved = await resolveSurfaceComponents(packageDescriptor, [{
                   cid, surfaceInput, surfaceObject: component.surfaceObject,
                 }], { signal: controller.signal });
@@ -1197,7 +1204,7 @@ export function useCadAssets({
               }
             }
           });
-          setMeshLoadStage(progressiveLoadStage(0, loader.total));
+          setMeshLoadStage("checking cached meshes");
           try {
             await loader.run();
           } finally {

@@ -185,12 +185,17 @@ the build — detection only; it keeps serving.
 
 ## Behaviours worth knowing before concluding something is broken
 
+- The catalog fully resolves the selected file first and lists other files as
+  navigation-only rows until one background scan finishes. Selecting one of those
+  rows prioritizes its metadata immediately. Unchanged catalog rows and concurrent
+  tree verification are reused; loading one model does not wait for every model.
 - STEP entries always follow active edits, showing the root preview before its
   STEP save. The compact badge beside the filename reports loading, edits,
   save outcomes and detail failures or limits in one or two words. Orbit-driven refinement stays
   in the background without changing the badge. A loaded saved file has no badge.
-  Loading uses an inline spinner;
-  warnings and errors use their own icons. Tooltips explain the state.
+  Loading uses an inline spinner; its overlay and tooltip report catalog,
+  structure, surface preparation, tessellation, and component-loading stages.
+  Warnings and errors use their own icons. Tooltips explain the state.
   Run the model normally; existing decorators need no new imports. The daemon
   must be running for live updates. The prior model stays visible while the
   next request builds; save errors or a disconnected feed remain visible.

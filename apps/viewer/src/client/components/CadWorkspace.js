@@ -280,7 +280,7 @@ import {
   URDF_JOINT_ANIMATION_EPSILON,
   URDF_JOINT_ANIMATION_FOLLOW_MS
 } from "cadgen-js/lib/urdf/jointAnimation";
-import { requestArtifactStatus } from "../workbench/cadManifestStore.js";
+import { refreshCadCatalog, requestArtifactStatus } from "../workbench/cadManifestStore.js";
 import { useArtifact } from "./workbench/hooks/useArtifact.js";
 import {
   rootAssemblyInspectionNodeId,
@@ -1422,6 +1422,13 @@ export default function CadWorkspace({
   const allDirectoryIds = useMemo(() => collectSidebarDirectoryIds(allEntriesTree), [allEntriesTree]);
 
   const catalogSelectedEntry = entryMap.get(selectedKey) ?? null;
+  const selectedCatalogPending = catalogSelectedEntry?.catalogPending === true;
+  const selectedCatalogFile = fileKey(catalogSelectedEntry);
+  useEffect(() => {
+    if (selectedCatalogPending && selectedCatalogFile) {
+      refreshCadCatalog({ fileRef: selectedCatalogFile, markRefreshing: false }).catch(() => {});
+    }
+  }, [selectedCatalogPending, selectedCatalogFile]);
   const explicitFileEntry = explicitFileParam ? findEntryByUrlPath(catalogEntries, explicitFileParam) : null;
   const fileParamSelectionPending = shouldDeferFileParamSelection({
     explicitFileParam,
@@ -1443,7 +1450,7 @@ export default function CadWorkspace({
   const editingFile = catalogSelectedEntry ? fileKey(catalogSelectedEntry) : explicitFileParam;
   const editingAvailable = /\.st(?:ep|p)$/i.test(editingFile || "");
   const editingPreview = useEditingPreview(editingFile, {
-    enabled: editingAvailable,
+    enabled: editingAvailable && !selectedCatalogPending,
     catalogEntry: catalogSelectedEntry,
   });
   // Unified render-artifact status for the selected entry: ready (render) | generating (loading) |
@@ -1457,7 +1464,7 @@ export default function CadWorkspace({
   const selectedArtifact = useArtifact(
     catalogSelectedEntry ? fileKey(catalogSelectedEntry) : "",
     {
-      enabled: isArtifactManagedFormat(catalogSelectedEntrySourceFormat),
+      enabled: !selectedCatalogPending && isArtifactManagedFormat(catalogSelectedEntrySourceFormat),
       freshnessKey: `${catalogSelectedEntry?.hash || ""}:${manifestRevision}`,
     }
   );
@@ -1467,13 +1474,6 @@ export default function CadWorkspace({
   // every loading state that is not an artifact build). Only meaningful while
   // generating — a stale frame must not outlive the build that produced it.
   const selectedArtifactProgress = selectedArtifactGenerating ? selectedArtifact.progress : null;
-  // What the loading overlay reports. A model being BUILT reports through the artifact
-  // pipeline; a robot has no build behind it at all — it is a URDF plus a pile of meshes —
-  // and its loader's own mesh count is then the only progress in existence. The two are
-  // mutually exclusive in practice, and normalizing both through one function is what keeps
-  // the overlay from having to know which subsystem it is looking at.
-  const selectedLoadProgress =
-    selectedArtifactProgress || normalizeArtifactProgress(urdfLoadProgress);
   const activeStepArtifactGenerationFiles = useMemo(
     () => (selectedArtifactGenerating && catalogSelectedEntry ? [fileKey(catalogSelectedEntry)] : []),
     [selectedArtifactGenerating, catalogSelectedEntry]
@@ -2653,7 +2653,7 @@ export default function CadWorkspace({
     // mesh path, so its readiness is the mesh loader's.
     [ASSET_KIND.DRAWING]: meshViewerLoading
   }[assetKindForRenderFormat(effectiveRenderFormat)];
-  const effectiveViewerLoading = viewerLoading || selectedArtifactGenerating || (fileParamSelectionPending && !editingPreview.entry);
+  const effectiveViewerLoading = viewerLoading || selectedArtifactGenerating || selectedCatalogPending || (fileParamSelectionPending && !editingPreview.entry);
   // The file explorer spins the entry the viewer is actually working on. Artifact
   // generation is only half of that -- a built package still has to be fetched and
   // decoded, and an entry sitting un-built is NOT loading (nothing loads in a static
@@ -2692,8 +2692,12 @@ export default function CadWorkspace({
         [ASSET_KIND.MESH]: `Loading ${renderFormatLabel(effectiveRenderFormat)}...`,
         [ASSET_KIND.DRAWING]: ""
       }[assetKindForRenderFormat(effectiveRenderFormat)];
-  const viewerLoadingLabel = selectedArtifactGenerating
-    ? "Generating file..."
+  const activeMeshLoadStage = meshLoadInProgress && meshLoadTargetFile === fileKey(selectedEntry)
+    ? meshLoadStage : "";
+  const viewerLoadingLabel = selectedCatalogPending
+    ? "Loading model metadata..."
+    : selectedArtifactGenerating ? "Generating file..."
+    : activeMeshLoadStage ? `${capitalizeFirst(activeMeshLoadStage)}...`
     : simpleLoadingLabel
       ? simpleLoadingLabel
       : stepUpdateInProgress
@@ -2705,6 +2709,17 @@ export default function CadWorkspace({
                   : selectedEntry && !selectedEntryHasMesh
                     ? ARTIFACT_GENERATING_LABEL
                     : "Loading CAD...";
+  // Geometry can be compiled while its display surfaces are still being prepared.
+  // Keep the overlay connected to the active loader through those stages too.
+  const selectedLoadProgress = selectedArtifactProgress || normalizeArtifactProgress(
+    urdfLoadProgress || {
+      phase: "display",
+      label: !catalogHydrated ? "Loading catalog"
+        : selectedCatalogPending ? "Loading model metadata"
+        : activeMeshLoadStage ? capitalizeFirst(activeMeshLoadStage)
+          : viewerLoadingLabel,
+    }
+  );
   const selectedDrawingBendAxisCount = useMemo(() => {
     if (!drawingGeometry?.geometry) {
       return 0;

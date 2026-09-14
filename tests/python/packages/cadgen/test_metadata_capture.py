@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 from collections import Counter
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
+import threading
 import unittest
 from unittest import mock
 
@@ -138,6 +139,68 @@ class MetadataCapture(unittest.TestCase):
             self.assertEqual(trees.capture_tree(self.tree, retain_payloads=False)[0], self.geometry)
             self.assertFalse(trees._METADATA_CAPTURE_CACHE)
             self.assertEqual(trees._METADATA_CAPTURE_CACHE_SIZE, 0)
+
+    def test_concurrent_metadata_readers_share_one_exact_verification(self):
+        trees._reset_metadata_capture_cache()
+        original = trees.read_verified_object
+        first_read = threading.Event()
+        release = threading.Event()
+        calls = []
+        guard = threading.Lock()
+
+        def blocked(digest):
+            with guard:
+                calls.append(digest)
+                first = len(calls) == 1
+            if first:
+                first_read.set()
+                self.assertTrue(release.wait(5))
+            return original(digest)
+
+        with mock.patch.object(trees, "read_verified_object", side_effect=blocked), \
+             ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(trees.capture_tree, self.tree, retain_payloads=False)]
+            self.assertTrue(first_read.wait(5))
+            futures.extend(pool.submit(trees.capture_tree, self.tree, retain_payloads=False) for _ in range(7))
+            release.set()
+            results = [future.result(timeout=10) for future in futures]
+
+        self.assertTrue(all(result == (self.geometry, {}) for result in results))
+        self.assertEqual(Counter(calls), Counter(self.payloads.keys()))
+
+    def test_concurrent_metadata_failure_reaches_every_waiter(self):
+        trees._reset_metadata_capture_cache()
+        original_begin = trees._begin_metadata_capture
+        all_joined = threading.Event()
+        release = threading.Event()
+        count = 0
+        guard = threading.Lock()
+
+        def joined(key):
+            nonlocal count
+            result = original_begin(key)
+            with guard:
+                count += 1
+                if count == 8:
+                    all_joined.set()
+            return result
+
+        def failed(_digest):
+            self.assertTrue(release.wait(5))
+            raise ValueError("shared failure")
+
+        with mock.patch.object(trees, "_begin_metadata_capture", side_effect=joined), \
+             mock.patch.object(trees, "read_verified_object", side_effect=failed), \
+             ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [
+                pool.submit(trees.capture_tree, self.tree, retain_payloads=False)
+                for _ in range(8)
+            ]
+            self.assertTrue(all_joined.wait(5))
+            release.set()
+            for future in futures:
+                with self.assertRaisesRegex(ValueError, "shared failure"):
+                    future.result(timeout=10)
 
     def test_metadata_cache_reverifies_after_same_address_atomic_replacement(self):
         trees._reset_metadata_capture_cache()

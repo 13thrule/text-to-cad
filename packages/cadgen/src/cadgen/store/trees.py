@@ -57,6 +57,7 @@ _METADATA_CAPTURE_CACHE_CAPACITY = 64 * 1024 * 1024
 _METADATA_CAPTURE_CACHE: OrderedDict[tuple[str, str], tuple[bytes, tuple, int]] = OrderedDict()
 _METADATA_CAPTURE_CACHE_SIZE = 0
 _METADATA_CAPTURE_CACHE_LOCK = threading.Lock()
+_METADATA_CAPTURE_FLIGHTS: dict[tuple[str, str], dict] = {}
 _METADATA_CAPTURE_STAMP_BYTES = 512
 
 IDENTITY_16 = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
@@ -416,6 +417,24 @@ def _reset_metadata_capture_cache() -> None:
         _METADATA_CAPTURE_CACHE.clear()
         _METADATA_CAPTURE_CACHE_SIZE = 0
 
+
+def _begin_metadata_capture(key: tuple[str, str]) -> tuple[dict, bool]:
+    """Join one exact metadata verification already running in this process."""
+    with _METADATA_CAPTURE_CACHE_LOCK:
+        flight = _METADATA_CAPTURE_FLIGHTS.get(key)
+        if flight is not None:
+            return flight, False
+        flight = {"event": threading.Event(), "body": None, "failure": None}
+        _METADATA_CAPTURE_FLIGHTS[key] = flight
+        return flight, True
+
+
+def _finish_metadata_capture(key: tuple[str, str], flight: dict) -> None:
+    with _METADATA_CAPTURE_CACHE_LOCK:
+        if _METADATA_CAPTURE_FLIGHTS.get(key) is flight:
+            _METADATA_CAPTURE_FLIGHTS.pop(key)
+        flight["event"].set()
+
 def capture_tree(tree_hash: str, *, retain_payloads: bool = True) -> tuple[dict, dict[str, bytes]]:
     """One verified graph snapshot with independently owned metadata.
 
@@ -428,10 +447,34 @@ def capture_tree(tree_hash: str, *, retain_payloads: bool = True) -> tuple[dict,
     from cadgen.store.surfaces import validate_surface_bytes
 
     cache_key = _metadata_capture_key(tree_hash)
+    flight = None
     if not retain_payloads:
-        cached = _metadata_capture_hit(cache_key)
-        if cached is not None:
-            return cached, {}
+        flight, leader = _begin_metadata_capture(cache_key)
+        if not leader:
+            flight["event"].wait()
+            if flight["failure"] is not None:
+                error_type, error_args = flight["failure"]
+                try:
+                    cloned_error = error_type(*error_args)
+                except Exception:
+                    cloned_error = RuntimeError(str(
+                        error_args[0] if error_args else "metadata capture failed"
+                    ))
+                raise cloned_error
+            if flight["body"] is None:
+                raise RuntimeError("metadata capture ended without a result")
+            return json.loads(flight["body"]), {}
+        try:
+            cached = _metadata_capture_hit(cache_key)
+            if cached is not None:
+                flight["body"] = json.dumps(cached, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                return cached, {}
+        except BaseException as error:
+            flight["failure"] = (type(error), error.args)
+            raise
+        finally:
+            if flight["body"] is not None or flight["failure"] is not None:
+                _finish_metadata_capture(cache_key, flight)
 
     captured, memo, active = {}, {}, set()
     stamps: dict[str, tuple] = {}
@@ -498,8 +541,18 @@ def capture_tree(tree_hash: str, *, retain_payloads: bool = True) -> tuple[dict,
         memo[digest] = descriptor
         active.remove(digest)
 
-    visit(tree_hash)
-    descriptor = copy.deepcopy(memo[tree_hash])
-    if not retain_payloads and cacheable:
-        _remember_metadata_capture(cache_key, descriptor, stamps)
-    return descriptor, dict(captured)
+    try:
+        visit(tree_hash)
+        descriptor = copy.deepcopy(memo[tree_hash])
+        if not retain_payloads and cacheable:
+            _remember_metadata_capture(cache_key, descriptor, stamps)
+        if flight is not None:
+            flight["body"] = json.dumps(descriptor, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return descriptor, dict(captured)
+    except BaseException as error:
+        if flight is not None:
+            flight["failure"] = (type(error), error.args)
+        raise
+    finally:
+        if flight is not None:
+            _finish_metadata_capture(cache_key, flight)

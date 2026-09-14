@@ -719,6 +719,11 @@ status`, all snapshot orchestration) run in-process. STEP snapshots delegate
 missing document compilation and surface derivation to the artifact build pool;
 their request resolution and browser orchestration never import the CAD kernel.
 
+When the daemon's runtime changes during a build, the old daemon keeps its
+listener and singleton lock until active jobs and their dependencies finish.
+New top-level requests run cold during that drain; dependency requests remain
+serviceable so a parent cannot deadlock while saving its result.
+
 CPU scheduling and reuse remain independent of memory admission:
 
 1. **Job slots — one running build per core.** A FIFO counting semaphore of

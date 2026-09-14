@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { requestViewerJson } from "./viewerRequest.js";
-import { requestArtifact, requestArtifactStatus } from "./cadManifestStore.js";
+import { getCadManifestSnapshot, refreshCadCatalog, requestArtifact, requestArtifactStatus } from "./cadManifestStore.js";
 
 const url = "/__cad/artifact?file=part.step";
 
@@ -74,4 +74,28 @@ test("artifact requests preserve security header, GET/POST semantics and recover
   assert.equal(new URL(calls[1][0], "http://local").searchParams.has("force"), false);
   mock.mock.mockImplementation(async () => { throw new TypeError("Failed to fetch"); });
   await assert.rejects(requestArtifactStatus("part.step"), (error) => error.failure.operation === "checking display assets");
+});
+
+
+test("catalog refresh coalesces requests but hydrates a newly selected file next", async (t) => {
+  globalThis.window = {};
+  t.after(() => { delete globalThis.window; });
+  let finishFirst;
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (requestUrl) => {
+    calls.push(requestUrl);
+    if (calls.length === 1) {
+      await new Promise((resolve) => { finishFirst = resolve; });
+    }
+    const file = new URL(requestUrl, "http://local").searchParams.get("file");
+    return Response.json({ entries: [{ file, kind: "assembly" }] });
+  });
+  const first = refreshCadCatalog({ fileRef: "first.step" });
+  const duplicate = refreshCadCatalog({ fileRef: "first.step" });
+  const selected = refreshCadCatalog({ fileRef: "next.step" });
+  assert.equal(calls.length, 1);
+  finishFirst();
+  await Promise.all([first, duplicate, selected]);
+  assert.deepEqual(calls, ["/__cad/catalog?file=first.step", "/__cad/catalog?file=next.step"]);
+  assert.equal(getCadManifestSnapshot().manifest.entries[0].file, "next.step");
 });

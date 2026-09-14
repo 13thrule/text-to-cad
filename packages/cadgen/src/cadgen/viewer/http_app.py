@@ -411,7 +411,7 @@ class CadApp:
     # --- placeholders filled by later steps of the port -------------------
 
     def _handle_catalog(self, request, response):
-        response.send_json(200, self.backend.read_catalog())
+        response.send_json(200, self.backend.read_catalog(request.query.get("file")))
 
     def _entry_ref_for_status(self, file_ref, catalog=None) -> str:
         """The catalog URL for this ref, or ``""``.

@@ -159,6 +159,52 @@ class EntryShape(ScannerTestCase):
 
 
 class StoreResults(ScannerTestCase):
+    def test_selected_first_scan_defers_every_other_row_without_asset_claims(self):
+        self.write("a.step", "a\n")
+        self.write("b.step", "b\n")
+        self.package("a.step", {"kind": "assembly-package", "components": {"c0": {}}})
+        self.package("b.step", {"kind": "assembly-package", "components": {"c0": {}}})
+
+        entries = scan_cad_directory(
+            self.root, preferred_file="a.step", defer_unpreferred=True
+        )["entries"]
+        selected = next(entry for entry in entries if entry["file"] == "a.step")
+        pending = next(entry for entry in entries if entry["file"] == "b.step")
+        self.assertNotIn("catalogPending", selected)
+        self.assertTrue(selected["hash"])
+        self.assertEqual(pending, {"file": "b.step", "catalogPending": True})
+
+        missing = scan_cad_directory(
+            self.root, preferred_file="missing.step", defer_unpreferred=True
+        )["entries"]
+        self.assertTrue(all(entry.get("catalogPending") is True for entry in missing))
+
+    def test_unchanged_step_entry_reuses_immutable_tree_metadata(self):
+        import cadgen.viewer.scanner as scanner
+
+        self.write("cached.step", "same bytes\n")
+        self.package("cached.step", {"kind": "assembly-package", "components": {"c0": {}}})
+        original = scanner.result_descriptor
+        with mock.patch.object(scanner, "result_descriptor", wraps=original) as descriptor:
+            first = self.entry("cached.step")
+            second = self.entry("cached.step")
+        self.assertEqual(first, second)
+        descriptor.assert_called_once()
+
+    def test_sidecar_change_invalidates_the_step_entry(self):
+        self.write("finish.step", "same bytes\n")
+        self.package("finish.step", {
+            "kind": "assembly-package",
+            "components": {"cid": {}},
+            "occurrences": [{"id": "o1.1", "name": "part", "component": "cid", "transform": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]}],
+        })
+        self.sidecar("finish.step", {"appearance": {"occurrences": {"o1.1": {"roughness": 0.2}}}})
+        first = self.entry("finish.step")
+        self.sidecar("finish.step", {"appearance": {"occurrences": {"o1.1": {"roughness": 0.9}}}})
+        second = self.entry("finish.step")
+        self.assertNotEqual(first["appearanceHash"], second["appearanceHash"])
+        self.assertEqual(second["sourceSidecar"]["appearance"]["occurrences"]["o1.1"]["roughness"], 0.9)
+
     def test_same_bytes_share_one_tree_and_each_document_has_its_own_record(self):
         self.write("a.step", "same bytes\n")
         self.write("sub/b.step", "same bytes\n")

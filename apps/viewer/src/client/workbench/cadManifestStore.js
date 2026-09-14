@@ -29,6 +29,7 @@ let currentSnapshot = {
 };
 let refreshRequestId = 0;
 let refreshInFlight = null;
+let refreshInFlightUrl = "";
 let refreshLoopStarted = false;
 
 currentManifestSignature = JSON.stringify(currentSnapshot.manifest);
@@ -152,21 +153,32 @@ async function fetchWithTimeout(url, options, timeoutMs, timeoutMessage) {
   }
 }
 
-export async function refreshCadCatalog({ markRefreshing = !currentSnapshot.catalogHydrated } = {}) {
+export async function refreshCadCatalog({
+  markRefreshing = !currentSnapshot.catalogHydrated,
+  fileRef = readSearchParam(CAD_FILE_QUERY_PARAM),
+} = {}) {
   if (typeof window === "undefined") {
     return;
   }
+  const url = cadApiUrl("/__cad/catalog", { params: { file: fileRef } });
   if (refreshInFlight) {
-    return refreshInFlight;
+    if (refreshInFlightUrl === url) {
+      return refreshInFlight;
+    }
+    // A file selection must hydrate that file even if the previous selection's
+    // catalog is still loading. Keep one request in flight and then prioritize it.
+    await refreshInFlight.catch(() => {});
+    return refreshCadCatalog({ markRefreshing, fileRef });
   }
   const requestId = ++refreshRequestId;
+  refreshInFlightUrl = url;
   if (markRefreshing) {
     publishCadRefreshState({ refreshing: true, error: "" });
   }
   refreshInFlight = (async () => {
     try {
       const response = await fetchWithTimeout(
-        cadApiUrl("/__cad/catalog", { includeFile: true }),
+        url,
         { cache: "no-store" },
         CAD_CATALOG_FETCH_TIMEOUT_MS,
         `Timed out loading CAD catalog after ${CAD_CATALOG_FETCH_TIMEOUT_MS / 1000}s`
@@ -193,6 +205,7 @@ export async function refreshCadCatalog({ markRefreshing = !currentSnapshot.cata
     } finally {
       if (requestId === refreshRequestId) {
         refreshInFlight = null;
+        refreshInFlightUrl = "";
       }
     }
   })();

@@ -512,18 +512,8 @@ def _serve_connection(conn, request) -> None:
             conn.close()
 
 
-def _drain_inflight(reason: str) -> None:
-    """Let the jobs already running finish before this process exits.
-
-    A token mismatch means a NEW daemon is wanted, not that the builds in flight are
-    wrong: they run the code they started with and their clients are waiting on them.
-    """
-    threads = [thread for thread in list(_INFLIGHT) if thread.is_alive()]
-    if not threads:
-        return
-    _log(f"{reason}; finishing {len(threads)} job(s) in flight before exiting")
-    for thread in threads:
-        thread.join()
+def _active_requests() -> list[threading.Thread]:
+    return [thread for thread in list(_INFLIGHT) if thread.is_alive()]
 
 
 _DAEMON_LOCK: transport.SingletonLock | None = None
@@ -587,7 +577,7 @@ def serve() -> int:
     # accept() cannot take a timeout the way a socket could, so idleness is watched from
     # the side: the watchdog closes the listener, which makes the pending accept return.
     # Closing is portable across both families and does not reach into Listener internals.
-    state = {"last_activity": time.monotonic(), "idle_exit": False}
+    state = {"last_activity": time.monotonic(), "idle_exit": False, "draining": False}
 
     def _watch_for_idle() -> None:
         slice_seconds = max(0.5, min(idle_timeout / 4, 5.0))
@@ -596,9 +586,13 @@ def serve() -> int:
             if server.closed:
                 return
             _POOL.unbind_idle()
-            if any(thread.is_alive() for thread in list(_INFLIGHT)):
+            active = _active_requests()
+            if active:
                 state["last_activity"] = time.monotonic()  # a long build is not idleness
                 continue
+            if state["draining"]:
+                server.close()
+                return
             if time.monotonic() - state["last_activity"] >= idle_timeout:
                 state["idle_exit"] = True
                 server.close()
@@ -612,6 +606,8 @@ def serve() -> int:
             if conn is None:
                 if state["idle_exit"]:
                     _log("idle timeout; exiting")
+                elif state["draining"]:
+                    _log("version token changed; exiting")
                 return 0
             state["last_activity"] = time.monotonic()
             try:
@@ -628,19 +624,39 @@ def serve() -> int:
                         with contextlib.suppress(OSError):
                             _send(conn, {"status": _status_payload()})
                     continue
-                if request.get("token") != token:
-                    # Close and release the address BEFORE replying so the client's
-                    # respawn cannot race this daemon's cleanup and lose the fresh
-                    # daemon's address; then finish what is running.
+                token_changed = request.get("token") != token
+                dependency_finishing_old_work = bool(
+                    request.get("dependency") and (state["draining"] or _active_requests())
+                )
+                if state["draining"] and not request.get("dependency"):
+                    with contextlib.suppress(OSError):
+                        _send(conn, {"restart": True})
+                    continue
+                if token_changed and not dependency_finishing_old_work:
+                    active = _active_requests()
+                    if active:
+                        # Keep the old address and singleton lock together while its
+                        # jobs finish. Their workers can still submit child/artifact
+                        # dependencies; fresh top-level calls are sent cold until the
+                        # drain completes. Closing the listener here deadlocked a long
+                        # job against its own final artifact request.
+                        state["draining"] = True
+                        _log(f"version token changed; finishing {len(active)} job(s) in flight before exiting")
+                        with contextlib.suppress(OSError):
+                            _send(conn, {"restart": True})
+                        continue
+                    # With no work to preserve, release the address before replying so
+                    # the client's respawn cannot race this daemon's cleanup.
                     server.close()
                     _release_address()
                     with contextlib.suppress(OSError):
                         _send(conn, {"restart": True})
                     conn.close()
                     conn = None
-                    _drain_inflight("version token changed")
                     _log("version token changed; exiting")
                     return 0
+                if token_changed:
+                    state["draining"] = True
                 # One thread per job so a second client is served rather than queued.
                 worker_thread = threading.Thread(
                     target=_serve_connection, args=(conn, request), daemon=True

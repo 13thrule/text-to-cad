@@ -10,6 +10,7 @@ status-code assertion.
 from __future__ import annotations
 
 import http.client
+import json
 import os
 import socket
 import tempfile
@@ -154,6 +155,68 @@ class NonLoopbackBindDisablesTheGate(unittest.TestCase):
         # binding 0.0.0.0 in a test would expose a port to the network.
         self.assertTrue(host_is_allowed("attacker.example", "0.0.0.0"))
         self.assertTrue(host_is_allowed("anything", "192.168.1.5"))
+
+
+class SelectedFirstCatalog(unittest.TestCase):
+    def setUp(self):
+        self.fixture = ServerFixture()
+        self.addCleanup(self.fixture.close)
+
+    def test_selected_row_is_complete_and_other_rows_are_navigation_only(self):
+        Path(self.fixture.root, "selected.stl").write_bytes(b"selected")
+        Path(self.fixture.root, "other.stl").write_bytes(b"other")
+        with mock.patch.object(self.fixture.app.backend, "_start_catalog_hydration"):
+            status, _, body = self.fixture.request(
+                "GET", "/__cad/catalog?file=selected.stl"
+            )
+        self.assertEqual(status, 200)
+        entries = json.loads(body)["entries"]
+        selected = next(entry for entry in entries if entry["rootRelativeFile"] == "selected.stl")
+        pending = next(entry for entry in entries if entry["rootRelativeFile"] == "other.stl")
+        self.assertEqual(selected["bytes"], len(b"selected"))
+        self.assertTrue(selected["hash"])
+        self.assertEqual(set(pending), {"file", "rootRelativeFile", "catalogPending"})
+        self.assertTrue(pending["catalogPending"])
+
+    def test_homepage_fully_reads_only_the_first_discovered_row(self):
+        Path(self.fixture.root, "a.stl").write_bytes(b"first")
+        Path(self.fixture.root, "b.stl").write_bytes(b"second")
+        with mock.patch.object(self.fixture.app.backend, "_start_catalog_hydration"):
+            status, _, body = self.fixture.request("GET", "/__cad/catalog")
+        self.assertEqual(status, 200)
+        entries = json.loads(body)["entries"]
+        first = next(entry for entry in entries if entry["rootRelativeFile"] == "a.stl")
+        second = next(entry for entry in entries if entry["rootRelativeFile"] == "b.stl")
+        self.assertEqual(first["bytes"], len(b"first"))
+        self.assertEqual(set(second), {"file", "rootRelativeFile", "catalogPending"})
+
+    def test_a_current_complete_snapshot_is_reused_without_another_hydration(self):
+        Path(self.fixture.root, "a.stl").write_bytes(b"first")
+        Path(self.fixture.root, "b.stl").write_bytes(b"second")
+        snapshot = self.fixture.app.backend._full_catalog_snapshot()
+        self.assertIsNotNone(snapshot)
+        self.fixture.app.backend._catalog_snapshot = snapshot
+        with mock.patch.object(self.fixture.app.backend, "_start_catalog_hydration") as hydrate:
+            status, _, body = self.fixture.request("GET", "/__cad/catalog?file=a.stl")
+        self.assertEqual(status, 200)
+        self.assertTrue(all(not entry.get("catalogPending") for entry in json.loads(body)["entries"]))
+        hydrate.assert_not_called()
+
+    def test_a_changed_asset_is_pending_instead_of_serving_a_stale_snapshot(self):
+        Path(self.fixture.root, "a.stl").write_bytes(b"first")
+        Path(self.fixture.root, "b.stl").write_bytes(b"second")
+        snapshot = self.fixture.app.backend._full_catalog_snapshot()
+        self.assertIsNotNone(snapshot)
+        self.fixture.app.backend._catalog_snapshot = snapshot
+        Path(self.fixture.root, "b.stl").write_bytes(b"changed bytes")
+        with mock.patch.object(self.fixture.app.backend, "_start_catalog_hydration"):
+            status, _, body = self.fixture.request("GET", "/__cad/catalog?file=a.stl")
+        self.assertEqual(status, 200)
+        changed = next(
+            entry for entry in json.loads(body)["entries"]
+            if entry["rootRelativeFile"] == "b.stl"
+        )
+        self.assertEqual(set(changed), {"file", "rootRelativeFile", "catalogPending"})
 
 
 class PostGuard(HttpLayerTestCase):

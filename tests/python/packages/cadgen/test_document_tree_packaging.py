@@ -92,6 +92,19 @@ class DocumentTreePackagingTest(unittest.TestCase):
         self.assertEqual(len(stats["documentOccurrenceMap"]["o1.1"]), 2)
         self.assertEqual(stats["documentAppearance"], {})
 
+    def test_non_ascii_product_names_survive_strict_step_correspondence(self):
+        from build123d import Compound
+        from cadgen.store.build import build_tree_through_step
+        from cadgen.store.trees import get_tree
+
+        shape = Compound(children=[self.box("圆角2_1_2")], label="主装配")
+        _, _, stats, _ = build_tree_through_step(
+            shape, self.root / "unicode-label.step", root_name="主装配"
+        )
+        document = get_tree(stats["documentTree"])
+        self.assertEqual(document["assembly"]["root"]["name"], "主装配")
+        self.assertEqual(document["occurrences"][0]["name"], "圆角2_1_2")
+
     def test_a_native_compound_product_keeps_its_product_boundary(self):
         from build123d import Compound, Location
         from cadgen._internal import component_package

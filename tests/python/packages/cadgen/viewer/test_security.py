@@ -668,7 +668,7 @@ class StoreRouteConfinement(SecurityTestCase):
 
 class CatalogOverHttp(SecurityTestCase):
     def test_the_catalog_is_absolutized_and_compact(self):
-        status, headers, body = self.fixture.request("GET", "/__cad/catalog")
+        status, headers, body = self.fixture.request("GET", "/__cad/catalog?file=ok.stl")
         self.assertEqual(status, 200)
         self.assertEqual(headers["content-type"], "application/json; charset=utf-8")
         self.assertEqual(headers["cache-control"], "no-store")
@@ -686,14 +686,18 @@ class CatalogOverHttp(SecurityTestCase):
             list(mesh), ["file", "kind", "url", "hash", "bytes", "rootRelativeFile", "assetFile"]
         )
 
-        # A store URL is already in its served form and is left untouched — no
-        # rewrite and, deliberately, no assetFile sibling.
-        step = by_ref["ok.step"]
+        # A selected store URL is already in its served form and is left
+        # untouched — no rewrite and, deliberately, no assetFile sibling.
+        _, _, step_body = self.fixture.request("GET", "/__cad/catalog?file=ok.step")
+        step = next(
+            entry for entry in json.loads(step_body)["entries"]
+            if entry["rootRelativeFile"] == "ok.step"
+        )
         self.assertTrue(step["url"].startswith("/__cad/store?file="))
         self.assertNotIn("assetFile", step)
 
     def test_a_catalog_url_round_trips_through_the_asset_route(self):
-        _, _, body = self.fixture.request("GET", "/__cad/catalog")
+        _, _, body = self.fixture.request("GET", "/__cad/catalog?file=ok.stl")
         entry = next(
             e for e in json.loads(body)["entries"] if e["rootRelativeFile"] == "ok.stl"
         )

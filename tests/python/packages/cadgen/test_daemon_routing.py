@@ -369,6 +369,31 @@ class DaemonRouting(unittest.TestCase):
             finally:
                 channel.close()
             self.assertEqual(json.loads(raw.decode("utf-8")), {"restart": True})
+
+            # The held job may still need a child or artifact after the runtime edit.
+            # Its dependency request carries the new token because the client computes
+            # that token from the live source tree. The draining daemon must finish it
+            # on the old pool instead of closing the listener under its own root job.
+            dependency = transport.connect(self.address, _authkey())
+            try:
+                dependency.send(json.dumps({
+                    "tool": "run",
+                    "argv": [str(self.src / "left.py")],
+                    "cwd": str(self.src),
+                    "token": "stale",
+                    "dependency": True,
+                }).encode("utf-8"))
+                frames = []
+                while True:
+                    frame = dependency.recv(30.0)
+                    self.assertTrue(frame, frames)
+                    message = json.loads(frame.decode("utf-8"))
+                    frames.append(message)
+                    if "exit" in message:
+                        break
+            finally:
+                dependency.close()
+            self.assertEqual(frames[-1], {"exit": 0}, frames)
         finally:
             release.touch()
         thread.join(timeout=120)
