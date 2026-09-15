@@ -61,10 +61,10 @@ For manual edge-case checks and debugging, use [tests/](tests/README.md). Automa
   every artifact lands in a root-level format folder. Two models
   (`planetary_gear_assembly`, `mars_rover_concept`) carry typed mates and
   animation clips; a handful declare STL/3MF/GLB exports so the mesh doors have
-  fixtures. Two paths hold committed SOURCES rather than outputs:
-  `examples/imported/import-smoke.step` (the viewer launch smoke's fixture) and
-  `examples/DXF/imported/` (permissively licensed `.dxf` files for tooling
-  robustness tests).
+  fixtures. `examples/DXF/imported/` holds committed SOURCES rather than
+  outputs: permissively licensed `.dxf` files for tooling robustness tests. The
+  viewer launch and browser smokes own their STEP fixture themselves, at
+  `tests/fixtures/cad/import-smoke.step`.
 
 ### Concept packages
 

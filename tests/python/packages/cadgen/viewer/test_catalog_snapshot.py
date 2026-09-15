@@ -29,6 +29,7 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -239,6 +240,26 @@ def _shape(entries) -> list:
 
 
 GOLDEN_PATH = Path(__file__).resolve().parent / "golden" / "catalog_shape.json"
+# One row per line, one space per level. The indent is part of the golden: a
+# wholesale reindent rewrites all 1251 lines and hides the handful of rows that
+# actually changed, which is the only thing a reviewer of this file reads.
+GOLDEN_INDENT = 1
+
+
+def _write_golden() -> None:
+    """Recapture the golden: `python -m unittest`'s file, run with --update-golden."""
+    tmp = tempfile.mkdtemp()
+    try:
+        root = os.path.join(tmp, "root")
+        os.makedirs(root)
+        _build_fixture(root, os.path.join(tmp, "cache"))
+        shaped = _shape(scan_cad_directory(root)["entries"])
+        GOLDEN_PATH.write_text(
+            json.dumps(shaped, indent=GOLDEN_INDENT) + "\n", encoding="utf-8"
+        )
+        print(f"wrote {len(shaped)} rows to {GOLDEN_PATH}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 class CatalogShapeSnapshot(unittest.TestCase):
@@ -320,4 +341,8 @@ class CatalogShapeSnapshot(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if "--update-golden" in sys.argv:
+        sys.argv.remove("--update-golden")
+        _write_golden()
+    else:
+        unittest.main()
