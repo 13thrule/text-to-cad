@@ -91,6 +91,9 @@ add_repo_path("packages/cadgen/src")
 # GENERATED CLI over cadgen.step.snapshot. The skill shims are gone; these tests
 # drive the shared implementation through that cadgen verb directly.
 import cadgen.snapshot_cli as snapshot_main
+# The shared implementation the CLI drives: constants, the renderer and the
+# output writers live here, and the CLI module no longer re-exports them.
+import cadgen.snapshot_core as snapshot_core
 import cadgen.cli.step_snapshot as cad_snapshot_entry
 from cadgen.assets import browser_runtime_dir
 from cadgen._internal.snapshot_door import DOOR_KINDS
@@ -926,7 +929,7 @@ class SnapshotCliTests(unittest.TestCase):
         }
 
         result = asyncio.run(
-            snapshot_main.render_resolved_job_packet(
+            snapshot_core.render_resolved_job_packet(
                 {"single": True, "jobs": [job]}, runtime_dir=RUNTIME_DIR, renderer=StubRenderer()
             )
         )
@@ -937,7 +940,7 @@ class SnapshotCliTests(unittest.TestCase):
         )
 
         multi = asyncio.run(
-            snapshot_main.render_resolved_job_packet(
+            snapshot_core.render_resolved_job_packet(
                 {"single": False, "jobs": [job]}, runtime_dir=RUNTIME_DIR, renderer=StubRenderer()
             )
         )
@@ -1484,9 +1487,9 @@ class SnapshotCliTests(unittest.TestCase):
                 )
 
     def test_content_type_for_mesh_suffixes(self) -> None:
-        self.assertEqual(snapshot_main.content_type_for_path(Path("x.stl")), "model/stl")
-        self.assertEqual(snapshot_main.content_type_for_path(Path("x.3mf")), "model/3mf")
-        self.assertEqual(snapshot_main.content_type_for_path(Path("x.glb")), "model/gltf-binary")
+        self.assertEqual(snapshot_core.content_type_for_path(Path("x.stl")), "model/stl")
+        self.assertEqual(snapshot_core.content_type_for_path(Path("x.3mf")), "model/3mf")
+        self.assertEqual(snapshot_core.content_type_for_path(Path("x.glb")), "model/gltf-binary")
 
     def test_render_job_requires_selector_topology_for_cad_refs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -1763,11 +1766,11 @@ class SnapshotCliTests(unittest.TestCase):
             ),
             RUNTIME_DIR / "snapshot-render.js",
         )
-        with self.assertRaisesRegex(snapshot_main.RouteFileError, "unsupported snapshot origin"):
+        with self.assertRaisesRegex(snapshot_core.RouteFileError, "unsupported snapshot origin"):
             resolve_snapshot_route_file(
                 "http://snapshot.local/render.html", runtime_dir=RUNTIME_DIR
             )
-        with self.assertRaisesRegex(snapshot_main.RouteFileError, "snapshot route not found"):
+        with self.assertRaisesRegex(snapshot_core.RouteFileError, "snapshot route not found"):
             resolve_snapshot_route_file(
                 "http://localhost/missing.js", runtime_dir=RUNTIME_DIR
             )
@@ -1835,7 +1838,7 @@ class SnapshotCliTests(unittest.TestCase):
             sys.modules["playwright.async_api"] = async_api_module
 
             async def start_renderer() -> None:
-                renderer = snapshot_main.BatchSnapshotRenderer(RUNTIME_DIR)
+                renderer = snapshot_core.BatchSnapshotRenderer(RUNTIME_DIR)
                 try:
                     await renderer.start()
                 finally:
@@ -1853,8 +1856,8 @@ class SnapshotCliTests(unittest.TestCase):
                 sys.modules["playwright.async_api"] = original_async_api
 
         self.assertNotIn("--single-process", captured_launch_options.get("args") or [])
-        self.assertEqual(routed, [snapshot_main.SNAPSHOT_ROUTE_GLOB])
-        self.assertEqual(navigated, [snapshot_main.SNAPSHOT_RENDER_URL])
+        self.assertEqual(routed, [snapshot_core.SNAPSHOT_ROUTE_GLOB])
+        self.assertEqual(navigated, [snapshot_core.SNAPSHOT_RENDER_URL])
         # The page must be handed the loopback cache server's ABSOLUTE origin
         # before any page script runs: a relative cache URL is intercepted by
         # the route above, and interception alone pushes the whole request body
@@ -2393,7 +2396,7 @@ class ExactOutputContractTests(unittest.TestCase):
 
     def _render(self, packet: dict, renderer) -> object:
         return asyncio.run(
-            snapshot_main.render_resolved_job_packet(packet, runtime_dir=RUNTIME_DIR, renderer=renderer)
+            snapshot_core.render_resolved_job_packet(packet, runtime_dir=RUNTIME_DIR, renderer=renderer)
         )
 
     @staticmethod
@@ -2417,7 +2420,7 @@ class ExactOutputContractTests(unittest.TestCase):
         }
         result = {"ok": True, "mode": "view", "outputs": [output]}
         self._render(self._packet({"path": str(self.target)}), self._renderer(result))
-        snapshot_main.write_render_outputs(result)
+        snapshot_core.write_render_outputs(result)
 
         self.assertEqual(self.target.read_bytes(), payload)
         # No timestamped sibling, and no temp file left beside it either.
@@ -2502,7 +2505,7 @@ class ExactOutputContractTests(unittest.TestCase):
             sys.modules["cadgen._internal.atomic_replace"], "replace_atomic", exploding_replace
         ):
             with self.assertRaises(OSError):
-                snapshot_main.write_output_payload(
+                snapshot_core.write_output_payload(
                     {
                         "path": str(self.target),
                         "dataUrl": "data:image/png;base64," + base64.b64encode(b"x" * 4096).decode("ascii"),
@@ -2513,7 +2516,7 @@ class ExactOutputContractTests(unittest.TestCase):
 
     def test_a_missing_data_url_writes_nothing_at_the_target(self) -> None:
         with self.assertRaisesRegex(SnapshotError, "base64 data URL"):
-            snapshot_main.write_output_payload({"path": str(self.target)})
+            snapshot_core.write_output_payload({"path": str(self.target)})
         self.assertFalse(self.target.exists())
 
     def test_a_target_that_cannot_be_cleared_fails_before_the_render(self) -> None:

@@ -24,8 +24,8 @@ about versions. Recognizing it is the reader's job.
   document with no pose and no animation. Nothing is discovered by convention:
   kinematics and animation are `kinematics=` and `animation=` on the model's
   decorator, and the build puts both in the document's sidecar. A companion
-  `<name>.step.js` is read by nothing — an older project that still has one
-  fails its build, which names the decorator that replaced it.
+  JavaScript file beside the document is read by nothing — a project that still
+  carries one fails its build, which names the decorator that replaced it.
 - **Meshes come out visibly coarser or finer, with no error.** Mesh tolerance
   kept its name and changed meaning — chord tolerance is a fraction of the
   component's bounding diagonal, not an absolute length — so a value carried
