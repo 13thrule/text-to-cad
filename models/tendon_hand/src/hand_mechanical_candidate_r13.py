@@ -9,10 +9,9 @@ from cadgen import step,read_step
 from lib.native_integration import integrated_native_bodies,overlay,rooted,ROOT
 from lib.assembly import compound
 from lib.palette import apply_palette,ASSEMBLY_MATERIALS
+from lib.embedded_animation import load_animation
 
-ANIMATION_JS = r'''// Regenerate with validation/write_showcase_presentation.py after the body-frame manifest exists.
-export const clips = {};
-'''
+ANIMATION_JS = load_animation(__file__, 'write_showcase_presentation.py')
 
 def native_parts(path):
     from cadgen.step_scene import load_step_scene,scene_occurrence_shape
