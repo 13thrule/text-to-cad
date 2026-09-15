@@ -11,6 +11,28 @@ import {
   PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER
 } from "./photographicStudioRig.js";
 
+/**
+ * The studio's material policy: one fixed finish for every part the rig
+ * lights. Render exposes no material controls, so these are constants of the
+ * rig rather than anything the Render recipe can reach. STEP package material
+ * channels remain authored inputs and still win over these fallbacks.
+ */
+export const PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS = Object.freeze({
+  defaultColor: "#b9bdc3",
+  fillColors: Object.freeze(["#b9bdc3"]),
+  cycleColors: false,
+  overrideSourceColors: false,
+  tintMode: "blend",
+  tintStrength: 0,
+  roughness: 0.42,
+  metalness: 0.03,
+  clearcoat: 0,
+  clearcoatRoughness: 0.26,
+  opacity: 1,
+  envMapIntensity: 1,
+  emissiveIntensity: 0
+});
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }

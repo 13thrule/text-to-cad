@@ -10,15 +10,12 @@ import {
   resolveCameraView
 } from "./camera.js";
 import {
-  cloneThemePresetSettings,
   DEFAULT_FILL_LIGHT_SETTINGS,
   DEFAULT_FLOOR_AXIS_SETTINGS,
   DEFAULT_FLOOR_GRID_SETTINGS,
   DEFAULT_RIM_LIGHT_SETTINGS,
   FLOOR_AXIS_RADIUS_MULTIPLE,
-  THEME_FLOOR_MODES,
-  normalizeThemeSettings,
-  resolveThemeSettingsForColorMode
+  THEME_FLOOR_MODES
 } from "./themeSettings.js";
 import {
   createCadWebGlRenderer
@@ -123,38 +120,6 @@ export function inferRenderSceneScale({
   return (Array.isArray(parts) ? parts : []).some((part) => String(part?.linkName || "").trim())
     ? RENDER_SCENE_SCALE.URDF
     : RENDER_SCENE_SCALE.CAD;
-}
-
-export function resolveThemeJobConfig(job = {}, { defaultThemeId = "workbench-light" } = {}) {
-  if (typeof job.theme === "string") {
-    return {
-      themeId: job.theme,
-      settings: null
-    };
-  }
-  if (job.theme && typeof job.theme === "object" && !Array.isArray(job.theme)) {
-    return {
-      themeId: defaultThemeId,
-      settings: job.theme
-    };
-  }
-  return {
-    themeId: defaultThemeId,
-    settings: null
-  };
-}
-
-export function resolveThemeSettings(job = {}, { defaultThemeId = "workbench-light" } = {}) {
-  const theme = resolveThemeJobConfig(job, { defaultThemeId });
-  const themeSettings = cloneThemePresetSettings(theme.themeId || defaultThemeId);
-  const normalized = normalizeThemeSettings(theme.settings || themeSettings);
-  // Applied for object themes too, not just saved-theme-id strings.
-  // resolveThemeSettingsForColorMode is the ONLY consumer of colorMode, so
-  // skipping it here made colorMode an accepted-but-inert key in theme
-  // JSON: "light" and "dark" produced byte-identical renders. For settings
-  // without an explicit modeColors block this is the identity, because
-  // normalizeThemeModeColors derives modeColors from the settings themselves.
-  return resolveThemeSettingsForColorMode(normalized, { prefersDark: false });
 }
 
 export function resolveRenderView(camera = "iso", viewPresets = RENDER_VIEW_PRESETS, {
@@ -749,8 +714,9 @@ export function outputSize(output, job) {
   };
 }
 
-export function configurePngRenderer(width, height, job, themeSettings, {
-  defaultRenderScale = 1
+export function configurePngRenderer(width, height, job, {
+  defaultRenderScale = 1,
+  toneMappingExposure = 1
 } = {}) {
   const renderer = createCadWebGlRenderer(THREE, {
     preserveDrawingBuffer: true,
@@ -761,7 +727,7 @@ export function configurePngRenderer(width, height, job, themeSettings, {
   });
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = Math.max(toFiniteNumber(themeSettings.lighting?.toneMappingExposure, 1), 0.05);
+  renderer.toneMappingExposure = Math.max(toFiniteNumber(toneMappingExposure, 1), 0.05);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.setPixelRatio(clamp(toFiniteNumber(job.output?.renderScale, defaultRenderScale), 1, 3));

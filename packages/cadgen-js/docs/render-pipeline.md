@@ -34,10 +34,18 @@ import {
 ```
 
 `resolveSceneSettings({ appearance, render, quality, camera, display })` is the
-shared Viewer/snapshot policy resolver. A missing `render` selects responsive
-CAD inspection defaults, where the top-level quality, camera, and display fields
-apply. A Render envelope is isolated from those CAD fields and has this closed
-sparse shape:
+shared Viewer/snapshot policy resolver. It resolves one of two scenes.
+
+A missing `render` selects responsive CAD inspection defaults, where the
+top-level quality, camera, and display fields apply. That result carries
+`theme`, the CAD scene settings — materials, background, floor, environment and
+the seven-light inspection rig — plus the `materialOverrides` the workbench's
+matte PBR channels imply. Only the Inspect path reads them.
+
+A Render envelope is isolated from those CAD fields and resolves `theme: null`:
+Render is built from its recipe alone, so no lighting rig, stage floor or
+background gradient is reachable from it. The envelope has this closed sparse
+shape:
 
 ```js
 {
@@ -58,8 +66,14 @@ sparse shape:
 ```
 
 The normalized Render payload preserves omission. The resolved scene expands
-the effective values under `resolved.render.configuration`, so a UI can display
-the active studio and defaults without pinning them into session state. Render
+the effective values into the RENDER RECIPE at `resolved.render.configuration`
+— `{studio, quality, exposure, lighting, backdrop, camera}`, each with its
+effective value — so a UI can display the active studio and defaults without
+pinning them into session state. That recipe is the only input
+`applyPhotographicStudio()` and `createEnvironmentResource()` take, and
+`resolved.camera` is its camera. The studio's one fixed finish is
+`PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS`, a constant of the rig rather than
+anything the recipe can reach. Render
 always uses its private `shaded`, authored-color display policy with edges,
 guides, clipping, exploded view, selectors, and selection disabled. The Render
 camera comes only from `render.camera`; per-output snapshot cameras are applied
@@ -210,7 +224,8 @@ Three.js object graph and its mutable state.
 
 Common settings:
 
-- `theme`: normalized or raw internal studio settings.
+- `theme`: normalized or raw CAD scene settings. Render passes none and supplies
+  `materialSettings` instead.
 - `displayMode`: `shaded`, `shaded_edges`, `transparent`, `hidden_edges`,
   `hidden_lines_removed`, `unshaded`, or `wireframe`.
 - `edgeSettings`: display-owned CAD edge style. Themes do not own edges.

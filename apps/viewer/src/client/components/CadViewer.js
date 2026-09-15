@@ -77,7 +77,8 @@ import {
 } from "cadgen-js/common/environmentMap.js";
 import {
   applyPhotographicStudio,
-  disposePhotographicStudio
+  disposePhotographicStudio,
+  PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS
 } from "cadgen-js/common/photographicStudio.js";
 import {
   clampSceneModelRadius,
@@ -1971,12 +1972,16 @@ const CadViewer = forwardRef(function CadViewer({
   const normalizedThemeSettings = normalizedViewerRenderState.themeSettings;
   const normalizedDisplaySettings = normalizedViewerRenderState.displaySettings;
   const normalizedDisplayMode = normalizedViewerRenderState.displayMode;
+  // Render lights one fixed studio finish and exposes no material or part-colour
+  // controls; CAD's finish comes from its theme and the display part-colour policy.
   const normalizedMaterialSettings = useMemo(
-    () => resolveDisplayMaterialSettings(
-      normalizedThemeSettings.materials,
-      normalizedDisplaySettings.partColor
-    ),
-    [normalizedDisplaySettings.partColor, normalizedThemeSettings.materials]
+    () => (renderMode
+      ? PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS
+      : resolveDisplayMaterialSettings(
+        normalizedThemeSettings.materials,
+        normalizedDisplaySettings.partColor
+      )),
+    [normalizedDisplaySettings.partColor, normalizedThemeSettings.materials, renderMode]
   );
   const materialPartPolicyKey = `${
     normalizedMaterialSettings.cycleColors === true &&

@@ -376,10 +376,6 @@ function statusOnlyFileSheetTitle(sourceFormat) {
 
 const EMPTY_LIST = Object.freeze([]);
 const EMPTY_MATERIAL_OVERRIDES = Object.freeze({});
-const PHOTOGRAPHIC_VIEW_DEFAULTS = resolveSceneSettings({
-  appearance: "light",
-  render: {}
-});
 const URDF_POSE_PICKER_DEFAULT_CENTER = Object.freeze([0, 0, 0]);
 const DESKTOP_SIDEBAR_MIN_WIDTH = 150;
 const DESKTOP_SIDEBAR_MAX_WIDTH = 520;
@@ -1261,14 +1257,19 @@ export default function CadWorkspace({
       prefersDark: systemPrefersDark,
       render: renderVisualPayload(renderSession.payload)
     }).render.configuration;
+    // The visual resolve deliberately excludes camera and quality so an orbit
+    // does not rebuild the scene. Put the session's own values back so the
+    // recipe the rig and the settings UI read stays complete.
     return {
       ...visualConfiguration,
+      camera: resolvedCamera,
       quality: renderSession.payload.quality || RENDER_QUALITY.FINAL
     };
   }, [
     colorSchemePreference,
     renderSession.payload.quality,
     renderVisualKey,
+    resolvedCamera,
     resolvedVisualScene.render.configuration,
     systemPrefersDark
   ]);
@@ -1282,12 +1283,12 @@ export default function CadWorkspace({
       payload: renderSession.payload
     }
   }), [resolvedCamera, resolvedQuality, resolvedRenderConfiguration, resolvedVisualScene, renderSession.payload]);
-  const resolvedThemeSettings = renderSession.enabled
-    ? PHOTOGRAPHIC_VIEW_DEFAULTS.render.settings
-    : resolvedScene.render.settings;
+  // Render has no theme: the viewer builds it from the recipe in
+  // `render.configuration`, and the CAD scene settings stay behind in Inspect.
+  const resolvedThemeSettings = resolvedScene.theme;
   const resolvedMaterialOverrides = renderSession.enabled
     ? EMPTY_MATERIAL_OVERRIDES
-    : resolvedScene.render.materialOverrides;
+    : resolvedScene.materialOverrides;
   const sceneBackdrop = useMemo(
     () => renderSession.enabled
       ? resolvedScene.render.configuration.backdrop.color
@@ -7406,9 +7407,7 @@ export default function CadWorkspace({
   ];
   // Handed over unconditionally: the pane gates it on the `displayModes` capability, so
   // gating it a second time here only creates a place for the two to disagree.
-  const renderDisplaySettings = renderSession.enabled
-    ? PHOTOGRAPHIC_VIEW_DEFAULTS.display
-    : resolvedScene.display;
+  const renderDisplaySettings = resolvedScene.display;
   const materialPickingEnabled = renderSession.enabled && selectedFileSheetKind === "step" && effectiveFileSheetOpenSectionIds.includes(FILE_SHEET_SECTION_IDS.THEME_MATERIALS);
   const materialSelectedIds = materialSelection?.scope === sourceMaterialScope ? materialSelection.ids : viewerSelectedPartIds;
   const selectMaterialParts = (ids) => setMaterialSelection({ scope: sourceMaterialScope, ids });

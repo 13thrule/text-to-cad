@@ -180,8 +180,12 @@ Contract mirrors that must stay in lockstep (each has a sync test):
 tessellation v4 keys, headers and mesh-index records ↔ `cadgen/store/meshes.py`.
 
 `common/sceneSettings.js` is the public scene-policy boundary shared by the
-Viewer and snapshot runtime. `resolveSceneSettings()` applies base CAD defaults,
-or resolves an isolated sparse Render envelope when Render is enabled.
+Viewer and snapshot runtime. `resolveSceneSettings()` resolves ONE of two
+scenes, never a blend of them. Inspect returns `theme`, the CAD scene settings,
+and the top-level camera, display and quality fields. Render returns
+`render.configuration`, the RECIPE of exactly the controls Render exposes, and
+no theme at all, so nothing in the photographic path can reach CAD lighting,
+stage floors or background gradients.
 The closed Render envelope is `{studio, quality, exposure, lighting, backdrop,
 camera}`. `studio` is `light` or `dark`; omission follows the resolved
 global appearance and remains omitted in the normalized payload. `quality` is
@@ -191,8 +195,10 @@ Backdrop exposes its color, transparency, ground visibility and ground placement
 The translucent ground defaults to the authored Z=0 plane;
 `backdrop.groundPlacement: "lowest"` explicitly aligns it to the model minimum
 without moving geometry or changing illumination.
-`resolved.render.configuration` expands these defaults for rendering and UI
-display without turning the sparse session payload into a pinned studio.
+`resolved.render.configuration` expands that sparse envelope into the recipe
+`{studio, quality, exposure, lighting, backdrop, camera}` that the photographic
+rig and the settings UI both read, without turning the session payload into a
+pinned studio.
 
 Render uses one photographic rig: neutral HDR key and fill cards feed a
 procedural PMREM, while one aligned, model-scaled spot light supplies direct and
@@ -214,7 +220,8 @@ direct GLB uses the native hierarchy described above, so its textures and PBR
 channels remain attached to the Viewer scene. The
 public contract has no global material, color-grading, arbitrary-light, floor
 physics, or glow controls. `applyPhotographicStudio()` owns the synchronous
-light, ground and renderer state. Callers separately cache and dispose the PMREM
+light, ground and renderer state, and `PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS`
+beside it is the studio's one fixed finish — a constant of the rig, not a knob. Callers separately cache and dispose the PMREM
 returned by `createEnvironmentResource()`; rotating the rig does not rebuild it.
 Render owns its camera and uses fixed shaded, authored-color display policy with
 no edges, guides, clipping, or exploded-view state. CAD inspection camera,
