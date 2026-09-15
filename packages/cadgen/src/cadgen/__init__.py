@@ -131,7 +131,13 @@ if TYPE_CHECKING:
     # from their real modules now.
     from cadgen import build123d, dxf, glb, step, stl, threemf
     from cadgen.assembly import AssemblyHelper, MateTarget, label_shape, label_text, target
-    from cadgen.color import linear_to_srgb, srgb, srgb_to_linear
+    from cadgen.color import (
+        srgb,
+        # __getattr__ serves these two without advertising them in __all__;
+        # the alias is how the mirror says "re-export" rather than "unused".
+        linear_to_srgb as linear_to_srgb,
+        srgb_to_linear as srgb_to_linear,
+    )
     from cadgen.inputs import declare_input
     from cadgen.memoization import memo
     from cadgen.kinematics import couple, cylindrical, fastened, revolute, slider

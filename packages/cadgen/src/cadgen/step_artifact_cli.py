@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Callable
 
 from cadgen.cli_logging import CliLogger
+from cadgen.cli_progress import cli_progress_line
 from cadgen._internal.generation import (
     EntrySpec,
-    cli_progress_line,
     _assembly_glb_package_current,
     _existing_topology_artifact_matches_spec_without_scene,
     _entry_spec_from_source,
@@ -27,9 +27,7 @@ from cadgen._internal.step_scene import LoadedStepScene, step_file_hash
 from cadgen._internal.step_scene_package import load_step_scene_exact
 from cadgen.catalog import iter_cad_sources, source_from_path
 from cadgen.step_targets import (
-    ResolvedStepTarget,
     StepTopologyArtifact,
-    StepTopologyArtifactError,
 )
 
 

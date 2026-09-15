@@ -13,7 +13,7 @@ from cadgen.cli.step_inspect import cli as inspect_cli
 from cadgen.cli.step_inspect import inspect as refs_inspect
 from cadgen import cad_ref_syntax as refs_syntax
 from cadgen._internal import assembly_spec
-from cadgen._internal import generation as cad_generation
+from cadgen._internal.step_hash import step_file_hash
 from cadgen import step_targets
 from cadgen._internal.glb_topology import STEP_TOPOLOGY_SCHEMA_VERSION
 from cadgen.catalog import result_view_dir
@@ -624,7 +624,7 @@ class InspectRefsTests(unittest.TestCase):
                 "entryKind": "assembly",
                 "sourceKind": "python",
                 "sourceHash": source_identity.source_hash,
-                "stepHash": cad_generation.step_file_hash(assembly_step_path),
+                "stepHash": step_file_hash(assembly_step_path),
             },
             step_path=assembly_step_path,
         ):

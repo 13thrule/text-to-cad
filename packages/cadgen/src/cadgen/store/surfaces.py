@@ -14,6 +14,31 @@ SURF_FORMAT = 2
 SURFACE_SCHEMA = 1
 
 
+class SurfaceProducerUnavailable(ValueError):
+    """This runtime cannot implement the surface producer the request pins.
+
+    A caller that holds a replacement producer recovers from this and only
+    this; every other failure is a failure. Routing it by a substring of the
+    message, retyped at each catch site, made that distinction a typo away
+    from wrong, so the refusal has a type and one declared marker text.
+    """
+
+    MARKER = "worker cannot implement the request's pinned surface producer"
+
+    def __init__(self, message: str = MARKER) -> None:
+        super().__init__(message)
+
+
+def producer_unavailable(error: object) -> bool:
+    """Whether ``error`` is that refusal, however it reached the caller.
+
+    In-process the type answers. Derivation also runs in a POOLED WORKER, and
+    a worker's refusal arrives as an ArtifactJobError carrying its text, so the
+    marker is matched too -- one constant, declared beside the raise.
+    """
+    return isinstance(error, SurfaceProducerUnavailable) or SurfaceProducerUnavailable.MARKER in str(error)
+
+
 def validate_producer(value: Any) -> None:
     expected = {"scheme", "surfFormat", "build123d", "ocp", "cadqueryOcp"}
     if type(value) is not dict or set(value) not in (expected, expected | {"producerKey"}) or type(value.get("scheme")) is not int or type(value.get("surfFormat")) is not int or value.get("scheme") != EXTRACTION_SCHEME or value.get("surfFormat") != SURF_FORMAT:
@@ -133,7 +158,7 @@ def lookup(entry: dict, producer: dict) -> dict | None:
 def derive(tree_hash: str, cids: list[str] | None = None, *, force: bool = False,
            expected_objects: dict[str, str] | None = None, producer: dict | None = None) -> dict:
     from cadgen.store.trees import capture_tree as capture
-    from cadgen._internal.component_package import decode_geometry_component, canonical_json_bytes as canonical_bytes
+    from cadgen._internal.component_package import decode_geometry_component
     from cadgen._internal.surface_extract import extract_surface_component
 
     # Surface work still admits only a complete verified geometry graph. It
@@ -145,7 +170,7 @@ def derive(tree_hash: str, cids: list[str] | None = None, *, force: bool = False
     descriptor, _ = capture(tree_hash, retain_payloads=False)
     producer = producer_identity() if producer is None else producer_fields(producer)
     if producer != producer_identity():
-        raise ValueError("worker cannot implement the request's pinned surface producer")
+        raise SurfaceProducerUnavailable
     requested = list(descriptor["components"]) if cids is None else list(dict.fromkeys(cids))
     if any(cid not in descriptor["components"] for cid in requested):
         raise ValueError("surface request names an unpinned component")

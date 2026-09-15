@@ -89,7 +89,6 @@ import threading
 from collections import OrderedDict
 from functools import lru_cache
 
-from cadgen._internal.atomic_replace import replace_atomic
 
 # Salt: bump _OP_MEMO_VERSION whenever keying or hit semantics change.
 _OP_MEMO_VERSION = 7

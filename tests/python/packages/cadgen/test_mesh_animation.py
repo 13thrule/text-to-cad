@@ -258,7 +258,7 @@ class ResolvingTheClip(unittest.TestCase):
         write_source_sidecar(self.document, {"animation": {"language": "javascript", "source": MODULE_SOURCE}})
         return source_sidecar_path(self.document)
 
-    def test_a_document_with_no_render_module_says_what_to_author(self):
+    def test_a_document_with_no_animation_says_what_to_author(self):
         with self.assertRaises(ValueError) as caught:
             resolve_animation(self.document, parse_animation_option("showcase"))
         self.assertIn("arm.step has no animation in its sidecar", str(caught.exception))

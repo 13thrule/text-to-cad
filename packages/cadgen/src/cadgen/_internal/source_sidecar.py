@@ -113,7 +113,7 @@ def _channel(value: object, *, where: str) -> float:
 
 
 def _normalized_material(value: object, *, material_id: str, authored: bool) -> dict[str, Any]:
-    allowed = set(MATERIAL_KEYS) | ({"name"} if authored else {"name"})
+    allowed = set(MATERIAL_KEYS) | {"name"}
     if not isinstance(value, dict) or set(value) - allowed:
         raise SidecarAppearanceError(
             f"material {material_id!r} must contain only name, {', '.join(MATERIAL_KEYS)}"

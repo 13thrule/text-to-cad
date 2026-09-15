@@ -33,7 +33,6 @@ from .backend import ForbiddenAssetError, LocalAssetBackend
 from .cadgen_ops import create_cadgen_ops
 from .content_types import content_type_for_static_asset
 from .encoding import UriError, strict_decode_uri_component
-from .scanner import path_relative
 from .store_paths import virtual_store_asset
 from .tess_cache import (
     TESS_CACHE_METADATA_MAX_BYTES, parse_tess_cache_admission,

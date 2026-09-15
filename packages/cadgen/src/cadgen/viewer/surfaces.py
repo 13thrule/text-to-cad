@@ -216,7 +216,7 @@ class SurfaceSubscribers:
             for cid in missing:
                 response["components"][cid] = {"surfaceInput": selected[cid]["surfaceInput"], "state": "failed", "error": error}
             self.cancel(token)
-            if "pinned surface producer" in error:
+            if surfaces.producer_unavailable(error):
                 from cadgen.daemon.artifacts import resolve_artifact
                 from cadgen.store.view import descriptor_for_view
 

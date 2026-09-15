@@ -98,11 +98,11 @@ from cadgen.snapshot_cli import (
     SnapshotError,
     load_job_from_options,
     resolve_render_job_packet,
-    resolve_snapshot_route_file,
 )
 from cadgen.snapshot_core import (
     clear_render_output_targets,
     resolve_output_target,
+    resolve_snapshot_route_file,
     snapshot_result,
     validate_render_job_compatibility,
 )

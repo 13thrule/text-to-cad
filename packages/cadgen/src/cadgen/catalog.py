@@ -199,9 +199,7 @@ def cad_ref_from_step_path(path: Path) -> str:
         relative = resolved.relative_to(Path.cwd().resolve())
     except ValueError:
         relative = PurePosixPath(resolved.as_posix())
-    name = relative.name
-    suffix = relative.suffix.lower()
-    if suffix in STEP_SUFFIXES:
+    if relative.suffix.lower() in STEP_SUFFIXES:
         return relative.with_suffix("").as_posix()
     raise CadSourceError(f"{_display_path(path)} is not a CAD STEP source")
 

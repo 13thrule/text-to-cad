@@ -222,12 +222,6 @@ class Broker:
             entry["done"].set()
             self._cv.notify_all()
 
-    def finish(self, model: str, closure: str, code: int) -> None:
-        with self._cv:
-            entry = self._inflight.get(("", model, closure))
-        if entry is not None:
-            self.finish_entry(entry, code)
-
     def snapshot(self) -> dict[str, Any]:
         with self._cv:
             return {

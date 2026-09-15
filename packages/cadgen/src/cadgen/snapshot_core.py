@@ -23,7 +23,6 @@ import json
 import mimetypes
 import os
 import re
-import struct
 import sys
 import time
 from collections.abc import Mapping
@@ -36,7 +35,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from cadgen.coordination import PHASE_RENDER, resolve as resolve_progress
 from cadgen.results import SnapshotFile, SnapshotResult, SnapshotTimings
-from cadgen._internal.atomic_replace import replace_atomic, write_bytes_atomic
+from cadgen._internal.atomic_replace import write_bytes_atomic
 
 
 # `localhost` is a potentially trustworthy origin under the Secure Contexts
