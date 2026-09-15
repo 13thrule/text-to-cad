@@ -34,6 +34,7 @@ function failureAlert(fileRef, error, failure, compile = false) {
   const common = { severity: "error", kind, details: diagnostics };
   if (kind === "network") return {
     ...common, summary: "Connection lost", title: "Can’t reach the viewer",
+    tooltip: "The browser lost contact with the viewer while loading the model.",
     message: `The browser lost contact with the viewer while ${operation} for “${fileRef}”. Check that the viewer is running and this tab has the correct address, then reload.`,
     ...(failure?.method === "POST" ? {
       recovery: "The build may still be running on the server. Reloading checks its status before starting any work."
@@ -42,6 +43,7 @@ function failureAlert(fileRef, error, failure, compile = false) {
   };
   if (kind === "service") return {
     ...common, summary: "Viewer service failed", title: "Couldn’t prepare the model",
+    tooltip: "The viewer couldn’t finish preparing the model for display.",
     message: ["status", "timeout"].includes(failure?.kind)
       ? "The viewer did not respond while preparing this model."
       : "The viewer couldn’t finish processing this model.",
@@ -50,6 +52,7 @@ function failureAlert(fileRef, error, failure, compile = false) {
   };
   if (kind === "http" || kind === "response") return {
     ...common, summary: "Request failed", title: "The viewer couldn’t complete the request",
+    tooltip: "The viewer returned an error while loading the model.",
     message: `${failure?.status ? `The server returned HTTP ${failure.status}` : "The server returned an unexpected response"} while ${operation} for “${fileRef}”.`,
     reason: detail,
     recovery: "Reload to try again. If this continues, check the viewer’s terminal output for the request shown in Details.",
@@ -72,6 +75,7 @@ export function buildViewerAnnotationAlert(entry) {
   return {
     severity: "warning", blocking: false,
     title: "Some model settings are unavailable",
+    tooltip: "The shape is visible, but some saved model settings could not be read. Materials, animation, or joint controls may be unavailable.",
     message: "The geometry is visible, but its saved settings could not be read. Kinematics or appearance settings may be missing.",
     recovery: "Rebuild the model with the current cadgen version, then reload.",
     details: `File: ${fileKey(entry)}\n${entry.annotationError}`,
@@ -89,7 +93,9 @@ export function buildViewerStaleRuntimeAlert(serverInfo, runtimeError = "") {
     severity: "error",
     kind: "service",
     summary: "Viewer restart required",
+    code: "viewer_restart_required",
     title: "Restart this CAD Viewer",
+    tooltip: "The viewer was updated after this server started. Restart the viewer to load the new code.",
     message: "The viewer’s code changed after its server started, so the browser and Python backend may no longer match.",
     recovery: "Run `cadgen viewer` from the same directory, then open the URL it prints. "
       + "Reloading this page alone cannot update the Python server.",
@@ -271,8 +277,9 @@ export function buildViewerEditAlert(editingState, showingCurrentPreview = false
       kind: "service",
       summary: "Viewer service failed",
       title: "Couldn’t prepare the model",
+      tooltip: "The viewer couldn’t finish preparing the updated model for display.",
       message: usableModelVisible
-        ? "The viewer’s processing service failed. The existing model remains visible."
+        ? "The viewer couldn’t prepare the latest update. You’re still viewing the previous version."
         : "The viewer’s processing service failed.",
       recovery: "Try again. If this continues, check the viewer’s terminal output."
     };
@@ -283,7 +290,7 @@ export function buildViewerEditAlert(editingState, showingCurrentPreview = false
     summary: usableModelVisible ? "Update failed" : "Open failed",
     title: usableModelVisible ? "Couldn’t update the model" : "Couldn’t open the model",
     message: usableModelVisible
-      ? "The update failed, so the existing model remains visible."
+      ? "The latest update couldn’t be loaded. You’re still viewing the previous version."
       : "The model could not be prepared for display.",
     reason: actualDetail,
     recovery: "Check the diagnostic in Details, correct the model, then run it again."

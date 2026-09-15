@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { resolveFileStatus } from "./fileStatus.js";
+import { buildViewerMeshAlert, buildViewerStaleRuntimeAlert, resolveFileStatusAlert } from "./viewerAlerts.js";
 
 const ready = { hasFile: true, hasGeometry: true };
 
@@ -26,16 +27,20 @@ test("idle files and optional edit-feed states stay quiet", () => {
 });
 
 test("opening is authoritative for incomplete first loads, including partial geometry", () => {
-  assert.deepEqual(resolveFileStatus({
+  const opening = resolveFileStatus({
     ...ready,
     opening: true,
-    loadingTitle: "Loading components 4 of 12"
-  }), {
-    label: "Opening",
-    title: "Loading components 4 of 12",
-    tone: "info",
-    busy: true
+    loadingProgress: { label: "Loading geometry", counts: "4/12" }
   });
+  assert.equal(opening.label, "Opening");
+  assert.equal(opening.busy, true);
+  assert.match(opening.title, /4 of 12.*in this stage/);
+  const interrupted = resolveFileStatus({
+    hasFile: true, opening: true,
+    loadingProgress: { label: "Loading geometry", counts: "4/12", connectionLost: { failures: 1 } }
+  });
+  assert.match(interrupted.title, /retrying automatically/);
+  assert.doesNotMatch(interrupted.title, /4 of 12/);
 });
 
 test("updates stay busy only until the current preview is displayed", () => {
@@ -43,7 +48,7 @@ test("updates stay busy only until the current preview is displayed", () => {
     ...ready,
     opening: true,
     updating: true,
-    loadingTitle: "Preparing replacement geometry"
+    loadingProgress: { label: "Preparing view" }
   }).label, "Updating");
 
   assert.equal(resolveFileStatus({
@@ -54,21 +59,21 @@ test("updates stay busy only until the current preview is displayed", () => {
   }), null);
 });
 
-test("failures distinguish opening from replacement while preserving diagnostics", () => {
+test("failure tooltips explain the visible version and keep diagnostics in the dialog", () => {
   const diagnostic = "Invalid file header\nfull parser trace";
-  assert.deepEqual(resolveFileStatus({
-    hasFile: true,
-    error: { message: diagnostic }
-  }), {
-    label: "Open failed",
-    title: diagnostic,
-    tone: "error",
-    busy: false
-  });
-  assert.equal(resolveFileStatus({
-    ...ready,
-    error: { message: "Replacement decode failed" }
-  }).label, "Update failed");
+  const error = buildViewerMeshAlert({ file: "part.step", kind: "part" }, false, diagnostic);
+  const opening = resolveFileStatus({ hasFile: true, error });
+  assert.equal(opening.label, "Open failed");
+  assert.doesNotMatch(opening.title, /parser trace|previous version/);
+  assert.match(resolveFileStatusAlert(opening, error).details, /full parser trace/);
+  const update = resolveFileStatus({ ...ready, error });
+  assert.equal(update.label, "Update failed");
+  assert.match(update.title, /previous version/);
+  assert.doesNotMatch(update.title, /parser trace/);
+
+  const restart = resolveFileStatus({ ...ready, error: buildViewerStaleRuntimeAlert({ restartRequired: true }) });
+  assert.match(restart.title, /Restart the viewer/);
+  assert.doesNotMatch(restart.title, /previous version/);
 });
 
 test("a failed save explains that the updated model remains visible", () => {
@@ -83,7 +88,7 @@ test("a failed save explains that the updated model remains visible", () => {
     }
   }), {
     label: "Update failed",
-    title: "The updated model is visible, but the STEP file could not be written.",
+    title: "The new geometry is visible, but it was not written to the STEP file.",
     tone: "error",
     busy: false
   });

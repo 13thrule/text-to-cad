@@ -121,7 +121,10 @@ function FileStatusBadge({ status, onClick }) {
             {status.label}
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-72 text-xs">{status.title}</TooltipContent>
+        <TooltipContent side="bottom" className="max-w-80 text-xs leading-relaxed">
+          <p>{status.title}</p>
+          {onClick ? <p className="mt-1">Click for details and next steps.</p> : null}
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

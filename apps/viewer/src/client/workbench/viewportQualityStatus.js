@@ -33,22 +33,22 @@ export const VIEWPORT_QUALITY_COPY = Object.freeze({
   },
   [VIEWPORT_QUALITY_STATE.LIMITED]: {
     label: "Reduced detail",
-    title: "Standard detail could not fit in available memory."
+    title: "Some surfaces are shown at lower detail because the view reached its memory limit. Try zooming out to reduce the detail needed."
   },
   [VIEWPORT_QUALITY_STATE.ERROR]: {
     label: "Detail update failed",
-    title: "The visible model could not finish loading standard detail."
+    title: "Some finer details could not be loaded. The model is still shown at lower detail. Reload the viewer to try again."
   }
 });
 
 const VIEWPORT_QUALITY_EXTRA_DETAIL_COPY = Object.freeze({
   [VIEWPORT_QUALITY_STATE.LIMITED]: {
     label: "Extra detail limited",
-    title: "Standard detail is ready. Additional detail could not fit in available memory."
+    title: "The model is visible, but there isn’t enough memory for the finer detail requested by this view. Try zooming out."
   },
   [VIEWPORT_QUALITY_STATE.ERROR]: {
     label: "Extra detail failed",
-    title: "Standard detail is ready. The view could not load additional detail."
+    title: "The model is visible, but the finer detail requested by this view could not be loaded. Reload the viewer to try again."
   }
 });
 

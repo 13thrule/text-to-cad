@@ -2787,6 +2787,7 @@ export default function CadWorkspace({
     if (catalogError && !selectedMeshData) return {
       severity: "error", kind: "status", title: "Couldn’t open the model",
       message: "The viewer couldn’t retrieve this file’s information.",
+      tooltip: "The viewer couldn’t retrieve information about this file. Try reloading the viewer.",
       recovery: "Try again. If this continues, check that the viewer is running.",
       details: catalogError, reload: true,
     };
@@ -4942,11 +4943,15 @@ export default function CadWorkspace({
   const fileStatus = resolveFileStatus({
     hasFile: Boolean(selectedEntry || explicitFileParam),
     error: viewerAlert || (catalogError && !selectedMeshData ? catalogError : null) || (missingFileRef
-      ? { title: "File unavailable", message: "The selected file could not be found." }
+      ? {
+        title: "File unavailable", message: "The selected file could not be found.",
+        tooltip: "This file isn’t in the folder served by the viewer. Check the file path or choose another file.",
+      }
       : null) || annotationAlert,
     opening: loading.opening,
     updating: loading.updating,
-    loadingTitle: loading.progress.connectionLost ? "Waiting for a response. Retrying…" : loading.progress.label,
+    loadingProgress: loading.progress,
+    renderMode: renderSession.enabled,
     editingState: editingAvailable ? editingPreview.state : null,
     showingPreview: currentPreviewVisible,
     qualityStatus: viewportQualityStatus,

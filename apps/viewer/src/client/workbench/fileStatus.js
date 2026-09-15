@@ -34,18 +34,39 @@ function failureStatus(error, { hasGeometry, editingState, showingPreview }) {
   const updatedModelVisible = showingPreview && previewIsCurrent(editingState);
   const usableModelVisible = Boolean(hasGeometry || showingPreview);
   const label = usableModelVisible ? "Update failed" : "Open failed";
-  const detail = updatedModelVisible && explicitEditFailure
-    ? "The updated model is visible, but the STEP file could not be written."
-    : text(typeof failure === "string"
-      ? failure
-      : record.message || record.title || record.summary || record.error);
-  return status(
-    label,
-    detail || (usableModelVisible
-      ? "The existing model remains visible, but its update failed."
-      : "The selected file could not be opened."),
-    "error"
-  );
+  // Dialogs retain full diagnostics; a tooltip explains the view, never a trace.
+  if (updatedModelVisible && explicitEditFailure) {
+    return status(label, "The new geometry is visible, but it was not written to the STEP file.", "error");
+  }
+  const explanation = text(record.tooltip) || (usableModelVisible
+    ? "The latest update couldn’t be loaded."
+    : "The viewer couldn’t prepare this file for display.");
+  return status(label, [
+    explanation,
+    usableModelVisible && record.code !== "viewer_restart_required"
+      ? "You’re still viewing the previous version." : "",
+  ].filter(Boolean).join(" "), "error");
+}
+
+function loadingExplanation(progress, { updating, renderMode }) {
+  if (progress?.connectionLost) {
+    return "Waiting for the viewer to respond. The browser is retrying automatically.";
+  }
+  const stage = {
+    "Finding file": "Looking up the selected file before loading it.",
+    "Reading model": "Reading the model and preparing its shapes for display.",
+    "Loading geometry": "Loading the shapes that make up the model.",
+    "Preparing view": renderMode
+      ? "Setting up the lighting and drawing the render."
+      : "Preparing the model’s appearance before showing it.",
+  }[progress?.label] || "Preparing the selected model for display.";
+  // Counts describe this stage only, never overall completion or an ETA.
+  const counts = /^(\d+)\/(\d+)$/.exec(text(progress?.counts));
+  return [
+    stage,
+    counts ? `${counts[1]} of ${counts[2]} items complete in this stage.` : "",
+    updating ? "The update will appear automatically when it’s ready." : "",
+  ].filter(Boolean).join(" ");
 }
 
 /**
@@ -61,7 +82,8 @@ export function resolveFileStatus({
   error = null,
   opening = false,
   updating = false,
-  loadingTitle = "",
+  loadingProgress = null,
+  renderMode = false,
   editingState = null,
   showingPreview = false,
   qualityStatus = null,
@@ -82,7 +104,7 @@ export function resolveFileStatus({
     if (!showingPreview) {
       return status(
         "Updating",
-        text(loadingTitle) || "Preparing the updated model.",
+        loadingExplanation(loadingProgress, { updating: true, renderMode }),
         "info",
         true
       );
@@ -90,20 +112,20 @@ export function resolveFileStatus({
   } else if (opening) {
     return status(
       "Opening",
-      text(loadingTitle) || "Opening the selected file.",
+      loadingExplanation(loadingProgress, { updating: false, renderMode }),
       "info",
       true
     );
   }
 
   if (error?.severity === "warning") {
-    return status("Model warning", text(error.message || error.title), "warning");
+    return status("Model warning", text(error.tooltip || error.message) || "Some model settings could not be applied. The model can still be viewed.", "warning");
   }
 
   if (qualityStatus?.state === "limited" || qualityStatus?.state === "error") {
     return status(
       "Limited detail",
-      text(qualityStatus.title) || "Some model detail is unavailable.",
+      text(qualityStatus.title) || "Some surfaces are shown at lower detail. This affects the view, not the model’s geometry.",
       "warning"
     );
   }

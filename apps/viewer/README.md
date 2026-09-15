@@ -214,7 +214,10 @@ source is newer than the build.
   **Update failed**, **Limited detail**, or **Model warning**. Once a usable current view is displayed,
   saving, successful completion, idle edit-feed state and routine refinement stay quiet.
   Busy badges have a spinner; failures and detail limits have an icon and open their
-  explanation on click. Invalid saved settings produce a nonblocking model warning,
+  explanation on click. Tooltips explain the current stage or the effect on the view,
+  distinguish a previous version from new geometry whose STEP write failed, and point
+  to details when clickable. Stage counts never imply overall completion; full
+  diagnostics remain in the dialog. Invalid saved settings produce a nonblocking model warning,
   with rebuild guidance and full diagnostics; geometry remains usable. Existing usable
   views remain visible during updates and failures.
   Opening uses one headline with **Finding file**, **Reading model**, **Loading geometry**,
