@@ -127,6 +127,42 @@ assembly = bd.Compound(children=[left, right], label="smoke_assembly")
 export_build123d_step_scene(assembly, root / "assembly.step")
 PY
 
+# A STEP document whose sidecar declares a mate: the other way a model is posed,
+# and the one whose pose reaches the scene through cadScene parameters rather
+# than a posed mesh wrapper. Built from primitives, so it imports nothing.
+cat > "$project/hinge.py" <<'HINGE'
+import cadgen
+from cadgen import label_shape, step
+from cadgen import build123d as bd
+
+KINEMATICS = {
+    "mates": [
+        cadgen.revolute("swing", parent="#base", child="#arm",
+                        origin=(0, 0, 6), direction=(0, 0, 1), limits=(0, 90)),
+    ],
+}
+
+
+@step(kinematics=KINEMATICS)
+def hinge():
+    base = label_shape(bd.Box(20, 20, 4), "base")
+    # Long enough that swinging it rewrites the model's bounding box: framing the
+    # posed model puts the camera somewhere the zero pose never would.
+    arm = label_shape(bd.Pos(30, 0, 6) * bd.Box(56, 4, 4), "arm")
+    return bd.Compound(children=[base, arm])
+
+
+if __name__ == "__main__":
+    hinge()
+HINGE
+# The served project holds artifacts only: a model script beside them would
+# enter the catalog as a buildable entry and change what the other gates see.
+if ! (cd "$project" && "$PYTHON" hinge.py && rm hinge.py) >"$log" 2>&1; then
+  echo "FAIL: the kinematics STEP fixture did not build" >&2
+  sed 's/^/    /' "$log" >&2
+  exit 1
+fi
+
 # Mesh export necessarily materializes source surfaces and tessellations. The
 # browser gate starts with a new store so its first STEP page remains a true
 # cold import/derive path; only this test's private cache is removed.

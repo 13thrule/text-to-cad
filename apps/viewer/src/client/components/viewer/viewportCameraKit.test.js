@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  runtimeFramingBounds,
   VIEW_PLANE_FACES,
   viewPlaneCameraBasis,
   viewportFitScale
@@ -125,4 +126,24 @@ test("a malformed preset is refused rather than producing a broken camera", () =
   assert.equal(viewPlaneCameraBasis(null, WORLD_UP_AXIS), null);
   assert.equal(viewPlaneCameraBasis({ direction: [0, 0, 0], up: [0, 1, 0] }, WORLD_UP_AXIS), null);
   assert.equal(viewPlaneCameraBasis({ direction: [0, 0, 1], up: [0, 0, 0] }, WORLD_UP_AXIS), null);
+});
+
+// Reset and fit are grounded on the model's zero pose. `modelBounds` is the live
+// pose -- what lighting, the floor and clipping follow -- and framing against it
+// is what made the zoom move when the kinematics did.
+const ZERO_POSE = { min: [0, 0, 0], max: [10, 4, 2] };
+const POSED = { min: [-6, 0, 0], max: [10, 4, 30] };
+
+test("reset and fit frame the zero pose, never the pose on screen", () => {
+  assert.deepEqual(
+    runtimeFramingBounds({ zeroPoseBounds: ZERO_POSE, modelBounds: POSED }),
+    ZERO_POSE
+  );
+});
+
+test("a runtime with no zero pose yet falls back to the live bounds, then to the caller's", () => {
+  const fallback = { min: [1, 1, 1], max: [2, 2, 2] };
+  assert.deepEqual(runtimeFramingBounds({ modelBounds: POSED }, fallback), POSED);
+  assert.deepEqual(runtimeFramingBounds({}, fallback), fallback);
+  assert.equal(runtimeFramingBounds(null), null);
 });

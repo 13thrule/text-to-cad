@@ -674,6 +674,55 @@ async function settledArmMatrix(page, angleDeg, what, tolerance = 1e-5) {
   return true;
 }
 
+// --- camera grounding -----------------------------------------------------
+// The camera is fitted ONCE per model, to its zero pose, and no pose change may
+// move it: not a joint, not a group state, not a STEP mate, and not the explicit
+// Reset view, which re-fits to that same zero pose. The tolerance is only there
+// for the last-bit drift OrbitControls' own update leaves behind (observed at
+// ~1e-15 relative); the regression this catches moved the framing by 2.4% and
+// the pivot by a quarter of the model.
+const CAMERA_EPSILON = 1e-9;
+
+async function cameraState(page) {
+  return page.evaluate(() => window.__cadCamera?.() || null);
+}
+
+function cameraDrift(actual, expected) {
+  if (!actual || !expected || !Array.isArray(actual.position) || !Array.isArray(actual.target)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const pairs = [
+    ...actual.position.map((value, index) => [value, expected.position[index]]),
+    ...actual.target.map((value, index) => [value, expected.target[index]]),
+    [actual.zoom, expected.zoom],
+    [actual.halfHeight || 0, expected.halfHeight || 0],
+    [actual.zoomPercent, expected.zoomPercent],
+  ];
+  return Math.max(...pairs.map(([a, b]) => Math.abs(Number(a) - Number(b)) / Math.max(1, Math.abs(Number(b)))));
+}
+
+function describeCamera(camera) {
+  if (!camera) return "no camera";
+  return `pos [${camera.position.map((v) => v.toFixed(4))}] target [${camera.target.map((v) => v.toFixed(4))}] `
+    + `halfHeight ${Number(camera.halfHeight || 0).toFixed(6)} zoom ${camera.zoomPercent.toFixed(2)}%`;
+}
+
+async function cameraHeld(page, zeroPose, what) {
+  const camera = await cameraState(page);
+  const drift = cameraDrift(camera, zeroPose);
+  if (!(drift <= CAMERA_EPSILON)) {
+    failures.push(`${what}: the camera moved (${drift.toExponential(2)} relative) — ${describeCamera(camera)}, `
+      + `zero pose was ${describeCamera(zeroPose)}`);
+    return false;
+  }
+  return true;
+}
+
+async function resetView(page) {
+  await page.getByRole("button", { name: /Reset view/i }).first().click();
+  await page.waitForTimeout(1_500);
+}
+
 async function kinematicsGate() {
   const { context, page, errors } = await newPage();
   try {
@@ -688,6 +737,9 @@ async function kinematicsGate() {
       failures.push(`urdf kinematics: root link is not at the robot origin [${base}]`);
     }
     await settledArmMatrix(page, 0, "urdf rest pose");
+    // The framing the model opened at. Every assertion below is against THIS.
+    const zeroPoseCamera = await cameraState(page);
+    if (!zeroPoseCamera) failures.push("urdf kinematics: the camera seam published nothing");
 
     // The user's control, not the data behind it: type into the joint's value box.
     const valueBox = page.getByRole("textbox", { name: "shoulder value in deg", exact: true });
@@ -696,6 +748,7 @@ async function kinematicsGate() {
     await valueBox.fill("45");
     await valueBox.press("Enter");
     await settledArmMatrix(page, 45, "urdf joint value entry");
+    await cameraHeld(page, zeroPoseCamera, "urdf joint value entry");
 
     // And the slider itself, which commits through the scrub path. The Joints
     // section is the only open one for a robot, so it owns the only slider.
@@ -713,8 +766,13 @@ async function kinematicsGate() {
         failures.push(`urdf kinematics: dragging the slider did not change the joint value (${shown})`);
       } else {
         await settledArmMatrix(page, scrubbed, `urdf joint slider (${shown})`, 2e-3);
+        await cameraHeld(page, zeroPoseCamera, `urdf joint slider (${shown})`);
       }
     }
+    // Reset view is the one control that re-fits, and it re-fits to the zero
+    // pose -- not to the arm where the slider left it.
+    await resetView(page);
+    await cameraHeld(page, zeroPoseCamera, "urdf reset view while posed");
     if (errors.length) failures.push(`urdf kinematics: ${errors.join(" | ")}`);
   } finally {
     await context.close();
@@ -724,17 +782,54 @@ async function kinematicsGate() {
   try {
     await openFile(srdf.page, "smoke.srdf");
     await settledArmMatrix(srdf.page, 0, "srdf rest pose");
+    const srdfZeroPoseCamera = await cameraState(srdf.page);
     const groupState = srdf.page.getByRole("combobox", { name: "Group state", exact: true });
     await groupState.waitFor({ timeout: 15_000 });
     await groupState.click();
     await srdf.page.getByRole("option", { name: "lifted", exact: true }).click();
     // The SRDF group state is authored in radians.
     await settledArmMatrix(srdf.page, (0.5 * 180) / Math.PI, "srdf group state");
+    await cameraHeld(srdf.page, srdfZeroPoseCamera, "srdf group state");
     if (srdf.errors.length) failures.push(`srdf kinematics: ${srdf.errors.join(" | ")}`);
   } finally {
     await srdf.context.close();
   }
-  console.log("  kinematics: URDF rest FK, joint value entry, joint slider, and an SRDF group state all place the child link");
+
+  // The other half of the contract: a STEP document posed by its sidecar's
+  // mates, which reaches the scene as cadScene parameters rather than as a
+  // posed mesh wrapper. Swinging this arm 90 degrees rewrites the model's
+  // bounding box, so a camera fitted to the live pose lands somewhere else
+  // entirely -- before this was grounded, Reset view moved the pivot from
+  // [24, 0, 3] to [0, 24, 3].
+  const hinge = await newPage();
+  try {
+    await openFile(hinge.page, "hinge.step");
+    const hingeZeroPoseCamera = await cameraState(hinge.page);
+    if (!hingeZeroPoseCamera) failures.push("step kinematics: the camera seam published nothing");
+    await hinge.page.getByRole("tab", { name: "Kinematics", exact: true }).click();
+    const swing = hinge.page.getByRole("textbox", { name: /^swing/ }).first();
+    await swing.waitFor({ timeout: 15_000 });
+    await swing.click();
+    await swing.fill("90");
+    await swing.press("Enter");
+    const swung = await hinge.page.waitForFunction(() => {
+      const record = (window.__cadDisplayRecords?.() || []).find((row) => row.partId === "o1.2");
+      // A 90 degree swing about +Z carries the arm's +30 X offset onto +Y.
+      return Array.isArray(record?.matrix) && Math.abs(record.matrix[13] - 30) < 1e-3;
+    }, null, { timeout: 15_000 }).then(() => true).catch(() => false);
+    if (!swung) {
+      failures.push("step kinematics: the swing mate did not move the arm occurrence");
+    } else {
+      await cameraHeld(hinge.page, hingeZeroPoseCamera, "step mate value entry");
+      await resetView(hinge.page);
+      await cameraHeld(hinge.page, hingeZeroPoseCamera, "step reset view while posed");
+    }
+    if (hinge.errors.length) failures.push(`step kinematics: ${hinge.errors.join(" | ")}`);
+  } finally {
+    await hinge.context.close();
+  }
+  console.log("  kinematics: URDF rest FK, joint value entry, joint slider, an SRDF group state and a STEP mate "
+    + "all place the child link, and none of them move the camera off the zero-pose fit");
 }
 
 const gates = [

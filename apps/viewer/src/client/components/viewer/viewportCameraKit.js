@@ -146,6 +146,18 @@ export function viewportFitScale({
   return 1 / Math.sin(limitingHalfFov);
 }
 
+// What "reset" and "fit" frame: the model in its ZERO pose -- the authored
+// placement its camera was fitted to when it opened, whatever a joint, a group
+// state, a parameter or a scrubbed animation has done to it since. Framing the
+// live pose instead made the zoom a function of the kinematics: a reset after
+// moving a joint landed at a different distance and a different pivot, and the
+// percent it reported was no longer the 100% the model opened at.
+// `runtime.modelBounds` tracks whichever pose was applied last, so it is only
+// the fallback for a runtime that has not published a zero pose yet.
+export function runtimeFramingBounds(runtime, fallbackBounds = null) {
+  return runtime?.zeroPoseBounds || runtime?.modelBounds || fallbackBounds;
+}
+
 export function getKeyboardOrbitCommand(event) {
   if (!event) {
     return null;

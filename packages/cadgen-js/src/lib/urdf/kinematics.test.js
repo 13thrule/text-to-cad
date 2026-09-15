@@ -328,6 +328,36 @@ test("posed mesh bounds update after joint motion", () => {
   assert.equal(rotatedPose.meshData.parts.length, 3);
 });
 
+// The camera that renders this robot is grounded on the zero pose, so a posed
+// wrapper has to keep that box beside its live one. Without it a viewer has no
+// way back: `bounds` is the only box it holds, and re-fitting to that one makes
+// the zoom a function of wherever the joints happen to be.
+test("a posed robot carries the zero-pose bounds whatever the joints are driven to", () => {
+  const meshGeometry = buildUrdfMeshGeometry(sampleUrdf(), PART_MESHES);
+  const zeroPose = poseUrdfMeshData(sampleUrdf(), meshGeometry, { base_to_arm: 0 });
+  const rotatedPose = poseUrdfMeshData(sampleUrdf(), meshGeometry, { base_to_arm: 90 });
+  const farPose = poseUrdfMeshData(sampleUrdf(), meshGeometry, { base_to_arm: -60 });
+
+  assert.deepEqual(zeroPose.meshData.restBounds, zeroPose.meshData.bounds,
+    "at the joint defaults the two boxes are the same box");
+  assert.notDeepEqual(rotatedPose.meshData.bounds, zeroPose.meshData.bounds);
+  assert.deepEqual(rotatedPose.meshData.restBounds, zeroPose.meshData.bounds);
+  assert.deepEqual(farPose.meshData.restBounds, zeroPose.meshData.bounds);
+});
+
+test("an in-place URDF pose republishes the same zero-pose bounds", () => {
+  const meshGeometry = buildUrdfMeshGeometry(sampleUrdf(), PART_MESHES);
+  const restBounds = applyUrdfPoseToMeshData(sampleUrdf(), meshGeometry, {}).meshData.restBounds;
+  // Posing mutates the wrapper, so a second pose reads back parts a previous
+  // pose already moved -- the rest box has to be rebuilt from sourceBounds, not
+  // accumulated from the last one.
+  applyUrdfPoseToMeshData(sampleUrdf(), meshGeometry, { base_to_arm: 90 });
+  const posed = applyUrdfPoseToMeshData(sampleUrdf(), meshGeometry, { base_to_arm: -60 });
+
+  assert.deepEqual(posed.meshData.restBounds, restBounds);
+  assert.notDeepEqual(posed.meshData.bounds, restBounds);
+});
+
 test("posing URDF mesh data reuses the static geometry buffers", () => {
   const meshGeometry = buildUrdfMeshGeometry(sampleUrdf(), PART_MESHES);
   const zeroPose = poseUrdfMeshData(sampleUrdf(), meshGeometry, { base_to_arm: 0 });

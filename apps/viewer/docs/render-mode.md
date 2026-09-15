@@ -116,6 +116,16 @@ anchors to the surface under the cursor, falling back to the model center.
 Render pointer movement skips inspection hit tests and does not install CAD
 raycast accelerators.
 
+**Zoom is grounded on the zero pose.** A model is framed once, against its
+authored placement: a robot at its joint defaults, an assembly before its mates
+move anything, an animated document at its load-time framing estimate, a mesh
+as loaded. Driving a joint, choosing an SRDF group state, changing a mate value,
+scrubbing an animation and a progressive load finishing all change what is lit,
+shadowed, clipped and floored — never how the model is framed, and never what
+100% means. **Reset view** re-fits to that same zero-pose box rather than to the
+pose on screen, so it reproduces the view the model opened at. Only a different
+model gets a new fit.
+
 Mode changes keep the new canvas covered with the destination backdrop until
 geometry and lighting have drawn their first frame. This transition owns no
 second GPU scene and does not return during orbit or detail refinement. Render
