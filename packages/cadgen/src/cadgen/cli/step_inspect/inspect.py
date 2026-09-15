@@ -592,10 +592,21 @@ def _unresolved_message(
     than a wrong document, and "did not resolve" alone leaves the caller guessing which.
     The hint walks up to the deepest ancestor the document really has and names that
     node's children -- interior nodes included, because those are now accepted too.
+
+    A LABEL that does not resolve carries the resolver's reason instead: a duplicate
+    name lists its numbered aliases, an unknown one names `snapshot --mode list`. Both
+    are what `snapshot --focus` already says; a group and a part inside it can honestly
+    share a name now that subassembly labels are indexed, so the bare message would be
+    hit more, not less.
     """
     base = f"Selector '{raw_selector}' did not resolve against {cad_path}."
     index = context.selector_index
-    if index is None or getattr(parsed_selector, "selector_type", "") != "occurrence":
+    if index is None:
+        return base
+    if getattr(parsed_selector, "label", ""):
+        reason = lookup.label_resolution_error(raw_selector, index)
+        return f"{base} {reason}" if reason else base
+    if getattr(parsed_selector, "selector_type", "") != "occurrence":
         return base
     canonical = str(getattr(parsed_selector, "canonical", "") or "")
     if not canonical:
