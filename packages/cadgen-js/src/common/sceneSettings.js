@@ -23,12 +23,16 @@ const SCENE_APPEARANCE = Object.freeze({
   DARK: "dark"
 });
 
-const RENDER_STUDIO = Object.freeze({
+// The studio, quality, envelope, lighting and backdrop vocabularies are the
+// cross-language Render contract: cadgen's snapshot_core carries the same sets
+// and tests/python/global/test_snapshot_viewer_theme_parity.py reads these
+// exports from source to prove they still agree. Keep them exported and frozen.
+export const RENDER_STUDIO = Object.freeze({
   LIGHT: "light",
   DARK: "dark"
 });
 
-const RENDER_STUDIO_PRESETS = Object.freeze([
+export const RENDER_STUDIO_PRESETS = Object.freeze([
   Object.freeze({ id: RENDER_STUDIO.LIGHT, label: "Light studio" }),
   Object.freeze({ id: RENDER_STUDIO.DARK, label: "Dark studio" }),
 ]);
@@ -85,7 +89,7 @@ const SCENE_QUALITY_PRESETS = Object.freeze([
   })
 ]);
 
-const RENDER_PAYLOAD_KEYS = Object.freeze([
+export const RENDER_PAYLOAD_KEYS = Object.freeze([
   "studio",
   "quality",
   "exposure",
@@ -94,13 +98,13 @@ const RENDER_PAYLOAD_KEYS = Object.freeze([
   "camera"
 ]);
 
-const RENDER_LIGHTING_KEYS = Object.freeze([
+export const RENDER_LIGHTING_KEYS = Object.freeze([
   "rotation",
   "size",
   "fill"
 ]);
 
-const RENDER_BACKDROP_KEYS = Object.freeze([
+export const RENDER_BACKDROP_KEYS = Object.freeze([
   "color",
   "transparent",
   "ground",
