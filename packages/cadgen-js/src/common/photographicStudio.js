@@ -1,3 +1,4 @@
+import { clamp, finiteOr } from "./numbers.js";
 import {
   DEFAULT_RENDER_BACKDROP,
   DEFAULT_RENDER_LIGHTING
@@ -33,22 +34,14 @@ export const PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS = Object.freeze({
   emissiveIntensity: 0
 });
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function finite(value, fallback) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
 function component(value, axis, fallback) {
-  if (Array.isArray(value)) return finite(value[axis], fallback);
+  if (Array.isArray(value)) return finiteOr(value[axis], fallback);
   const key = ["x", "y", "z"][axis];
-  return finite(value?.[key], fallback);
+  return finiteOr(value?.[key], fallback);
 }
 
 function resolveBounds(bounds, fallbackRadius = 1) {
-  const safeRadius = Math.max(finite(fallbackRadius, 1), 1e-6);
+  const safeRadius = Math.max(finiteOr(fallbackRadius, 1), 1e-6);
   const min = [0, 1, 2].map((axis) => component(bounds?.min, axis, -safeRadius));
   const max = [0, 1, 2].map((axis) => component(bounds?.max, axis, safeRadius));
   const valid = min.every(Number.isFinite) && max.every(Number.isFinite)
@@ -73,11 +66,11 @@ function resolvedConfiguration(configuration = {}) {
   const lighting = configuration.lighting || {};
   const backdrop = configuration.backdrop || {};
   return {
-    exposure: clamp(finite(configuration.exposure, 0), -5, 5),
+    exposure: clamp(finiteOr(configuration.exposure, 0), -5, 5),
     lighting: {
-      rotation: clamp(finite(lighting.rotation, DEFAULT_RENDER_LIGHTING.rotation), -180, 180),
-      size: clamp(finite(lighting.size, DEFAULT_RENDER_LIGHTING.size), 0.25, 3),
-      fill: clamp(finite(lighting.fill, DEFAULT_RENDER_LIGHTING.fill), 0, 1)
+      rotation: clamp(finiteOr(lighting.rotation, DEFAULT_RENDER_LIGHTING.rotation), -180, 180),
+      size: clamp(finiteOr(lighting.size, DEFAULT_RENDER_LIGHTING.size), 0.25, 3),
+      fill: clamp(finiteOr(lighting.fill, DEFAULT_RENDER_LIGHTING.fill), 0, 1)
     },
     backdrop: {
       color: typeof backdrop.color === "string" ? backdrop.color : "#e7e7e5",
@@ -232,7 +225,7 @@ function updateKeyLight(THREE, state, configuration, bounds, shadowMapSize, soft
   state.keyLight.intensity = PHOTOGRAPHIC_STUDIO_KEY_ILLUMINANCE * distance * distance;
   state.keyLight.castShadow = !softwareRendering;
 
-  const size = Math.round(clamp(finite(shadowMapSize, 2048), 256, 4096));
+  const size = Math.round(clamp(finiteOr(shadowMapSize, 2048), 256, 4096));
   if (state.shadowMapSize !== size) {
     state.keyLight.shadow.map?.dispose?.();
     state.keyLight.shadow.map = null;

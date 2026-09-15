@@ -1,5 +1,6 @@
 import * as THREE from "three";
 
+import { clamp, finiteOr } from "./numbers.js";
 import { DEFAULT_RENDER_LIGHTING } from "./sceneSettings.js";
 import {
   PHOTOGRAPHIC_STUDIO_CARD_RADIANCE,
@@ -10,24 +11,16 @@ import {
 
 export const PROCEDURAL_STUDIO_ENVIRONMENT_ID = "photographic-softbox";
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function finite(value, fallback) {
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
 function proceduralEnvironmentSize(value) {
-  const numeric = finite(value, 256);
+  const numeric = finiteOr(value, 256);
   return Math.min(Math.max(2 ** Math.round(Math.log2(Math.max(numeric, 1))), 64), 1024);
 }
 
 function lightingConfiguration(configuration = {}) {
   const lighting = configuration?.lighting || {};
   return {
-    size: clamp(finite(lighting.size, DEFAULT_RENDER_LIGHTING.size), 0.25, 3),
-    fill: clamp(finite(lighting.fill, DEFAULT_RENDER_LIGHTING.fill), 0, 1)
+    size: clamp(finiteOr(lighting.size, DEFAULT_RENDER_LIGHTING.size), 0.25, 3),
+    fill: clamp(finiteOr(lighting.fill, DEFAULT_RENDER_LIGHTING.fill), 0, 1)
   };
 }
 
