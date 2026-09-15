@@ -14,20 +14,25 @@ snapshots, the warm daemon and its build pool, and the CAD Viewer
 (`cadgen viewer`: a local HTTP server over the built client, one directory per
 instance).
 
-Snapshot `--debug --json` reports artifact resolution and measured browser
-stages; see [snapshot diagnostics](SNAPSHOTS.md) for timing boundaries.
-
 **MAY DEPEND ON** — the Python ecosystem it declares (OCP/build123d lazily,
 never at namespace-import time) and the *built outputs* of `cadgen-js`.
 Never app code, never `cadgen-js` source at runtime.
 
-Expensive pure parameterized geometry helpers may opt into [`@memo`](MEMO.md).
-The decorator uses the existing object/index store and requires no author-owned
-cache utilities. It is separate from the parameterless models that declare files.
-
 **DEPENDED ON BY** — every skill (as a pinned installed distribution). The
 CAD Viewer is not a dependent but a part: `cadgen.viewer` serves the client and
 submits a document's compile as a job to the same build pool every door uses.
+
+## The rest of the package's documentation
+
+This file holds the LAWS. Three documents beside it hold the mechanisms the
+laws constrain; a law that governs one links to it, and where a mechanism
+document and this one disagree, the mechanism document is right.
+
+| Document | What it is for | Go there when |
+|---|---|---|
+| [`STORE.md`](STORE.md) | The store's contract: layout, the two-sides law, tree/record shapes, the gate, invariants, link-vs-component, concurrency, GC, the daemon, lazy children, editing previews, debugging. Sectioned, with a table of contents | changing anything that writes to or reads from `~/.cache/cadgen`, or any build, door or reader that depends on it |
+| [`MEMO.md`](MEMO.md) | `@memo`: the author's purity contract, what declines reuse, and the three statements about process-wide geometric `Shape` identity while the decorator is installed | adding, using or diagnosing a memoized geometry factory — and before relying on `is_same`, `==` or `hash()` of a shape |
+| [`SNAPSHOTS.md`](SNAPSHOTS.md) | Snapshot `--debug --json`: every measured browser stage, what each one covers, and which durations must not be added together | reading snapshot timings or changing what they report |
 
 ## The design laws
 
@@ -46,43 +51,6 @@ in the store is compiled from those bytes (`cadgen step compile` semantics),
 never from source. Deleting every `.py` in a project must not change what
 renders.
 
-The viewer automatically follows an active build's immutable preview tree
-before STEP persistence ([`STORE.md`](STORE.md) §9b). This is a separate
-runtime input: it does not change saved-artifact read-back or allow artifact
-readers to inspect source or model records. Concurrent child requests adopt their
-announced jobs before execution, so completed builds leave no orphaned pending status.
-Following edits keeps the authored preview after a successful STEP save.
-The viewer reports incomplete or failed updates without announcing background file writes. Without an available editing preview,
-the viewer resolves the saved bytes and corresponding topology and annotations.
-Native geometry completeness is separate from display-surface readiness.
-Canonical trees pin encoded BREP and effective intrinsic face colors; surface
-extraction is an artifact-only build-pool job selected by an attested producer.
-`read_step`, STEP re-emits and parent materialization do not wait for SURF.
-A first display or selector request still pays missing surface derivation.
-The exact input, codec and recovery boundaries are in [`STORE.md`](STORE.md).
-
-The authored tree is also the final result returned by decorated calls when the
-caller consumes that result. A conventional real-file `__main__` bare call
-finishes the checked source result and every declared output, then avoids
-materializing geometry that Python immediately discards; assigned, nested,
-interactive and instrumented calls retain the geometry return. A parent can
-consume a child's complete source result before that child's STEP save, but
-waits for every called child's declared outputs before saving itself.
-The child's job carries the exact immutable pin; asynchronous consumers never
-look up a newer model record to resolve it.
-For a small result made entirely of pinned child links, the build runtime
-captures verified geometry and appearance and validates private native shapes
-before publication. It can then assemble the private STEP document after the
-source event. Ordinary model code, child-output waiting and saved-byte readback
-keep their existing semantics; unsupported or forced builds use the ordinary
-order. The bounds and ownership limits are specified in [`STORE.md`](STORE.md) §6.
-An exact `Compound(children=[...])` of eligible lazy children preserves their
-pins through composition instead of reconstructing them at attachment. Native
-access or hierarchy mutation restores ordinary private geometry. Until then
-the root is an internal Compound subclass, so exact-type introspection differs;
-`isinstance(root, Compound)` stays true. See [`STORE.md`](STORE.md) §9a for the
-eligibility and escape boundaries.
-
 - Nothing a renderer reads references the source tree: the sidecar's
   kinematics are resolved numbers and labels, its appearance uses canonical
   leaf occurrence IDs, and its animation is an embedded self-contained ES
@@ -94,6 +62,16 @@ eligibility and escape boundaries.
   by `cadgen store why` and the build tree, never by a render path.
 - Source scripts are PROGRAMS: run, never passed to CLIs, never parsed by
   renderers.
+
+Three mechanisms live under this law rather than beside it, and each is
+specified where it is implemented — change one by reading that section, not
+this one:
+
+| Mechanism | What it must not break | Specified in |
+|---|---|---|
+| Editing previews: an explicit session consumes the immutable preview tree an active build announces, before STEP persistence | saved-artifact read-back; no reader reaches source, closure or a model record | [`STORE.md`](STORE.md) §9b |
+| Composition: what a decorated call returns, what a parent may consume before a child's save, and when an exact `Compound(children=[...])` keeps its children's pins | the link/component decision, declared-output completion, `isinstance(root, Compound)` | [`STORE.md`](STORE.md) §6, §9a |
+| Display surfaces: canonical trees pin encoded BREP and effective intrinsic face colors; SURF extraction is an artifact-only build-pool job under an attested producer | geometry completeness stays separate from display readiness — `read_step`, STEP re-emits and parent materialization never wait for SURF | [`STORE.md`](STORE.md) §2 |
 
 ### 2. The store contains only derived results
 
@@ -239,15 +217,12 @@ model. Intrinsic appearance participates in the authored tree identity so it
 inherits through pinned children, while component identities and STEP bytes
 remain unchanged.
 
-A source fast path may refresh literal `kinematics=`, `materials=`, and
-`animation=` annotations from the model module without executing geometry.
-It requires an exact executed-byte closure attestation, unchanged dependencies
-and child pins, complete cached baseline/document trees, and same-module
-literals used only by those decorator arguments. A computed or imported
-annotation may coexist: its expression remains in the geometry fingerprint and
-its recorded value is reused only while that expression and its dependencies
-are unchanged. Reflection, another use of a stripped literal constant, or a
-change to computed annotation code falls back to the ordinary model build.
+Because they cannot change geometry, literal `kinematics=`, `materials=` and
+`animation=` values can be refreshed onto a cached baseline without executing
+the model — a narrow fast path whose preconditions and fallbacks are
+[`STORE.md`](STORE.md) §3 (the record's `unannotatedTree` and
+`geometryClosure`). It is an optimization the law permits, never a second
+way to build.
 
 Two features were deleted for violating this: the kinematics bake point
 (`kinematics={..., "at": pose}`), which transformed the tree through its mates

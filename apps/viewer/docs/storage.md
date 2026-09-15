@@ -11,9 +11,10 @@ that interface.
 
 Use query params only for shareable state that should survive copying a URL:
 
-- `file`: active catalog entry, always relative to the directory in the URL path.
-  The path itself is the directory the Viewer scans — there is no `dir` param on
-  the page URL (`dir` survives only inside `/__cad/asset` request URLs).
+- `file`: the active catalog entry, relative to the served root. The page is
+  always the bare origin: an instance serves ONE directory, fixed when it was
+  launched, so no URL anywhere names a directory — there is no `dir` param on
+  the page URL and none on a `/__cad` request either.
 - `resetTips`: debug-only. Clears the record of seen one-shot tutorial tips so
   they fire again. It applies once during bootstrap and is then stripped from
   the address bar, so it is a reset action rather than a persistent mode.
@@ -94,17 +95,26 @@ camera, display, tool, and sheet settings.
 
 Existing slice intent:
 
+The slice set is closed — it is the frozen `FILE_SESSION_SLICE_SCHEMA` in
+`fileSessionState.js`, and a slice with a `signatureKey` is dropped when the
+artifact it was read from changes:
+
 - `tab`: file sheet section expansion, reference selection, part visibility,
   camera, tools, and drawing history.
-- `dxf`: DXF preview thickness and bend settings.
-- `stepModule`: STEP module enablement, parameter values, and animation state.
-- `urdf`: joint values and motion-planning controls.
-- `largeFile`: large-file decisions such as selectable topology opt-in.
 - `display`: normal CAD display controls for the model.
 - `render`: Render mode, its active Studio/Animation tab, sparse photographic
   configuration, and separate CAD/Render camera state. Studio defaults follow
-  global app appearance; the session does not store a studio choice. The slice accepts exposure, softbox, backdrop, lens, and Preview/Final quality
-  values. Display stays in the CAD slice and never enters the Render payload.
+  global app appearance; the session does not store a studio choice. The slice
+  accepts exposure, softbox, backdrop, lens, and Preview/Final quality values.
+  Display stays in the CAD slice and never enters the Render payload.
+- `stepModule`: STEP pose enablement and DOF values.
+- `animation`: the selected clip, whether it drives the model, and its clock.
+  It shares the `stepModule` signature because both are read out of the one
+  sidecar, so a rebuilt sidecar invalidates both.
+- `materials`: the tab-local material definitions and their part assignments,
+  invalidated by an authored revision.
+- `urdf`: joint values and motion-planning controls.
+- `largeFile`: large-file decisions such as selectable topology opt-in.
 
 When adding another large-file control, reuse the `largeFile` slice instead of
 adding a separate session storage key.

@@ -6,7 +6,7 @@ import { VIEWER_PICK_MODE } from "cadgen-js/lib/viewer/constants.js";
 import { syncSelectorPickGroups } from "cadgen-js/lib/viewer/selectorPickGroups.js";
 import { applySceneState } from "cadgen-js/common/applySceneState.js";
 import { resetStepModuleRecordEffects } from "cadgen-js/common/stepModuleEffects.js";
-import { viewerPickModeForRenderPane, viewerSelectorRuntimeForRenderPane } from "./viewerPickMode.js";
+import { viewerHiddenPartIdsForRenderPane, viewerPickModeForRenderPane, viewerSelectedPartIdsForRenderPane, viewerSelectorRuntimeForRenderPane } from "./viewerPickMode.js";
 
 test("Render drops retained picking proxies while STEP transforms and tube deformation still apply", () => {
   const selectors = { proxy: {
@@ -171,4 +171,41 @@ test("viewer pick mode falls back to auto without the measure tool", () => {
     viewerPickModeForRenderPane({ measureMode: false }),
     VIEWER_PICK_MODE.AUTO
   );
+});
+
+test("Render hands the scene no selected parts, so the Materials selection never tints the photographic view", () => {
+  const selectedPartIds = ["base", "pin_0"];
+  const select = options => viewerSelectedPartIdsForRenderPane({ hasParts: true, selectedPartIds, ...options });
+  assert.equal(select({ renderMode: false }), selectedPartIds);
+  assert.deepEqual(select({ renderMode: false, hasParts: false }), []);
+  assert.deepEqual(select({ renderMode: false, selectedPartIds: null }), []);
+  // The Inspect selection effect (surface tint + dithered occlusion ghost)
+  // would repaint the material the Materials tab just applied.
+  assert.deepEqual(select({ renderMode: true }), []);
+});
+
+test("Inspect owns hidden parts, and Render or a part-less scene hides nothing", () => {
+  const hiddenPartIds = ["pin_0"];
+  const hide = options => viewerHiddenPartIdsForRenderPane({ inspectionEnabled: true, hasParts: true, hiddenPartIds, ...options });
+  assert.equal(hide(), hiddenPartIds);
+  assert.deepEqual(hide({ inspectionEnabled: false }), []);
+  assert.deepEqual(hide({ hasParts: false }), []);
+  assert.deepEqual(hide({ hiddenPartIds: null }), []);
+});
+
+test("an empty selection keeps one identity, so an unchanged render cannot resample the viewport", () => {
+  // The viewer's scene-effects effect takes this value as a dependency and
+  // resamples viewport LOD when it runs. A fresh [] per render made every
+  // render new work, and the LOD status it published re-rendered the
+  // workspace: an idle viewport never reached a settled state.
+  const empty = viewerSelectedPartIdsForRenderPane({ renderMode: true, hasParts: true, selectedPartIds: ["base"] });
+  assert.deepEqual(empty, []);
+  assert.equal(viewerSelectedPartIdsForRenderPane({ renderMode: true, hasParts: true, selectedPartIds: ["base"] }), empty);
+  assert.equal(viewerSelectedPartIdsForRenderPane({ hasParts: false, selectedPartIds: ["base"] }), empty);
+  assert.equal(viewerSelectedPartIdsForRenderPane({ hasParts: true, selectedPartIds: null }), empty);
+  assert.equal(viewerSelectedPartIdsForRenderPane(), empty);
+  // Hidden parts feed the same scene-effects dependency list.
+  assert.equal(viewerHiddenPartIdsForRenderPane({ inspectionEnabled: false, hasParts: true, hiddenPartIds: ["pin_0"] }), empty);
+  assert.equal(viewerHiddenPartIdsForRenderPane({ inspectionEnabled: true, hasParts: false, hiddenPartIds: ["pin_0"] }), empty);
+  assert.equal(viewerHiddenPartIdsForRenderPane(), empty);
 });

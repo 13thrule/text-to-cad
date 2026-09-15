@@ -17,7 +17,6 @@ render the wrong wheel and look like it worked.
 
 from __future__ import annotations
 
-import re
 from typing import Any, Iterable, Mapping, Sequence
 
 from cadgen.cad_ref_syntax import LABEL_SELECTOR_RE, parse_selector

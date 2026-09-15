@@ -44,7 +44,8 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   transport failures retain request context and report a connection problem;
   only an explicit compiler failure is labeled as one. Reload rechecks the
   artifact status and never forces a duplicate build. Compiler output is not
-  line-clamped away.
+  line-clamped away. A backend warning about a document's neighbours carries that
+  same shape and is listed as a non-blocking warning, never as a failed entry.
 - **Geometry and display readiness are separate**: a `compiled` artifact owns
   a complete immutable geometry tree. Display may still be waiting for an
   exact surface derivation or tessellation. A validated warm tessellation can
@@ -53,123 +54,62 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
 
 ## Appearance, Display, and Render
 
-App appearance is a global **System / Light / Dark** preference. System follows
-the live OS preference. A host-scoped `cad-viewer-appearance` cookie remembers
-the choice across browser sessions and viewer ports; a localStorage mirror
-notifies other tabs on the same origin and provides a fallback when cookies
-are blocked. The synchronous startup script applies the preference before the
-app mounts. The navbar shows the resolved Sun or Moon icon; System appears only
-as a dropdown choice. Neutral light and charcoal panel tokens remain independent from
-the model's lighting and materials.
+Three separate things, and keeping them separate is the point. The mechanism,
+the constants and the per-format detail are in
+[docs/render-mode.md](docs/render-mode.md).
 
-**Display** owns the CAD inspection projection, style, edge visibility, grid,
-origin axes, part colors, clipping, and exploded view. **Shaded with edges**
-shows shaded surfaces with CAD edges; **Shaded** shows those surfaces without
-edges. Inspect uses the same model lighting, materials, and dark edge colors in
-light and dark appearance; only the canvas and guides adapt. Edge weights are
-fixed by edge type. The grid is an on/off world reference; origin axes remain independently configurable.
+- **App appearance** is a global **System / Light / Dark** preference for the
+  CHROME. It never changes the model's lighting or materials, and it persists
+  across browser sessions and viewer ports.
+- **Display** owns the Inspect scene: projection, style, edge visibility,
+  grid, origin axes, part colors, clipping, exploded view.
+- **Render** owns an isolated photographic scene: studio, quality, exposure,
+  lighting, backdrop, camera — and nothing else. Nothing in it reaches CAD
+  lighting, guides, edges, clipping, exploded transforms or selection effects,
+  and CAD inspection camera, display and quality overrides never cross into
+  it.
 
-The navbar's **Viewing mode** icon menu switches between **Inspect** and
-**Render**, showing the active mode's cube or clapperboard icon. Inspect shows only
-CAD inspection tabs and restores their saved split, order, and active selection unchanged.
-Render enters an isolated photographic view with **Studio** first and active;
-**Materials** follows for STEP models, including those without named materials, **Kinematics**
-follows when it declares pose controls, and **Animation** follows when it
-provides clips. The Render tabs start in
-one row on each entry. Dragging and splitting them is temporary and never
-overwrites the durable per-kind CAD arrangement. The default Light or Dark
-studio follows global app appearance. Backdrop customizations remain local to the model session.
-The rightmost navbar button opens **Fullscreen**, hiding panels and orbiting the
-model. Escape or the floating toolbar’s **Exit fullscreen** button restores the previous layout.
+The navbar's **Viewing mode** menu switches Inspect ↔ Render. Their settings
+are SEPARATE per-model session state: entering a mode restores that mode, never
+a blend of the two, and kinematics and animation compose through the same model
+pose state in both. Quality is independent of the studio — Inspect is
+Interactive, Render is **Preview** or **Final** (default Final) — and a quality
+change refines the view without rebuilding exact CAD geometry. The Viewer and
+`cadgen step snapshot --render` resolve photographic scenes through the same
+shared implementation, so the same settings produce the same picture.
 
-The compact editor controls lens and exposure, softbox rotation, size and fill,
-plus backdrop color, transparency, ground visibility and position. The translucent
-ground stays at the model's original Z=0 plane by default; **Lowest point**
-explicitly aligns the floor to the model without moving its geometry. Khronos PBR Neutral tone mapping and a generated
-softbox environment provide the Render lighting. The overhead side key models
-depth, while a rear fill retains detail on dark and polished surfaces. Defaults
-are checked against colored assemblies, mechanical models, and material samples
-in both studios. STEP package material properties remain intact. A direct GLB
-with embedded animation retains its native hierarchy, skin/morph data, textures,
-and PBR materials for playback; its Animation tab appears in both Inspect and
-Render. A static direct GLB uses that native hierarchy in Render, retaining
-textures and PBR materials, while Inspect uses its normalized base or vertex
-color and opacity for CAD interaction. 3MF retains color, and STL has no authored color. Animated GLB
-measurement is unavailable because the normalized triangle picks describe only
-the rest pose. A bounded load-time animation sample estimates stable framing;
-the camera, floor, and studio do not refit on every playback frame.
-Backdrop-colored ground fill and a restrained diffuse response keep floor
-shadows and the spotlight pool subtle without changing model illumination;
-transparent backgrounds retain their shadow catcher. The existing toolbar owns
-image capture.
+**The Materials selection rule.** Part picking is enabled only while the STEP
+Materials tab is open; face and edge selectors stay disabled, and the
+photographic scene receives no selected parts — the Inspect selection tint and
+occlusion ghost would repaint the material being previewed.
 
-Quality is independent of the studio. Normal CAD uses its Interactive policy;
-Render offers **Preview** and **Final**, and defaults to Final. Preview and Final
-share the tessellation ladder, cache entries, and memory budget. Preview uses
-a 1-pixel screen-error target, 2048-pixel shadow maps, and a 256-pixel softbox
-environment. Final requests a 0.25-pixel screen-error target, 4096-pixel shadow maps, and a 512-pixel softbox
-environment. Quality changes refine the view without rebuilding exact CAD
-geometry or the model scene. Entering Render creates an ordinary-depth WebGL
-runtime so the photographic ground can receive shadows; returning to CAD restores
-its wide-range logarithmic-depth runtime while decoded geometry stays cached.
-Close-ups fit the depth range to visible rigid components when the camera enters
-the assembly bounds, preserving fine layered details without changing lighting.
-Optical zoom and cropped viewports also contribute to the detail target. The
-filename badge reports Limited detail when memory limits prevent requested detail. Snapshots use the same policy:
-Final selects the existing finest L3 STEP tessellation and 2× capture scale unless
-an explicit output scale overrides it. CAD tessellation controls cannot be combined
-with a photographic snapshot request.
-
-Normal CAD settings and Render settings are separate per-model session state.
-Entering Render applies its perspective camera and fixed presentation view
-(shaded authored colors; guides, edges, clipping, exploded transforms, and
-selection effects are off). Kinematics and animation remain available and
-compose through the same model pose state used in Inspect. Returning to
-CAD restores the CAD camera and inspection state; returning to Render restores
-the photographic view.
-Render zoom uses the subject's bounds for a stable pivot depth. Inspect zoom
-anchors to the surface under the cursor, falling back to the model center.
-Render pointer movement skips inspection hit tests and does not install CAD
-raycast accelerators.
-Mode changes keep the new canvas covered with the destination backdrop until
-geometry and lighting have drawn their first frame. This transition owns no
-second GPU scene and does not return during orbit or detail refinement. Render
-does not receive inspection selectors or DXF bend-guide overlays; STEP and
-embedded GLB animation remain independent of those inspection resources.
-The Materials tab shows a compact parts list with each current assignment.
-Click a part in the list or Render viewport (Shift-click for multiple), carry a
-selection from Inspect, or Select all parts. Click an In this model swatch or
-Preset to apply immediately; a preset creates and assigns its material together.
-Undo restores the last local material change while this panel stays mounted.
-A material's options menu can select every part using it. Color and surface
-sliders stay behind Advanced settings. Shared editing remains explicit, with Make
-unique for selection available before editing a shared material.
-Part picking is enabled only while the STEP Materials tab is open; face/edge
-selectors stay disabled. Appearance wrappers retain their geometry identity
-for detail-adoption and disposal acknowledgments. Browser-tab material overlays
-survive reload; authored revisions invalidate them, and bare STEP geometry
-revisions do too. Reset authored clears local assignments and definitions.
-These settings use sessionStorage with other per-model
-ephemeral state; they are not written beside models, into the geometry cache,
-or into global app appearance. A normal geometry rebuild preserves the
-render setup. Closing the browser tab ends its session.
-
-The top **Setup** section in Studio contains Quality. Reset sits at the bottom
-of the tab and clears photographic customizations, restoring defaults for the
-current global light/dark appearance while keeping the current camera pose.
-The viewer has no studio preset selector or settings clipboard. Viewer and
-snapshot commands resolve photographic scenes through the same cadgen-js
-implementation; snapshots choose their studio and custom settings with `--render`.
+**Where it persists.** Material edits, their one step of undo and the panel's
+part selection are the MODEL's session, held by the workspace rather than by
+the panel, so leaving the tab and returning leaves all three where they were.
+They live in per-file `sessionStorage` with the other ephemeral per-model state
+([docs/storage.md](docs/storage.md)) — never written beside models, never into
+the geometry cache, never into global app appearance. A normal geometry rebuild
+preserves the render setup; authored revisions, and bare STEP geometry
+revisions, invalidate material overlays; closing the browser tab ends its
+session.
 
 ## Launching
 
-All commands run from this app's directory. Dev (Vite serves the client
-from source with HMR; edits to `src/` and `packages/cadgen-js` show live):
+Dev serves the client from source with HMR; edits to `src/` and to
+`cadgen-js` show live:
 
 ```bash
-npm run dev -- --host 127.0.0.1
-# open http://127.0.0.1:5173/?file=<path relative to the served root>
+cd <the directory to serve>
+npm --prefix <this app> run dev -- --host 127.0.0.1
+# open http://127.0.0.1:5173/?file=<path relative to that directory>
 ```
+
+**Dev serves the directory you ran `npm run dev` FROM**, not this app's
+directory — the backend has no directory flag in dev either, so the served root
+is npm's `INIT_CWD` and the hand-off is the spawned backend's cwd. This app's
+own directory is explicitly excluded: running there falls back to its parent,
+which is not what anyone wants. Every other command below runs from this app's
+directory.
 
 Dev spawns the real backend — `python -m cadgen.viewer --api-only` on an
 ephemeral port — and proxies `/__cad` and `/__tess_cache` to it, so there is one
@@ -213,154 +153,26 @@ source is newer than the build.
 
 ## Behaviours worth knowing before concluding something is broken
 
-- The catalog fully resolves the selected file first and lists other files as
-  navigation-only rows until one background scan finishes. Selecting one of those
-  rows prioritizes its metadata immediately. Unchanged catalog rows and concurrent
-  tree verification are reused; loading one model does not wait for every model.
-- STEP entries always follow active edits, showing the root preview before its
-  STEP save. The filename badge reports only **Opening**, **Updating**, **Open failed**,
-  **Update failed**, **Limited detail**, or **Model warning**. Once a usable current view is displayed,
-  saving, successful completion, idle edit-feed state and routine refinement stay quiet.
-  Busy badges have a spinner; failures and detail limits have an icon and open their
-  explanation on click. Tooltips explain the current stage or the effect on the view,
-  distinguish a previous version from new geometry whose STEP write failed, and point
-  to details when clickable. Stage counts never imply overall completion; full
-  diagnostics remain in the dialog. Invalid saved settings produce a nonblocking model warning,
-  with rebuild guidance and full diagnostics; geometry remains usable. Existing usable
-  views remain visible during updates and failures.
-  Opening uses one headline with **Finding file**, **Reading model**, **Loading geometry**,
-  or **Preparing view** underneath. Counts measure completed geometry items in the current
-  stage, not assembly occurrences or an overall ETA. Uncounted stages are indeterminate.
-  Render initialization uses the same indicator against the destination backdrop until
-  its first usable frame. Long waits show elapsed time; interrupted progress requests
-  explain that the viewer is waiting for a response before offering recovery.
-  Selection and edge preparation report beside their controls, not as whole-model loading.
-  Run the model normally; existing decorators need no new imports. The daemon
-  must be running for live updates. The prior model stays visible while the
-  next request builds; failed updates remain visible while an idle disconnected feed retries quietly.
-  Updates arrive through a held request that wakes when this output's build
-  ledger changes. Unrelated jobs do not wake the tab. The server admits 32
-  waiters independently of kernel workers; excess tabs retry every 500 ms.
-  An idle heartbeat revalidates saved bytes and missing geometry;
-  closing or switching the tab cancels the request. Overlapping geometry and
-  reference loads own their cancellation independently; a superseded request cannot
-  cancel its replacement. Older status responses cannot overwrite newer cached
-  progress, and saved revisions are verified from one coherent file snapshot.
-  Complete plain STEP assemblies also remain visible while replacement meshes
-  load. Selection, measurements and reference copying wait for matching new
-  geometry. A failed replacement preserves the view and reports its error;
-  only that file/hash stops retrying automatically. STEP pose and animation metadata
-  use their normal loading path, without a promise to retain the previous pose.
-  Restarting the daemon expires the ephemeral session, and rerunning the model
-  reconnects it. Source files hold authored changes; there is no hidden durable
-  preview document. Every explicit model run still waits for declared outputs.
-  A successful save leaves that revision's authored preview displayed without a status badge.
-  A later successful no-op run without a new preview, or
-  an expired preview with a validated saved result, uses the saved file instead.
-  Complete displayed component arrays remain available while a replacement
-  stages or fails. Reuse requires the same runtime surface input, concrete
-  surface object and tessellation; placements and appearance come from the new
-  tree. Snapshot source isolation is unchanged.
-- Assemblies with at least 64 unique components can start at a coarser display
-  tessellation when standard meshes are not cached. Cached standard meshes are
-  preferred immediately, subject to their probed decode size and admission.
-  Smaller assemblies start at the standard level, except an individually
-  oversized component may start coarse. A component above the concurrent
-  decode cap runs alone only when the shared Viewer memory envelope can reserve
-  its complete estimate. Coarse geometry
-  is a temporary preview: visible components automatically reach at least the
-  standard level, preserving its angular smoothness even when projected chord
-  error alone would permit a coarser mesh. Close inspection can request finer
-  detail. The top bar distinguishes preview, refinement, standard detail and
-  limited or failed refinement; background file writing stays quiet.
-  Refinement uses the camera and disposable memory budget; exact geometry,
-  measurements and explicit mesh-export tolerances remain unchanged.
-  Static assemblies sample full transformed occurrence bounds against the camera
-  frustum, refining a component when at least one occurrence is on screen.
-  Offscreen components stay displayed. Ordinary camera sampling retains their
-  existing detail; memory pressure can coarsen them before visible components.
-  Unknown or not-yet-adopted bounds remain eligible.
-  A stationary camera requests the final level implied by the existing
-  hysteresis thresholds directly. If admission refuses that level, strictly
-  intermediate levels can supply measured replacement sizes for another try.
-  Failed loads stay parked; denied admission retries only after the displayed
-  level or camera intent changes. Pressure-driven coarsening caps subsequent
-  refinement until the camera or viewport changes, preventing upgrade/downgrade
-  loops. Mesh-bound and clip-plane updates do not reset that cap. An idle
-  scheduler reports memory-limited targets separately from settled quality.
-  Scenes with joints, embedded animation, drawing poses or an active/collapsing
-  exploded view keep conservative eligibility, including paused/disabled pose
-  capabilities. Authored visibility and material flags are not LOD filters.
-  Admission can reclaim idle tessellation workers and retry while preserving
-  active consumers. Its ledger samples each live worker's own retained estimate
-  before admission; a large component does not inflate every worker's charge.
-  Refinement reserves both replacement arrays and worker scratch space, and
-  includes the coarse tier's relaxed angular tolerance in its estimate.
-  The scheduler holds at most four distinct replacement CIDs across loading,
-  ready payloads and actual scene adoption. Its render and late-selector
-  preparation share one loader lane, and only one atomic mesh/reference
-  publication awaits adoption. The Viewer uses a 128 ms first-ready collection
-  deadline so serialized cached reads can fill the four-component batch; it may
-  publish a ready subset beside one unfinished carryover; it does not guarantee
-  selector, worker or scene readiness. No fifth replacement starts. Admitted
-  refinements keep filling the batch while exact sibling reservations allow it,
-  even after the coarse pressure threshold is crossed; a denied reservation
-  flushes the ready subset. Pressure coarsening remains singleton. Separate
-  user-driven topology requests keep their existing worker admission and
-  cache/picking accounting; they are not
-  included in the scheduler's occupied-CID count.
-  Actual payload backing allocations are reconciled before another sibling is
-  admitted. Temporary sibling-capacity denials flush and retry after ownership
-  changes; they do not permanently park a target. Displayed levels and measured
-  current sizes remain unchanged until the complete exact batch adopts.
-  Replacement admission stays held until the viewer adopts each current
-  component payload at every occurrence and accounts for its scene ownership.
-  This acknowledgment schedules rendering; it is not a GPU upload-completion
-  fence. Modeled upload ownership remains separate. A superseding progressive
-  publication can satisfy it only with the same context, revision, occurrence
-  set and exact payload. Cancellation requests cleanup: switch, abort or unmount
-  retains an outstanding reservation until actual replacement, restoration or
-  complete disposal proves that the renderer has released its previous owner.
-  Pending component maps remain separate from adopted maps. Display geometry
-  and demanded selectors publish as one matching state pair, with commit receipts
-  fencing abandoned or replayed React updates. A failed scene update clears its
-  partial records before rebuilding the last adopted mesh/selector pair; it never
-  reconciles against already-disposed records. Restoration preserves unrelated
-  progressive components and completed selector loads. A second construction
-  failure stops detail work and reports an error. Cleanup failure keeps ownership
-  charged until a real cleanup retry succeeds. A cancelled batch that actually
-  adopted remains a displayed payload owner even though its scheduler levels
-  are not promoted, so cancellation does not evict its exact cache entries.
-  Diagnostic snapshots identify scheduler-only ownership, batch sizes and seal
-  reasons. The internal size-one control uses the same admission/publication
-  path as groups of four.
-  A static component publication can reuse the main adoption's completed reset
-  only in that same React render. Later visual or clipping changes still run
-  normally, as do transitions out of modules, animation, drawings or poses.
-  Display arrays shared with asset caches have one CPU charge for the entire
-  backing allocation, including unused sections of packed buffers. GPU charges
-  use uploaded view sizes; CPU-only edge inputs and picking allocations remain
-  accounted for separately. Topology-only
-  interactions also release idle workers after their sibling requests drain.
-  Display raycast accelerators are requested only when a picking ray reaches
-  component bounds, then queued during idle time for one worker at a time.
-  Admission covers private input copies, worker scratch and the returned tree;
-  displayed arrays stay attached and unchanged. Releasing the last geometry
-  owner cancels its build, and stale results cannot attach to replacement
-  geometry. The first pick remains exact and may cost more on a dense component;
-  merely loading or refining an assembly does not build an accelerator for every
-  component. Inputs with a separate merged face-selection proxy still build
-  that proxy's accelerator on the main thread during idle time. Canonical STEP
-  selectors use the display meshes and do not enter that separate path.
-  Progressive display and later detail swaps share unchanged occurrence rows
-  and tree metadata; changing tessellation alone does not rebuild every tree
-  leaf. Placement, appearance and changed bounds still update their records.
-  Selection pruning preserves unchanged selected, referenced and hidden ID
-  arrays, preventing detail publications from retaining historical workspace
-  render contexts through unnecessary selection updates.
-  A component that cannot fit even at the coarse level
-  reports a limitation and preserves the current view. Estimates and sampled
-  resource totals are a soft budget, not a hard browser RSS limit.
+- The catalog fully resolves the SELECTED file first and lists the others as
+  navigation-only rows until one background scan finishes. Selecting one of
+  those rows prioritizes its metadata immediately. Unchanged catalog rows and
+  concurrent tree verification are reused, so loading one model never waits for
+  every model.
+- **STEP entries follow an active build.** The root preview shows before the
+  STEP save; the prior model stays visible while the next request builds; a
+  successful save leaves that revision's authored preview on screen with no
+  badge; a failed update keeps the last usable view and says so. Run the model
+  normally — existing decorators need no new imports — and keep the daemon
+  running. The feed, the badge vocabulary and the Opening stages are
+  [docs/lod.md](docs/lod.md) §6.
+- **Detail is progressive.** A large assembly can start at a coarse
+  tessellation and refine; anything on screen reaches at least standard detail;
+  offscreen components stay displayed at the detail they have; an idle viewport
+  settles and stays settled; and when memory limits prevent the requested
+  detail the filename badge reports **Limited detail** while preserving the
+  current view. None of this changes exact geometry, measurements or explicit
+  mesh-export tolerances. The scheduler, its budgets and its adoption rules are
+  [docs/lod.md](docs/lod.md).
 - A schema-9 STEP sidecar includes the STEP byte digest. A mismatch displays
   **Annotations unavailable** while permitting saved geometry to render.
   Rebuild or re-annotate the pair to repair it; importing a file never rewrites
@@ -375,8 +187,6 @@ source is newer than the build.
 - **Vite's transform cache can outlive HMR and hard reloads.** If a source
   edit does not show up, restart the dev server and delete
   `node_modules/.vite`.
-- Never invoke the export routes from automation — they open native save-as
-  dialogs.
 
 ## The shape of the app
 
@@ -385,13 +195,24 @@ src/client/ # React app: CadWorkspace (state root), CadViewer (scene +
             #   effects application), workbench/ (tabs, sections, session
             #   state, playback), render/ (viewport)
 scripts/    # app tooling incl. selfContained.test.mjs
-            #   (the boundary fence) and the dev-backend spawn helpers
-docs/       # subsystem docs; settings-ui.md is the CURATED design-system
-            #   reference for all settings UI work — binding, read it
-            #   before touching controls
+            #   (the boundary fence), the dev-backend spawn helpers, and
+            #   the DOM-free React harness and module hooks that component
+            #   and hook tests render the client through
+docs/       # subsystem docs — the map below
 dist/       # built client (gitignored); what `cadgen viewer` serves in a
             #   checkout and what the wheel bundles
 ```
+
+### The subsystem docs
+
+| Document | What it settles | Read it before |
+|---|---|---|
+| [docs/settings-ui.md](docs/settings-ui.md) | The CURATED design-system reference: anatomy, tokens, type scale, row kinds, states, the new-row checklist | touching any settings control — this one is BINDING |
+| [docs/render-types.md](docs/render-types.md) | The capability registry and the render-backend contract: viewer code asks what a format CAN DO, never what it IS | any change that touches more than one file format |
+| [docs/render-mode.md](docs/render-mode.md) | Appearance persistence, Display vs Render ownership, the Studio editor, quality constants, depth/zoom, the Materials tab | changing a mode, a control, or a quality number |
+| [docs/lod.md](docs/lod.md) | Progressive detail: admission, memory budgets, the replacement batch and its receipts, and the live-edit feed | changing what the viewport loads, refines, or shows while a build runs |
+| [docs/storage.md](docs/storage.md) | The four browser persistence tiers and the closed per-file slice set | adding any state that has to survive a reload |
+| [docs/backend.md](docs/backend.md) | The HTTP contract the client may assume: routes, the two browser gates, containment, the tessellation cache | changing a request the client makes |
 
 ## Testing
 

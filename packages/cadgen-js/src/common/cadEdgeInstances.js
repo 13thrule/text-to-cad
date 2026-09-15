@@ -31,6 +31,7 @@
 import { applyLineDepthBias, CAD_EDGE_CLASS_ORDER } from "./renderEdges.js";
 
 import { CAD_EDGE_COVERAGE_GLSL, CAD_EDGE_FEATHER_PIXELS } from "./cadEdgeCoverage.js";
+import { clamp } from "./numbers.js";
 export { CAD_EDGE_FEATHER_PIXELS } from "./cadEdgeCoverage.js";
 const FEATHER_GLSL = CAD_EDGE_FEATHER_PIXELS.toFixed(4);
 
@@ -39,10 +40,6 @@ export const CAD_EDGE_INSTANCE_TEXELS = 8;
 const INSTANCE_FLOATS = CAD_EDGE_INSTANCE_TEXELS * 4;
 const SEGMENT_TEXTURE_MAX_WIDTH = 2048;
 const MIN_CAPACITY = 8;
-
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
 
 function floatTexture(THREE, data, width, height) {
   const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.FloatType);

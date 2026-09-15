@@ -259,40 +259,6 @@ function normalizeFloorMode(value, fallback = THEME_FLOOR_MODES.STAGE) {
     : fallback;
 }
 
-export const ENVIRONMENT_PRESETS = Object.freeze([
-  {
-    id: "studio-softbox",
-    label: "Studio softbox",
-    kind: "procedural",
-    url: ""
-  },
-  {
-    id: "studio-hdri-43",
-    label: "Studio HDRI 43",
-    url: "https://static.morflax.com/textures/env/Studio_HDRI_43.jpg"
-  },
-  {
-    id: "studio-hdri-41",
-    label: "Studio HDRI 41",
-    url: "https://static.morflax.com/textures/env/Studio_HDRI_41.jpg"
-  },
-  {
-    id: "studio-hdri-12",
-    label: "Studio HDRI 12",
-    url: "https://static.morflax.com/textures/env/Studio_HDRI_12.jpg"
-  },
-  {
-    id: "studio-hdri-17",
-    label: "Studio HDRI 17",
-    url: "https://static.morflax.com/textures/env/Studio_HDRI_17.jpg"
-  },
-  {
-    id: "studio-hdri-22",
-    label: "Studio HDRI 22",
-    url: "https://static.morflax.com/textures/env/Studio_HDRI_22.jpg"
-  }
-]);
-
 const WORKBENCH_FILL_COLORS = Object.freeze([
   "#b6c4ce",
   "#f4a7a7",
@@ -411,7 +377,6 @@ const CINEMATIC_THEME_SETTINGS = Object.freeze({
   },
   environment: {
     enabled: true,
-    presetId: "studio-hdri-43",
     intensity: 0.32,
     rotationY: -0.25,
     useAsBackground: false
@@ -654,16 +619,6 @@ export function resolveThemeSettingsForId(themeId, { custom = null, prefersDark 
   return cloneThemePresetSettings(presetId);
 }
 
-const PRESET_ID_SET = new Set(ENVIRONMENT_PRESETS.map((preset) => preset.id));
-
-function normalizeEnvironmentPresetId(value) {
-  const normalized = String(value || "").trim();
-  if (PRESET_ID_SET.has(normalized)) {
-    return normalized;
-  }
-  return DEFAULT_THEME_SETTINGS.environment.presetId;
-}
-
 function normalizePosition(value, fallback) {
   return {
     x: normalizeNumber(value?.x, fallback.x, -5000, 5000),
@@ -778,7 +733,6 @@ export function normalizeThemeSettings(value = {}) {
     },
     environment: {
       enabled: normalizeBoolean(environment.enabled, DEFAULT_THEME_SETTINGS.environment.enabled),
-      presetId: normalizeEnvironmentPresetId(environment.presetId),
       intensity: normalizeNumber(environment.intensity, DEFAULT_THEME_SETTINGS.environment.intensity, 0, 4),
       rotationY: normalizeNumber(environment.rotationY, DEFAULT_THEME_SETTINGS.environment.rotationY, -Math.PI * 2, Math.PI * 2),
       useAsBackground: normalizeBoolean(environment.useAsBackground, DEFAULT_THEME_SETTINGS.environment.useAsBackground)
@@ -938,6 +892,4 @@ export function themeSettingsSupportsSystemColorMode(themeSettings = {}) {
   return normalized.colorMode === THEME_COLOR_MODES.SYSTEM;
 }
 
-export function getEnvironmentPresetById(presetId) {
-  return ENVIRONMENT_PRESETS.find((preset) => preset.id === presetId) || ENVIRONMENT_PRESETS[0];
-}
+

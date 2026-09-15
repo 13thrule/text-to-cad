@@ -242,3 +242,26 @@ test('rest projection is cached on the shared source geometry across rebuilt rec
   applyRecordTubeDeformation(THREE, moved, shifted);
   assert.notEqual(moved.tubeDeformationState.mapping, first.tubeDeformationState.mapping);
 });
+test('a posed pinch is pulled back inside the centre of curvature instead of inverting',()=>{
+  // The elbow's centre of curvature is [0,5,0], radius 5, so a rest vertex
+  // offset y toward it reaches y/5 of that radius. 1.0 is the centre itself;
+  // past it the tube is inside out. The clamp keeps 5% of the radius — 0.25 mm
+  // here — between the surface and the centre, and only for vertices that
+  // would otherwise reach further.
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute([0,1,0, 0,4.9,0, 0,6,0],3));
+  g.setAttribute('normal',new THREE.Float32BufferAttribute([0,1,0, 0,1,0, 0,1,0],3));
+  const r=record(g);
+  r.partBounds={min:[0,-1,-1],max:[10,6,1]};
+  applyRecordTubeDeformation(THREE,r,normalizeTubeDeformation({rest:straight,path:elbow}));
+  const posed=Array.from(r.geometry.attributes.position.array);
+  // Comfortably inside: rides the frame untouched.
+  near(posed.slice(0,3),[0,1,0],1e-5);
+  // Both of these reach past the floor — one short of the centre, one beyond
+  // it — and land on the same pulled-back surface, never across it.
+  near(posed.slice(3,6),[0,4.75,0],1e-5);
+  near(posed.slice(6,9),[0,4.75,0],1e-5);
+  for(let i=0;i<3;i++){
+    assert.ok(posed[i*3+1]<5,'no vertex may reach the centre of curvature');
+  }
+});

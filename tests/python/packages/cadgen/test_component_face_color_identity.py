@@ -41,12 +41,14 @@ class ComponentFaceColorIdentityTest(unittest.TestCase):
 
     def test_normalized_input_rekeys_legacy_colorless_components_but_keeps_brep_bytes(self):
         from build123d import Location
-        from cadgen._internal.cache_schema import CACHE_SCHEMA_VERSION
         from cadgen._internal.component_package import _content_hash_and_bytes, _content_hash_shape
 
         shape = self.box()
         plain_hash, brep = _content_hash_and_bytes(shape)
-        legacy_hash = hashlib.sha256(str(CACHE_SCHEMA_VERSION).encode() + b"\0" + brep).hexdigest()
+        # The retired pre-v3 key: a global cache-schema number (last value 20)
+        # salting the bare BREP bytes. Spelled literally so the retired scheme
+        # cannot come back through an import.
+        legacy_hash = hashlib.sha256(b"20" + b"\0" + brep).hexdigest()
         self.assertNotEqual(plain_hash, legacy_hash, "a polluted legacy colorless index must not be reused")
         shape.cad_face_ordinal_colors = {1: RED}
         red_hash, red_brep = _content_hash_and_bytes(shape)

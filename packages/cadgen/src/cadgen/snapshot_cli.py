@@ -26,7 +26,6 @@ import asyncio
 import copy
 import json
 import math
-import os
 import re
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -49,11 +48,7 @@ from cadgen.coordination import PHASE_BROWSER, SNAPSHOT, ProgressReporter
 # the sort of text that drifts when it is written twice. Re-exported here because
 # callers of this module have always reached for these names through it.
 from cadgen.occurrence_groups import (
-    OCCURRENCE_NEAR_MISS_LIMIT,
     UnknownOccurrenceSelector,
-    occurrence_group_ids,
-    occurrence_near_miss_hint,
-    occurrence_sort_key,
 )
 from cadgen.occurrence_groups import (
     expand_occurrence_selector as _expand_occurrence_selector,
@@ -61,76 +56,36 @@ from cadgen.occurrence_groups import (
 from cadgen.cli_progress import cli_progress_line
 from cadgen.results import SnapshotResult
 from cadgen.snapshot_core import (
-    BatchSnapshotRenderer,
-    COMPLEX_ASSEMBLY_LARGE_RENDER_HEIGHT,
-    COMPLEX_ASSEMBLY_LARGE_RENDER_WIDTH,
-    COMPLEX_ASSEMBLY_RENDER_HEIGHT,
-    COMPLEX_ASSEMBLY_RENDER_WIDTH,
-    CONTACT_SHEET_RENDER_HEIGHT,
-    CONTACT_SHEET_RENDER_WIDTH,
-    DEFAULT_TIMEOUT_SECONDS,
-    DIAGNOSTIC_RENDER_HEIGHT,
-    DIAGNOSTIC_RENDER_WIDTH,
     DISPLAY_MODE_ALIASES,
     DISPLAY_OPTION_KEYS,
-    MESH_INPUT_KINDS,
     MESH_SUPPORTED_RENDER_MODES,
-    PRESENTATION_LARGE_RENDER_HEIGHT,
-    PRESENTATION_LARGE_RENDER_WIDTH,
-    PRESENTATION_RENDER_HEIGHT,
-    PRESENTATION_RENDER_WIDTH,
-    RENDER_BROWSER_STARTUP_TIMEOUT_MS,
-    RouteFileError,
-    SETTINGS_KEY_HOMES,
-    SIMPLE_RENDER_HEIGHT,
-    SIMPLE_RENDER_WIDTH,
-    SIMPLE_SQUARE_RENDER_HEIGHT,
-    SIMPLE_SQUARE_RENDER_WIDTH,
-    SNAPSHOT_ORIGIN,
-    SNAPSHOT_RENDER_URL,
-    SNAPSHOT_ROUTE_GLOB,
     SUPPORTED_JOB_KEYS,
-    SUPPORTED_OUTPUT_KEYS,
     SUPPORTED_RENDER_MODES,
     SnapshotError,
-    TOPOLOGY_DISPLAY_MODES,
     asset_url_for_path,
     clear_render_output_targets,
-    content_type_for_path,
     declared_output_path,
-    default_render_size,
-    encode_path_param,
     effective_display_request,
-    explicit_size_profile,
     is_plain_object,
     validate_render_job_compatibility,
     load_render_option,
     load_display_option,
     load_json_text,
-    max_output_size,
     normalize_common_job,
-    normalize_size_profile,
     normalize_snapshot_job_packet,
     parse_camera_option,
     path_is_inside_or_equal,
-    render_resolved_job_packet,
     render_snapshot,
     resolve_mesh_render_job,
     has_kinematics_render_values,
-    resolve_output_size,
     validate_output_settings,
     validate_quality_settings,
     validate_render_option,
     selection_filter_values,
     selection_value_list,
-    resolve_snapshot_route_file,
-    route_file,
     snapshot_timestamp,
     validate_direct_settings_payload,
     validate_display_settings_values,
-    with_snapshot_timeout,
-    write_output_payload,
-    write_render_outputs,
 )
 from cadgen.snapshot_video import (
     ffmpeg_binary,
@@ -1119,7 +1074,7 @@ def resolve_step_render_job(
         resolved["stepParameterUrl"] = asset_url_for_path(source_sidecar_path(source_path), root_path)
     # Animation and materials come from the same pinned annotation snapshot.
     animation_block = sidecar.get("animation")
-    render_module_text = animation_block["source"] if animation_block is not None else None
+    animation_source_text = animation_block["source"] if animation_block is not None else None
     if kinematics_block:
         # A pose NAME and every DOF id are validated HERE, against the
         # declaration the CLI just loaded — a typo must fail as a clean CLI
@@ -1155,7 +1110,7 @@ def resolve_step_render_job(
             "see the cad skill's kinematics reference"
         )
     if animation_request is not None:
-        if render_module_text is None:
+        if animation_source_text is None:
             raise SnapshotError(
                 f"{input_path.name} has no animation in its sidecar. "
                 "Declare animation= on @step or pass --animation to cadgen step build."
@@ -1165,10 +1120,10 @@ def resolve_step_render_job(
         # not as a stack trace out of the browser runtime (which repeats the
         # check, with the compiled clips in hand, as the backstop and the
         # authority for a module that builds its clips indirectly).
-        from cadgen._internal.render_module import declared_clip_ids
+        from cadgen._internal.animation_source import declared_clip_ids
 
         clip_name = str(animation_request["clip"])
-        declared_clips = declared_clip_ids(render_module_text)
+        declared_clips = declared_clip_ids(animation_source_text)
         if declared_clips is not None and clip_name not in declared_clips:
             raise SnapshotError(
                 f"Unknown animation clip: {clip_name}. "

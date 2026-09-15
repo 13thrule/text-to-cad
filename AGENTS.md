@@ -72,6 +72,16 @@ for the full flow, the resume path, the rehearsal, and local/manual fallbacks.
   `packages/cadgen/README.md` (the laws), `packages/cadgen-js/README.md`,
   `apps/viewer/README.md`, and `apps/docs/README.md` before changing
   generation, rendering, storage, layout, or public interfaces.
+- A README holds the laws; the mechanism each law constrains lives one link
+  away, and the README names the link. Read the README, then follow the one
+  link — not the tree. What exists:
+  - `packages/cadgen/`: `STORE.md` (the store contract — sectioned, with a
+    table of contents), `MEMO.md` (`@memo`, and the process-wide geometric
+    `Shape` identity it installs), `SNAPSHOTS.md` (snapshot `--debug` timings).
+  - `packages/cadgen-js/docs/`: `render-pipeline.md`, `resource-ownership.md`,
+    `tube-deformation.md`.
+  - `apps/viewer/docs/`: `settings-ui.md` (BINDING for any settings control),
+    `render-types.md`, `render-mode.md`, `lod.md`, `storage.md`, `backend.md`.
 - Ships-alone law: `packages/cadgen` (the built PyPI wheel) works in isolation
   outside this repo, so its markdown must not refer to anything outside the
   package — enforced by `tests/python/global/test_package_boundaries.py`.
@@ -98,16 +108,26 @@ for the full flow, the resume path, the rehearsal, and local/manual fallbacks.
   the CAD Viewer client), so a skill ships no runtime of its own. Not every
   skill needs cadgen (bambu-labs, dfam-check, gcode, sendcutsend, step-parts
   are cadgen-free); do not add the dependency to a skill that never invokes it.
-- Regenerate derived outputs (`scripts/bundle/bundle.sh`) when a change reaches
-  what the bundlers consume; `bundle.sh --check` is the freshness gate.
 - Keep samples and manual CAD/robot-description validation artifacts under
-  `models/`. Automated tests must not read or depend on that sample corpus:
+  `models/`. Automated tests must not read, build or import that sample corpus:
   generate small fixtures in fresh temporary directories or use tiny test-owned
   fixtures, with their own cache stores and cleanup. Repo `tmp/` is fine.
+  Enforced by `tests/python/global/test_tests_are_self_contained.py`.
+- Every test file is reached by a runner under `scripts/test/`, and a collector
+  that finds nothing fails the run rather than reporting a group that never
+  ran — so a renamed or emptied test directory stops CI instead of going quiet.
+- Benchmarks under `scripts/bench/` are manual and their output is never
+  committed: reports, logs, profiles and screenshots go to an ignored `tmp/`.
+  Only their pure helper units run in a test runner.
+- The Python floor is `requires-python` in `packages/cadgen/pyproject.toml` and
+  nowhere else. Every cadgen source is parsed against that floor, so syntax
+  newer than it fails here rather than at `pip install` time on a user's
+  interpreter; raising the declared minimum relaxes the check automatically.
 - Reserve `scripts/` for durable repo commands. Do not write temporary,
   one-off, or local-only helper scripts there; use `tmp/` or `/tmp` instead.
-- When source changes affect generated runtimes, refresh or check them with the
-  one bundle entry point, `scripts/bundle/bundle.sh`. Call
+- When a change reaches what the bundlers consume, regenerate the derived
+  outputs with the one bundle entry point, `scripts/bundle/bundle.sh`;
+  `bundle.sh --check` is the freshness gate. Call
   `scripts/bundle/cadgen-runtime.sh` directly only when debugging one stage.
 - Never let a symlink reach the published tree. Agent installers disagree about
   symlinks and one loses data silently: the Skills CLI dereferences them, Claude

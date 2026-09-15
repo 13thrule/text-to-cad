@@ -37,7 +37,12 @@ export const LOD_DEBOUNCE_MS = 200;
  *    publish adds components per batch): retained cids keep their level and
  *    an in-flight load for a retained cid keeps running;
  *  - onCameraSample({ camera, viewportHeightPx, distanceFor(cid), cameraKey? })
- *    stamps numeric state and re-arms debounce. A stable cameraKey excludes
+ *    stamps numeric state and re-arms debounce, returning whether this sample
+ *    changed anything the scheduler plans from. A sample that repeats the
+ *    previous camera intent AND the previous per-component inputs changes
+ *    nothing, so it neither re-arms nor arms the debounce: a host that
+ *    resamples a motionless viewport must still be able to reach a settled
+ *    state. A stable cameraKey excludes
  *    geometry/accounting changes; only a new key or explicit `{ retry: true }`
  *    clears failures/pressure ceilings. Omitting the key means explicit retry;
  *  - dispose() on unmount.
@@ -165,15 +170,33 @@ export function createLodScheduler({
     for (const task of [...occupied.values()]) cancelTask(task);
   }
 
+  // Same camera intent AND the same numbers for every component: the next
+  // evaluation would replan exactly what the last one already planned. Hosts
+  // build a new sample object per notification, so object identity says
+  // nothing; the planning inputs do.
+  function planningInputsChanged(sample) {
+    if (!lastSample) return true;
+    for (const cid of components.keys()) {
+      if (!Object.is(sample.distanceFor(cid), lastSample.distanceFor(cid))) return true;
+      if ((sample.visibleFor?.(cid) !== false) !== (lastSample.visibleFor?.(cid) !== false)) return true;
+      if ((sample.selectedFor?.(cid) === true) !== (lastSample.selectedFor?.(cid) === true)) return true;
+    }
+    return false;
+  }
+
   function onCameraSample(sample, { retry = false } = {}) {
     if (disposed) {
-      return;
+      return false;
     }
     // Hosts supply cameraKey from camera/viewport state, excluding component
     // bounds. Publication/accounting resamples must not restart pressure loops.
     // An omitted key preserves the explicit-camera-call contract for hosts
     // without automatic resampling; retry is an explicit external intent.
     const fresh = !lastSample || retry || !Object.hasOwn(sample, "cameraKey") || sample.cameraKey !== lastSample.cameraKey;
+    // A repeated sample is not new work. Re-arming the debounce for it would
+    // hold `pendingEvaluation` — and therefore `qualitySettled` — false for as
+    // long as the host keeps resampling a motionless viewport.
+    const changed = fresh || planningInputsChanged(sample);
     lastSample = sample;
     if (fresh) {
       sampleEpoch += 1;
@@ -182,14 +205,17 @@ export function createLodScheduler({
       pressureCeilings.clear();
       if (occupied.size) sealReason = "camera";
     }
-    if (timer !== null) {
-      clearTimeoutFn(timer);
+    if (changed) {
+      if (timer !== null) {
+        clearTimeoutFn(timer);
+      }
+      timer = setTimeoutFn(() => {
+        timer = null;
+        evaluate();
+      }, debounceMs);
     }
-    timer = setTimeoutFn(() => {
-      timer = null;
-      evaluate();
-    }, debounceMs);
     if (fresh && occupied.size) pump();
+    return changed;
   }
 
   function entriesForPlan() {

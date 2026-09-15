@@ -1,13 +1,6 @@
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
+import { clamp, finiteOr } from "./numbers.js";
 
-function finiteOr(value, fallback) {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : fallback;
-}
-
-export function resolveColorGrading(materialSettings = {}) {
+function resolveColorGrading(materialSettings = {}) {
   return {
     saturation: clamp(finiteOr(materialSettings.saturation, 1), 0, 2.5),
     contrast: clamp(finiteOr(materialSettings.contrast, 1), 0, 2.5),
@@ -19,6 +12,11 @@ export function resolveColorGrading(materialSettings = {}) {
  * Mutate a Three-compatible linear RGB color with the shared material grading
  * policy. Keeping the scalar math here makes uniform and vertex source colors
  * honor the same explicit zero values in every renderer.
+ *
+ * Grading is an INTERNAL channel of the CAD scene settings, where the
+ * workbench presets ship a deliberate 1.18/1.12/1.02 look. It is absent from
+ * every public contract: Render's fixed studio finish declares no grading
+ * keys, so the identity defaults below apply to the photographic scene.
  */
 export function applyColorGrading(color, materialSettings = {}) {
   if (!color) {

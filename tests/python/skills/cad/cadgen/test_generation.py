@@ -10,11 +10,12 @@ from pathlib import Path
 from unittest import mock
 
 from cadgen._internal import generation as cad_generation
+# Spec discovery lives in generation_spec; the generation module drives it.
+from cadgen._internal.generation_spec import list_entry_specs, selected_entry_specs
 from cadgen import catalog as cad_catalog
 from cadgen._internal import source_hash as cad_source_hash
 from cadgen.catalog import StepImportOptions
 from cadgen._internal.glb_topology import read_step_topology_manifest_from_glb
-from cadgen._internal.cache_schema import CACHE_SCHEMA_VERSION
 from cadgen._internal.glb_topology import STEP_TOPOLOGY_SCHEMA_VERSION
 from cadgen._internal.step_scene import LoadedStepScene, OccurrenceNode, SelectorBundle
 from tests.python.support.cad_test_roots import IsolatedCadRoots
@@ -417,7 +418,7 @@ class CadGenerationTests(unittest.TestCase):
     def test_generated_part_discovery_includes_missing_step_output(self) -> None:
         script_path = self._generator_script("flat")
 
-        specs = [spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("flat")]
+        specs = [spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("flat")]
 
         self.assertEqual(1, len(specs))
         self.assertIsNotNone(specs[0].step_path)
@@ -430,7 +431,7 @@ class CadGenerationTests(unittest.TestCase):
         dependency_dir.mkdir(parents=True)
         (dependency_dir / "dependency.py").write_bytes(b"\xe9")
 
-        specs = [spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("flat")]
+        specs = [spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("flat")]
 
         self.assertEqual(1, len(specs))
 
@@ -438,7 +439,7 @@ class CadGenerationTests(unittest.TestCase):
         self._generator_script("flat")
         (self.temp_root / "notes.py").write_bytes(b"\xe9")
 
-        specs = [spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("flat")]
+        specs = [spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("flat")]
 
         self.assertEqual(1, len(specs))
 
@@ -487,7 +488,7 @@ class CadGenerationTests(unittest.TestCase):
         self._generator_script("flat")
         (self.temp_root / "flat.step").write_text("ISO-10303-21; END-ISO-10303-21;\n", encoding="utf-8")
 
-        specs = [spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("flat")]
+        specs = [spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("flat")]
 
         self.assertEqual(1, len(specs))
         self.assertEqual("generated", specs[0].source)
@@ -507,7 +508,7 @@ class CadGenerationTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        spec = next(spec for spec in cad_generation.list_entry_specs() if spec.source_path == script_path)
+        spec = next(spec for spec in list_entry_specs() if spec.source_path == script_path)
 
         self.assertEqual(script_path.with_suffix(".step"), spec.step_path)
         self.assertEqual(self._cad_ref("missing_output"), spec.cad_ref)
@@ -519,12 +520,12 @@ class CadGenerationTests(unittest.TestCase):
             with self.subTest(extra=sorted(extra)):
                 self._generator_script("flat", dict_return=extra)
                 with self.assertRaisesRegex(ValueError, r"returns a dict.*@stl/@threemf/@glb"):
-                    cad_generation.list_entry_specs()
+                    list_entry_specs()
 
     def test_generated_dxf_defaults_output_to_sibling_stem(self) -> None:
         script_path = self._dxf_generator_script("flat")
 
-        spec = next(spec for spec in cad_generation.list_entry_specs() if spec.source_path == script_path)
+        spec = next(spec for spec in list_entry_specs() if spec.source_path == script_path)
 
         self.assertIsNotNone(spec.dxf_path)
         self.assertEqual(self.temp_root / "flat_drawing.dxf", spec.dxf_path)
@@ -599,7 +600,7 @@ class CadGenerationTests(unittest.TestCase):
 
         stderr = io.StringIO()
         with contextlib.redirect_stderr(stderr):
-            specs = cad_generation.list_entry_specs()
+            specs = list_entry_specs()
 
         cad_refs = {spec.cad_ref for spec in specs}
         self.assertIn(self._cad_ref("flat"), cad_refs)
@@ -629,7 +630,7 @@ class CadGenerationTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        spec = next(spec for spec in cad_generation.list_entry_specs() if spec.source_path == script_path)
+        spec = next(spec for spec in list_entry_specs() if spec.source_path == script_path)
 
         self.assertEqual(("model",), spec.generator_metadata.generator_names)
 
@@ -654,7 +655,7 @@ class CadGenerationTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        spec = next(spec for spec in cad_generation.list_entry_specs() if spec.source_path == script_path)
+        spec = next(spec for spec in list_entry_specs() if spec.source_path == script_path)
 
         captured_out, captured_err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(captured_out), contextlib.redirect_stderr(captured_err):
@@ -688,7 +689,7 @@ class CadGenerationTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        spec = next(spec for spec in cad_generation.list_entry_specs() if spec.source_path == script_path)
+        spec = next(spec for spec in list_entry_specs() if spec.source_path == script_path)
         scene = cad_generation.run_script_generator(spec, "step")
 
         # A @step run builds the render scene in memory and writes no STEP by default.
@@ -795,7 +796,7 @@ class CadGenerationTests(unittest.TestCase):
     def test_direct_step_is_discovered_as_imported_part(self) -> None:
         self._write_step("loose")
 
-        specs = [spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("loose")]
+        specs = [spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("loose")]
 
         self.assertEqual(1, len(specs))
         self.assertIsNotNone(specs[0].step_path)
@@ -807,7 +808,7 @@ class CadGenerationTests(unittest.TestCase):
         self._write_step_at(scoped_root, "only")
         self._write_step("outside")
 
-        specs = cad_generation.list_entry_specs(scoped_root)
+        specs = list_entry_specs(scoped_root)
 
         self.assertEqual([f"{self.relative_dir}/scoped/only"], [spec.cad_ref for spec in specs])
 
@@ -827,23 +828,23 @@ class CadGenerationTests(unittest.TestCase):
         )
         all_specs = [
             spec
-            for spec in cad_generation.list_entry_specs()
+            for spec in list_entry_specs()
             if spec.cad_ref.startswith(f"{self.relative_dir}/")
         ]
 
         with self.assertRaisesRegex(ValueError, "At least one CAD target is required"):
-            cad_generation.selected_entry_specs(all_specs, [])
+            selected_entry_specs(all_specs, [])
 
     def test_entry_selection_is_exact_and_ordered(self) -> None:
         self._write_step("first")
         self._write_step("second")
         specs = [
             spec
-            for spec in cad_generation.list_entry_specs()
+            for spec in list_entry_specs()
             if spec.cad_ref.startswith(f"{self.relative_dir}/")
         ]
 
-        selected = cad_generation.selected_entry_specs(
+        selected = selected_entry_specs(
             specs,
             [self._cad_ref("second"), self._cad_ref("first"), self._cad_ref("second")],
         )
@@ -898,7 +899,7 @@ class CadGenerationTests(unittest.TestCase):
 
     def test_generated_step_targets_expect_python_backed_topology_artifacts(self) -> None:
         script_path = self._generator_script("generated_kind")
-        generated_spec = next(spec for spec in cad_generation.list_entry_specs() if spec.source_path == script_path)
+        generated_spec = next(spec for spec in list_entry_specs() if spec.source_path == script_path)
         direct_path = self._write_step("direct_kind")
         _, direct_specs = cad_generation._selected_specs_for_targets([str(direct_path)])
 
@@ -965,7 +966,7 @@ class CadGenerationTests(unittest.TestCase):
 
     def test_step_generator_does_not_run_sidecars(self) -> None:
         script_path = self._generator_script("flat", with_dxf=True, dxf_before_step=True)
-        spec = next(spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("flat"))
+        spec = next(spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("flat"))
 
         cad_generation.run_script_generator(spec, "step")
 
@@ -975,7 +976,7 @@ class CadGenerationTests(unittest.TestCase):
 
     def test_generated_step_outputs_reuses_generated_scene(self) -> None:
         script_path = self._generator_script("flat")
-        spec = next(spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("flat"))
+        spec = next(spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("flat"))
         step_path = script_path.with_suffix(".step")
         observed_scene = None
 
@@ -998,7 +999,7 @@ class CadGenerationTests(unittest.TestCase):
 
     def test_normal_python_generation_reuses_current_package(self) -> None:
         script_path = self._generator_script("flat")
-        spec = next(spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("flat"))
+        spec = next(spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("flat"))
         tree, _ = self._fixture_tree("flat")
 
         # A current model reuses its tree: the topology options match, the tree is
@@ -1039,7 +1040,7 @@ class CadGenerationTests(unittest.TestCase):
 
         cad_refs = {
             spec.cad_ref
-            for spec in cad_generation.list_entry_specs()
+            for spec in list_entry_specs()
             if spec.cad_ref.startswith(f"{self.relative_dir}/")
         }
 
@@ -1101,7 +1102,7 @@ class CadGenerationTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ValueError, "must return a build123d shape"):
-            cad_generation.list_entry_specs()
+            list_entry_specs()
 
     def test_decorated_dxf_scripts_are_first_class_entries(self) -> None:
         # Library-first: any plain .py declaring a @dxf model is a drawing entry
@@ -1120,7 +1121,7 @@ class CadGenerationTests(unittest.TestCase):
             encoding="utf-8",
         )
 
-        specs = cad_generation.list_entry_specs()
+        specs = list_entry_specs()
 
         spec = next(spec for spec in specs if spec.source_path == script_path)
         self.assertIsNotNone(spec.dxf_path)
@@ -1129,7 +1130,7 @@ class CadGenerationTests(unittest.TestCase):
     def test_imported_step_defaults_to_part(self) -> None:
         self._write_step("imported")
 
-        specs = [spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("imported")]
+        specs = [spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("imported")]
 
         self.assertEqual(1, len(specs))
         self.assertIsNotNone(specs[0].step_path)
@@ -1137,7 +1138,7 @@ class CadGenerationTests(unittest.TestCase):
     def test_imported_stp_defaults_to_part(self) -> None:
         self._write_step("imported-stp", suffix=".stp")
 
-        specs = [spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("imported-stp")]
+        specs = [spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("imported-stp")]
 
         self.assertEqual(1, len(specs))
         self.assertIsNotNone(specs[0].step_path)
@@ -1147,7 +1148,7 @@ class CadGenerationTests(unittest.TestCase):
         # resolver supply the values. There is no default-value sentinel.
         self._write_step("imported-mesh")
 
-        specs = [spec for spec in cad_generation.list_entry_specs() if spec.cad_ref == self._cad_ref("imported-mesh")]
+        specs = [spec for spec in list_entry_specs() if spec.cad_ref == self._cad_ref("imported-mesh")]
 
         self.assertEqual(1, len(specs))
         self.assertIsNone(specs[0].mesh_tolerance)

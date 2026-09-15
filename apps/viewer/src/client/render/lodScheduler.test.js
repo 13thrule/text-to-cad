@@ -795,3 +795,79 @@ test("same-camera resampling preserves hard failures and memory denials across p
     scheduler.dispose();
   }
 });
+
+test("an idle viewport resampling itself settles, and real camera motion still pends then settles", async () => {
+  const clock = makeClock(), loads = [];
+  const scheduler = createLodScheduler({ ...clock, minimumLevel: 1,
+    loadLevel: async (_cid, level) => { loads.push(level); return {}; }, applyLevel: () => true });
+  const stationary = { ...sampleWith({ part: 52 }), cameraKey: "camera-a" };
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
+  assert.equal(scheduler.onCameraSample(stationary), true, "the first sample is new camera intent");
+  assert.equal(scheduler.snapshot().pendingEvaluation, true);
+  clock.fire(); await drain();
+  assert.deepEqual(loads, [3]);
+  assert.equal(scheduler.snapshot().qualitySettled, true, "the settled target is applied");
+
+  // A host that resamples a motionless viewport (an effect re-running, a
+  // resize observer, a status republication) must not hold the viewport
+  // pending: the repeated sample plans nothing new.
+  for (let i = 0; i < 5; i += 1) {
+    assert.equal(scheduler.onCameraSample({ ...stationary }), false, "a repeated sample changes nothing");
+  }
+  assert.equal(clock.count(), 0, "an unchanged sample does not arm or re-arm the debounce");
+  assert.equal(scheduler.snapshot().pendingEvaluation, false);
+  assert.equal(scheduler.snapshot().qualitySettled, true, "an idle viewport stays settled while it resamples");
+
+  // Real motion is pending work again, and so is a same-camera sample whose
+  // component distances actually moved.
+  assert.equal(scheduler.onCameraSample({ ...sampleWith({ part: 10000 }), cameraKey: "camera-b" }), true);
+  assert.equal(scheduler.snapshot().pendingEvaluation, true);
+  assert.equal(scheduler.snapshot().qualitySettled, false, "moved camera has an unevaluated sample");
+  clock.fire(); await drain();
+  assert.deepEqual(loads, [3, 1]);
+  assert.equal(scheduler.snapshot().pendingEvaluation, false);
+  assert.equal(scheduler.snapshot().qualitySettled, true);
+  assert.equal(scheduler.onCameraSample({ ...sampleWith({ part: 52 }), cameraKey: "camera-b" }), true,
+    "same camera key, moved component: still real work to replan");
+  assert.equal(scheduler.snapshot().pendingEvaluation, true);
+  clock.fire(); await drain();
+  assert.deepEqual(loads, [3, 1, 3]);
+  assert.equal(scheduler.snapshot().qualitySettled, true);
+  scheduler.dispose();
+});
+
+test("an unchanged sample keeps the pending work it cannot replan away", async () => {
+  const clock = makeClock(), gate = deferred();
+  const scheduler = createLodScheduler({ ...clock, minimumLevel: 1,
+    loadLevel: () => gate.promise, applyLevel: () => true });
+  const sample = { ...sampleWith({ part: 52 }), cameraKey: "camera-a" };
+  scheduler.setComponents([{ cid: "part", diagonal: 100, level: 0 }]);
+  scheduler.onCameraSample(sample);
+  clock.fire(); await tick();
+  assert.equal(scheduler.busy(), true);
+  assert.equal(scheduler.onCameraSample({ ...sample }), false);
+  assert.equal(scheduler.snapshot().qualitySettled, false, "an in-flight replacement is not settled");
+  gate.resolve({}); await drain();
+  assert.equal(scheduler.levelOf("part"), 3);
+  assert.equal(scheduler.snapshot().qualitySettled, true);
+  scheduler.dispose();
+});
+
+test("a sample a visibility or selection change reaches is new work even at the same camera", async () => {
+  const clock = makeClock(), loads = [];
+  const scheduler = createLodScheduler({ ...clock, minimumLevel: 1,
+    loadLevel: async (cid) => { loads.push(cid); return {}; }, applyLevel: () => true });
+  const base = { ...sampleWith({ hidden: 52 }), cameraKey: "camera-a" };
+  scheduler.setComponents([{ cid: "hidden", diagonal: 100, level: 1 }]);
+  assert.equal(scheduler.onCameraSample({ ...base, visibleFor: () => false }), true);
+  clock.fire(); await drain();
+  assert.deepEqual(loads, [], "an offscreen component keeps its level");
+  assert.equal(scheduler.onCameraSample({ ...base, visibleFor: () => false }), false);
+  assert.equal(scheduler.onCameraSample({ ...base, visibleFor: () => true }), true,
+    "the component coming on screen is new work");
+  clock.fire(); await drain();
+  assert.deepEqual(loads, ["hidden"]);
+  assert.equal(scheduler.onCameraSample({ ...base, selectedFor: () => true }), true,
+    "a changed selection reorders the plan");
+  scheduler.dispose();
+});

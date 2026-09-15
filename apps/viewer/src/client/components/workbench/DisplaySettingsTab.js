@@ -294,7 +294,7 @@ export function DisplaySettingsSection({
 
 export function buildDisplaySettingsTab(props) {
   return {
-    id: FILE_SHEET_SECTION_IDS.THEME_DISPLAY,
+    id: FILE_SHEET_SECTION_IDS.DISPLAY,
     title: "Display",
     content: <DisplaySettingsSection {...props} />
   };

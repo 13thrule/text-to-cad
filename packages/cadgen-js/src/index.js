@@ -1,5 +1,4 @@
 export * from "./common/cadScene.js";
-export * from "./common/colorGrading.js";
 export * from "./common/environmentMap.js";
 export * from "./common/photographicStudio.js";
 export * from "./common/photographicStudioRig.js";

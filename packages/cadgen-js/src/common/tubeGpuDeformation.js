@@ -20,7 +20,7 @@ const MAPPING_TEXTURE_WIDTH = 1024;
 // Knots at every analytic table entry (Bézier) or at a fixed angular pitch
 // (arc), then cubic Hermite interpolation in arc length onto a uniform table:
 // 16 floats per frame — point, tangent, normal, curvature — each padded to vec4.
-export function buildGpuTubeFrames(path, sample) {
+function buildGpuTubeFrames(path, sample) {
   const knots = [];
   for (const segment of path.segments) {
     const entries = segment.kind === "bezier" ? segment.table : null;
@@ -175,7 +175,7 @@ function patchMaterial(material, uniforms) {
   }
 }
 
-export function gpuTubeMaterialStage(material) {
+function gpuTubeMaterialStage(material) {
   return tubeMaterialStage(material, TUBE_GPU_STAGE);
 }
 

@@ -10,15 +10,21 @@
 // retained grid needs and well above what the big tube does. Surviving IS the
 // assertion; the numbers printed at the end let the caller state the margin.
 //
-// Run by packageTubeMorph.test.js, never imported. Requires --expose-gc.
+// A BENCHMARK, not a test: what it measures depends on the machine's memory and
+// on V8's collector, so it is not part of `npm test`. Run it directly, or set
+// CADGEN_MORPH_MEMORY_PROBE=1 to have packageTubeMorph.test.js assert on it:
+//
+//   node --expose-gc --max-old-space-size=160 packages/cadgen-js/bench/morphMemoryProbe.mjs
+//
+// Requires --expose-gc, and prints one JSON line.
 
 import v8 from "node:v8";
 
-import { normalizeAnimationClips } from "../../common/animationRuntime.js";
-import { resolveFramePlan } from "../../common/framePlan.js";
-import { compileTubePath } from "../../common/tubeDeformation.js";
-import { sampleClipAnimation } from "./packageAnimation.js";
-import { buildTubeMorphTargets } from "./packageTubeMorph.js";
+import { normalizeAnimationClips } from "../src/common/animationRuntime.js";
+import { resolveFramePlan } from "../src/common/framePlan.js";
+import { compileTubePath } from "../src/common/tubeDeformation.js";
+import { sampleClipAnimation } from "../src/lib/export/packageAnimation.js";
+import { buildTubeMorphTargets } from "../src/lib/export/packageTubeMorph.js";
 
 // Fixed, not configurable: the caller's heap cap is chosen against THESE numbers,
 // so an environment that could change them would change what the test means.

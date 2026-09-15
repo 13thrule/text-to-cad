@@ -13,7 +13,7 @@ import {
   float64Hex,
   getCachedEntryBytes,
   probeCachedTessellationEntries,
-  getCachedComponentEntries,
+  getCachedComponentEntry,
   isTessellationCacheProbeMissError,
   resolvedTessellationIdentity,
   setTessellationCacheProvider,
@@ -24,6 +24,7 @@ import {
   tessellationPayloadFacts,
   validateTessellationProbeRow,
 } from "./tessellationCache.js";
+import { DEFAULT_OPTIONS } from "./tessellate.js";
 
 const D = "11".repeat(32);
 const D2 = "22".repeat(32);
@@ -111,6 +112,21 @@ test("lossless binary64 keys match Python and separate old decimal collisions", 
     "v4 key preserves the requested double",
   );
 
+  // An option the key does not spell must never reach a hit: loopTolerance,
+  // maxRefineDepth and minLoopSegments all change the triangles, and the key
+  // would be byte-identical to a default run's.
+  for (const [name, value] of [["loopTolerance", 1e-5], ["maxRefineDepth", 9], ["minLoopSegments", 32]]) {
+    assert.throws(
+      () => tessellationCacheKey(D, { ...Q, [name]: value }),
+      new RegExp(`not part of the cache key: ${name}`),
+    );
+    assert.throws(() => tessellationQuality({ [name]: value }), /not part of the cache key/);
+  }
+  // Restating a default is not a divergence, so it still keys normally.
+  assert.equal(
+    tessellationCacheKey(D, { ...Q, loopTolerance: DEFAULT_OPTIONS.loopTolerance }),
+    tessellationCacheKey(D, Q),
+  );
 });
 
 test("v4 round-trips the full typed payload and exposes exact D/O/L/Q/R", () => {
@@ -278,9 +294,10 @@ test("provider batch and writeback accept only entries bound to requested L", as
   assert.equal(puts.length, 0, "mismatched D is not persisted");
   await writeBackEntryBytes(D, Q, entry);
   assert.deepEqual(puts, [tessellationCacheKey(D, Q)]);
-  const hits = await getCachedComponentEntries([D, D2], Q);
-  assert.deepEqual([...hits.keys()], [D]);
-  assert.equal(hits.get(D).identity.surfaceObject, O);
+  const probes = await probeCachedTessellationEntries([D, D2], Q);
+  assert.deepEqual([...probes.keys()], [D], "only the bound entry is readable");
+  const hit = await getCachedComponentEntry(D, Q, { probe: probes.get(D) });
+  assert.equal(hit.identity.surfaceObject, O);
 });
 
 test("a vanished probed body is an explicit retry boundary only when requested", async (t) => {

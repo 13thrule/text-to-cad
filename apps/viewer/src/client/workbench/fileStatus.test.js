@@ -94,6 +94,52 @@ test("a failed save explains that the updated model remains visible", () => {
   });
 });
 
+test("backend warnings badge the entry without failing it", () => {
+  const alert = {
+    severity: "warning",
+    title: "Model warning",
+    warnings: [
+      {
+        heading: "part.step.js is a retired render module",
+        message: "It is read by nothing.",
+        recovery: "Move its clips into the decorator and delete part.step.js."
+      }
+    ]
+  };
+  // A warning is not a failure: the model stays visible and the badge summarizes
+  // the server's own heading rather than any wording of the client's.
+  assert.deepEqual(resolveFileStatus({ ...ready, error: alert }), {
+    label: "Model warning",
+    title: "part.step.js is a retired render module",
+    tone: "warning",
+    busy: false
+  });
+  // Several warnings keep one stable badge label -- it is also the `data-file-status` hook.
+  const two = resolveFileStatus({
+    ...ready,
+    error: { ...alert, warnings: [...alert.warnings, { heading: "Second neighbour", message: "" }] }
+  });
+  assert.equal(two.label, "Model warning");
+  assert.equal(two.title, "part.step.js is a retired render module Second neighbour");
+  // A warning with no heading falls back to its explanation, and an alert with no
+  // warnings at all keeps the pre-existing tooltip/message behaviour.
+  assert.equal(
+    resolveFileStatus({ ...ready, error: { ...alert, warnings: ["Bare sentence."] } }).title,
+    "Bare sentence."
+  );
+  assert.equal(
+    resolveFileStatus({
+      ...ready,
+      error: { ...alert, warnings: [], message: "Saved model settings are unavailable." }
+    }).title,
+    "Saved model settings are unavailable."
+  );
+  assert.equal(
+    resolveFileStatus({ ...ready, error: { ...alert, warnings: [] } }).title,
+    "Some model settings could not be applied. The model can still be viewed."
+  );
+});
+
 test("warnings remain actionable while successful background work stays quiet", () => {
   assert.equal(resolveFileStatus({
     ...ready,

@@ -6,7 +6,6 @@ import test from "node:test";
 import {
   loadSurfComponentInWorker,
   reclaimIdleSurfWorkers,
-  releaseSurfWorkerPool,
   releaseSurfWorkerPoolWhenIdle,
   surfWorkerMemoryStats,
 } from "./surfWorkerClient.js";
@@ -61,7 +60,7 @@ test("worker requests declare a bounded render/selectors capability set", async 
       /must require render or selectors capability/,
     );
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -116,7 +115,7 @@ test("worker memory stats follow used slots and keep each slot's own high-water"
       "process memory estimates never enter the persistent worker protocol",
     );
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -140,7 +139,7 @@ test("handled worker errors retain their estimate and unknown estimates use the 
       /handled failure/,
     );
     assert.equal(surfWorkerMemoryStats().residentEstimateBytes, 777);
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
 
     await assert.rejects(
       loadSurfComponentInWorker("http://x/not-cached-unknown.surf"),
@@ -148,7 +147,7 @@ test("handled worker errors retain their estimate and unknown estimates use the 
     );
     assert.equal(surfWorkerMemoryStats().residentEstimateBytes, 128 * 1024 * 1024);
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -205,7 +204,7 @@ test("abort replacement drops the old slot charge and a stale reply cannot resto
     assert.equal(surfWorkerMemoryStats().residentEstimateBytes, (slotCount - 1) * 10);
     assert.ok(created.length > surfWorkerMemoryStats().residentSlots, "the assigned slot was replaced");
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -267,12 +266,12 @@ test("partial and full reclamation release only the terminated slots' estimates"
       residentEstimateBytes: 0,
     });
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
 
-test("releaseSurfWorkerPool terminates idle workers and the next request builds a fresh pool", async () => {
+test("reclamation terminates idle workers and the next request builds a fresh pool", async () => {
   const terminated = [];
   const created = [];
   class FakeWorker {
@@ -289,17 +288,18 @@ test("releaseSurfWorkerPool terminates idle workers and the next request builds 
   const savedWorker = globalThis.Worker;
   globalThis.Worker = FakeWorker;
   try {
-    assert.equal(releaseSurfWorkerPool(), false, "nothing to release before the first request");
+    assert.equal(reclaimIdleSurfWorkers().reclaimedSlots, 0, "nothing to release before the first request");
     const inFlight = loadSurfComponentInWorker("http://x/components/aa.surf");
     assert.ok(created.length > 0, "the first request builds the pool");
-    assert.equal(releaseSurfWorkerPool(), false, "a request in flight keeps the pool");
+    assert.equal(reclaimIdleSurfWorkers().fullyReleased, false, "a request in flight keeps its isolate");
+    assert.equal(terminated.length, 0, "in-flight work is never terminated");
     await inFlight;
-    assert.equal(releaseSurfWorkerPool(), true);
+    assert.equal(reclaimIdleSurfWorkers().fullyReleased, true);
     assert.equal(terminated.length, created.length, "every worker was terminated");
     const before = created.length;
     await loadSurfComponentInWorker("http://x/components/bb.surf");
     assert.ok(created.length > before, "the next request builds a fresh pool");
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
   } finally {
     globalThis.Worker = savedWorker;
   }
@@ -331,7 +331,7 @@ test("sequential refinement creates one isolate and concurrent ready work grows 
     finish(created[0]); finish(created[1]);
     await Promise.all([first, second]);
   } finally {
-    releaseSurfWorkerPool(); globalThis.Worker = savedWorker;
+    reclaimIdleSurfWorkers(); globalThis.Worker = savedWorker;
   }
 });
 
@@ -406,7 +406,7 @@ test("reclaimIdleSurfWorkers returns idle capacity without disturbing active or 
       fullyReleased: true,
     });
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -453,7 +453,7 @@ test("idle reclamation keeps one progress slot for requests waiting on cache rea
     assert.deepEqual((await waiting).meshData.parts, ["complete"]);
     assert.equal(surfWorkerMemoryStats().residentEstimateBytes, 73);
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -481,7 +481,7 @@ test("releaseSurfWorkerPoolWhenIdle releases an overlapping request after it com
     assert.equal(await released, true);
     assert.equal(terminated.length, created.length, "all isolates release at idle");
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -508,7 +508,7 @@ test("releaseSurfWorkerPoolWhenIdle releases after the last request aborts", asy
     assert.equal(await released, true);
     assert.equal(terminated.length, created.length, "abort drains and releases the pool");
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -546,7 +546,7 @@ test("an old idle-release waiter cannot terminate a replacement pool", async () 
     });
     await replacementRequest;
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -611,7 +611,7 @@ test("aborting synchronous work replaces only its worker and preserves unrelated
     assert.deepEqual((await queued).meshData.parts, ["queued"]);
     await Promise.all(unrelated);
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -657,7 +657,7 @@ test("a pending warm-cache lookup does not occupy a worker slot", async (t) => {
     });
     assert.deepEqual((await awaitingCache).meshData.parts, ["cached"]);
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -690,7 +690,7 @@ test("a worker runtime error replaces one slot without rejecting unrelated work"
     assert.deepEqual((await kept).meshData.parts, ["kept"]);
     assert.equal(created.length, initialWorkerCount + 1, "only the failed slot was replaced");
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -751,7 +751,7 @@ test("a failed replacement constructor preserves surviving workers and their que
     assert.deepEqual((await queued).meshData.parts, ["queued"]);
     await Promise.all(survivors);
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });
@@ -802,7 +802,7 @@ test("synchronous post failures drain a queued batch without recursive dispatch"
     assert.deepEqual((await final).meshData.parts, ["final"]);
     await Promise.all(blockers);
   } finally {
-    releaseSurfWorkerPool();
+    reclaimIdleSurfWorkers();
     globalThis.Worker = savedWorker;
   }
 });

@@ -194,7 +194,7 @@ function float32Changed(values, offset, source, count) {
 // private Mesh as a transform/picking metadata proxy. Its material is hidden,
 // so it issues no draw, while remaining in the scene graph for world-matrix
 // updates and the viewer's existing per-record raycast path.
-export function buildCadSurfaceInstanceSets(THREE, records, modelGroup) {
+function buildCadSurfaceInstanceSets(THREE, records, modelGroup) {
   const byGeometry = new Map();
   for (const record of records || []) {
     if (!instancingCandidate(record)) continue;

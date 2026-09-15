@@ -49,6 +49,37 @@ Prefer this decorator for costly repeated booleans or builders. Validation,
 key construction and private BREP reconstruction have a cost; decorating a
 cheap primitive can make it slower. Ordinary undecorated factories remain valid.
 
+## Shape identity while the memo is installed
+
+Reusing a result means reconstructing it, and a reconstructed shape carries
+new native topology even where the operation changed nothing. build123d
+identifies a shape by that native pointer, so holding a sub-shape across an
+operation and re-finding it afterwards would find nothing. The decorator's
+installation therefore makes shape identity GEOMETRIC process-wide, for
+`is_same`, `==` and `hash()` alike. Three statements about what that means:
+
+1. Identity is scoped to the process, not to the memo. Reuse changes the
+   shapes ordinary model code is holding, and model code compares them with
+   build123d's own operators; there is no lookup inside the decorator to
+   narrow the change to. The decorator's own reuse keys are the shape's
+   serialized bytes with its placement and orientation, and never `==` or
+   `hash()`.
+2. A pointer match is still the fast answer. Only when it fails do two shapes
+   of the same kind compare by world geometry: sub-shape counts, vertex
+   points, and one sample point per face (or per edge, below faces), rounded
+   to six decimal places so a re-composed rotation's last-bit noise does not
+   separate a shape from itself. Orientation is not part of it, matching
+   build123d's own `is_same`.
+3. Coincident duplicates collapse. Two faces sharing a plane and an outline,
+   or an edge fused onto itself, now compare equal and hash together, so a
+   `set` of them holds one and a `dict` keyed on them has one entry — where
+   the pointer check reported two. This is the observable difference for
+   ordinary model code, and it applies to selection, membership and de-duping
+   generally.
+
+`CADGEN_OP_MEMO=0` turns reuse and these identity semantics off together: with
+nothing reconstructed, build123d's pointer identity is correct on its own.
+
 ## Execution and recovery
 
 A fresh daemon worker establishes its runtime witness before loading authored

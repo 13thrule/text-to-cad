@@ -17,12 +17,16 @@ import {
   normalizeThemeSettings
 } from "./themeSettings.js";
 
-export const SCENE_APPEARANCE = Object.freeze({
+const SCENE_APPEARANCE = Object.freeze({
   SYSTEM: "system",
   LIGHT: "light",
   DARK: "dark"
 });
 
+// The studio, quality, envelope, lighting and backdrop vocabularies are the
+// cross-language Render contract: cadgen's snapshot_core carries the same sets
+// and tests/python/global/test_snapshot_viewer_theme_parity.py reads these
+// exports from source to prove they still agree. Keep them exported and frozen.
 export const RENDER_STUDIO = Object.freeze({
   LIGHT: "light",
   DARK: "dark"
@@ -49,7 +53,7 @@ export const SCENE_QUALITY = Object.freeze({
   HIGH: "high"
 });
 
-export const SCENE_QUALITY_PRESETS = Object.freeze([
+const SCENE_QUALITY_PRESETS = Object.freeze([
   Object.freeze({
     id: SCENE_QUALITY.INTERACTIVE,
     label: "Interactive",
@@ -128,25 +132,6 @@ const STUDIO_BACKDROP_COLORS = Object.freeze({
   [RENDER_STUDIO.DARK]: "#121315"
 });
 
-const STUDIO_MATERIAL_SETTINGS = Object.freeze({
-  defaultColor: "#b9bdc3",
-  fillColors: Object.freeze(["#b9bdc3"]),
-  cycleColors: false,
-  overrideSourceColors: false,
-  tintMode: "blend",
-  tintStrength: 0,
-  saturation: 1,
-  contrast: 1,
-  brightness: 1,
-  roughness: 0.42,
-  metalness: 0.03,
-  clearcoat: 0,
-  clearcoatRoughness: 0.26,
-  opacity: 1,
-  envMapIntensity: 1,
-  emissiveIntensity: 0
-});
-
 const EXPLICIT_PBR_MATERIAL_KEYS = Object.freeze([
   "roughness",
   "metalness",
@@ -166,7 +151,7 @@ const DEFAULT_RENDER_CAMERA = Object.freeze({
   focalLength: 50
 });
 
-export const DEFAULT_RENDER_DISPLAY_SETTINGS = Object.freeze({
+const RENDER_DISPLAY_SETTINGS = Object.freeze({
   ...DEFAULT_DISPLAY_SETTINGS,
   mode: CAD_DISPLAY_MODE.SHADED,
   edges: DISABLED_DISPLAY_EDGE_SETTINGS,
@@ -235,7 +220,7 @@ function validateRenderBackdrop(value) {
   }
 }
 
-export function normalizeSceneAppearance(value = SCENE_APPEARANCE.SYSTEM, {
+function normalizeSceneAppearance(value = SCENE_APPEARANCE.SYSTEM, {
   prefersDark = false
 } = {}) {
   const normalized = String(value ?? SCENE_APPEARANCE.SYSTEM).trim().toLowerCase();
@@ -248,14 +233,14 @@ export function normalizeSceneAppearance(value = SCENE_APPEARANCE.SYSTEM, {
   throw new Error("appearance must be 'system', 'light', or 'dark'");
 }
 
-export function normalizeRenderStudioId(value) {
+function normalizeRenderStudioId(value) {
   if (typeof value !== "string" || !RENDER_STUDIO_IDS.has(value)) {
     throw new Error(`Unknown render studio '${value}'. Expected one of: ${[...RENDER_STUDIO_IDS].join(", ")}`);
   }
   return value;
 }
 
-export function normalizeRenderQuality(value = RENDER_QUALITY.FINAL) {
+function normalizeRenderQuality(value = RENDER_QUALITY.FINAL) {
   if (typeof value !== "string" || !RENDER_QUALITY_BY_ID.has(value)) {
     throw new Error(`Unknown render quality '${value}'. Expected one of: ${[...RENDER_QUALITY_BY_ID.keys()].join(", ")}`);
   }
@@ -315,7 +300,13 @@ export function normalizeRenderPayload(render) {
   return result;
 }
 
-export function resolveRenderConfiguration(render = {}, appearance = SCENE_APPEARANCE.LIGHT) {
+/**
+ * Expand a normalized Render payload into the RENDER RECIPE: the closed set of
+ * controls Render exposes, each with its effective value. This is the only
+ * input the photographic rig takes. It is not a CAD theme and never grows
+ * lights, floors, or background gradients — an unlisted knob has no way in.
+ */
+function resolveRenderConfiguration(render = {}, appearance = SCENE_APPEARANCE.LIGHT) {
   const payload = normalizeRenderPayload(render);
   const studio = resolvedStudioId(payload.studio, appearance);
   return {
@@ -331,7 +322,8 @@ export function resolveRenderConfiguration(render = {}, appearance = SCENE_APPEA
       transparent: payload.backdrop?.transparent ?? DEFAULT_RENDER_BACKDROP.transparent,
       ground: payload.backdrop?.ground ?? DEFAULT_RENDER_BACKDROP.ground,
       groundPlacement: payload.backdrop?.groundPlacement ?? DEFAULT_RENDER_BACKDROP.groundPlacement
-    }
+    },
+    camera: resolveCamera(DEFAULT_RENDER_CAMERA, payload.camera)
   };
 }
 
@@ -344,58 +336,14 @@ function resolvedStudioId(studio, appearance) {
     : RENDER_STUDIO.LIGHT;
 }
 
-function normalSettings(appearance) {
-  return normalizeThemeSettings(cloneThemePresetSettings(
+/**
+ * The CAD inspection scene settings — the theme model. Only the Inspect path
+ * reads these. Render has no theme: it is built from the Render recipe alone.
+ */
+function cadSceneSettings(appearance) {
+  const normalized = normalizeThemeSettings(cloneThemePresetSettings(
     appearance === SCENE_APPEARANCE.DARK ? "workbench-dark" : "workbench-light"
   ));
-}
-
-function photographicRenderSettings(configuration) {
-  const backgroundColor = configuration.backdrop.color;
-  const settings = normalizeThemeSettings({
-    materials: STUDIO_MATERIAL_SETTINGS,
-    background: {
-      type: configuration.backdrop.transparent ? "transparent" : "solid",
-      solidColor: backgroundColor,
-      linearStart: backgroundColor,
-      linearEnd: backgroundColor,
-      radialInner: backgroundColor,
-      radialOuter: backgroundColor
-    },
-    // The photographic studio helper owns its physical ground. Keeping the
-    // legacy stage disabled prevents a second floor or shadow catcher.
-    floor: { mode: "none", enabled: false, followModel: false, color: backgroundColor },
-    environment: {
-      enabled: true,
-      presetId: "photographic-softbox",
-      intensity: 1,
-      rotationY: 0,
-      useAsBackground: false
-    },
-    // The helper owns the one logical softbox and neutral exposure. Disable every
-    // legacy light so generic consumers cannot accidentally double the energy.
-    lighting: {
-      toneMappingExposure: 2 ** configuration.exposure,
-      directional: { enabled: false, intensity: 0 },
-      fill: { enabled: false, intensity: 0 },
-      rim: { enabled: false, intensity: 0 },
-      spot: { enabled: false, intensity: 0 },
-      point: { enabled: false, intensity: 0 },
-      ambient: { enabled: false, intensity: 0 },
-      hemisphere: { enabled: false, intensity: 0 }
-    }
-  });
-  return {
-    ...publicRenderSettings(settings),
-    renderer: {
-      toneMapping: "neutral",
-      exposure: configuration.exposure
-    }
-  };
-}
-
-function publicRenderSettings(settings) {
-  const normalized = normalizeThemeSettings(settings);
   return {
     materials: cloneValue(normalized.materials),
     background: cloneValue(normalized.background),
@@ -512,8 +460,12 @@ function explicitMaterialOverrides(settings = {}) {
 
 /**
  * Resolve shared viewer/snapshot scene policy without retaining app state.
- * Top-level camera/display/quality belong to normal CAD. A Render envelope is
- * an isolated photographic scene and resolves only its own camera and quality.
+ *
+ * The two modes are separate scenes, not two dressings of one. Inspect owns
+ * `theme` (the CAD scene settings) plus the top-level camera, display and
+ * quality fields. Render owns `render.configuration`, the recipe of the
+ * controls it exposes; it has no theme, so nothing can reach the CAD lighting
+ * rig, stage floor or background gradients through it.
  */
 export function resolveSceneSettings({
   appearance = SCENE_APPEARANCE.SYSTEM,
@@ -526,19 +478,15 @@ export function resolveSceneSettings({
   const baseAppearance = normalizeSceneAppearance(appearance, { prefersDark });
   if (render == null) {
     const resolvedDisplay = resolveDisplay(DEFAULT_DISPLAY_SETTINGS, display);
-    const settings = applyPartColor(publicRenderSettings(normalSettings(baseAppearance)), resolvedDisplay.partColor);
+    const theme = applyPartColor(cadSceneSettings(baseAppearance), resolvedDisplay.partColor);
     return {
       appearance: baseAppearance,
-      render: {
-        enabled: false,
-        studio: null,
-        settings,
-        // CAD is an inspection view with no reflection environment. Keep the
-        // authored albedo and opacity, but use the workbench's matte PBR
-        // channels so authored metals do not collapse to near-black.
-        materialOverrides: explicitMaterialOverrides(settings),
-        payload: null
-      },
+      render: { enabled: false, configuration: null, payload: null },
+      theme,
+      // CAD is an inspection view with no reflection environment. Keep the
+      // authored albedo and opacity, but use the workbench's matte PBR
+      // channels so authored metals do not collapse to near-black.
+      materialOverrides: explicitMaterialOverrides(theme),
       quality: resolveSceneQuality(quality, { fallback: SCENE_QUALITY.INTERACTIVE }),
       camera: resolveCamera(DEFAULT_NORMAL_CAMERA, camera),
       display: resolvedDisplay
@@ -550,19 +498,13 @@ export function resolveSceneSettings({
   // Render is an isolated photographic scene. CAD inspection camera, quality,
   // clipping, exploded view, guides, edges, and part-colour state do not leak
   // across the mode boundary.
-  const resolvedDisplay = resolveDisplay(DEFAULT_RENDER_DISPLAY_SETTINGS);
-  const settings = applyPartColor(photographicRenderSettings(configuration), resolvedDisplay.partColor);
   return {
     appearance: baseAppearance,
-    render: {
-      enabled: true,
-      configuration,
-      settings,
-      materialOverrides: {},
-      payload
-    },
+    render: { enabled: true, configuration, payload },
+    theme: null,
+    materialOverrides: null,
     quality: resolveRenderQuality(configuration.quality),
-    camera: resolveCamera(DEFAULT_RENDER_CAMERA, payload.camera),
-    display: resolvedDisplay
+    camera: configuration.camera,
+    display: resolveDisplay(RENDER_DISPLAY_SETTINGS)
   };
 }

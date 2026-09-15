@@ -18,7 +18,7 @@
 // Every section is 4-byte-sized, so decode returns zero-copy views over the
 // source buffer.
 
-import { DEFAULT_OPTIONS, TESSELLATION_VERSION, tessellateComponent } from "./tessellate.js";
+import { DEFAULT_OPTIONS, TESSELLATION_VERSION } from "./tessellate.js";
 
 export const TESS_CACHE_MAGIC = 0x53534554; // "TESS" little-endian
 // v4: v3's complete render payload plus the exact D/O/L/Q provenance binding.
@@ -54,7 +54,28 @@ export function float64Hex(value) {
   return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+// The tessellation options the KEY spells, and therefore the only ones a
+// caller may vary. Every other geometry option in DEFAULT_OPTIONS
+// (loopTolerance, maxRefineDepth, minLoopSegments) changes the triangles
+// without changing the key, so a run that overrides one would read back
+// another run's geometry under its own name. Refusing the key is the only
+// answer that cannot silently serve the wrong mesh; keying them instead would
+// fork the shared cache for options no caller has ever needed to set.
+const KEYED_TESSELLATION_OPTIONS = Object.freeze(["chordTolerance", "angleTolerance"]);
+const UNKEYED_TESSELLATION_OPTIONS = Object.freeze(
+  Object.keys(DEFAULT_OPTIONS).filter((name) => !KEYED_TESSELLATION_OPTIONS.includes(name)),
+);
+
 export function tessellationQuality(options = {}) {
+  const unkeyed = UNKEYED_TESSELLATION_OPTIONS.filter((name) => (
+    Object.hasOwn(options, name) && options[name] !== DEFAULT_OPTIONS[name]
+  ));
+  if (unkeyed.length) {
+    throw new TypeError(
+      `tessellation options are not part of the cache key: ${unkeyed.join(", ")}.`
+      + ` Keyed options: ${KEYED_TESSELLATION_OPTIONS.join(", ")}`,
+    );
+  }
   const effective = { ...DEFAULT_OPTIONS, ...options };
   const chordTolerance = effective.chordTolerance;
   const angleTolerance = effective.angleTolerance;
@@ -679,21 +700,6 @@ export async function getCachedComponentEntry(surfaceInput, options = {}, reques
   });
 }
 
-export async function getCachedComponentEntries(surfaceInputs, options = {}, { signal } = {}) {
-  const hits = new Map();
-  const probes = await probeCachedTessellationEntries(surfaceInputs, options, { signal });
-  // This compatibility helper is intentionally sequential. Assembly consumers
-  // that need throughput use provider.getManyProbed on their admitted chunks;
-  // no helper may allocate an unbounded all-hit TESB response.
-  for (const surfaceInput of surfaceInputs) {
-    const probe = probes.get(surfaceInput);
-    if (!probe) continue;
-    const decoded = await getCachedComponentEntry(surfaceInput, options, { signal, probe });
-    if (decoded) hits.set(surfaceInput, decoded);
-  }
-  return hits;
-}
-
 export async function writeBackEntryBytes(surfaceInput, options, bytes) {
   const provider = cacheProvider;
   if (!provider || typeof provider.put !== "function" || !tessellationOptionsCacheable(options)) return null;
@@ -711,22 +717,6 @@ export async function writeBackComponentEntry(surfaceInput, surfaceObject, optio
     partColor: Array.isArray(index?.partColor) ? index.partColor : null,
     edgeClasses: edgeClassesFromSurfIndex(index),
   }));
-}
-
-export async function tessellateComponentCached(index, floats, {
-  surfaceInput = "",
-  surfaceObject = "",
-  options = {},
-  signal,
-  probe,
-} = {}) {
-  const cached = await getCachedComponentEntry(surfaceInput, options, { signal, probe });
-  if (cached) return cached.component;
-  const component = tessellateComponent(index, floats, options);
-  if (cacheProvider && surfaceInput && surfaceObject && tessellationOptionsCacheable(options)) {
-    await writeBackComponentEntry(surfaceInput, surfaceObject, options, component, index);
-  }
-  return component;
 }
 
 export const TESS_PROBE_MAX_KEYS = 256;

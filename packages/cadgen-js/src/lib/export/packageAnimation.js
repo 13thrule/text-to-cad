@@ -64,7 +64,7 @@ export const MORPH_FIT_GRID_MIN_HZ = 96;
  *
  * A whole multiple, so every export frame IS a grid sample and one pass over the
  * grid serves both the TRS keyframes and the deformation fit. */
-export function morphFitGrid(plan) {
+function morphFitGrid(plan) {
   const multiple = Math.max(MORPH_FIT_GRID_MULTIPLE, Math.ceil(MORPH_FIT_GRID_MIN_HZ / plan.fps));
   return {
     multiple,

@@ -30,19 +30,15 @@ are returned as private publication data, never inserted into that tree.
 
 from __future__ import annotations
 
-import hashlib
-import json
 import math
-import os
 import struct
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
 from cadgen.coordination import PHASE_COMPONENTS, PHASE_FINALIZE, PHASE_PACKAGE
 from cadgen.coordination import resolve as resolve_progress
-from cadgen.store.index import read_entry, write_entry
+from cadgen.store.index import write_entry
 from cadgen.store.materialize import (
     PARTNER_TAG,
     ROOT_LOC_TAG,
@@ -51,7 +47,7 @@ from cadgen.store.materialize import (
     _location_from_matrix,
     materialized_children,
 )
-from cadgen.store.objects import has_object, put_object, read_verified_object
+from cadgen.store.objects import put_object, read_verified_object
 from cadgen.store.trees import put_tree
 
 
@@ -551,11 +547,11 @@ def _publish_tree(
         payload = prepared["payload"] if prepared is not None else read_verified_object(entry["brep"])
         validate_geometry_component(entry, payload, cid=cid)
         ready = not force
-        for field in ("brep", "eagerSurface"):
-            if not entry.get(field):
+        for object_key in ("brep", "eagerSurface"):
+            if not entry.get(object_key):
                 continue
             try:
-                read_verified_object(entry[field])
+                read_verified_object(entry[object_key])
             except (OSError, ValueError):
                 ready = False
         if ready:

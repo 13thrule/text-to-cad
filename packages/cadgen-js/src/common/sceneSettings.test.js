@@ -5,27 +5,28 @@ import {
   SCENE_QUALITY,
   normalizeRenderPayload,
   resolveDisplayMaterialSettings,
-  resolveRenderConfiguration,
   resolveRenderQuality,
   resolveSceneSettings
 } from "./sceneSettings.js";
+import { PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS } from "./photographicStudio.js";
 
 test("normal CAD stays an orthographic responsive inspection scene", () => {
   const light = resolveSceneSettings({ appearance: "light" });
   const dark = resolveSceneSettings({ appearance: "dark" });
 
   assert.equal(light.render.enabled, false);
+  assert.equal(light.render.configuration, null);
   assert.equal(light.camera.projection, "orthographic");
   assert.equal(light.display.mode, "shaded_edges");
   assert.equal(light.display.guides.grid.enabled, true);
   assert.equal(light.display.guides.axis.enabled, true);
-  assert.equal(light.render.settings.materials.overrideSourceColors, false);
+  assert.equal(light.theme.materials.overrideSourceColors, false);
   assert.equal(light.quality.id, SCENE_QUALITY.INTERACTIVE);
-  assert.equal(light.render.settings.background.solidColor, "#f0f4f9");
-  assert.equal(dark.render.settings.background.solidColor, "#333333");
-  assert.deepEqual(dark.render.settings.materials, light.render.settings.materials);
-  assert.deepEqual(dark.render.settings.lighting, light.render.settings.lighting);
-  assert.deepEqual(dark.render.settings.environment, light.render.settings.environment);
+  assert.equal(light.theme.background.solidColor, "#f0f4f9");
+  assert.equal(dark.theme.background.solidColor, "#333333");
+  assert.deepEqual(dark.theme.materials, light.theme.materials);
+  assert.deepEqual(dark.theme.lighting, light.theme.lighting);
+  assert.deepEqual(dark.theme.environment, light.theme.environment);
 });
 
 test("omitted Render fields stay sparse while configuration expands effective defaults", () => {
@@ -34,13 +35,18 @@ test("omitted Render fields stay sparse while configuration expands effective de
   const light = resolveSceneSettings({ appearance: "light", render: {} });
   const dark = resolveSceneSettings({ appearance: "dark", render: {} });
   assert.deepEqual(light.render.payload, {});
-  assert.deepEqual(light.render.configuration, {
+  const { camera, ...envelope } = light.render.configuration;
+  assert.deepEqual(envelope, {
     studio: "light",
     quality: "final",
     exposure: 0,
     lighting: { rotation: 0, size: 1, fill: 0.25 },
     backdrop: { color: "#e7e7e5", transparent: false, ground: true, groundPlacement: "origin" }
   });
+  // The recipe carries the Render camera, and it is the scene's camera.
+  assert.equal(camera.projection, "perspective");
+  assert.equal(camera.focalLength, 50);
+  assert.deepEqual(light.camera, camera);
   assert.equal(dark.render.configuration.studio, "dark");
   assert.equal(dark.render.configuration.backdrop.color, "#121315");
   assert.equal(Object.hasOwn(light.render.payload, "studio"), false);
@@ -58,12 +64,15 @@ test("explicit studios pin only the backdrop default", () => {
   assert.equal(pinned.render.configuration.studio, "light");
   assert.equal(pinned.render.configuration.backdrop.color, "#e7e7e5");
 
-  const custom = resolveRenderConfiguration({
-    studio: "dark",
-    exposure: 1.5,
-    lighting: { rotation: -45, size: 2, fill: 0 },
-    backdrop: { color: "#123456", transparent: true, ground: false, groundPlacement: "lowest" }
-  }, "light");
+  const { camera: _camera, ...custom } = resolveSceneSettings({
+    appearance: "light",
+    render: {
+      studio: "dark",
+      exposure: 1.5,
+      lighting: { rotation: -45, size: 2, fill: 0 },
+      backdrop: { color: "#123456", transparent: true, ground: false, groundPlacement: "lowest" }
+    }
+  }).render.configuration;
   assert.deepEqual(custom, {
     studio: "dark",
     quality: "final",
@@ -84,21 +93,30 @@ test("Render quality maps to the existing bounded scene-quality ladder", () => {
   assert.equal(preview.quality.id, SCENE_QUALITY.STANDARD);
 });
 
-test("Render uses a fixed neutral photographic engine policy without authored PBR overrides", () => {
+test("Render resolves a recipe and no CAD scene settings at all", () => {
   const light = resolveSceneSettings({ render: { studio: "light", exposure: -1 } });
   const dark = resolveSceneSettings({ render: { studio: "dark", exposure: -1 } });
 
-  assert.deepEqual(light.render.materialOverrides, {});
-  assert.equal(light.render.settings.materials.overrideSourceColors, false);
-  assert.equal(light.render.settings.materials.saturation, 1);
-  assert.equal(light.render.settings.materials.contrast, 1);
-  assert.equal(light.render.settings.materials.brightness, 1);
-  assert.deepEqual(light.render.settings.materials, dark.render.settings.materials);
-  assert.deepEqual(light.render.settings.lighting, dark.render.settings.lighting);
-  assert.equal(light.render.settings.floor.mode, "none");
-  assert.equal(light.render.settings.lighting.directional.enabled, false);
-  assert.equal(light.render.settings.lighting.ambient.enabled, false);
-  assert.deepEqual(light.render.settings.renderer, { toneMapping: "neutral", exposure: -1 });
+  // No theme means no way to reach the CAD lighting rig, stage floor or
+  // background gradients from Render — not a theme that disables them.
+  assert.equal(light.theme, null);
+  assert.equal(light.materialOverrides, null);
+  assert.equal(light.render.configuration.exposure, -1);
+  assert.equal(
+    Object.keys(light.render.configuration).sort().join(","),
+    "backdrop,camera,exposure,lighting,quality,studio"
+  );
+  // The two studios differ only in their backdrop default.
+  assert.notEqual(light.render.configuration.backdrop.color, dark.render.configuration.backdrop.color);
+  assert.deepEqual(
+    { ...light.render.configuration, studio: null, backdrop: null },
+    { ...dark.render.configuration, studio: null, backdrop: null }
+  );
+  // The studio's finish is a constant of the rig, with no colour grading.
+  assert.equal(PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS.overrideSourceColors, false);
+  for (const channel of ["saturation", "contrast", "brightness"]) {
+    assert.equal(Object.hasOwn(PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS, channel), false);
+  }
 });
 
 test("Render camera, quality, and display are isolated from hostile CAD overrides", () => {
@@ -153,11 +171,11 @@ test("part-color policy stays display-owned and preserves its editable palette",
     display: { partColor: { mode: "by_part", colors: ["#112233", "#abcdef"] } }
   });
 
-  assert.equal(single.render.settings.materials.overrideSourceColors, true);
-  assert.deepEqual(single.render.settings.materials.fillColors, ["#123456"]);
-  assert.equal(single.render.settings.materials.cycleColors, false);
-  assert.deepEqual(byPart.render.settings.materials.fillColors, ["#112233", "#abcdef"]);
-  assert.equal(byPart.render.settings.materials.cycleColors, true);
+  assert.equal(single.theme.materials.overrideSourceColors, true);
+  assert.deepEqual(single.theme.materials.fillColors, ["#123456"]);
+  assert.equal(single.theme.materials.cycleColors, false);
+  assert.deepEqual(byPart.theme.materials.fillColors, ["#112233", "#abcdef"]);
+  assert.equal(byPart.theme.materials.cycleColors, true);
   assert.deepEqual(resolveDisplayMaterialSettings(
     { defaultColor: "#ffffff", overrideSourceColors: false },
     { mode: "single", color: "#123456" }

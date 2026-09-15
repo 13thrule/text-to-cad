@@ -1,9 +1,8 @@
 # Performance benchmarks
 
 Manual commands for three distinct measurements: warm model execution, adaptive
-viewer loading, and viewer lifecycle costs.
-[Recorded before/after results](RESULTS.md) distinguish those phases from
-end-to-end CLI and browser timings.
+viewer loading, and viewer lifecycle costs. Each measures one phase; none of
+them is an end-to-end CLI or browser timing.
 
 Run from the repository root after installing the development dependencies in
 `CONTRIBUTING.md`. Use a disposable model copy and a dedicated store. Run only

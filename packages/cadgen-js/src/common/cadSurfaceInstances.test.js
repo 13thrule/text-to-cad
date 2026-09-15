@@ -3,7 +3,6 @@ import test from "node:test";
 import * as THREE from "three";
 
 import {
-  buildCadSurfaceInstanceSets,
   dissolveCadSurfaceInstanceSets,
   reconcileCadSurfaceInstanceSets,
   surfaceInstancingStateEligible,
@@ -54,7 +53,7 @@ function keyFixture() {
   const geometry = new THREE.BoxGeometry(1, 1, 1);
   const group = new THREE.Group();
   const records = [record("a", geometry, 0), record("b", geometry, 1)];
-  const sets = buildCadSurfaceInstanceSets(THREE, records, group);
+  const sets = reconcileCadSurfaceInstanceSets(THREE, records, group);
   return { geometry, group, records, sets, set: [...sets][0], dispose() {
     dissolveCadSurfaceInstanceSets(sets, group);
     geometry.dispose();
@@ -129,7 +128,7 @@ test("reactivating a surface slot refreshes bounds without changing occurrence i
   // Three records keep the set compatible while one takes an ordinary mesh.
   dissolveCadSurfaceInstanceSets(sets, group);
   records.push(extra);
-  for (const next of buildCadSurfaceInstanceSets(THREE, records, group)) sets.add(next);
+  for (const next of reconcileCadSurfaceInstanceSets(THREE, records, group)) sets.add(next);
   const current = [...sets][0];
   try {
     current.object.computeBoundingSphere();
@@ -329,7 +328,7 @@ test("compatible surfaces share one draw and keep per-instance identity and tran
   const group = new THREE.Group();
   const records = [record("a", geometry, 2), record("b", geometry, 7)];
   records.forEach((item) => group.add(item.mesh));
-  const sets = buildCadSurfaceInstanceSets(THREE, records, group);
+  const sets = reconcileCadSurfaceInstanceSets(THREE, records, group);
   const [set] = sets;
   let objectDisposes = 0;
   set.object.addEventListener("dispose", () => { objectDisposes += 1; });
@@ -375,7 +374,7 @@ test("shared emission follows diffuse colour while distinct emission keeps exact
   const group = new THREE.Group();
   const records = [record("a", geometry, 0), record("b", geometry, 2), record("c", geometry, 4), record("d", geometry, 6)];
   records.forEach((item) => group.add(item.mesh));
-  let sets = buildCadSurfaceInstanceSets(THREE, records, group);
+  let sets = reconcileCadSurfaceInstanceSets(THREE, records, group);
   assert.equal([...sets][0].object.material.emissive.getHex(), 0, "black emission remains black even with a nonzero intensity");
   for (const item of records) {
     item.material.emissive.copy(item.material.color);
@@ -410,7 +409,7 @@ test("mirrored placements and incompatible mutable states stay on ordinary meshe
     record("mirror", geometry, 2, { mirrored: true }),
   ];
   records.forEach((item) => group.add(item.mesh));
-  const sets = buildCadSurfaceInstanceSets(THREE, records, group);
+  const sets = reconcileCadSurfaceInstanceSets(THREE, records, group);
   assert.equal(sets.size, 1);
   assert.ok(records[0].surfaceInstance && records[1].surfaceInstance);
   assert.equal(records[2].surfaceInstance, undefined, "negative determinant keeps Three.js mirrored-normal handling");
@@ -438,7 +437,7 @@ test("opaque generated-surface vertex colours remain shared and instanced", () =
     item.material.color.set(0xffffff);
     group.add(item.mesh);
   }
-  const sets = buildCadSurfaceInstanceSets(THREE, records, group);
+  const sets = reconcileCadSurfaceInstanceSets(THREE, records, group);
   const [set] = sets;
   assert.equal(sets.size, 1, "shared vertex colours do not block the ordinary opaque path");
   assert.equal(set.object.material.vertexColors, true);
@@ -447,7 +446,7 @@ test("opaque generated-surface vertex colours remain shared and instanced", () =
 
   records[1].material.transparent = true;
   records[1].material.opacity = 0.5;
-  const reconciled = buildCadSurfaceInstanceSets(THREE, records, new THREE.Group());
+  const reconciled = reconcileCadSurfaceInstanceSets(THREE, records, new THREE.Group());
   assert.equal(reconciled.size, 0, "a true alpha-blended occurrence stays an ordinary mesh");
   dissolveCadSurfaceInstanceSets(sets, group);
   geometry.dispose();

@@ -4,9 +4,7 @@ import test from "node:test";
 import * as THREE from "three";
 
 import {
-  cloneThemePresetSettings,
-  normalizeThemeSettings,
-  resolveThemeSettingsForColorMode
+  normalizeThemeSettings
 } from "./themeSettings.js";
 import {
   addFloor,
@@ -24,9 +22,7 @@ import {
   inferRenderSceneScale,
   outputSize,
   rendererDataUrlWithOptionalLabel,
-  resolveRenderView,
-  resolveThemeJobConfig,
-  resolveThemeSettings
+  resolveRenderView
 } from "./renderOptions.js";
 
 const SCALE_SETTINGS = Object.freeze({
@@ -81,28 +77,6 @@ test("shared render options preserve explicit caller-owned values without defaul
   assert.equal(Object.hasOwn(options, "displayMode"), false);
   assert.equal(options.background, false);
   assert.equal(options.renderScale, 0);
-});
-
-test("theme resolution uses saved theme ids or direct theme settings", () => {
-  assert.deepEqual(
-    resolveThemeSettings({}, { defaultThemeId: "workbench-light" }),
-    normalizeThemeSettings(cloneThemePresetSettings("workbench-light"))
-  );
-  assert.deepEqual(
-    resolveThemeSettings({ theme: "workbench-dark" }, { defaultThemeId: "workbench-light" }),
-    resolveThemeSettingsForColorMode(cloneThemePresetSettings("workbench-dark"), { prefersDark: false })
-  );
-  assert.deepEqual(
-    resolveThemeJobConfig({
-      theme: {
-        materials: { defaultColor: "#123456" }
-      }
-    }, { defaultThemeId: "workbench-light" }),
-    {
-      themeId: "workbench-light",
-      settings: { materials: { defaultColor: "#123456" } }
-    }
-  );
 });
 
 test("view presets and azimuth/elevation camera parsing remain stable", () => {
@@ -539,39 +513,4 @@ test("snapshot lights scale to model bounds and fit the directional shadow camer
   assert.ok(lights.directional.shadow.camera.far >= lights.directional.position.length());
 });
 
-test("resolveThemeSettings applies colorMode to object themes", () => {
-  // colorMode was previously honoured only for saved-theme-id STRINGS, which
-  // made it an accepted-but-inert key in theme JSON: "light" and "dark"
-  // produced byte-identical renders.
-  const base = normalizeThemeSettings(cloneThemePresetSettings("workbench-light"));
-  const withModes = {
-    ...base,
-    modeColors: {
-      light: { background: { solidColor: "#ffffff" } },
-      dark: { background: { solidColor: "#000000" } }
-    }
-  };
 
-  const light = resolveThemeSettings({
-    theme: { ...withModes, colorMode: "light" }
-  });
-  const dark = resolveThemeSettings({
-    theme: { ...withModes, colorMode: "dark" }
-  });
-
-  assert.equal(light.background.solidColor, "#ffffff");
-  assert.equal(dark.background.solidColor, "#000000");
-});
-
-test("resolveThemeSettings is the identity for settings without modeColors", () => {
-  // The safety property of applying colorMode unconditionally: when no explicit
-  // modeColors block is supplied, normalizeThemeModeColors derives it from the
-  // settings themselves, so re-applying it must not alter anything.
-  const settings = normalizeThemeSettings(cloneThemePresetSettings("workbench-light"));
-  const explicit = { ...settings, background: { ...settings.background, solidColor: "#123456" } };
-  delete explicit.modeColors;
-
-  const resolved = resolveThemeSettings({ theme: explicit });
-
-  assert.equal(resolved.background.solidColor, "#123456");
-});

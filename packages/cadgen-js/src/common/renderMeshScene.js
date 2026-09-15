@@ -73,7 +73,11 @@ import {
   createEnvironmentResource,
   disposeEnvironmentResource
 } from "./environmentMap.js";
-import { applyPhotographicStudio, disposePhotographicStudio } from "./photographicStudio.js";
+import {
+  applyPhotographicStudio,
+  disposePhotographicStudio,
+  PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS
+} from "./photographicStudio.js";
 import { validateSnapshotRenderJob } from "./snapshotJobValidation.js";
 
 const DEFAULT_RENDER_SCALE = 1;
@@ -204,9 +208,12 @@ function outputSize(output, job) {
   return sharedOutputSize(output, job);
 }
 
-function configureRenderer(width, height, job, themeSettings, quality = null) {
-  return configurePngRenderer(width, height, job, themeSettings, {
-    defaultRenderScale: quality?.renderScale ?? DEFAULT_RENDER_SCALE
+function configureRenderer(width, height, job, context) {
+  return configurePngRenderer(width, height, job, {
+    defaultRenderScale: context.quality?.renderScale ?? DEFAULT_RENDER_SCALE,
+    // Render replaces this wholesale in applyPhotographicStudio; only the CAD
+    // inspection scene takes its exposure from the theme.
+    toneMappingExposure: context.theme?.lighting?.toneMappingExposure ?? 1
   });
 }
 
@@ -821,7 +828,9 @@ export function renderJobContext(meshData, job = {}) {
     camera: job.camera || null,
     display: snapshotDisplayOverride(job)
   });
-  const theme = sceneSettings.render.settings;
+  // Null for Render: the photographic scene is built from the Render recipe
+  // and never reads CAD scene settings.
+  const theme = sceneSettings.theme;
   const displaySettings = sceneSettings.display;
   const projection = sceneSettings.camera.projection;
   const displayMode = displaySettings.mode;
@@ -835,9 +844,9 @@ export function renderJobContext(meshData, job = {}) {
     sceneScale,
     clip: displaySettings.clip,
     selection: sceneSettings.render.enabled ? null : job.selection || null,
-    floor: theme.floor || null,
-    background: theme.background || null,
-    lighting: theme.lighting || null,
+    floor: theme?.floor || null,
+    background: theme?.background || null,
+    lighting: theme?.lighting || null,
     renderScale: job.output?.renderScale ?? sceneSettings.quality.renderScale
   });
   const displayEdgeSettings = resolveCadEdgeSettings(
@@ -867,7 +876,6 @@ export function renderJobContext(meshData, job = {}) {
   return {
     mode,
     theme,
-    sceneTheme: theme,
     sceneSettings,
     camera: sceneSettings.camera,
     quality: sceneSettings.quality,
@@ -908,16 +916,20 @@ export function modelOptionsForRenderJob(context, job = {}) {
         ...normalizedSelectorValues(selection.refs)
       ]
     : [];
+  const renderEnabled = context.sceneSettings.render.enabled;
   return {
-    theme: context.sceneTheme,
+    theme: context.theme ?? undefined,
+    // Render's finish is the studio's, not a theme's. CAD takes its material
+    // settings from the resolved theme.
+    materialSettings: renderEnabled ? PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS : undefined,
     appearance: context.sceneSettings.appearance,
     edgeSettings: context.topologyDisplayEdgesVisible
       ? { ...context.edgeSettings, enabled: false }
       : context.edgesVisible
         ? context.edgeSettings
         : { ...context.edgeSettings, enabled: false },
-    materialOverrides: context.sceneSettings.render.materialOverrides,
-    receiveShadows: context.sceneSettings.render.enabled,
+    materialOverrides: context.sceneSettings.materialOverrides,
+    receiveShadows: renderEnabled,
     displayMode: context.displayMode,
     applyDisplayModeEdgePolicy: !context.topologyDisplayEdgesVisible,
     scale: context.sceneScale,
@@ -968,7 +980,7 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
   const context = viewportOptions.context || renderJobContext(model.meshData, job);
   const sceneBuildStarted = performance.now();
   const firstSize = outputSize(context.outputs[0] || {}, job);
-  const renderer = configureRenderer(firstSize.width, firstSize.height, job, context.theme, context.quality);
+  const renderer = configureRenderer(firstSize.width, firstSize.height, job, context);
   const scene = new THREE.Scene();
   let disposed = false;
   let environmentResource = null;
@@ -991,13 +1003,13 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
     backgroundTexture = colorTextureFromBackground(context.theme.background || {}, firstSize.width, firstSize.height);
     scene.background = backgroundTexture;
   }
-  const ready = (studioRuntime
-    ? createEnvironmentResource(renderer, studioConfiguration, { size: context.quality.environmentMapSize })
-    : Promise.resolve(null)
-  ).then((resource) => {
+  // PMREM generation is synchronous, but `ready` stays a promise so a failure
+  // reaches the caller after it holds a viewport it can dispose.
+  const ready = Promise.resolve().then(() => {
+    const resource = studioRuntime
+      ? createEnvironmentResource(renderer, studioConfiguration, { size: context.quality.environmentMapSize })
+      : null;
     if (disposed) {
-      if (scene.environment === resource?.texture) scene.environment = null;
-      if (scene.background === resource?.texture) scene.background = null;
       disposeEnvironmentResource(resource);
       return null;
     }

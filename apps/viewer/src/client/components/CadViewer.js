@@ -77,7 +77,8 @@ import {
 } from "cadgen-js/common/environmentMap.js";
 import {
   applyPhotographicStudio,
-  disposePhotographicStudio
+  disposePhotographicStudio,
+  PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS
 } from "cadgen-js/common/photographicStudio.js";
 import {
   clampSceneModelRadius,
@@ -1527,6 +1528,12 @@ function disposeSceneObject(object) {
 // sync — the effect that turns a published mesh state into display records —
 // held the main thread, and whether it rebuilt the scene or reused its records.
 // Read by the headless timing harness; never React state.
+//
+// A long session syncs the scene thousands of times, and a benchmark reads the
+// recent ones (usually the last), so the log is a window while count and
+// totalMs stay the totals for the whole session.
+const SCENE_SYNC_LOG_LIMIT = 200;
+
 function recordSceneSyncTiming(startedAt, { mode, records, reason = "" }) {
   if (typeof window === "undefined") {
     return;
@@ -1536,6 +1543,9 @@ function recordSceneSyncTiming(startedAt, { mode, records, reason = "" }) {
   stats.count += 1;
   stats.totalMs += ms;
   stats.entries.push({ atMs: Math.round(performance.now()), ms: Math.round(ms * 10) / 10, mode, records, reason });
+  if (stats.entries.length > SCENE_SYNC_LOG_LIMIT) {
+    stats.entries.splice(0, stats.entries.length - SCENE_SYNC_LOG_LIMIT);
+  }
 }
 
 // Why a live scene was rebuilt rather than reused: the build-key fields that
@@ -1971,12 +1981,16 @@ const CadViewer = forwardRef(function CadViewer({
   const normalizedThemeSettings = normalizedViewerRenderState.themeSettings;
   const normalizedDisplaySettings = normalizedViewerRenderState.displaySettings;
   const normalizedDisplayMode = normalizedViewerRenderState.displayMode;
+  // Render lights one fixed studio finish and exposes no material or part-colour
+  // controls; CAD's finish comes from its theme and the display part-colour policy.
   const normalizedMaterialSettings = useMemo(
-    () => resolveDisplayMaterialSettings(
-      normalizedThemeSettings.materials,
-      normalizedDisplaySettings.partColor
-    ),
-    [normalizedDisplaySettings.partColor, normalizedThemeSettings.materials]
+    () => (renderMode
+      ? PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS
+      : resolveDisplayMaterialSettings(
+        normalizedThemeSettings.materials,
+        normalizedDisplaySettings.partColor
+      )),
+    [normalizedDisplaySettings.partColor, normalizedThemeSettings.materials, renderMode]
   );
   const materialPartPolicyKey = `${
     normalizedMaterialSettings.cycleColors === true &&
@@ -3869,7 +3883,6 @@ const CadViewer = forwardRef(function CadViewer({
       return;
     }
 
-    let cancelled = false;
     runtime.scene.environmentIntensity = 1;
     const applyBackgroundFallback = () => {
       clearEnvironmentResource();
@@ -3878,7 +3891,9 @@ const CadViewer = forwardRef(function CadViewer({
       runtime.requestRender();
     };
 
-    const loadAndApplyEnvironment = async () => {
+    // PMREM generation is synchronous GPU work, so this effect never suspends
+    // and no in-flight environment can outlive the render mode that asked for it.
+    const applyEnvironment = () => {
       const resourceIdentity = environmentResourceIdentity(renderConfiguration, {
         size: renderEnvironmentMapSize
       });
@@ -3889,13 +3904,9 @@ const CadViewer = forwardRef(function CadViewer({
       }
 
       if (!runtime.environmentResource || runtime.environmentResourceIdentity !== resourceIdentity) {
-        const nextResource = await createEnvironmentResource(runtime.renderer, renderConfiguration, {
+        const nextResource = createEnvironmentResource(runtime.renderer, renderConfiguration, {
           size: renderEnvironmentMapSize
         });
-        if (cancelled) {
-          disposeEnvironmentResource(nextResource);
-          return;
-        }
         const previousResource = runtime.environmentResource;
         runtime.scene.environment = null;
         runtime.environmentResource = nextResource;
@@ -3911,24 +3922,20 @@ const CadViewer = forwardRef(function CadViewer({
       runtime.requestRender();
     };
 
-    loadAndApplyEnvironment().catch((error) => {
-      if (!cancelled) {
-        applyBackgroundFallback();
-        viewerAlertChangeRef.current?.({
-          severity: "warning",
-          summary: "Environment unavailable",
-          title: "Couldn’t prepare studio lighting",
-          message: "The reflection environment could not be created. The model is shown with the studio’s direct lighting, so reflective materials may look different.",
-          recovery: "Reload the viewer to retry the studio environment.",
-          details: String(error?.message || error)
-        });
-        console.error("Failed to apply environment resource", error);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    try {
+      applyEnvironment();
+    } catch (error) {
+      applyBackgroundFallback();
+      viewerAlertChangeRef.current?.({
+        severity: "warning",
+        summary: "Environment unavailable",
+        title: "Couldn’t prepare studio lighting",
+        message: "The reflection environment could not be created. The model is shown with the studio’s direct lighting, so reflective materials may look different.",
+        recovery: "Reload the viewer to retry the studio environment.",
+        details: String(error?.message || error)
+      });
+      console.error("Failed to apply environment resource", error);
+    }
   }, [
     applyActivePhotographicStudio,
     renderConfiguration,

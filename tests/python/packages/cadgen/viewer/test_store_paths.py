@@ -78,7 +78,8 @@ class DelegatesToCadgen(unittest.TestCase):
                 self.assertEqual(descriptor["kind"], "assembly-package")
                 (component,) = descriptor["components"].values()
                 self.assertEqual(component["kind"], "native")
-                self.assertTrue(store_paths.component_object_present(component["brep"]))
+                from cadgen.store.objects import has_object
+                self.assertTrue(has_object(component["brep"]))
                 self.assertNotIn("surf", component)
 
     def test_the_virtual_store_asset_serves_the_tree_and_its_components(self) -> None:

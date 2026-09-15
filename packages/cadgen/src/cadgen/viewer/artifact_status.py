@@ -26,11 +26,13 @@ from .store_paths import result_descriptor, result_tree
 __all__ = [
     "ARTIFACT_STATE",
     "BUILDABLE_CODES",
+    "RETIRED_RENDER_MODULE_WARNING",
     "artifact_status",
     "owns_artifact_path",
     "owns_dxf_path",
     "owns_step_path",
     "resolve_artifact_verdict",
+    "retired_render_module_warnings",
 ]
 
 STEP_PACKAGE_KIND = "assembly-package"
@@ -93,6 +95,48 @@ def _read_json(file_path):
     except (OSError, ValueError):
         return None
     return parsed if isinstance(parsed, dict) else None
+
+
+# A door never refuses a document (law 1), so a leftover ``<name>.step.js``
+# cannot fail here the way it fails a build. It is still read by nothing --
+# animation rides the document's sidecar, put there by ``@step(animation=...)``
+# -- and a model that silently renders inert is the failure law 10 forbids. So
+# the entry carries a warning that names the replacement, and renders.
+#
+# Every warning is the viewer's actionable triple -- a heading, an explanation,
+# and the recovery step -- because that is the shape its alerts render (see the
+# "Actionable errors" law in ``apps/viewer/README.md``). Sending one prose blob
+# instead would leave the client splitting sentences to find the recovery step,
+# so the split is made HERE, where the sentences are written. The client renders
+# the three fields it is handed and knows nothing about render modules: a new
+# warning below reaches the UI with no client change.
+RETIRED_RENDER_MODULE_WARNING = {
+    "heading": "{name} is a retired render module",
+    "message": (
+        "It is read by nothing. Animation is declared with @step(animation=...), "
+        "which embeds the module in this document's .json sidecar."
+    ),
+    "recovery": "Move its clips into the decorator and delete {name}.",
+}
+
+
+def retired_render_module_warnings(step_path) -> list[dict]:
+    """``[warning]`` when a stale companion module sits beside ``step_path``.
+
+    One ``os.path.exists`` on a path this module already resolved: no read, no
+    parse, and every failure degrades to "no warning" like every other read here.
+    """
+    if not step_path:
+        return []
+    candidate = f"{step_path}.js"
+    try:
+        present = os.path.isfile(candidate)
+    except (OSError, ValueError):
+        return []
+    if not present:
+        return []
+    name = os.path.basename(candidate)
+    return [{key: value.format(name=name) for key, value in RETIRED_RENDER_MODULE_WARNING.items()}]
 
 
 def owns_step_path(file_path) -> bool:
@@ -222,6 +266,15 @@ def artifact_status(file_ref, root_dir, *, snapshot=None, verdict=None) -> dict:
     if verdict.get("error"):
         return {"state": ARTIFACT_STATE.FAILED, "error": verdict["error"]}
 
+    # Advisory, and never a state: warnings describe the document's NEIGHBOURS,
+    # so they ride every state this function can return.
+    warnings = retired_render_module_warnings(verdict.get("candidate"))
+
+    def answer(status: dict) -> dict:
+        if warnings:
+            status["warnings"] = [dict(warning) for warning in warnings]
+        return status
+
     snapshot = snapshot or {}
     # Checked BEFORE verdict.ok, so a build in flight over a currently
     # resolvable package reports compiling rather than rendered.
@@ -231,7 +284,7 @@ def artifact_status(file_ref, root_dir, *, snapshot=None, verdict=None) -> dict:
             status["runId"] = snapshot["runId"]
         if snapshot.get("progress") is not None:
             status["progress"] = snapshot["progress"]
-        return status
+        return answer(status)
 
     failed = snapshot.get("failed")
     if verdict.get("ok"):
@@ -246,24 +299,24 @@ def artifact_status(file_ref, root_dir, *, snapshot=None, verdict=None) -> dict:
                 status["runId"] = snapshot["runId"]
             if snapshot.get("progress") is not None:
                 status["progress"] = snapshot["progress"]
-        return status
+        return answer(status)
 
     code = verdict.get("code")
     if isinstance(failed, dict):
         # No tree for these bytes and the latest job for the document failed.
         # The reason is the job's own last word (the ledger keeps it); the
         # generic sentence is only for a ledger that has none.
-        return {
+        return answer({
             "state": ARTIFACT_STATE.FAILED,
             "reason": "build_failed",
             "error": str(failed.get("error") or "").strip() or "The last compile of this document failed.",
             "failed": failed,
-        }
+        })
     if code in BUILDABLE_CODES:
         status = {"state": ARTIFACT_STATE.NOT_COMPILED, "reason": code}
         if snapshot.get("busy"):
             status["blocked"] = True
-        return status
+        return answer(status)
 
     # error and reason carry the same bare code string.
-    return {"state": ARTIFACT_STATE.FAILED, "reason": code, "error": code}
+    return answer({"state": ARTIFACT_STATE.FAILED, "reason": code, "error": code})

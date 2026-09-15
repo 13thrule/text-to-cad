@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import json
-import os
 import struct
-from array import array
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from cadgen.selector_types import SelectorBundle
 
 
 STEP_TOPOLOGY_EXTENSION = "STEP_topology"

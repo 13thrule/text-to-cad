@@ -1,91 +1,44 @@
 from __future__ import annotations
 
-import contextlib
 import copy
-import importlib.util
 import json
-import os
 import shutil
-import subprocess
 import sys
 import time
 
-from cadgen._internal.atomic_replace import replace_atomic, temp_suffix
-from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Iterator, Sequence, TextIO
+from typing import Sequence
 
 from cadgen.catalog import (
-    CadSource,
     StepImportOptions,
-    find_source_by_path,
-    iter_cad_sources,
-    normalize_cad_ref,
-    normalize_source_ref,
     source_from_path,
 )
 from cadgen.cli_logging import CliLogger
 from cadgen._internal.glb_topology import build_step_topology_index_manifest
-from cadgen._internal.glb_topology import (
-    STEP_EDGE_VISIBILITY_CLASSES,
-)
 from cadgen.coordination import (
     DRAWING_PACKAGE,
     PHASE_GENERATE,
     STEP_PACKAGE,
     ProgressEvent,
     artifact_build,
-    generator_busy,
-    render_progress_bar,
-    reporting_as,
     resolve as resolve_progress,
 )
-from cadgen.cli_progress import (
-    InlineProgressLine,
-    _finished_phase_text,
-    _progress_status_text,
-    cli_progress_line,
-)
-from cadgen.metadata import GeneratorMetadata
-from cadgen.render import (
-    relative_to_file,
-    relative_to_cwd,
-)
 from cadgen._internal.source_hash import (
-    PythonSourceClosure,
-    PythonSourceHash,
-    capture_runtime_closure,
-    closure_hash_matches,
-    evict_first_party_modules,
     python_source_hash,
-    record_first_party_execution,
 )
-from cadgen.step_export import build_build123d_step_scene
 from cadgen._internal.step_scene import (
     load_step_scene_cached,
     LoadedStepScene,
-    SelectorBundle,
     SelectorOptions,
     step_file_hash,
 )
 from cadgen._internal.generation_runner import (
-    GIT_LFS_POINTER_PREFIX,
     _ArtifactJob,
     _ensure_step_ready,
-    _generator_progress_line,
-    _load_generator_module,
     _mark_scene_python_backed,
-    _mark_scene_step_payload,
-    _normalize_step_payload,
-    _resolve_declared_kinematics,
     _run_artifact_jobs,
-    _run_script_generator_inner,
     _spec_output_dir,
-    _track_spec_generation,
-    _write_dxf_payload,
-    _write_shape_step_payload,
     run_script_generator,
 )
 from cadgen._internal.generation_spec import (
@@ -95,14 +48,8 @@ from cadgen._internal.generation_spec import (
     _cli_progress_line,
     _display_path,
     _entry_spec_from_source,
-    _hint_float,
-    _hint_int,
-    _resolve_discovery_root,
     _selector_options_for_part,
-    _spec_for_source_ref,
     _spec_requests_extra_outputs,
-    list_entry_specs,
-    selected_entry_specs,
 )
 
 def _sha256_of(path: Path) -> str:
@@ -244,7 +191,6 @@ def _assembly_provenance_manifest(
     INPUT to a decision whose output — ``edgeRendering.visibilityClasses`` — is
     recorded right here.
     """
-    import os
 
     from cadgen._internal.glb_topology import step_topology_capabilities
 
@@ -1101,6 +1047,44 @@ def _entries_by_step_path(specs: Sequence[EntrySpec]) -> dict[Path, EntrySpec]:
     }
 
 
+class RetiredRenderModuleError(ValueError):
+    """A ``<name>.step.js`` still sits beside a model's declared STEP output."""
+
+
+def retired_render_module_path(step_path: Path) -> Path | None:
+    """The stale ``<out>.step.js`` / ``<out>.stp.js`` beside ``step_path``.
+
+    Animation used to live in a companion ES module discovered by convention.
+    It does not any more: ``@step(animation=...)`` embeds the module text in
+    the document's sidecar, which is what every renderer reads. A leftover file
+    is therefore not read by anything, and the failure it produces is the one
+    law 10 forbids -- a model that renders inert, at exit 0.
+    """
+    if step_path is None:
+        return None
+    companion = step_path.with_name(step_path.name + ".js")
+    try:
+        return companion if companion.is_file() else None
+    except OSError:
+        return None
+
+
+def _refuse_retired_render_module(spec: EntrySpec) -> None:
+    """Law 8 at the source door: the retired file fails, naming what replaced it."""
+    if spec.source != "generated" or not spec.step_output:
+        return
+    companion = retired_render_module_path(spec.step_path)
+    if companion is None:
+        return
+    raise RetiredRenderModuleError(
+        f"{_display_path(companion)} is a retired render module and is read by nothing. "
+        "Animation is declared on the model: @step(animation=...) embeds the module text "
+        "in the document's sidecar, which is what the viewer, snapshots and mesh exports "
+        "read. Move this file's clips into the decorator and delete it; "
+        "see the cad skill's kinematics reference (references/kinematics.md)."
+    )
+
+
 def _validate_step_target(spec: EntrySpec, *, tool_name: str) -> None:
     if spec.step_path is None:
         raise ValueError(f"{tool_name} target has no STEP path: {spec.source_ref}")
@@ -1108,6 +1092,10 @@ def _validate_step_target(spec: EntrySpec, *, tool_name: str) -> None:
         metadata = spec.generator_metadata
         if metadata is None or metadata.format != "step":
             raise ValueError(f"{tool_name} target is not a @step model: {spec.source_ref}")
+        # Here rather than in the build: a model whose tree is already current
+        # takes the no-op path, and a retired file beside its document must
+        # fail every run, not only the ones that rebuild geometry.
+        _refuse_retired_render_module(spec)
         return
     raise ValueError(
         f"{tool_name} builds @step Python sources only: {spec.source_ref}. "
@@ -1550,7 +1538,6 @@ def generate_dxf_targets(
         verdict = stale(script_path)
         return not verdict.stale
 
-    tool_name = "dxf"
     logger = CliLogger("cadgen", verbose=verbose)
     all_specs, selected_specs = _selected_specs_for_targets(targets)
     for spec in selected_specs:

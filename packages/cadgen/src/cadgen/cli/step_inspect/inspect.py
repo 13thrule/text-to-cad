@@ -21,7 +21,6 @@ from cadgen.step_targets import (
     cad_ref_error_payload,
     entry_target_from_target,
     resolve_step_target,
-    step_path_from_target,
 )
 from cadgen import analysis
 from cadgen import lookup

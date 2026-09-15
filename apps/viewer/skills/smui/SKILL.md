@@ -2,7 +2,7 @@
 
 The former Nord / frosted-glass SMUI styling has been replaced by the neutral
 light and charcoal dark palette. Follow the current viewer contracts in
-[the app README](../../README.md#themes) and
+[the app README](../../README.md#appearance-display-and-render) and
 [settings UI](../../docs/settings-ui.md).
 
 - Color tokens live in `src/client/styles/globals.css`: `:root` is light and

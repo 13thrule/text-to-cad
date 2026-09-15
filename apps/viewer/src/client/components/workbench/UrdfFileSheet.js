@@ -426,7 +426,7 @@ export default function UrdfFileSheet({
     ...settingsTabs
   ];
   const sections = renderMode
-    ? allSections.filter((section) => section?.id === FILE_SHEET_SECTION_IDS.THEME_RENDER)
+    ? allSections.filter((section) => section?.id === FILE_SHEET_SECTION_IDS.RENDER)
     : allSections;
 
   return (

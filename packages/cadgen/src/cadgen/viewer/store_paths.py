@@ -27,7 +27,6 @@ __all__ = [
     "artifact_file_hash",
     "artifact_path_key",
     "cadgen_cache_root_dir",
-    "component_object_present",
     "build_scope",
     "result_descriptor",
     "result_snapshot",
@@ -87,13 +86,6 @@ def result_descriptor(tree_hash: str) -> dict | None:
         return capture_tree(str(tree_hash), retain_payloads=False)[0]
     except (OSError, ValueError, KeyError, TypeError):
         return None
-
-
-def component_object_present(digest: str) -> bool:
-    """Whether a component's object (``surfaceObject``/``brepObject``) is in the store."""
-    from cadgen.store.objects import has_object, is_object_hash
-
-    return bool(is_object_hash(digest) and has_object(str(digest)))
 
 
 def virtual_store_asset(rel: str, *, producer: dict | None = None, document_hash: str | None = None):

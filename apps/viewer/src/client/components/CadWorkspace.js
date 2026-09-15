@@ -56,6 +56,7 @@ import { useCadAssets } from "./workbench/hooks/useCadAssets";
 import { useEditingPreview } from "./workbench/hooks/useEditingPreview.js";
 import { useViewportQualityStatus } from "./workbench/hooks/useViewportQualityStatus.js";
 import { previewGeometryChanged } from "@/workbench/editingPreview.js";
+import { buildArtifactWarningAlert } from "@/workbench/artifactWarnings.js";
 import { resolveFileStatus } from "@/workbench/fileStatus.js";
 import { viewerLoadingState } from "@/workbench/viewerLoading.js";
 import {
@@ -66,6 +67,7 @@ import { useCadWorkspaceSelection } from "./workbench/hooks/useCadWorkspaceSelec
 import { useCadDirectorySession } from "./workbench/hooks/useCadDirectorySession";
 import { useCadWorkspaceSelectors } from "./workbench/hooks/useCadWorkspaceSelectors";
 import { useCadWorkspaceShortcuts } from "./workbench/hooks/useCadWorkspaceShortcuts";
+import { useSourceMaterialSession } from "./workbench/hooks/useSourceMaterialSession.js";
 import {
   applyColorSchemeToDocument,
   DARK_COLOR_SCHEME_ID,
@@ -338,10 +340,8 @@ import {
 import { copyTextToClipboard, readTextFromClipboard } from "@/ui/clipboard";
 import {
   applySourceMaterialOverlayToMeshData,
-  sourceMaterialOverlayIsEmpty,
-  sourceMaterialGeometry,
   sourceAppearanceHasMaterials,
-  sourceMaterialTargets
+  sourceMaterialGeometry
 } from "@/workbench/sourceMaterialSession";
 import {
   copyTargetsForFileAccessAsset,
@@ -376,10 +376,6 @@ function statusOnlyFileSheetTitle(sourceFormat) {
 
 const EMPTY_LIST = Object.freeze([]);
 const EMPTY_MATERIAL_OVERRIDES = Object.freeze({});
-const PHOTOGRAPHIC_VIEW_DEFAULTS = resolveSceneSettings({
-  appearance: "light",
-  render: {}
-});
 const URDF_POSE_PICKER_DEFAULT_CENTER = Object.freeze([0, 0, 0]);
 const DESKTOP_SIDEBAR_MIN_WIDTH = 150;
 const DESKTOP_SIDEBAR_MAX_WIDTH = 520;
@@ -397,11 +393,6 @@ function sourceAnimationKeyForEntry(entry) {
   return `${fileKey(entry)}:${entry?.animationHash || entry?.documentHash || entry?.hash || "animation"}`;
 }
 
-function sourceAppearanceKeyForEntry(entry) {
-  const appearance = entry?.editingPreview ? entry.previewAppearance : entry?.sourceSidecar?.appearance;
-  if (!appearance) return String(entry?.documentHash || entry?.hash || "").trim();
-  return String(entry?.appearanceHash || entry?.documentHash || entry?.hash || "").trim();
-}
 const CAD_WORKSPACE_TOP_BAR_HEIGHT = 44;
 const DEFAULT_LARGE_FILE_STATE = Object.freeze({
   selectableTopologyEnabled: false
@@ -1261,14 +1252,22 @@ export default function CadWorkspace({
       prefersDark: systemPrefersDark,
       render: renderVisualPayload(renderSession.payload)
     }).render.configuration;
+    // The visual resolve deliberately excludes camera and quality so an orbit
+    // does not rebuild the scene. Put the session's own values back so the
+    // recipe the rig and the settings UI read stays complete.
     return {
       ...visualConfiguration,
+      // In Inspect the recipe describes the Render defaults the panel shows, so
+      // it keeps its own default camera rather than borrowing the CAD one.
+      ...(renderSession.enabled ? { camera: resolvedCamera } : {}),
       quality: renderSession.payload.quality || RENDER_QUALITY.FINAL
     };
   }, [
     colorSchemePreference,
+    renderSession.enabled,
     renderSession.payload.quality,
     renderVisualKey,
+    resolvedCamera,
     resolvedVisualScene.render.configuration,
     systemPrefersDark
   ]);
@@ -1282,12 +1281,12 @@ export default function CadWorkspace({
       payload: renderSession.payload
     }
   }), [resolvedCamera, resolvedQuality, resolvedRenderConfiguration, resolvedVisualScene, renderSession.payload]);
-  const resolvedThemeSettings = renderSession.enabled
-    ? PHOTOGRAPHIC_VIEW_DEFAULTS.render.settings
-    : resolvedScene.render.settings;
+  // Render has no theme: the viewer builds it from the recipe in
+  // `render.configuration`, and the CAD scene settings stay behind in Inspect.
+  const resolvedThemeSettings = resolvedScene.theme;
   const resolvedMaterialOverrides = renderSession.enabled
     ? EMPTY_MATERIAL_OVERRIDES
-    : resolvedScene.render.materialOverrides;
+    : resolvedScene.materialOverrides;
   const sceneBackdrop = useMemo(
     () => renderSession.enabled
       ? resolvedScene.render.configuration.backdrop.color
@@ -1320,13 +1319,6 @@ export default function CadWorkspace({
   });
   const [stepModuleParameterValues, setStepModuleParameterValues] = useState({});
   const [stepModuleEnabled, setStepModuleEnabled] = useState(true);
-  // Per-model Render material edits live only for this Viewer session. The
-  // package and authored source sidecar remain immutable.
-  const [sourceMaterialOverlayByFile, setSourceMaterialOverlayByFile] = useState({});
-  const [materialSelection, setMaterialSelection] = useState(null);
-  useEffect(() => {
-    if (!renderSession.enabled) setMaterialSelection(null);
-  }, [renderSession.enabled]);
   // The ANIMATION system, loaded and held entirely apart from the kinematics
   // state above: kinematics and choreography are independent declarations in
   // the embedded source sidecar, and a model may ship either,
@@ -2005,42 +1997,19 @@ export default function CadWorkspace({
   const selectedSourceAppearance = selectedEntry?.editingPreview
     ? selectedEntry.previewAppearance || null
     : selectedEntry?.sourceSidecar?.appearance || selectedMeshData?.appearance || null;
-  const sourceMaterialScope = selectedEntry ? fileKey(selectedEntry) : "";
-  const selectedSourceAppearanceKey = sourceAppearanceKeyForEntry(selectedEntry);
-  const selectedSourceMaterialRecord = sourceMaterialOverlayByFile[sourceMaterialScope] || null;
-  const selectedSourceMaterialOverlay = selectedSourceMaterialRecord?.signature === selectedSourceAppearanceKey
-    ? selectedSourceMaterialRecord.overlay
-    : null;
-  const selectedSourceMaterialTargets = useMemo(
-    () => sourceMaterialTargets(selectedMeshData),
-    [selectedMeshData]
-  );
+  const materialSession = useSourceMaterialSession(selectedEntry, selectedMeshData, {
+    appearance: selectedSourceAppearance,
+    fileSheetKind: selectedFileSheetKind,
+    renderEnabled: renderSession.enabled
+  });
   const selectedDisplayMeshData = useMemo(() => {
     return registerLodDisplaySource(
-      applySourceMaterialOverlayToMeshData(selectedMeshData, selectedSourceMaterialOverlay, selectedSourceAppearance),
+      applySourceMaterialOverlayToMeshData(selectedMeshData, materialSession.overlay, selectedSourceAppearance),
       selectedMeshData
     );
-  }, [selectedMeshData, selectedSourceAppearance, selectedSourceMaterialOverlay]);
+  }, [materialSession.overlay, selectedMeshData, selectedSourceAppearance]);
   const handleDisplayMeshAdoption = useCallback((source, ok, detail) =>
     onMeshSourceAdoption(sourceMaterialGeometry(source), ok, detail), [onMeshSourceAdoption]);
-  const handleSourceMaterialOverlayChange = useCallback((nextOverlay) => {
-    if (!sourceMaterialScope) return;
-    setSourceMaterialOverlayByFile((current) => {
-      if (sourceMaterialOverlayIsEmpty(nextOverlay)) {
-        if (!current[sourceMaterialScope]) return current;
-        const next = { ...current };
-        delete next[sourceMaterialScope];
-        return next;
-      }
-      return {
-        ...current,
-        [sourceMaterialScope]: {
-          signature: selectedSourceAppearanceKey,
-          overlay: nextOverlay
-        }
-      };
-    });
-  }, [selectedSourceAppearanceKey, sourceMaterialScope]);
   const selectedGlbDocument = selectedMeshMatches ? meshState?.glbDocument || null : null;
   const embeddedGlbAnimationRuntime = useEmbeddedGlbAnimation(selectedGlbDocument);
   // Animated direct GLBs render their live hierarchy. Flattened triangle picks
@@ -2779,6 +2748,14 @@ export default function CadWorkspace({
     ? normalizeDxfThicknessMm(drawingThicknessMm) / DXF_PREVIEW_REFERENCE_THICKNESS_MM
     : 1;
 
+  // What the backend says about the document's NEIGHBOURS (a retired render
+  // module still sitting beside it, say). The geometry is correct, so this is
+  // the LAST alert considered below: any real failure outranks it, and it never
+  // blocks the viewport -- it rides the file-status badge and its dialog.
+  const artifactWarningAlert = useMemo(
+    () => buildArtifactWarningAlert(fileKey(selectedEntry), selectedArtifact.warnings),
+    [selectedEntry, selectedArtifact.warnings]
+  );
   const viewerAlert = useMemo(() => {
     const staleRuntime = buildViewerStaleRuntimeAlert(
       viewerServerInfo,
@@ -2805,7 +2782,7 @@ export default function CadWorkspace({
         selectedEntry,
         !!selectedMeshData,
         urdfStatus === ASSET_STATUS.ERROR ? urdfError : selectedUrdfPreviewError
-      ) || viewerRuntimeAlert;
+      ) || viewerRuntimeAlert || artifactWarningAlert;
     }
     const meshAlert = buildViewerMeshAlert(
       selectedEntry,
@@ -2821,8 +2798,9 @@ export default function CadWorkspace({
         ? null : selectedArtifact,
       { partial: selectedMeshPartial }
     );
-    return meshAlert || viewerRuntimeAlert;
+    return meshAlert || viewerRuntimeAlert || artifactWarningAlert;
   }, [
+    artifactWarningAlert,
     editingPreview.state,
     currentPreviewVisible,
     catalogError,
@@ -3338,7 +3316,7 @@ export default function CadWorkspace({
       selectedAnimationError
     ),
     hasEmbeddedGlbAnimationPanel: Boolean(embeddedGlbAnimationRuntime),
-    hasMaterialsPanel: selectedFileSheetKind === "step" || sourceAppearanceHasMaterials(selectedSourceAppearance),
+    hasMaterialsPanel: materialSession.enabled,
     measurementAvailable: effectiveSupportsMeasure,
     hasDxfBendsPanel: selectedFileSheetKind === "dxf" && drawingBends.length > 0,
     hasDxfLayersPanel: selectedFileSheetKind === "dxf" && drawingLayers.length > 1,
@@ -3350,7 +3328,7 @@ export default function CadWorkspace({
     selectedAnimationError,
     selectedAnimationStatus,
     embeddedGlbAnimationRuntime,
-    selectedSourceAppearance,
+    materialSession.enabled,
     effectiveSupportsMeasure,
     selectedFileSheetKind,
     selectedStepModuleDefinition,
@@ -3491,10 +3469,7 @@ export default function CadWorkspace({
     const targetUrdfJointValues = targetFileKey && jointValuesByFileRef?.[targetFileKey]
       ? jointValuesByFileRef[targetFileKey]
       : {};
-    const targetMaterialRecord = sourceMaterialOverlayByFile[targetFileKey] || null;
-    const targetMaterialOverlay = targetMaterialRecord?.signature === sourceAppearanceKeyForEntry(targetEntry)
-      ? targetMaterialRecord.overlay
-      : null;
+    const targetMaterialOverlay = materialSession.snapshotSlice(targetEntry);
     // While a clip plays the authoritative time is the clock store's, not React
     // state's — the loop only writes back when playback stops.
     const snapshotAnimationElapsedSec = animationState.playing
@@ -3552,10 +3527,10 @@ export default function CadWorkspace({
     displaySettings,
     jointValuesByFileRef,
     largeFileState,
+    materialSession.snapshotSlice,
     renderSession,
     resolvedScene.camera.projection,
     selectedEntry,
-    sourceMaterialOverlayByFile,
     stepModuleEnabled,
     stepModuleParameterValues,
   ]);
@@ -3663,22 +3638,7 @@ export default function CadWorkspace({
       setAnimationClock(restoredAnimationState.elapsedSec);
     }
 
-    const materialsSlice = sessionState?.slices?.materials || null;
-    setSourceMaterialOverlayByFile((current) => {
-      if (materialsSlice) {
-        return {
-          ...current,
-          [normalizedKey]: {
-            signature: sourceAppearanceKeyForEntry(entry),
-            overlay: materialsSlice
-          }
-        };
-      }
-      if (!current[normalizedKey]) return current;
-      const next = { ...current };
-      delete next[normalizedKey];
-      return next;
-    });
+    materialSession.restoreSlice(normalizedKey, entry, sessionState?.slices?.materials || null);
 
     const urdfSlice = sessionState?.slices?.urdf || null;
     if (urdfSlice) {
@@ -3700,6 +3660,7 @@ export default function CadWorkspace({
     animationLoadState,
     colorSchemePreference,
     entryMap,
+    materialSession.restoreSlice,
     readEntrySessionState,
     systemPrefersDark
   ]);
@@ -3759,7 +3720,7 @@ export default function CadWorkspace({
     setIsolatedAssemblyNodeIds([]);
     setDisplaySettings(normalizeDisplaySettings());
     setRenderSession(createRenderSessionState());
-    setSourceMaterialOverlayByFile({});
+    materialSession.clearAll();
     setLargeFileState(normalizeLargeFileState(DEFAULT_LARGE_FILE_STATE));
     setHoveredListReferenceId("");
     setHoveredModelReferenceId("");
@@ -3776,7 +3737,7 @@ export default function CadWorkspace({
     setDrawingUndoStack([]);
     setDrawingRedoStack([]);
     setSelectedKey("");
-  }, [setTabToolsOpen]);
+  }, [materialSession.clearAll, setTabToolsOpen]);
 
   const activateEntryTab = useCallback((key) => {
     if (!key || !entryMap.has(key)) {
@@ -7411,17 +7372,9 @@ export default function CadWorkspace({
   ];
   // Handed over unconditionally: the pane gates it on the `displayModes` capability, so
   // gating it a second time here only creates a place for the two to disagree.
-  const renderDisplaySettings = renderSession.enabled
-    ? PHOTOGRAPHIC_VIEW_DEFAULTS.display
-    : resolvedScene.display;
-  const materialPickingEnabled = renderSession.enabled && selectedFileSheetKind === "step" && effectiveFileSheetOpenSectionIds.includes(FILE_SHEET_SECTION_IDS.THEME_MATERIALS);
-  const materialSelectedIds = materialSelection?.scope === sourceMaterialScope ? materialSelection.ids : viewerSelectedPartIds;
-  const selectMaterialParts = (ids) => setMaterialSelection({ scope: sourceMaterialScope, ids });
-  const activateMaterialPart = (id, { multiSelect = false } = {}) => {
-    const valid = selectedSourceMaterialTargets.some(target => !target.group && target.occurrenceIds.includes(id));
-    if (!valid) { if (!multiSelect) selectMaterialParts([]); return; }
-    selectMaterialParts(multiSelect ? materialSelectedIds.includes(id) ? materialSelectedIds.filter(value => value !== id) : [...materialSelectedIds, id] : [id]);
-  };
+  const renderDisplaySettings = resolvedScene.display;
+  const materialPickingEnabled = renderSession.enabled && selectedFileSheetKind === "step" && effectiveFileSheetOpenSectionIds.includes(FILE_SHEET_SECTION_IDS.MATERIALS);
+  const materialParts = materialSession.withViewerSelection(viewerSelectedPartIds);
   const settingsTabs = [
     supportsDisplayModes && !renderSession.enabled
       ? buildDisplaySettingsTab({
@@ -7443,13 +7396,16 @@ export default function CadWorkspace({
     }) : null,
     renderSession.enabled ? buildMaterialsSettingsTab({
       appearance: selectedSourceAppearance,
-      overlay: selectedSourceMaterialOverlay,
-      targets: selectedSourceMaterialTargets,
-      scope: sourceMaterialScope,
-      enabled: selectedFileSheetKind === "step" || sourceAppearanceHasMaterials(selectedSourceAppearance),
-      selectedPartIds: materialSelectedIds,
-      onSelectParts: selectMaterialParts,
-      onOverlayChange: handleSourceMaterialOverlayChange
+      overlay: materialSession.overlay,
+      undo: materialSession.undo,
+      targets: materialSession.targets,
+      scope: materialSession.scope,
+      enabled: materialSession.enabled,
+      selectedPartIds: materialParts.selectedIds,
+      onSelectParts: materialParts.select,
+      onOverlayChange: materialSession.change,
+      onUndo: materialSession.undoLast,
+      onReset: materialSession.reset
     }) : null
   ].filter(Boolean);
 
@@ -7508,9 +7464,8 @@ export default function CadWorkspace({
           onCameraZoomPercentChange={setViewerZoomPercent}
           onLodCameraChange={onLodCameraMoved}
           onMeshSourceAdoption={handleDisplayMeshAdoption}
-          materialHighlightPartIds={materialPickingEnabled ? materialSelectedIds : EMPTY_LIST}
           materialPickingEnabled={materialPickingEnabled}
-          onMaterialPartActivate={activateMaterialPart}
+          onMaterialPartActivate={materialParts.activate}
           renderPartsIndividually={
             isUrdfView || Boolean(selectedStepParameterRuntime) || Boolean(selectedAnimationRuntime) ||
             sourceAppearanceHasMaterials(selectedDisplayMeshData?.appearance)
