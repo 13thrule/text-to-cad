@@ -242,18 +242,25 @@ def _selector_body(raw_selector: str) -> str:
 def _group_id(raw_selector: str, context: EntryContext) -> str:
     """The instance-tree group this ref names, or "" if it names anything else.
 
-    A group is an interior node: no row carries it, but rows descend from it. Only a
-    numeric occurrence ref can name one — labels are built from the occurrence rows, so
-    a label always names a leaf and never needs this.
+    A group is an interior node: no row carries it, but rows descend from it. A LABEL can
+    name one as readily as an id can -- ``label_refs.attach_label_aliases`` indexes the
+    interior nodes -- so the ref is canonicalized first and the group question is asked of
+    the answer. Doing it the other way round is what made ``#camera_assembly`` fail on a
+    document where ``#o1.8`` resolved its 17 leaves (tom-cad FEEDBACK issue 5).
     """
     index = context.selector_index
     if index is None:
         return ""
     parsed = syntax.parse_selector(raw_selector)
-    if parsed is None or parsed.label or parsed.selector_type != "occurrence":
+    if parsed is None:
         return ""
-    canonical = str(parsed.canonical or "")
-    if not canonical or canonical in index.occurrence_by_id:
+    if parsed.label and parsed.selector_type != "label":
+        # `#camera_assembly.f3` names an entity, not the group.
+        return ""
+    canonical = lookup.canonicalize_selector(raw_selector, index) if parsed.label else str(parsed.canonical or "")
+    if not canonical or parsed.selector_type not in {"occurrence", "label"}:
+        return ""
+    if canonical in index.occurrence_by_id:
         return ""
     return canonical if occurrence_group_members(canonical, index) else ""
 
