@@ -1262,11 +1262,14 @@ export default function CadWorkspace({
     // recipe the rig and the settings UI read stays complete.
     return {
       ...visualConfiguration,
-      camera: resolvedCamera,
+      // In Inspect the recipe describes the Render defaults the panel shows, so
+      // it keeps its own default camera rather than borrowing the CAD one.
+      ...(renderSession.enabled ? { camera: resolvedCamera } : {}),
       quality: renderSession.payload.quality || RENDER_QUALITY.FINAL
     };
   }, [
     colorSchemePreference,
+    renderSession.enabled,
     renderSession.payload.quality,
     renderVisualKey,
     resolvedCamera,
