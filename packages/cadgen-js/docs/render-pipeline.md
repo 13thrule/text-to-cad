@@ -254,6 +254,7 @@ import {
   displayRecords,
   records,
   bounds,
+  restBounds,
   radius,
   runtime,
   update(nextSettings),
@@ -263,6 +264,13 @@ import {
 
 `source` can be a `loadSource()` result or raw mesh data. The model owns the
 Three.js object graph and its mutable state.
+
+`bounds` follows the live pose — what lighting, the floor, shadows and clipping
+need. `restBounds` is the same model at its ZERO pose, before a parameter, mate
+or animation frame moved a record, and it is what a camera fit is grounded on so
+that posing a model never re-frames it. A source that is itself a posed wrapper
+over its own rest geometry (a robot description; see `poseUrdfMeshData`)
+publishes `restBounds` on its mesh data and that value stands in.
 
 Common settings:
 

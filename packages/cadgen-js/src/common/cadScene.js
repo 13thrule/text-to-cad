@@ -2535,6 +2535,15 @@ export function buildModel(THREE, source, settings = {}) {
     get bounds() {
       return runtime.bounds;
     },
+    // The model's ZERO pose: the authored placement, before any parameter,
+    // mate or animation moved a record. `bounds` follows the live pose, which
+    // is what lighting, the floor and clipping need; this one does not move
+    // when a pose does, which is what a camera fit needs. A source that is
+    // itself a posed wrapper over its own rest geometry (a robot description)
+    // publishes `restBounds` and that stands in for the composed value.
+    get restBounds() {
+      return meshData?.restBounds || runtime.baseBounds;
+    },
     get radius() {
       return runtime.modelRadius;
     },

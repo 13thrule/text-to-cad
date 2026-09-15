@@ -209,6 +209,7 @@ import {
   KEYBOARD_ORBIT_NUDGE_RAD,
   normalizeViewportFrameInsets,
   readViewPlaneOrientation,
+  runtimeFramingBounds,
   stepKeyboardOrbit,
   WHEEL_PINCH_DELTA_BOOST,
   VIEW_PLANE_DEFAULT_PRESET,
@@ -221,10 +222,7 @@ import {
   WORLD_UP
 } from "./viewer/viewportCameraKit";
 import { normalizeViewerRenderState } from "./viewer/renderState";
-import {
-  buildModel,
-  effectiveBoundsFromRecords
-} from "cadgen-js/common/cadScene";
+import { buildModel } from "cadgen-js/common/cadScene";
 import {
   resolveTopologyDisplayEdgeRuntimes,
   shouldRenderTopologyDisplayEdges,
@@ -1293,21 +1291,6 @@ function recenterRuntimeTarget(runtime) {
   return true;
 }
 
-// What "reset" and "fit" frame: the model in its current parameter pose, which
-// is the same thing the loader framed. Framing runtime.modelBounds instead would
-// crop a model a sidecar has posed larger than its at-rest box, because that
-// field tracks whichever bounds were applied last rather than the live pose.
-function runtimeFramingBounds(runtime, fallbackBounds = null) {
-  if (!runtime?.THREE?.Matrix4 || !Array.isArray(runtime.displayRecords) || !runtime.displayRecords.length) {
-    return runtime?.modelBounds || fallbackBounds;
-  }
-  return effectiveBoundsFromRecords(
-    runtime.THREE,
-    runtime.displayRecords,
-    runtime.modelBounds || fallbackBounds
-  );
-}
-
 function displayRecordBoundsForPartIds(runtime, partIds = []) {
   const normalizedPartIds = normalizePartIdList(partIds);
   if (!normalizedPartIds.length || !Array.isArray(runtime?.displayRecords)) {
@@ -1626,7 +1609,13 @@ function buildNativeGlbCadScene(THREE, document, source, receiveShadows) {
     modelGroup,
     edgesGroup: new THREE.Group(),
     displayRecords: [],
+    // One box for both: a native document is posed by its own mixer, so the
+    // framing estimate (animatedBounds, sampled once at load) is already
+    // independent of the frame on screen and is what the camera grounds on.
     bounds: document.animatedBounds || nativeGlbBounds(THREE, modelGroup),
+    get restBounds() {
+      return this.bounds;
+    },
     update() {},
     syncSurfaceInstances() {},
     dispose() {
@@ -2784,6 +2773,9 @@ const CadViewer = forwardRef(function CadViewer({
       });
       applyActivePhotographicStudio(runtime, bounds);
       runtime.hasVisibleModel = true;
+      // A drawing has no cadScene to publish restBounds, and the flat pattern
+      // IS its zero pose -- the fold slider poses it from here.
+      runtime.zeroPoseBounds = bounds;
       resetZoomAndPan({ animate: false });
     }
     markPresentationReady(runtime);
@@ -3997,6 +3989,8 @@ const CadViewer = forwardRef(function CadViewer({
     const clearDisplayedModel = ({ preserveModelIdentity = false, releaseGpu = true } = {}) => {
       staticSceneResetRef.current.invalidate();
       cancelCameraTransition(runtime);
+      // The next model publishes its own; nothing may frame against the last one.
+      runtime.zeroPoseBounds = null;
       const disposedSource = disposeViewerCadScene(runtime, { clearSceneGroup, preserveModelIdentity, releaseGpu });
       runtime.requestRender();
       return disposedSource;
@@ -4221,15 +4215,25 @@ const CadViewer = forwardRef(function CadViewer({
     });
 
     const displayBounds = cadScene.bounds || meshData.bounds;
-    // meshData.bounds is the model at rest; displayBounds may be a posed
-    // (animated or exploded) superset of it.
-    runtime.zoomBaseModelRadius = boundsModelRadius(THREE, meshData.bounds, normalizedSceneScaleMode);
+    // TWO boxes, and the split is the point. displayBounds is the model in the
+    // pose it is in right now -- what lighting, shadows, the floor, the grid and
+    // clipping must follow. zeroPoseBounds is the model at its authored
+    // placement: a robot at its joint defaults, a STEP assembly before its mates
+    // moved anything, a mesh as loaded. The CAMERA is grounded on that one, so
+    // driving a joint, picking a group state or scrubbing an animation never
+    // re-frames the model, and 100% keeps meaning "framed at the zero pose".
+    const zeroPoseBounds = cadScene.restBounds || meshData.bounds;
+    runtime.zeroPoseBounds = zeroPoseBounds;
+    const zeroPoseRadius = boundsModelRadius(THREE, zeroPoseBounds, normalizedSceneScaleMode);
+    runtime.zoomBaseModelRadius = zeroPoseRadius;
     const boundsMin = Array.isArray(displayBounds?.min) ? displayBounds.min : [0, 0, 0];
     const boundsMax = Array.isArray(displayBounds?.max) ? displayBounds.max : [0, 0, 0];
+    const zeroPoseMin = Array.isArray(zeroPoseBounds?.min) ? zeroPoseBounds.min : [0, 0, 0];
+    const zeroPoseMax = Array.isArray(zeroPoseBounds?.max) ? zeroPoseBounds.max : [0, 0, 0];
     const center = new THREE.Vector3(
-      (toNumber(boundsMin[0]) + toNumber(boundsMax[0])) / 2,
-      (toNumber(boundsMin[1]) + toNumber(boundsMax[1])) / 2,
-      (toNumber(boundsMin[2]) + toNumber(boundsMax[2])) / 2
+      (toNumber(zeroPoseMin[0]) + toNumber(zeroPoseMax[0])) / 2,
+      (toNumber(zeroPoseMin[1]) + toNumber(zeroPoseMax[1])) / 2,
+      (toNumber(zeroPoseMin[2]) + toNumber(zeroPoseMax[2])) / 2
     );
     const previousTransform = modelTransformRef.current;
     if (
@@ -4374,6 +4378,25 @@ const CadViewer = forwardRef(function CadViewer({
         linkName: String(record?.sourcePart?.linkName || ""),
         matrix: record?.mesh?.matrix?.toArray?.() || null
       }));
+      // Read-only debug/test seam beside __cadDisplayRecords: the LIVE camera,
+      // so a browser test can assert that posing a model leaves the framing
+      // exactly where the zero pose put it.
+      window.__cadCamera = () => {
+        const active = runtimeRef.current;
+        const camera = active?.camera;
+        if (!camera) {
+          return null;
+        }
+        return {
+          projection: camera.isOrthographicCamera ? "orthographic" : "perspective",
+          position: camera.position.toArray(),
+          target: active.controls?.target?.toArray?.() || null,
+          up: camera.up.toArray(),
+          zoom: Number(camera.zoom),
+          halfHeight: readOrthographicHalfHeight(active),
+          zoomPercent: readRuntimeZoomPercent(active)
+        };
+      };
     }
 
     const currentPartVisualState = partVisualStateRef.current;
@@ -4438,11 +4461,11 @@ const CadViewer = forwardRef(function CadViewer({
           cancelCameraTransition(runtime);
           const frameMetrics = getViewportFrameMetrics(runtime, viewportFrameInsetsRef.current);
           const camera = runtime.camera;
-          const fitDistance = frameRuntimeCameraForBoundingSphere(runtime, radius, normalizedSceneScaleMode, frameMetrics);
+          const fitDistance = frameRuntimeCameraForBoundingSphere(runtime, zeroPoseRadius, normalizedSceneScaleMode, frameMetrics);
           const viewDirection = new THREE.Vector3(...DEFAULT_VIEW_DIRECTION).normalize();
           camera.zoom = 1;
           camera.up.set(...WORLD_UP);
-          frameRuntimeCameraForBoundingSphere(runtime, radius, normalizedSceneScaleMode, frameMetrics);
+          frameRuntimeCameraForBoundingSphere(runtime, zeroPoseRadius, normalizedSceneScaleMode, frameMetrics);
           applyCameraFrameInsets(runtime, viewportFrameInsetsRef.current, { updateProjection: false });
           // The model is at its authored coordinates, so the camera frames the
           // model's WORLD bounds centre — the model is never moved to the camera.
@@ -4454,9 +4477,10 @@ const CadViewer = forwardRef(function CadViewer({
           runtime.requestRender();
         }
       });
-      // The initial framing fits displayBounds, so that is the radius the
-      // baseline is measured against.
-      runtime.zoomFitModelRadius = radius;
+      // The initial framing fits the zero pose, so that is the radius the
+      // baseline is measured against -- and the scale it derives is 1, which is
+      // what makes the opening view read as exactly 100%.
+      runtime.zoomFitModelRadius = zeroPoseRadius;
       resetRuntimeZoomBaseline(runtime);
       syncCameraZoomPercent(runtime);
       framedModelKeyRef.current = modelKey || "";

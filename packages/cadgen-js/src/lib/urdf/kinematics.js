@@ -688,6 +688,21 @@ function urdfVisualHasDisplayColors(visualColor, partMesh) {
   return !!parseHexColorToLinearRgb(visualColor) || (!visualColor && urdfMeshHasSourceColors(partMesh));
 }
 
+function posedPartPlacement(part, linkWorldTransforms) {
+  const linkWorldTransform = linkWorldTransforms.get(String(part?.linkName || "")) || [...IDENTITY_TRANSFORM];
+  const transform = multiplyTransforms(linkWorldTransform, toTransformArray(part?.localTransform));
+  return { transform, bounds: transformBounds(part?.sourceBounds || part?.bounds, transform) };
+}
+
+// The ZERO pose: every joint at its declared default, whatever the caller has
+// driven them to. A posed robot carries this beside its live `bounds` so a
+// renderer can ground a camera fit on the robot at rest -- moving a joint
+// changes what is lit and clipped, never how the model is framed.
+function urdfRestBounds(urdfData, sourceParts) {
+  const restTransforms = solveUrdfLinkWorldTransforms(urdfData, {});
+  return mergeBounds(sourceParts.map((part) => posedPartPlacement(part, restTransforms).bounds));
+}
+
 export function poseUrdfMeshData(urdfData, meshData, jointValuesByName = {}, linkWorldTransformOverrides = null) {
   const linkWorldTransforms = solveUrdfLinkWorldTransforms(urdfData, jointValuesByName);
   if (linkWorldTransformOverrides instanceof Map) {
@@ -703,23 +718,17 @@ export function poseUrdfMeshData(urdfData, meshData, jointValuesByName = {}, lin
   const geometrySource = meshData?.geometrySource && typeof meshData.geometrySource === "object"
     ? meshData.geometrySource
     : meshData;
-  const posedParts = sourceParts.map((part) => {
-    const linkWorldTransform = linkWorldTransforms.get(String(part?.linkName || "")) || [...IDENTITY_TRANSFORM];
-    const localTransform = toTransformArray(part?.localTransform);
-    const worldTransform = multiplyTransforms(linkWorldTransform, localTransform);
-    const sourceBounds = part?.sourceBounds || part?.bounds;
-    return {
-      ...part,
-      transform: worldTransform,
-      bounds: transformBounds(sourceBounds, worldTransform)
-    };
-  });
+  const posedParts = sourceParts.map((part) => ({
+    ...part,
+    ...posedPartPlacement(part, linkWorldTransforms)
+  }));
 
   return {
     meshData: {
       ...meshData,
       geometrySource,
       bounds: mergeBounds(posedParts.map((part) => part.bounds)),
+      restBounds: urdfRestBounds(urdfData, sourceParts),
       parts: posedParts
     },
     linkWorldTransforms
@@ -733,6 +742,7 @@ export function applyUrdfPoseToMeshData(urdfData, meshData, jointValuesByName = 
   }
   meshData.geometrySource = posed.meshData.geometrySource || meshData.geometrySource || meshData;
   meshData.bounds = posed.meshData.bounds;
+  meshData.restBounds = posed.meshData.restBounds;
   meshData.parts = posed.meshData.parts;
   return {
     ...posed,

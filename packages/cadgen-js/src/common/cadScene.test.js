@@ -1167,6 +1167,49 @@ test("buildModel can apply STEP parameter effects while deferring setup lifecycl
   scene.dispose();
 });
 
+// A camera is grounded on the model's zero pose, so the scene has to keep that
+// box available while `bounds` follows whatever a mate, a parameter or an
+// animation frame has done to the records.
+test("buildModel keeps restBounds at the zero pose while bounds follow the parameter pose", () => {
+  const scene = buildModel(THREE, sampleMeshData(), {
+    theme: cloneThemePresetSettings("workbench-light"),
+    renderPartsIndividually: true,
+    parameterSetup: false,
+    stepParameters: {
+      definition: {
+        module: {
+          render(ctx) {
+            ctx.effects.transform("right", { translate: [12, 0, 0] });
+          }
+        },
+        manifest: {},
+        cadPath: "part.step"
+      }
+    }
+  });
+
+  assert.deepEqual(scene.bounds.max, [15, 1, 0], "bounds follow the posed record");
+  assert.deepEqual(scene.restBounds.min, [0, 0, 0]);
+  assert.deepEqual(scene.restBounds.max, [3, 1, 0]);
+
+  scene.update({
+    stepParameters: {
+      definition: {
+        module: {
+          render(ctx) {
+            ctx.effects.transform("right", { translate: [40, 0, 0] });
+          }
+        },
+        manifest: {},
+        cadPath: "part.step"
+      }
+    }
+  });
+  assert.deepEqual(scene.bounds.max, [43, 1, 0], "a new pose moves bounds");
+  assert.deepEqual(scene.restBounds.max, [3, 1, 0], "and never moves restBounds");
+  scene.dispose();
+});
+
 // Two components, six occurrences alternating between them, each placed 10 mm apart.
 function twoComponentPackage(componentA, componentB, occurrenceIndexes) {
   const parts = occurrenceIndexes.map((index) => {
