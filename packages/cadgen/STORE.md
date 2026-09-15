@@ -476,12 +476,14 @@ Inside a body, a child call returns at once with a `LazyCompound`
 (`cadgen.store.lazy`) — a `build123d.Compound` whose `.wrapped` is a property.
 The gate runs at the call: a stale child is submitted to the pool and the
 promise carries the job; a current child is a promise with no job. Geometry
-arrives on the first read of `.wrapped` — normally at the closing
+arrives on the first read the promise does not defer — normally at the closing
 `Compound(children=[...])`, after every sibling has been submitted — so
 siblings build in parallel and the parent waits only for children it
 submitted itself. Deferred without forcing: `Pos/Rot/Location * child`,
 `.moved()`, `.label =`, `.color =`. Everything else (`.faces()`,
-`.bounding_box()`, booleans, `copy.copy`, `Compound(children=...)`) forces:
+`.bounding_box()`, `.children` and the node views over it, booleans,
+`copy.copy`, `Compound(children=...)`) forces — the deferral list is closed and
+every other ATTRIBUTE forces, not only the ones that reach the shape:
 a body that reads a child before placing the next forces it there, and
 parallelism follows the dependencies the author wrote. Forcing waits for the
 job, materializes the pinned tree (§6), applies the deferred placement, label

@@ -1,17 +1,25 @@
 """LazyCompound: what defers, what forces, and what a failed child says.
 
 The five deferrals (``Pos/Rot/Location * child``, ``.moved()``, ``.label =``, ``.color =``)
-must not touch geometry; every other build123d path reaches ``.wrapped`` and forces. The
-job and the materialize are stubbed -- these are the promise's rules, not the store's.
+must not touch geometry; EVERY other read forces -- including the ones a Compound
+answers from its node state rather than from its shape (``.children`` and the anytree
+views over it), which once answered "empty" on a pending child. The job and the
+materialize are stubbed -- these are the promise's rules, not the store's -- except for
+the one cold end-to-end build at the bottom, which is the reported bug verbatim.
 """
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import textwrap
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from tests.python.support.paths import add_repo_path
+from tests.python.support.paths import REPO_ROOT, add_repo_path
+from tests.python.support.tmp_root import temporary_directory
 
 add_repo_path("packages/cadgen/src")
 
@@ -44,6 +52,14 @@ class _Frame:
 def _box(label="child"):
     shape = bd.Box(4.0, 3.0, 2.0)
     compound = bd.Compound(children=[shape], label=label)
+    return compound
+
+
+def _pair(label="child"):
+    """A child model's result with two parts and a color of its own."""
+    left, right = bd.Box(4.0, 3.0, 2.0), bd.Pos(10, 0, 0) * bd.Box(1.0, 1.0, 1.0)
+    compound = bd.Compound(children=[left, right], label=label)
+    compound.color = bd.Color("blue")
     return compound
 
 
@@ -146,6 +162,72 @@ class Deferral(LazyFixture):
         self.assertEqual(job.waited, 1)
 
 
+class NodeStateReads(LazyFixture):
+    """The reads a Compound answers from its NODE state, not its shape.
+
+    ``.children`` and the anytree views over it (``.descendants``, ``.leaves``,
+    ``.is_leaf``, ``.height``, ``.size``) are served out of the node's child list,
+    which forcing fills in. A promise that forced only on the shape answered every
+    one of them with an empty tree until something else happened to touch geometry
+    first -- a two-part child read as zero parts, at exit 0.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        def materialize(tree, label):
+            self.materialized.append((tree, label))
+            return _pair(label or "child")
+
+        patcher = mock.patch.object(lazy_mod, "_materialize_tree", materialize)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_the_node_views_are_correct_with_no_prior_geometry_read(self):
+        for read, expected in (
+            (lambda c: len(c.children), 2),
+            (lambda c: len(c.descendants), 2),
+            (lambda c: len(c.leaves), 2),
+            (lambda c: c.is_leaf, False),
+            (lambda c: c.height, 1),
+            (lambda c: c.size, 3),
+        ):
+            with self.subTest(read=read):
+                child = self.lazy(_Job())
+                self.assertEqual(expected, read(child))
+                self.assertFalse(child.pending)
+
+    def test_the_first_read_of_children_forces_exactly_once(self):
+        job = _Job()
+        child = self.lazy(job)
+        self.assertEqual(2, len(child.children))
+        self.assertEqual(2, len(child.children))
+        child.bounding_box()
+        self.assertEqual(1, job.waited)
+        self.assertEqual([("t-child", "child")], self.materialized)
+
+    def test_a_placed_promise_reads_its_children_placed(self):
+        placed = bd.Pos(0, 0, 50) * self.lazy(_Job())
+        self.assertEqual(2, len(placed.children))
+        self.assertAlmostEqual(50.0, placed.bounding_box().center().Z, places=6)
+
+    def test_label_and_color_read_back_the_child_s_own(self):
+        # Reading is not setting: `.color =` still defers, but a READ of a pending
+        # child's color must be the child's color, not the None it has not learned yet.
+        child = LazyCompound(self.model, _Job(), frame=self.frame, label="", tree=None)
+        self.assertEqual("child", child.label)
+        self.assertEqual(tuple(bd.Color("blue")), tuple(self.lazy(_Job()).color))
+
+    def test_the_deferrals_still_defer_with_a_two_part_child(self):
+        job = _Job()
+        moved = (bd.Pos(1, 0, 0) * self.lazy(job)).moved(bd.Location((0, 2, 0)))
+        moved.label = "placed"
+        moved.color = bd.Color("red")
+        self.assertTrue(moved.pending)
+        self.assertEqual(0, job.waited)
+        self.assertEqual([], self.materialized)
+
+
 class Errors(LazyFixture):
     def test_a_failed_child_raises_at_the_forcing_site_with_call_site_and_output(self):
         job = _Job(code=1, text="Traceback (most recent call last):\n  boom\n")
@@ -161,6 +243,76 @@ class Errors(LazyFixture):
         with mock.patch.object(lazy_mod, "_read_record", lambda model: None):
             with self.assertRaises(ChildBuildError):
                 self.lazy(_Job()).tree_hash()
+
+
+CHILD = """
+    from cadgen import step
+    from cadgen import build123d as bd
+
+
+    @step
+    def pair():
+        return bd.Compound(children=[bd.Box(1, 1, 1), bd.Pos(2, 0, 0) * bd.Box(1, 1, 1)])
+
+
+    if __name__ == "__main__":
+        pair()
+"""
+
+PARENT = """
+    from cadgen import step
+    from cadgen import build123d as bd
+
+    from pair import pair
+
+
+    @step
+    def holder():
+        child = pair()
+        # Read the node views BEFORE anything touches geometry: this is the
+        # reported bug, which printed `before=0 after=2`.
+        before = (len(child.children), len(child.leaves), child.is_leaf)
+        child.bounding_box()
+        after = (len(child.children), len(child.leaves), child.is_leaf)
+        print(f"BEFORE {before} AFTER {after}")
+        return bd.Compound(children=[child])
+
+
+    if __name__ == "__main__":
+        holder()
+"""
+
+
+class ColdBuild(unittest.TestCase):
+    """The reported bug end to end: a real uncached build, a real store, no stubs."""
+
+    def test_a_deferred_child_reads_its_children_before_any_geometry_read(self) -> None:
+        with temporary_directory(prefix="lazy-child-reads-") as tmp:
+            root, cache = Path(tmp) / "proj", Path(tmp) / "store"
+            root.mkdir(parents=True)
+            for name, text in (("pair.py", CHILD), ("holder.py", PARENT)):
+                (root / name).write_text(textwrap.dedent(text).lstrip(), encoding="utf-8")
+            env = dict(os.environ)
+            env["PYTHONPATH"] = os.pathsep.join(
+                p for p in [str(REPO_ROOT / "packages" / "cadgen" / "src"), env.get("PYTHONPATH", "")] if p
+            )
+            env["CADGEN_CACHE_DIR"] = str(cache)
+            env["CADGEN_DAEMON"] = "0"
+            env.pop("CADGEN_DAEMON_CHILD", None)
+            result = subprocess.run(
+                [sys.executable, "holder.py", "--force"],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            line = next(
+                (ln for ln in (result.stdout + result.stderr).splitlines() if ln.startswith("BEFORE ")),
+                "",
+            )
+            self.assertEqual("BEFORE (2, 2, False) AFTER (2, 2, False)", line, result.stdout + result.stderr)
 
 
 if __name__ == "__main__":

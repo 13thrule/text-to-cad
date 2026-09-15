@@ -10,15 +10,25 @@ closing ``Compound(children=[...])``, after every sibling has been submitted, so
 stale children build in parallel.
 
 Deferred without forcing: ``Pos/Rot/Location * child`` and ``.moved()`` compose
-a placement; ``.label`` and ``.color`` are recorded and applied on force.
+a placement; ``.label =`` and ``.color =`` are recorded and applied on force.
 Everything else — ``.faces()``, ``.bounding_box()``, a boolean, ``.solids()``,
-``copy.copy``, ``bool(child)`` — reaches the shape and forces. build123d reads
+``.children``, ``copy.copy``, ``bool(child)`` — forces.
+
+"Everything else" is enforced at the ONE door every read comes through,
+``__getattribute__``: a name outside :data:`_DEFERRED` forces the promise before
+it is served. Reaching the shape is not enough to be that door. build123d reads
 the shape through two names, the ``wrapped`` property and the ``_wrapped``
 attribute it is backed by (its empty-shape checks are ``if self._wrapped is
-None``), so ``_wrapped`` is the property here: a promise can never be mistaken
-for an empty shape and answer with nothing. A build123d path not anticipated
-here therefore degrades to "forced early": correct geometry, less overlap, never
-wrong output.
+None``), so ``_wrapped`` is a property here too and a promise can never be
+mistaken for an empty shape — but a ``Compound`` also answers from state that is
+NOT the shape: anytree serves ``.children``, ``.descendants``, ``.leaves``,
+``.is_leaf``, ``.height`` and ``.size`` out of ``_NodeMixin__children``, which
+``_force`` fills in. A promise that only forced on the shape answered those with
+an EMPTY tree — a two-part child read as zero parts, at exit 0 — until the
+caller happened to touch geometry first. Forcing at the attribute door makes the
+deferral list closed and everything else correct by default: an unanticipated
+build123d path degrades to "forced early" (correct geometry, less overlap) and
+never to a plausible wrong answer.
 
 Forcing: wait for the job (if any), then use the pinned tree — a current child was
 pinned at the CALL (the wrapper read its record then), a stale child's tree is the
@@ -54,10 +64,39 @@ class ChildBuildError(RuntimeError):
     """A child model's build failed; raised where the parent first needed it."""
 
 
+#: The closed deferral vocabulary: the only names a promise answers WITHOUT
+#: forcing. Everything else goes through ``_force`` first (see the module
+#: docstring). ``_lazy_*`` is the promise's own state and is always deferred.
+#:
+#: * ``_force``/``_forced``/``_wrapped`` are the forcing machinery itself.
+#: * ``model``/``model_name``/``pending``/``tree_hash`` are facts ABOUT the
+#:   promise, not about its geometry: the build reads them to record the child
+#:   edge (``cadgen.authoring``) and must not materialize to do it.
+#: * ``moved`` composes a placement, the one operation that stays deferred.
+#: * ``__dict__``/``__class__`` are read by the machinery above.
+_DEFERRED = frozenset(
+    {
+        "_force",
+        "_forced",
+        "_wrapped",
+        "model",
+        "model_name",
+        "pending",
+        "tree_hash",
+        "moved",
+        "__dict__",
+        "__class__",
+    }
+)
+
+
 class LazyCompound(Compound):
     """See the module docstring."""
 
     def __init__(self, model: Path | str, job: Any, *, frame: Any, label: str, tree: str | None = None) -> None:
+        # Until the promise is fully built there is nothing to force TO: the
+        # constructor below reads build123d/anytree state on a half-made object.
+        self._lazy_ready = False
         self._lazy_shape = None
         self._lazy_forcing = False
         Compound.__init__(self, None, label=label)
@@ -76,6 +115,21 @@ class LazyCompound(Compound):
         )
         # Where the parent called the child: the line a failure is reported at.
         self._lazy_call_site = _call_site()
+        self._lazy_ready = True
+
+    # --- the one door: any read outside the deferral list forces -----------------------
+
+    def __getattribute__(self, name: str):
+        state = object.__getattribute__(self, "__dict__")
+        if (
+            state.get("_lazy_shape") is None
+            and state.get("_lazy_ready")
+            and not state.get("_lazy_forcing")
+            and name not in _DEFERRED
+            and not name.startswith("_lazy_")
+        ):
+            object.__getattribute__(self, "_force")()
+        return object.__getattribute__(self, name)
 
     # --- the shape, forced on first read -----------------------------------------------
 
@@ -106,13 +160,18 @@ class LazyCompound(Compound):
             # Already forced: build123d's own moved() keeps the TShape (a link)
             # and deep-copies the wrapper's attributes, tags included.
             return Compound.moved(self, loc)
+        # The recorded label and color are read out of the instance dict: going
+        # through the attributes would force the very promise this defers.
+        state = self.__dict__
         clone = LazyCompound.__new__(LazyCompound)
+        clone._lazy_ready = False
         clone._lazy_shape = None
         clone._lazy_forcing = False
-        Compound.__init__(clone, None, label=self.label)
-        clone.__dict__.update({k: v for k, v in self.__dict__.items() if k.startswith("_lazy_")})
-        clone.color = self.color
+        Compound.__init__(clone, None, label=state.get("label", ""))
+        clone.__dict__.update({k: v for k, v in state.items() if k.startswith("_lazy_")})
+        clone.__dict__["_color"] = state.get("_color")
         clone._lazy_placement = loc if self._lazy_placement is None else loc * self._lazy_placement
+        clone._lazy_ready = True
         return clone
 
     def __iter__(self):
