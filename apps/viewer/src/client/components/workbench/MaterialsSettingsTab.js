@@ -10,7 +10,6 @@ import {
   duplicateSourceMaterialOverlay,
   effectiveSourceAppearance,
   patchSourceMaterialOverlay,
-  sourceAppearanceHasMaterials,
   sourceMaterialFallbackColor,
   sourceMaterialEditorValue
 } from "@/workbench/sourceMaterialSession";
@@ -59,9 +58,7 @@ function MaterialSlider({ label, value, onChange }) {
 
 function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedPartIds = [], onSelectParts, onOverlayChange, scope = "" }) {
   const effective = useMemo(() => effectiveSourceAppearance(appearance, overlay), [appearance, overlay]);
-  const parts = targets.filter(target => !target.group).map((part, index, all) => ({ ...part,
-    label: /^=>\[/.test(part.label) ? all.length === 1 ? scope.split("/").pop().replace(/\.step$/i, "") : `Part ${index + 1}` : part.label
-  }));
+  const parts = targets.filter(target => !target.group);
   const selected = parts.filter(part => selectedPartIds.includes(part.occurrenceIds[0]));
   const ids = selected.map(part => part.occurrenceIds[0]);
   const current = materialForSelection(effective, ids);
@@ -168,6 +165,8 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedP
 }
 
 export function buildMaterialsSettingsTab(props = {}) {
-  if (!props.enabled && !sourceAppearanceHasMaterials(props.appearance)) return null;
+  // `enabled` is sourceMaterialsPanelEnabled's answer, decided once by the
+  // workspace for both the tab strip and this tab. Do not re-derive it here.
+  if (!props.enabled) return null;
   return { id: FILE_SHEET_SECTION_IDS.THEME_MATERIALS, title: "Materials", content: <MaterialsSettingsContent {...props} /> };
 }

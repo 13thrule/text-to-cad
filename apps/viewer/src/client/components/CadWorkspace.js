@@ -338,9 +338,10 @@ import {
 import { copyTextToClipboard, readTextFromClipboard } from "@/ui/clipboard";
 import {
   applySourceMaterialOverlayToMeshData,
-  sourceMaterialOverlayIsEmpty,
-  sourceMaterialGeometry,
   sourceAppearanceHasMaterials,
+  sourceMaterialGeometry,
+  sourceMaterialOverlayIsEmpty,
+  sourceMaterialsPanelEnabled,
   sourceMaterialTargets
 } from "@/workbench/sourceMaterialSession";
 import {
@@ -2012,8 +2013,8 @@ export default function CadWorkspace({
     ? selectedSourceMaterialRecord.overlay
     : null;
   const selectedSourceMaterialTargets = useMemo(
-    () => sourceMaterialTargets(selectedMeshData),
-    [selectedMeshData]
+    () => sourceMaterialTargets(selectedMeshData, sourceMaterialScope),
+    [selectedMeshData, sourceMaterialScope]
   );
   const selectedDisplayMeshData = useMemo(() => {
     return registerLodDisplaySource(
@@ -3337,7 +3338,7 @@ export default function CadWorkspace({
       selectedAnimationError
     ),
     hasEmbeddedGlbAnimationPanel: Boolean(embeddedGlbAnimationRuntime),
-    hasMaterialsPanel: selectedFileSheetKind === "step" || sourceAppearanceHasMaterials(selectedSourceAppearance),
+    hasMaterialsPanel: sourceMaterialsPanelEnabled(selectedFileSheetKind, selectedSourceAppearance),
     measurementAvailable: effectiveSupportsMeasure,
     hasDxfBendsPanel: selectedFileSheetKind === "dxf" && drawingBends.length > 0,
     hasDxfLayersPanel: selectedFileSheetKind === "dxf" && drawingLayers.length > 1,
@@ -7441,7 +7442,7 @@ export default function CadWorkspace({
       overlay: selectedSourceMaterialOverlay,
       targets: selectedSourceMaterialTargets,
       scope: sourceMaterialScope,
-      enabled: selectedFileSheetKind === "step" || sourceAppearanceHasMaterials(selectedSourceAppearance),
+      enabled: sourceMaterialsPanelEnabled(selectedFileSheetKind, selectedSourceAppearance),
       selectedPartIds: materialSelectedIds,
       onSelectParts: selectMaterialParts,
       onOverlayChange: handleSourceMaterialOverlayChange

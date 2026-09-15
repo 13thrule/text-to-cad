@@ -79,6 +79,14 @@ export function sourceAppearanceHasMaterials(appearance) {
   return Boolean(resolved && Object.keys(resolved.materials || {}).length);
 }
 
+// The one rule for whether the Materials tab exists: every STEP can be given
+// materials in-session, and any other format that already ships named ones can
+// be retouched. It decides both the tab strip entry and the tab itself, so the
+// two can never disagree about whether the panel is there.
+export function sourceMaterialsPanelEnabled(fileSheetKind, appearance) {
+  return String(fileSheetKind || "") === "step" || sourceAppearanceHasMaterials(appearance);
+}
+
 export function effectiveSourceAppearance(appearance, overlay) {
   return resolveSourceAppearance(appearance, sessionOverlay(overlay));
 }
@@ -91,7 +99,21 @@ function sourceMaterialParts(meshData) {
   })).filter((part) => part.id);
 }
 
-export function sourceMaterialTargets(meshData) {
+// A STEP occurrence with no authored name arrives carrying the exchange file's
+// placeholder (`=>[...]`), which is not a name to show anyone. A lone unnamed
+// body is the model, so it takes the model's file name; several unnamed bodies
+// become ordinals. Resolved here so every consumer gets a label it can render.
+const PLACEHOLDER_PART_LABEL = /^=>\[/u;
+
+function displayPartLabel(part, index, partCount, scope) {
+  if (!PLACEHOLDER_PART_LABEL.test(part.label)) return part.label;
+  const modelName = partCount === 1
+    ? String(scope || "").split("/").pop().replace(/\.step$/iu, "")
+    : "";
+  return modelName || `Part ${index + 1}`;
+}
+
+export function sourceMaterialTargets(meshData, scope = "") {
   const parts = sourceMaterialParts(meshData);
   const partById = new Map(parts.map((part) => [part.id, part]));
   const targets = [];
@@ -115,9 +137,15 @@ export function sourceMaterialTargets(meshData) {
     return occurrenceIds;
   };
   if (meshData?.assemblyRoot) visit(meshData.assemblyRoot);
-  for (const part of parts) {
-    targets.push({ ...part, occurrenceIds: [part.id], depth: 0, group: false });
-  }
+  parts.forEach((part, index) => {
+    targets.push({
+      ...part,
+      label: displayPartLabel(part, index, parts.length, scope),
+      occurrenceIds: [part.id],
+      depth: 0,
+      group: false
+    });
+  });
   return targets;
 }
 

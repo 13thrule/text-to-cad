@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   applyMaterialChoice,
+  sourceMaterialsPanelEnabled,
+  sourceMaterialTargets,
   applySourceMaterialOverlayToMeshData,
   duplicateSourceMaterialOverlay,
   effectiveSourceAppearance,
@@ -140,4 +142,35 @@ test("a preset writes every finish channel and leaves the part's own color alone
   assert.equal(added.clearcoatRoughness, 0.2);
   assert.equal(added.opacity, 1);
   assert.equal(added.baseColor, undefined, "a finish preset never repaints the STEP color");
+});
+
+test("targets carry labels the panel can render for unnamed STEP occurrences", () => {
+  const unnamed = (id) => ({ occurrenceId: id, label: `=>[${id}]` });
+  assert.deepEqual(
+    sourceMaterialTargets({ parts: [unnamed("b1")] }, "shelf/bracket.STEP").map((target) => target.label),
+    ["bracket"],
+    "a lone unnamed body is the model, so it takes the model's name"
+  );
+  assert.deepEqual(
+    sourceMaterialTargets({ parts: [unnamed("b1"), unnamed("b2")] }, "shelf/bracket.step")
+      .map((target) => target.label),
+    ["Part 1", "Part 2"]
+  );
+  assert.deepEqual(
+    sourceMaterialTargets({ parts: [unnamed("b1")] }, "").map((target) => target.label),
+    ["Part 1"],
+    "no scope to name it after still beats showing the placeholder"
+  );
+  assert.deepEqual(
+    sourceMaterialTargets({ parts: [{ occurrenceId: "palm", label: "Palm" }] }, "hand.step")
+      .map((target) => target.label),
+    ["Palm"]
+  );
+});
+
+test("the Materials panel is offered for every STEP and for anything already carrying materials", () => {
+  assert.equal(sourceMaterialsPanelEnabled("step", null), true);
+  assert.equal(sourceMaterialsPanelEnabled("mesh", appearance), true);
+  assert.equal(sourceMaterialsPanelEnabled("mesh", null), false);
+  assert.equal(sourceMaterialsPanelEnabled("", { materials: {}, assignments: {} }), false);
 });
