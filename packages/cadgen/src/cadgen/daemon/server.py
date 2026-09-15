@@ -79,10 +79,11 @@ _TOOL_IMPORTS = {
 from cadgen.daemon import broker as broker_mod  # noqa: E402
 from cadgen.daemon import pool as pool_mod  # noqa: E402 - after _TOOL_IMPORTS, which worker.py reads
 
-_POOL = pool_mod.Pool()
 # Daemon-wide job slots and the in-flight registry (STORE.md §9). Workers reach it
 # over the daemon's own socket.
 _BROKER = broker_mod.Broker()
+# Admission waits on the jobs holding those slots rather than refusing a spawn.
+_POOL = pool_mod.Pool(in_flight=lambda: _BROKER.snapshot()["running"])
 
 
 class _DaemonShutdown(BaseException):
