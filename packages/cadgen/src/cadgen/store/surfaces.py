@@ -170,7 +170,7 @@ def derive(tree_hash: str, cids: list[str] | None = None, *, force: bool = False
     descriptor, _ = capture(tree_hash, retain_payloads=False)
     producer = producer_identity() if producer is None else producer_fields(producer)
     if producer != producer_identity():
-        raise SurfaceProducerUnavailable
+        raise SurfaceProducerUnavailable()
     requested = list(descriptor["components"]) if cids is None else list(dict.fromkeys(cids))
     if any(cid not in descriptor["components"] for cid in requested):
         raise ValueError("surface request names an unpinned component")
