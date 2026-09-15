@@ -44,7 +44,8 @@ to `cadgen viewer` over `/__cad` and `/__tess_cache`, and to nothing else.
   transport failures retain request context and report a connection problem;
   only an explicit compiler failure is labeled as one. Reload rechecks the
   artifact status and never forces a duplicate build. Compiler output is not
-  line-clamped away.
+  line-clamped away. A backend warning about a document's neighbours carries that
+  same shape and is listed as a non-blocking warning, never as a failed entry.
 - **Geometry and display readiness are separate**: a `compiled` artifact owns
   a complete immutable geometry tree. Display may still be waiting for an
   exact surface derivation or tessellation. A validated warm tessellation can

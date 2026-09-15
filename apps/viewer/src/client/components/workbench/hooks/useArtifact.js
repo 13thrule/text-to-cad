@@ -21,6 +21,7 @@ import {
   artifactAdvisoryFor,
   reconcileArtifactRun
 } from "../../../workbench/artifactResolution.js";
+import { artifactWarningItems } from "../../../workbench/artifactWarnings.js";
 
 // useArtifact — the client half of the render-artifact pipeline.
 //
@@ -47,7 +48,11 @@ import {
 // reported ratio is monotonic only within a single run and carrying it across a handoff is what
 // made the bar jump backwards.
 
-const READY = { status: "compiled", error: "", progress: null, advisory: null };
+// One shared empty list, so `warnings` keeps a stable identity across renders
+// and the memo that builds the warning alert does not rerun for every frame.
+const NO_WARNINGS = Object.freeze([]);
+
+const READY = { status: "compiled", error: "", progress: null, advisory: null, warnings: NO_WARNINGS };
 
 function isAbortError(error) {
   return error?.name === "AbortError";
@@ -97,6 +102,15 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
     // position across a handoff is what made the bar jump backwards. On a new runId the
     // bar resets instead.
     let shownRunId = null;
+    // Advisory warnings about the document's NEIGHBOURS. They ride every status
+    // payload and mean nothing about the state, so the last successful READ owns
+    // them: the compile POST answers without them and must not erase what the
+    // status route reported about a file that is still sitting there.
+    let warnings = NO_WARNINGS;
+    const readWarnings = (status) => {
+      const items = artifactWarningItems(status);
+      warnings = items.length > 0 ? items : NO_WARNINGS;
+    };
 
     const noteStatusFailure = (error) => {
       if (finished || !isCurrent() || controller.signal.aborted || isAbortError(error)) {
@@ -118,7 +132,7 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
         );
         const base = current.key === key
           ? current
-          : { key, status: "compiling", error: "", progress, advisory: null };
+          : { key, status: "compiling", error: "", progress, advisory: null, warnings };
         return terminal
           ? { ...base, status: "failed", error: failure.detail, failure, progress }
           : { ...base, progress };
@@ -162,6 +176,7 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
           timeoutMs: ARTIFACT_STATUS_TIMEOUT_MS
         });
         statusReadSucceeded();
+        readWarnings(status);
         reported = String(status?.state || "");
         mergeProgress(status);
       } catch (error) {
@@ -186,6 +201,7 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
       settle({
         status: "compiling",
         error: "",
+        warnings,
         progress: refreshArtifactProgress(normalizeArtifactProgress(status?.progress))
       });
     };
@@ -199,6 +215,7 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
         });
         readingStatus = false;
         statusReadSucceeded();
+        readWarnings(status);
         if (!isCurrent()) {
           return;
         }
@@ -208,13 +225,13 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
           // busy elsewhere); keep them for the file sheet's status section.
           finished = true;
           stopPolling();
-          settle({ ...READY, advisory: artifactAdvisoryFor(status) });
+          settle({ ...READY, advisory: artifactAdvisoryFor(status), warnings });
           return;
         }
         if (action === ARTIFACT_ACTION_ERROR) {
           finished = true;
           stopPolling();
-          settle({ status: "failed", error: serverErrorMessage(status) });
+          settle({ status: "failed", error: serverErrorMessage(status), warnings });
           return;
         }
         if (action === ARTIFACT_ACTION_ATTACH) {
@@ -246,8 +263,8 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
           return;
         }
         settle(result?.ok && result.state === "compiled"
-          ? { ...READY, advisory: artifactAdvisoryFor(result) }
-          : { status: "failed", error: serverErrorMessage(result) });
+          ? { ...READY, advisory: artifactAdvisoryFor(result), warnings }
+          : { status: "failed", error: serverErrorMessage(result), warnings });
       } catch (error) {
         if (readingStatus && noteStatusFailure(error)) {
           pollTimer = window.setTimeout(resolve, ARTIFACT_PROGRESS_POLL_MS);
@@ -259,6 +276,7 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
         if (isCurrent() && !isAbortError(error) && !controller.signal.aborted) {
           settle({
             status: "failed", error: error instanceof Error ? error.message : String(error),
+            warnings,
             failure: error?.failure || { kind: "response", operation: "checking display assets" }
           });
         }
@@ -281,7 +299,8 @@ export function useArtifact(fileRef, { enabled = true, freshnessKey = "" } = {})
       error: state.error,
       failure: state.failure || null,
       progress: state.progress,
-      advisory: state.advisory || null
+      advisory: state.advisory || null,
+      warnings: state.warnings || NO_WARNINGS
     }
     : READY;
 }
