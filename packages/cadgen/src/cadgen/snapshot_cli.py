@@ -688,6 +688,42 @@ def normalize_render_job_selection(
     return normalized
 
 
+def robot_joint_names(kind: str, input_path: Path) -> frozenset[str] | None:
+    """The joint names a pose request may name, or None when they cannot be read.
+
+    The browser is what ASSEMBLES a robot, so this module never had the joint list and a
+    misspelled `--joint-values` name was dropped in silence: the door reported success and
+    rendered the rest pose, which is the one failure a posed review cannot survive. The
+    STEP door already refuses an unknown DOF by name; robots now do the same.
+
+    The answer is only ever used to REFUSE a name that is definitely not in the
+    description. A description this cannot parse returns None and renders exactly as
+    before, so the check can never make the door stricter about geometry than the renderer
+    that has to draw it.
+    """
+    source_path = input_path
+    if kind == "srdf":
+        # An SRDF carries semantics only; its joints are the sibling URDF's.
+        source_path = input_path.with_suffix(".urdf")
+        if not source_path.exists():
+            return None
+    try:
+        if kind == "sdf":
+            from cadgen.sdf_source import read_sdf_source
+
+            return frozenset(joint.name for joint in read_sdf_source(source_path).joints)
+        import warnings
+
+        from cadgen.urdf_source import read_urdf_source
+
+        # The reader doubles as the validator and advises about inertials, materials and
+        # the like. Those belong to `cadgen urdf validate`; a render that only needs the
+        # joint names must not start narrating them over the snapshot's own output.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return frozenset(joint.name for joint in read_urdf_source(source_path).joints)
+    except Exception:
+        return None
 
 
 
@@ -761,6 +797,14 @@ def resolve_robot_render_job(
         for name, value in joint_values.items():
             if not isinstance(value, (int, float)) or isinstance(value, bool):
                 raise SnapshotError(f"jointValues[{name}] must be a number (degrees)")
+        declared = robot_joint_names(kind, input_path)
+        if declared is not None:
+            unknown = sorted(str(name) for name in joint_values if str(name) not in declared)
+            if unknown:
+                raise SnapshotError(
+                    f"Unknown joint(s): {', '.join(unknown)}. "
+                    f"This {label} declares: {', '.join(sorted(declared)) or '(none)'}"
+                )
 
     # Link meshes are referenced relative to the description, so the served root has to
     # contain both. The description's own directory is the natural root and matches how the

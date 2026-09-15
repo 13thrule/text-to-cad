@@ -1464,6 +1464,50 @@ class SnapshotCliTests(unittest.TestCase):
             with self.assertRaisesRegex(SnapshotError, "must be a number"):
                 resolve_render_job_packet({**base, "jointValues": {"j": "45"}}, cwd=root)
 
+    # The robot is assembled in the BROWSER, so this module never held the joint list and a
+    # misspelled name was dropped in silence: exit 0, a rest-pose picture, and a reviewer
+    # told the pose was rendered. The STEP door has always refused an unknown DOF by name.
+    JOINTED_URDF = b"""<?xml version="1.0"?>
+<robot name="arm">
+  <link name="base_link"><visual><geometry><box size="1 1 1"/></geometry></visual></link>
+  <link name="upper"><visual><geometry><box size="1 1 1"/></geometry></visual></link>
+  <joint name="shoulder_pan" type="revolute">
+    <parent link="base_link"/><child link="upper"/>
+    <axis xyz="0 0 1"/><limit lower="-1" upper="1" effort="1" velocity="1"/>
+  </joint>
+</robot>
+"""
+
+    def test_render_job_refuses_a_joint_the_robot_does_not_declare(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = self._mesh_job_env(temporary_directory, "arm.urdf", self.JOINTED_URDF)
+            base = {"input": "models/arm.urdf", "outputs": [{"path": "tmp/iso.png"}]}
+
+            # A declared joint still poses the robot.
+            packet = resolve_render_job_packet({**base, "jointValues": {"shoulder_pan": 30}}, cwd=root)
+            self.assertEqual(packet["jobs"][0]["resolved"]["jointValues"], {"shoulder_pan": 30})
+
+            with self.assertRaisesRegex(SnapshotError, r"Unknown joint\(s\): shoulder_panx"):
+                resolve_render_job_packet({**base, "jointValues": {"shoulder_panx": 30}}, cwd=root)
+            # The message names what the robot DOES declare, like the STEP door's.
+            with self.assertRaisesRegex(SnapshotError, "This URDF declares: shoulder_pan"):
+                resolve_render_job_packet({**base, "jointValues": {"Shoulder_Pan": 30}}, cwd=root)
+
+    def test_render_job_still_poses_a_robot_whose_joints_cannot_be_read(self) -> None:
+        # The check may only REFUSE a name it is sure about. A description this cannot parse
+        # renders exactly as before rather than becoming stricter than the renderer.
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = self._mesh_job_env(temporary_directory, "arm.urdf", b"<robot name='arm'/>\n")
+            packet = resolve_render_job_packet(
+                {
+                    "input": "models/arm.urdf",
+                    "jointValues": {"anything": 12},
+                    "outputs": [{"path": "tmp/iso.png"}],
+                },
+                cwd=root,
+            )
+            self.assertEqual(packet["jobs"][0]["resolved"]["jointValues"], {"anything": 12})
+
     def test_render_job_rejects_step_only_options_for_robot_input(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = self._mesh_job_env(temporary_directory, "arm.urdf", b"<robot name='arm'/>\n")
