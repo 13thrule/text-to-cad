@@ -1762,6 +1762,7 @@ const CadViewer = forwardRef(function CadViewer({
   materialOverrides = null,
   receiveShadows = false,
   renderMode = false,
+  materialPickingEnabled = false,
   appearance = "light",
   renderConfiguration = null,
   quality = null,
@@ -2163,6 +2164,7 @@ const CadViewer = forwardRef(function CadViewer({
     recordEdgesVisible
   );
   const partVisualStateEnabled =
+    (Array.isArray(selectedPartIds) && selectedPartIds.length > 0) ||
     pickMode === VIEWER_PICK_MODE.PARTS ||
     pickMode === VIEWER_PICK_MODE.ASSEMBLY ||
     (
@@ -5579,7 +5581,7 @@ const CadViewer = forwardRef(function CadViewer({
     onMeasurePick: handleMeasurePick,
     onMeasureHoverPoint: handleMeasureHoverPoint,
     viewerReadyTick,
-    suppressTopologyPicking: renderMode || stepAnimationPlaying,
+    suppressTopologyPicking: (renderMode && !materialPickingEnabled) || stepAnimationPlaying,
     allowMeshVertexSnap
   });
 

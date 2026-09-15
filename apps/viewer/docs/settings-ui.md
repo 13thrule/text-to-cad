@@ -283,10 +283,19 @@ a fixed color pair (e.g. the switch track), it is defined once in
 App appearance is global. CAD inspection state and photographic Render state
 are separate per-model session data. The navbar's Viewing mode icon menu offers
 Inspect and Render. The Render file sheet
-starts with Studio active in a single row, followed by authored Animation when
-available. Display, selection, visibility, clipping, exploded view,
-measurement, drawing, and pose controls remain hidden and their CAD values are
-restored unchanged when the user returns to Inspect.
+starts with Studio active in a single row, followed by Materials for STEP models,
+Kinematics when joints exist, and Animation when clips exist. Kinematics and
+Animation remain available in both modes. CAD measurement and topology picking
+remain in Inspect. Materials may highlight components without enabling picking.
+
+Materials shows one compact parts list with assignment names and swatches.
+Select in the list or viewport, then click an existing material or preset to
+apply immediately. Undo restores the last local change while the panel remains
+mounted; it is discarded after unrelated overlay changes or a file switch.
+Select parts using a material lives in its options menu. Advanced settings reveals
+color and surface sliders, with explicit shared editing and Make unique.
+Part picking is scoped to this tab and never enables face/edge selectors in
+Render. Browser-tab persistence remains separate from source.
 
 The top Setup section contains Quality. Reset sits below the Backdrop section.
 Camera contains Lens and Exposure; Lighting contains Rotation,
@@ -295,9 +304,9 @@ Ground position (visible only with Ground enabled). Ground position defaults to
 Model origin (Z=0); Lowest point is an explicit presentation option.
 Studio defaults follow global app appearance. Customized backdrop settings remain
 in the model session until Reset, which restores defaults for the current
-appearance. Do not add preset or settings clipboard controls. Do not add material,
-grading, arbitrary light, environment-map, or image-export controls. Authored
-materials stay authoritative and image capture stays in the viewer toolbar.
+appearance. Keep material presets in Materials. Do not add settings clipboard,
+grading, arbitrary light, environment-map, or image-export controls to Studio. Authored
+materials provide the reset baseline and image capture stays in the viewer toolbar.
 
 ## Checklist for a new settings row
 

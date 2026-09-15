@@ -73,7 +73,7 @@ The navbar's **Viewing mode** icon menu switches between **Inspect** and
 **Render**, showing the active mode's cube or clapperboard icon. Inspect shows only
 CAD inspection tabs and restores their saved split, order, and active selection unchanged.
 Render enters an isolated photographic view with **Studio** first and active;
-**Materials** follows when the model declares named materials, **Kinematics**
+**Materials** follows for STEP models, including those without named materials, **Kinematics**
 follows when it declares pose controls, and **Animation** follows when it
 provides clips. The Render tabs start in
 one row on each entry. Dragging and splitting them is temporary and never
@@ -136,11 +136,19 @@ geometry and lighting have drawn their first frame. This transition owns no
 second GPU scene and does not return during orbit or detail refinement. Render
 does not receive inspection selectors or DXF bend-guide overlays; STEP and
 embedded GLB animation remain independent of those inspection resources.
-The conditional Materials tab lists named material usage, edits base color and
-the five supported PBR channels, and assigns or duplicates materials for chosen
-components or groups. Its per-model overlay uses the existing browser-tab
-session state and Reset authored clears it; an authored appearance revision
-drops stale edits, and the Viewer never writes a sidecar or cache.
+The Materials tab shows a compact parts list with each current assignment.
+Click a part in the list or Render viewport (Shift-click for multiple), carry a
+selection from Inspect, or Select all parts. Click an In this model swatch or
+Preset to apply immediately; a preset creates and assigns its material together.
+Undo restores the last local material change while this panel stays mounted.
+A material's options menu can select every part using it. Color and surface
+sliders stay behind Advanced settings. Shared editing remains explicit, with Make
+unique for selection available before editing a shared material.
+Part picking is enabled only while the STEP Materials tab is open; face/edge
+selectors stay disabled. Appearance wrappers retain their geometry identity
+for detail-adoption and disposal acknowledgments. Browser-tab material overlays
+survive reload; authored revisions invalidate them, and bare STEP geometry
+revisions do too. Reset authored clears local assignments and definitions.
 These settings use sessionStorage with other per-model
 ephemeral state; they are not written beside models, into the geometry cache,
 or into global app appearance. A normal geometry rebuild preserves the

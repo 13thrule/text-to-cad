@@ -6,6 +6,7 @@ import {
   registerLodDisplaySource,
 } from "./lodSceneAdoption.js";
 import { updateLodMeshState, updateLodReferenceState } from "./lodPublication.js";
+import * as materials from "../workbench/sourceMaterialSession.js";
 
 function source(mesh, extra = []) {
   return { parts: ["a1", "a2"].map(id => ({ id, occurrenceId: id, componentId: "a", sourceMesh: mesh })).concat(extra) };
@@ -29,6 +30,17 @@ function fixture() {
   };
 }
 async function ticks() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
+
+test("material-only display wrappers acknowledge the exact published geometry", async () => {
+  const f = fixture(), promise = f.expect(); f.publish();
+  const added = materials.addSourceMaterialPreset(null, null, "satin-metal");
+  const overlay = materials.assignSourceMaterialOverlay(added.overlay, ["a1"], added.materialId);
+  const display = materials.applySourceMaterialOverlayToMeshData(f.candidate, overlay);
+  assert.equal(f.tracker.adopted(display), false, "a copied display object cannot acknowledge the publication");
+  assert.equal(f.tracker.adopted(materials.sourceMaterialGeometry(display)), true);
+  assert.equal((await promise).status, "adopted");
+  assert.equal(f.context.meshData, f.candidate);
+});
 
 test("committed source stays old until exact actual adoption; publication is not ownership completion", async () => {
   const f = fixture(); let done = false;
