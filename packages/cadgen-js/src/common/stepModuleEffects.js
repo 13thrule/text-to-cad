@@ -222,6 +222,14 @@ export function createStepModuleEffectsApi(THREE, {
   };
 
   return {
+    // The part ids a target names, by the SAME resolution every effect below
+    // uses. A caller that must reason about which parts overlap before it
+    // writes anything (the mates runtime: accumulated world deltas must land
+    // on each part exactly once) asks here rather than re-implementing the
+    // feature/name/occurrence-id matching and drifting from it.
+    resolve(target) {
+      return resolveStepModuleEffectTargetPartIds(target, features, meshData, runtime?.displayRecords);
+    },
     transform(target, spec) {
       const matrix = buildStepModuleEffectMatrix(THREE, spec);
       const partIds = forEachTarget(target, (effect) => {

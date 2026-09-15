@@ -77,7 +77,10 @@ if __name__ == "__main__":
   is an occurrence in the instance tree, and mating it carries every part
   beneath it. That is how a rocker-bogie chain is three mates instead of three
   hundred; `inspect refs` does not list group refs, because they are not
-  rendered parts.
+  rendered parts. Targets may NEST — a part inside a mated group may carry its
+  own mate to a sibling (a servo's output horn bolted to the jaw it drives):
+  the DEEPEST mate naming a part owns it and moves it exactly once, and the
+  enclosing group carries only what no deeper mate claimed.
 - **`axis`** is a selector ref (`axis="#forearm.pivot_bore"` — a cylindrical
   face or circular edge yields its axis, a planar face its center+normal) or
   literals (`origin=(x, y, z), direction=(x, y, z)`). Refs resolve ONCE at

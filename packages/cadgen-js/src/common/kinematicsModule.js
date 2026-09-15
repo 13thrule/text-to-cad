@@ -42,6 +42,54 @@ function rowMajor16(matrix) {
   ];
 }
 
+// Mate target subtrees may NEST: a servo group fastened to a gripper frame,
+// whose output horn — a part inside that group — is fastened to the moving
+// jaw beside it. Both mates legitimately name the horn, one by carrying its
+// group and one explicitly.
+//
+// kinematicsDeltas returns ACCUMULATED WORLD deltas, not increments: the
+// horn's delta already contains the whole jaw chain. Applying both to the
+// horn (effects.transform premultiplies) counts the upstream motion twice and
+// detaches the horn from the jaw it is bolted to. So each part takes exactly
+// one delta: the one from the MOST SPECIFIC mate naming it — the smallest
+// resolved target set it belongs to, which for nested sets is the deepest
+// mate. That mate owns its leaves; the outer mate carries only what no deeper
+// mate claimed.
+//
+// `resolve` is the effects api's own target resolution, so ownership is
+// decided over exactly the parts the transform would have moved.
+export function kinematicsDeltaTargets(deltas, resolve) {
+  const entries = [];
+  for (const [ref, delta] of deltas.entries()) {
+    const partIds = resolve(stripHash(ref)) || [];
+    if (partIds.length) {
+      entries.push({ delta, partIds });
+    }
+  }
+  const ownerByPartId = new Map();
+  for (const entry of entries) {
+    for (const partId of entry.partIds) {
+      const owner = ownerByPartId.get(partId);
+      // Equal-sized sets are two mates over the same parts, which the mate
+      // tree rule (one parent mate per occurrence) already forbids upstream;
+      // taking the later declaration keeps this deterministic either way.
+      if (!owner || entry.partIds.length <= owner.partIds.length) {
+        ownerByPartId.set(partId, entry);
+      }
+    }
+  }
+  const owned = new Map();
+  for (const [partId, owner] of ownerByPartId.entries()) {
+    const partIds = owned.get(owner);
+    if (partIds) {
+      partIds.push(partId);
+    } else {
+      owned.set(owner, [partId]);
+    }
+  }
+  return [...owned.entries()].map(([owner, partIds]) => ({ delta: owner.delta, partIds }));
+}
+
 export function stepModuleFromKinematics(block) {
   if (!isObject(block) || !kinematicsMates(block).length) {
     return null;
@@ -92,8 +140,9 @@ export function stepModuleFromKinematics(block) {
         return;
       }
       const deltas = kinematicsDeltas(ctx.THREE, block, values);
-      for (const [ref, delta] of deltas.entries()) {
-        ctx.effects.transform(stripHash(ref), { matrix: rowMajor16(delta) });
+      const targets = kinematicsDeltaTargets(deltas, (target) => ctx.effects.resolve(target));
+      for (const { partIds, delta } of targets) {
+        ctx.effects.transform({ partIds }, { matrix: rowMajor16(delta) });
       }
     }
   };
