@@ -8,7 +8,7 @@ import {
   Copy,
   Folder,
   LoaderCircle,
-  Maximize,
+  Maximize2,
   Monitor,
   Moon,
   Sun,
@@ -1289,7 +1289,7 @@ export default function CadWorkspaceTopBar({
               disabled={previewDisabled}
               className={topBarIconButtonClasses}
             >
-              <Maximize className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
+              <Maximize2 className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
             </Button>
           ) : null}
         </div>
