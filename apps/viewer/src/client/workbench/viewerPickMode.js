@@ -11,6 +11,19 @@ export function viewerSelectorRuntimeForRenderPane({
   return !renderMode && hasTopology && !retainingPreviousStepMesh ? selectorRuntime : null;
 }
 
+// The part selection the scene may highlight. Render is a photographic view:
+// the Inspect selection effect tints the selected surface and draws a dithered
+// occlusion ghost through everything in front of it, which would repaint the
+// very material the Materials tab just applied. The Materials tab's Parts list
+// carries the selection instead, so Render hands the scene no selected parts.
+export function viewerSelectedPartIdsForRenderPane({
+  renderMode = false,
+  hasParts = false,
+  selectedPartIds = []
+} = {}) {
+  return !renderMode && hasParts && Array.isArray(selectedPartIds) ? selectedPartIds : [];
+}
+
 // Callers decide whether picking is enabled (parts, topology, or Measure).
 // This helper stays format-agnostic.
 export function viewerPickModeForRenderPane({

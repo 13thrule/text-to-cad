@@ -6,7 +6,7 @@ import { VIEWER_PICK_MODE } from "cadgen-js/lib/viewer/constants.js";
 import { syncSelectorPickGroups } from "cadgen-js/lib/viewer/selectorPickGroups.js";
 import { applySceneState } from "cadgen-js/common/applySceneState.js";
 import { resetStepModuleRecordEffects } from "cadgen-js/common/stepModuleEffects.js";
-import { viewerPickModeForRenderPane, viewerSelectorRuntimeForRenderPane } from "./viewerPickMode.js";
+import { viewerPickModeForRenderPane, viewerSelectedPartIdsForRenderPane, viewerSelectorRuntimeForRenderPane } from "./viewerPickMode.js";
 
 test("Render drops retained picking proxies while STEP transforms and tube deformation still apply", () => {
   const selectors = { proxy: {
@@ -171,4 +171,15 @@ test("viewer pick mode falls back to auto without the measure tool", () => {
     viewerPickModeForRenderPane({ measureMode: false }),
     VIEWER_PICK_MODE.AUTO
   );
+});
+
+test("Render hands the scene no selected parts, so the Materials selection never tints the photographic view", () => {
+  const selectedPartIds = ["base", "pin_0"];
+  const select = options => viewerSelectedPartIdsForRenderPane({ hasParts: true, selectedPartIds, ...options });
+  assert.equal(select({ renderMode: false }), selectedPartIds);
+  assert.deepEqual(select({ renderMode: false, hasParts: false }), []);
+  assert.deepEqual(select({ renderMode: false, selectedPartIds: null }), []);
+  // The Inspect selection effect (surface tint + dithered occlusion ghost)
+  // would repaint the material the Materials tab just applied.
+  assert.deepEqual(select({ renderMode: true }), []);
 });

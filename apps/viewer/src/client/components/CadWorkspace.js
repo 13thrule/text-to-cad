@@ -7503,7 +7503,6 @@ export default function CadWorkspace({
           onCameraZoomPercentChange={setViewerZoomPercent}
           onLodCameraChange={onLodCameraMoved}
           onMeshSourceAdoption={handleDisplayMeshAdoption}
-          materialHighlightPartIds={materialPickingEnabled ? materialSelectedIds : EMPTY_LIST}
           materialPickingEnabled={materialPickingEnabled}
           onMaterialPartActivate={activateMaterialPart}
           renderPartsIndividually={
