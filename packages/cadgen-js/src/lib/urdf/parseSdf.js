@@ -247,6 +247,47 @@ function occurrenceIdFromSdfName(value) {
   return match ? `o${match[1].replace(/_/g, ".")}` : "";
 }
 
+function positiveChildNumber(parent, tagName) {
+  const value = Number(childText(parent, tagName));
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+// SDF spells the same three shapes URDF does, but as child ELEMENTS rather than attributes
+// (`<box><size>x y z</size></box>` against `<box size="x y z"/>`). The descriptor this
+// returns is URDF's, so `buildUrdfPrimitiveMesh` meshes it with no branch of its own.
+//
+// Until this existed, a link whose visual was a box, cylinder or sphere produced no
+// geometry at all: `resolveUrdfVisuals` drops a visual with neither a primitive nor a mesh,
+// so a model built the ordinary SDF way rendered as empty space — exit 0, no warning, and a
+// reviewer looking at a picture of the one link that happened to use a mesh file.
+// Strictly ADDITIVE: a shape whose numbers are missing or degenerate returns null and stays
+// the placeholder it already was. A description that renders today must not start failing
+// because this learned to read one more element.
+function parseSdfPrimitiveGeometry(geometryElement) {
+  const boxElement = childElementsByTag(geometryElement, "box")[0];
+  if (boxElement) {
+    const size = String(childText(boxElement, "size") || "").trim().split(/\s+/).map(Number);
+    return size.length === 3 && size.every((value) => Number.isFinite(value) && value > 0)
+      ? { type: "box", size }
+      : null;
+  }
+
+  const cylinderElement = childElementsByTag(geometryElement, "cylinder")[0];
+  if (cylinderElement) {
+    const radius = positiveChildNumber(cylinderElement, "radius");
+    const length = positiveChildNumber(cylinderElement, "length");
+    return radius && length ? { type: "cylinder", radius, length } : null;
+  }
+
+  const sphereElement = childElementsByTag(geometryElement, "sphere")[0];
+  if (sphereElement) {
+    const radius = positiveChildNumber(sphereElement, "radius");
+    return radius ? { type: "sphere", radius } : null;
+  }
+
+  return null;
+}
+
 function parseMeshInstance(containerElement, { linkName, kind, index, sourceUrl }) {
   const labelKind = kind === "collision" ? "collision" : "visual";
   const instanceId = String(containerElement?.getAttribute("name") || "").trim();
@@ -254,6 +295,25 @@ function parseMeshInstance(containerElement, { linkName, kind, index, sourceUrl 
   const geometryElement = childElementsByTag(containerElement, "geometry")[0] || null;
   const meshElement = geometryElement ? childElementsByTag(geometryElement, "mesh")[0] : null;
   if (!meshElement) {
+    const context = `SDF link ${linkName} ${labelKind} ${index}`;
+    const primitive = geometryElement ? parseSdfPrimitiveGeometry(geometryElement) : null;
+    const color = materialColorFromElement(
+      childElementsByTag(containerElement, "material")[0] || null,
+      context
+    );
+    if (primitive) {
+      return {
+        id: `${linkName}:${kind[0]}${index}`,
+        label: primitive.type,
+        instanceId,
+        occurrenceId: occurrenceIdFromSdfName(instanceId) || occurrenceIdFromSdfName(linkName),
+        meshUrl: "",
+        color,
+        primitive,
+        localTransform: pose.transform,
+        pose
+      };
+    }
     const geometryKind = geometryElement ? (elementName(childElements(geometryElement)[0]) || "unknown") : "missing";
     return {
       id: `${linkName}:${kind[0]}${index}`,
@@ -261,7 +321,7 @@ function parseMeshInstance(containerElement, { linkName, kind, index, sourceUrl 
       instanceId,
       occurrenceId: occurrenceIdFromSdfName(instanceId) || occurrenceIdFromSdfName(linkName),
       meshUrl: "",
-      color: "",
+      color,
       localTransform: pose.transform,
       pose,
       unsupportedGeometry: geometryKind
