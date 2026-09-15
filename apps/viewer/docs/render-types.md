@@ -28,16 +28,16 @@ format. Pure data: no behaviour, no imports beyond the format enum.
 | `label` | User-facing format name (status chips, sheet titles, loading labels). |
 | `rebuildCommand` | The manual rebuild command shown on a build-failure card, or `""` when the viewer builds it or the file IS the asset. |
 | `sceneScale` | `cad` or `urdf`; picks the scene-scale profile. |
-| `tools` | `select`, `pan`, `draw`, `orbit`, `screenshot`. Orbit and screenshot are true for everything — they act on the viewport, not the geometry. |
+| `tools` | `select`, `pan`, `draw`, `orbit`, `screenshot` — read through `supportsTool()`. They act on the VIEWPORT, not the geometry, so every row grants all five today; the map stays because this is where a format would decline one. `orbit` is the camera capability behind fullscreen/preview mode, not a toolbar button of its own. |
 | `parts` | Per-part selection, hiding, isolate, assembly tree. |
 | `topology` | Face/edge/vertex references. Implies `parts`. |
+| `measure` | Measurement picks. STEP measures B-rep topology; a mesh format measures triangle corners only. |
 | `exploded`, `displayModes`, `clip` | STEP-tier display transforms. |
 | `planView` | Offers the 2D/3D top-down lock. |
 | `themeProjection` | Honours `themeSettings.projection`. |
 | `params` | `sidecar` (the model's `@step(pose=...)` block), or `null`. |
-| `animations` | Can expose animation clips. STEP gates on render-module clips; direct GLB gates on playable embedded clips. |
+| `animations` | Can expose animation clips. STEP gates on the clips its sidecar's embedded animation module exports; direct GLB gates on playable embedded glTF clips. |
 | `artifactManaged` | Builds a package before it can render. A format listed here that the backend cannot produce a package for blocks forever, so a format the viewer renders from its own file belongs out. |
-| `exportFormats` | What `/__cad/export` can produce for it. |
 
 ### Rules
 
