@@ -214,6 +214,28 @@ class ServerRelaysTheDeath(unittest.TestCase):
         self.assertEqual(conn.frames[-1], {"exit": 1})
         pool.release.assert_called_once_with(worker, healthy=False)
         self.assertTrue(any("died mid-job" in line for line in logged), logged)
+
+
+class ServerStatusIdentity(unittest.TestCase):
+    def test_status_keeps_the_loaded_startup_token_when_disk_code_changes(self):
+        pool = mock.Mock()
+        pool.snapshot.return_value = {"workers": []}
+        broker = mock.Mock()
+        broker.snapshot.return_value = {}
+        jobs = mock.Mock()
+        jobs.snapshot.return_value = []
+        with mock.patch.object(server, "_POOL", pool), \
+                mock.patch.object(server, "_BROKER", broker), \
+                mock.patch.object(server, "_JOBS", jobs), \
+                mock.patch.object(
+                    server,
+                    "compute_version_token",
+                    side_effect=AssertionError("status reread the changed source tree"),
+                ):
+            status = server._status_payload("loaded-at-startup")
+        self.assertEqual(status["token"], "loaded-at-startup")
+
+
 class DescribeExit(unittest.TestCase):
     def test_signal_code_and_open_pipe_are_told_apart(self):
         import signal

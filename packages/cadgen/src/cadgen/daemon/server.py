@@ -203,7 +203,7 @@ def _wait_for_inflight_consumer(conn: transport.Channel, entry: dict) -> int | N
             pass
 
 
-def _status_payload() -> dict:
+def _status_payload(startup_token: str) -> dict:
     """What the supervisor knows that nothing else can: which workers exist, which
     model each is bound to, and what it is doing. A socket file on disk proves none
     of it."""
@@ -219,7 +219,7 @@ def _status_payload() -> dict:
         "socket": str(daemon_address()),
         "identity": daemon_identity(),
         "version": __version__,
-        "token": compute_version_token(),
+        "token": startup_token,
         "startedAt": _STARTED_AT,
         "requests": _REQUESTS_SERVED[0],
         "inflight": sum(1 for thread in list(_INFLIGHT) if thread.is_alive()),
@@ -627,7 +627,7 @@ def serve() -> int:
                             conn = None  # the bounded watcher owns it
                     else:
                         with contextlib.suppress(OSError):
-                            _send(conn, {"status": _status_payload()})
+                            _send(conn, {"status": _status_payload(token)})
                     continue
                 token_changed = request.get("token") != token
                 dependency_finishing_old_work = bool(
