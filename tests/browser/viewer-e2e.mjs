@@ -245,15 +245,14 @@ async function clearSelection(page, box, tag) {
   if (left) fail(`${tag}: a background click left ${left} selected`);
 }
 
-// The toggle contract: a reference does not survive its own second click. The
-// second click need not resolve to the SAME reference -- a LOD swap moves the
-// silhouette, and a point one edge-tolerance from the generator resolves to the
-// cylinder's face instead -- so selecting the neighbour counts. Only the
-// reference still standing is a failure.
+// The toggle contract, in full: a reference's own second click empties the
+// selection, and a third click at the same pixel brings the SAME reference
+// back. Landing on the neighbouring face instead is not a pass -- that is
+// either a silhouette still moving (settle before asserting, never sleep) or
+// the picking bug this gate exists to catch.
 async function toggleOff(page, x, y, ref, tag) {
-  const after = await clickUntilChip(page, x, y, (value) => value !== ref);
-  if (after === ref) fail(`${tag}: clicking ${ref} twice left it selected`);
-  return after;
+  const stuck = await clickUntilChip(page, x, y, (value) => !value);
+  if (stuck) fail(`${tag}: clicking ${ref} twice left ${stuck} selected`);
 }
 
 // The docked tree/reference panel overlays the canvas on the right; its tabs
@@ -267,6 +266,20 @@ async function sceneWidth(page) {
     return lefts.length ? Math.min(...lefts) : 0;
   }, viewport.width / 2);
   return left > 0 ? Math.floor(left) : viewport.width;
+}
+
+// Two clicks at one pixel only mean anything when they see the same geometry,
+// and the only thing that moves the silhouette under a stationary cursor is a
+// LOD swap. Wait the scheduler out on the same seam the quality gate reads --
+// never a sleep. With LOD off nothing swaps, so opening the file is the whole
+// settle.
+async function settleLod(page, lod) {
+  if (!lod) return;
+  await page.waitForFunction(() => {
+    const snapshot = window.__cadViewportLod?.();
+    return !!snapshot && snapshot.componentCount > 0 && snapshot.qualitySettled === true
+      && !snapshot.busy && !snapshot.pendingEvaluation && !snapshot.collectionPending;
+  }, null, { timeout: 60_000 });
 }
 
 // Park the pointer over the panel so a hover highlight cannot join the mask,
@@ -287,6 +300,7 @@ async function pickingGate(tag, lod) {
     await page.mouse.move(cx, cy);
     await page.mouse.wheel(0, -120);
     await page.waitForTimeout(1200);
+    await settleLod(page, lod);
 
     const edgeHits = new Map();
     const probePoints = [];
@@ -332,22 +346,17 @@ async function pickingGate(tag, lod) {
     }
     const [edgeRef, spots] = repeated;
     const scene = await sceneWidth(page);
+    // Everything below is one pixel clicked three times, so it runs against a
+    // settled scheduler: the point is sampled from the geometry all three
+    // clicks will see.
+    await settleLod(page, lod);
+    const spotX = box.x + box.width * spots[0][0];
+    const spotY = box.y + box.height * spots[0][1];
     const edgeBaseline = await restingShot(page);
-    // Measure whichever of this reference's own points still lands on an edge.
-    let measured = "";
-    let measuredSpot = spots[0];
-    for (const spot of spots) {
-      const x = box.x + box.width * spot[0];
-      const y = box.y + box.height * spot[1];
-      const ref = await clickUntilChip(page, x, y, (value) => !!value);
-      if (/\.e\d+$/.test(ref)) {
-        measured = ref;
-        measuredSpot = spot;
-        break;
-      }
-      await clearSelection(page, box, tag);
-    }
-    if (!measured) fail(`${tag}: ${edgeRef}'s own points no longer select an edge`);
+    const reselected = await clickUntilChip(page, spotX, spotY, (value) => !!value);
+    if (reselected !== edgeRef) fail(`${tag}: reselecting ${edgeRef} produced ${reselected || "no chip"}`);
+    // A pick can resolve a pinned surface; let that land before measuring.
+    await settleLod(page, lod);
     const edge = highlightComponents(await restingShot(page), edgeBaseline, scene, "edge");
     const top3 = (edge.sizes[0] || 0) + (edge.sizes[1] || 0) + (edge.sizes[2] || 0);
     if (edge.total < 60 || top3 / edge.total < 0.9) {
@@ -355,14 +364,26 @@ async function pickingGate(tag, lod) {
         fs.mkdirSync(args.out, { recursive: true });
         fs.writeFileSync(path.join(args.out, `${tag}-edge-highlight.png`), await page.screenshot());
       }
-      fail(`${tag}: edge ${measured} highlight fragmented (${edge.sizes.length} pieces over ${edge.total}px)`);
+      fail(`${tag}: edge ${edgeRef} highlight fragmented (${edge.sizes.length} pieces over ${edge.total}px)`);
     }
     // Return to an empty selection before face probes, so a miss cannot inherit
     // the edge chip whose framebuffer was just checked. The scene is quiet here,
-    // so this is also where the toggle contract is asserted.
-    await toggleOff(page, box.x + box.width * measuredSpot[0], box.y + box.height * measuredSpot[1], measured, tag);
+    // so this is also where the toggle contract is asserted: the second click
+    // empties the selection, and the third returns the same reference.
+    await toggleOff(page, spotX, spotY, edgeRef, tag);
+    await settleLod(page, lod);
+    const retoggled = await clickUntilChip(page, spotX, spotY, (value) => !!value);
+    if (retoggled !== edgeRef) {
+      fail(`${tag}: re-clicking the toggled ${edgeRef} produced ${retoggled || "no chip"}`);
+    }
     await clearSelection(page, box, tag);
 
+    // The wheel zooms toward the cursor, and at 7x the model leaves the frame
+    // unless the anchor is ON it. Park the pointer on the edge point, which is
+    // the silhouette: the face probes then still land on the cylinder. This was
+    // previously left to wherever the last click of the edge phase happened to
+    // put the pointer.
+    await page.mouse.move(spotX, spotY);
     for (let i = 0; i < 3; i += 1) {
       await page.mouse.wheel(0, -220);
       await page.waitForTimeout(400);
@@ -390,7 +411,7 @@ async function pickingGate(tag, lod) {
       fail(`${tag}: face ${faceRef} highlight fragmented (${(ratio * 100).toFixed(1)}%, ${face.total}px)`);
     }
     if (errors.length) fail(`${tag}: ${errors.join(" | ")}`);
-    console.log(`  ${tag}: ${lodEvents.length} LOD swap(s), face ${faceRef} ${(ratio * 100).toFixed(1)}% contiguous, edge ${measured} coherent`);
+    console.log(`  ${tag}: ${lodEvents.length} LOD swap(s), face ${faceRef} ${(ratio * 100).toFixed(1)}% contiguous, edge ${edgeRef} coherent`);
   } finally {
     await context.close();
   }
