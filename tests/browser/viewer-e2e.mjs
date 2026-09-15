@@ -425,7 +425,8 @@ async function canvasMenuItems(page, canvas) {
 }
 
 async function formatGate() {
-  const tools = ["Select", "Pan", "Draw", "Orbit", "Copy screenshot"];
+  // Fullscreen moved from the viewport toolbar to the navbar (commit 6be6e598).
+  const tools = ["Select", "Pan", "Draw", "Fullscreen", "Copy screenshot"];
   const camera = ["Reset Zoom", "Zoom To Fit"];
   const tree = ["Show all", "Expand all", "Collapse all"];
   const presentTree = ["Expand all", "Collapse all"];
