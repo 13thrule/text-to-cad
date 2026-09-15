@@ -20,15 +20,6 @@ const EPS = 1e-7;
  * between the surface and the centre of curvature. */
 const TUBE_PINCH_FLOOR = 0.05;
 
-/** Vertices pulled back by that clamp, since the last reset. Module-level
- * because `updateAttribute` is called once per pose and the interesting number
- * is the total over a bake, not one frame's. */
-export const tubePinchStats = { vertices: 0, worstReach: 0 };
-
-export function resetTubePinchStats() {
-  tubePinchStats.vertices = 0;
-  tubePinchStats.worstReach = 0;
-}
 const MAX_REFINED_TRIANGLES = 700000;
 const COMPILED_PATH_CACHE_SIZE = 128;
 
@@ -237,18 +228,58 @@ const SEGMENT_KEYS = {
   bezier: ["kind", "points"]
 };
 
-function compileSegment(spec, index) {
+/** The ONE shape check for a path envelope, returning its seed normal. */
+function pathSpecNormal(raw) {
+  keys(raw, ["segments", "normal"], "path");
+  if (!Array.isArray(raw.segments) || !raw.segments.length) {
+    fail("path needs at least one segment");
+  }
+  // No default seed: a guessed transverse normal would flip as the first
+  // tangent turns during an animation, twisting the tube by 90 degrees in one
+  // frame. The author names the frame on both paths.
+  if (raw.normal === undefined) {
+    fail("path normal is required: give both the rest and the posed path an explicit transverse normal seed");
+  }
+  return vector(raw.normal, "normal");
+}
+
+/** The ONE shape check for a segment, returning an OWNED plain-number copy.
+ *
+ * Both the compiler and the retained spec start here, so an authoring typo
+ * fails the same way whichever one sees it first. */
+function canonicalSegment(spec, index) {
   keys(spec, SEGMENT_KEYS[spec.kind] || SEGMENT_KEYS.arc, `segment ${index}`);
   if (spec.kind === "line") {
-    const start = vector(spec.start, "start");
-    const end = vector(spec.end, "end");
+    return { kind: "line", start: vector(spec.start, "start"), end: vector(spec.end, "end") };
+  }
+  if (spec.kind === "arc") {
+    return {
+      kind: "arc",
+      center: vector(spec.center, "center"),
+      axis: vector(spec.axis, "axis"),
+      start: vector(spec.start, "start"),
+      sweepDeg: spec.sweepDeg,
+    };
+  }
+  if (spec.kind === "bezier") {
+    if (!Array.isArray(spec.points) || spec.points.length !== 4) {
+      fail("Bezier points must contain four vec3 control points");
+    }
+    return { kind: "bezier", points: spec.points.map((point) => vector(point, "Bezier point")) };
+  }
+  return fail(`unknown segment kind ${JSON.stringify(spec.kind)}; expected line, arc, bezier`);
+}
+
+function compileSegment(rawSpec, index) {
+  const spec = canonicalSegment(rawSpec, index);
+  if (spec.kind === "line") {
+    const { start, end } = spec;
     const delta = sub(end, start);
     return { kind: "line", start, end, tangent: unit(delta, "line"), length: length(delta), radius: Infinity };
   }
   if (spec.kind === "arc") {
-    const center = vector(spec.center, "center");
-    const start = vector(spec.start, "start");
-    const axis = unit(vector(spec.axis, "axis"), "axis");
+    const { center, start } = spec;
+    const axis = unit(spec.axis, "axis");
     const radial = sub(start, center);
     const radius = length(radial);
     const angle = spec.sweepDeg * Math.PI / 180;
@@ -264,21 +295,15 @@ function compileSegment(spec, index) {
     segment.end = segmentPoint(segment, segment.length);
     return segment;
   }
-  if (spec.kind === "bezier") {
-    if (!Array.isArray(spec.points) || spec.points.length !== 4) {
-      fail("Bezier points must contain four vec3 control points");
-    }
-    const points = spec.points.map((p) => vector(p, "Bezier point"));
-    return {
-      kind: "bezier",
-      points,
-      start: points[0],
-      end: points[3],
-      tangent: unit(bezierDerivative(points, 0), "Bezier tangent"),
-      radius: Infinity
-    };
-  }
-  return fail(`unknown segment kind ${JSON.stringify(spec.kind)}; expected line, arc, bezier`);
+  const points = spec.points;
+  return {
+    kind: "bezier",
+    points,
+    start: points[0],
+    end: points[3],
+    tangent: unit(bezierDerivative(points, 0), "Bezier tangent"),
+    radius: Infinity
+  };
 }
 
 // A sampled curvature bound is diagnostic only. Collision/curvature gates must
@@ -310,17 +335,7 @@ function segmentBounds(segment) {
 
 /** Validate a tangent-continuous path and produce exact lengths/curvatures. */
 export function compileTubePath(raw) {
-  keys(raw, ["segments", "normal"], "path");
-  if (!Array.isArray(raw.segments) || !raw.segments.length) {
-    fail("path needs at least one segment");
-  }
-  // No default seed: a guessed transverse normal would flip as the first
-  // tangent turns during an animation, twisting the tube by 90 degrees in one
-  // frame. The author names the frame on both paths.
-  if (raw.normal === undefined) {
-    fail("path normal is required: give both the rest and the posed path an explicit transverse normal seed");
-  }
-  const seed = vector(raw.normal, "normal");
+  const seed = pathSpecNormal(raw);
   let total = 0;
   let previous = null;
   const segments = raw.segments.map((spec, index) => {
@@ -507,39 +522,10 @@ function cachedCompile(raw) {
  * code survived only because it stringified them on the spot. A bake that holds
  * tens of thousands of samples cannot alias one array that is about to change. */
 function canonicalPathSpec(raw) {
-  keys(raw, ["segments", "normal"], "path");
-  if (!Array.isArray(raw.segments) || !raw.segments.length) {
-    fail("path needs at least one segment");
-  }
-  // No default seed: a guessed transverse normal would flip as the first tangent
-  // turns during an animation, twisting the tube by 90 degrees in one frame.
-  if (raw.normal === undefined) {
-    fail("path normal is required: give both the rest and the posed path an explicit transverse normal seed");
-  }
-  const normal = vector(raw.normal, "normal");
-  const segments = raw.segments.map((spec, index) => {
-    keys(spec, SEGMENT_KEYS[spec.kind] || SEGMENT_KEYS.arc, `segment ${index}`);
-    if (spec.kind === "line") {
-      return { kind: "line", start: vector(spec.start, "start"), end: vector(spec.end, "end") };
-    }
-    if (spec.kind === "arc") {
-      return {
-        kind: "arc",
-        center: vector(spec.center, "center"),
-        axis: vector(spec.axis, "axis"),
-        start: vector(spec.start, "start"),
-        sweepDeg: spec.sweepDeg,
-      };
-    }
-    if (spec.kind === "bezier") {
-      if (!Array.isArray(spec.points) || spec.points.length !== 4) {
-        fail("Bezier points must contain four vec3 control points");
-      }
-      return { kind: "bezier", points: spec.points.map((point) => vector(point, "Bezier point")) };
-    }
-    return fail(`unknown segment kind ${JSON.stringify(spec.kind)}; expected line, arc, bezier`);
-  });
-  return { normal, segments };
+  return {
+    normal: pathSpecNormal(raw),
+    segments: raw.segments.map((spec, index) => canonicalSegment(spec, index)),
+  };
 }
 
 function sameNumbers(a, b) {
@@ -847,14 +833,11 @@ function updateAttribute(THREE, attribute, normals, mapping, deformation, invers
       // are smooth -- a spike the 4 Hz solve never sees but a 96 Hz sampler
       // does. Refusing there loses a whole 6 s clip over a handful of vertices
       // at a handful of instants, so the surface is pulled back to just inside
-      // the centre instead: locally pinched, never inverted, and counted so the
-      // caller can say how much it happened rather than discovering it later.
+      // the centre instead: locally pinched, never inverted.
       const scale = (1 - TUBE_PINCH_FLOOR) / reach;
       ox *= scale;
       oy *= scale;
       oz *= scale;
-      tubePinchStats.vertices += 1;
-      tubePinchStats.worstReach = Math.max(tubePinchStats.worstReach, reach);
       reach = 1 - TUBE_PINCH_FLOOR;
     }
     // The normal's tangential term divides by this, so it must describe the
