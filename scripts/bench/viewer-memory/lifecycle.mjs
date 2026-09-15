@@ -14,7 +14,7 @@ const args = {};
 for (let i=2;i<process.argv.length;i+=2) {
   const flag=process.argv[i];
   if (!['--url','--file','--other','--out','--first-part','--animation-ms','--edit-target','--edit-variant','--edit-cycles','--min-lod'].includes(flag) || !process.argv[i+1]) {
-    throw new Error('Usage: lifecycle.mjs --url ORIGIN --file repeated24.step --other planetary.step --out REPORT.json [--first-part box_1]');
+    throw new Error('Usage: lifecycle.mjs --url ORIGIN --file repeated.step --other assembly.step --out REPORT.json [--first-part box_1]');
   }
   args[flag.slice(2)]=process.argv[i+1];
 }
