@@ -76,6 +76,24 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedP
   const sharedOutsideSelection = material && usage > ids.length;
   const editable = material && (!sharedOutsideSelection || editingShared);
   const change = (key, value) => onOverlayChange?.(patchSourceMaterialOverlay(overlay, current.materialId, { [key]: value }));
+  const chosenName = choice.startsWith("material:") ? effective?.materials?.[choice.slice(9)]?.name
+    : MATERIAL_FINISH_PRESETS.find(preset => `preset:${preset.id}` === choice)?.name;
+  const swatch = (materialId, partColor) => <span aria-hidden="true" className="size-4 shrink-0 rounded-full border border-border"
+    style={{ backgroundColor: sourceMaterialEditorValue(effective?.materials?.[materialId], "baseColor",
+      partColor || sourceMaterialFallbackColor(effective, materialId, parts.map(part => ({ id: part.occurrenceIds[0], color: part.color })))) }} />;
+  const partList = (list) => <div className="max-h-40 overflow-y-auto px-2 pb-1">
+    {list.map(part => {
+      const id = part.occurrenceIds[0];
+      const assignedId = effective?.assignments?.[id];
+      return <button key={id} type="button" aria-pressed={ids.includes(id)}
+        onClick={event => onSelectParts?.(event.shiftKey ? ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id] : [id])}
+        className={cn("flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-[11px] hover:bg-accent/60", ids.includes(id) && "bg-accent")}>
+        {swatch(assignedId, part.color)}<span className="min-w-0 flex-1 break-words">{part.label}</span>
+        <span className="text-muted-foreground">{effective?.materials?.[assignedId]?.name || "Unassigned"}</span>
+        {ids.includes(id) ? <Check aria-hidden="true" className="size-3 shrink-0" /> : null}
+      </button>;
+    })}
+  </div>;
   const optionList = (label, options) => <FileSheetSubsection title={label}>
     <div className="grid grid-cols-2 gap-1 px-2" role="radiogroup" aria-label={label}>
       {options.map(option => <button key={option.value} type="button" role="radio" aria-checked={choice === option.value}
@@ -87,25 +105,50 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedP
     </div>
   </FileSheetSubsection>;
   return <div className="py-2" data-cad-materials-settings-section="true">
-    <FileSheetSubsection title={ids.length ? `Material for: ${title}` : "Select parts"}>
-      <FileSheetStatusText>{ids.length ? `Current material: ${current.label}` : "Click a part in the model. Shift-click to select several. Selections from the model tree carry into this view."}</FileSheetStatusText>
-      {ids.length ? <FileSheetStatusText>{selected.map(part => `${part.label} → ${effective?.materials?.[effective?.assignments?.[part.occurrenceIds[0]]]?.name || "Unassigned"}`).join(" · ")}</FileSheetStatusText> : null}
+    <FileSheetSubsection title={ids.length ? `${title} selected` : "Selected parts"}>
+      <FileSheetStatusText>{ids.length ? `Current material: ${current.label}` : "Click a part to assign a material. Shift-click to select multiple, or select parts from the lists below."}</FileSheetStatusText>
+      {ids.length ? partList(selected) : null}
       <FileSheetButtonRow columns={ids.length ? 2 : 1}>
         <Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} disabled={!parts.length}
           onClick={() => onSelectParts?.(parts.map(part => part.occurrenceIds[0]))}>Select all parts</Button>
         {ids.length ? <Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} onClick={() => onSelectParts?.([])}>Clear selection</Button> : null}
       </FileSheetButtonRow>
     </FileSheetSubsection>
-    {ids.length ? <>
-      {Object.keys(effective?.materials || {}).length ? optionList("In this model", Object.entries(effective.materials).map(([id, entry]) => ({value: `material:${id}`, label: entry.name}))) : null}
+    <FileSheetSubsection title="In this model">
+      <div className="space-y-1 px-2" role="radiogroup" aria-label="In this model">
+        {Object.entries(effective?.materials || {}).map(([id, entry]) => {
+          const assigned = parts.filter(part => effective?.assignments?.[part.occurrenceIds[0]] === id);
+          return <div key={id} className="rounded border border-border/60">
+            <button type="button" role="radio" aria-checked={choice === `material:${id}`}
+              onClick={() => setChoice(`material:${id}`)}
+              className={cn("flex w-full items-center gap-2 rounded px-2 py-2 text-left text-[11px] hover:bg-accent/60", choice === `material:${id}` && "bg-accent ring-1 ring-primary")}>
+              {swatch(id)}<span className="flex-1 break-words">{entry.name}</span>
+              {ids.length > 0 && current.materialId === id ? <span className="text-muted-foreground">Assigned</span> : null}
+              {choice === `material:${id}` ? <Check aria-hidden="true" className="size-3.5" /> : null}
+            </button>
+            {assigned.length ? <details>
+              <summary className="cursor-pointer px-2 pb-2 text-[11px] text-muted-foreground">{assigned.length} {assigned.length === 1 ? "part" : "parts"}</summary>
+              <div className="px-2 pb-1"><Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
+                onClick={() => onSelectParts?.(assigned.map(part => part.occurrenceIds[0]))}>Select parts using {entry.name}</Button></div>
+              {partList(assigned)}
+            </details> : <p className="px-2 pb-2 text-[11px] text-muted-foreground">Not assigned</p>}
+          </div>;
+        })}
+      </div>
+      {!Object.keys(effective?.materials || {}).length ? <FileSheetStatusText>No materials yet. Choose a preset to get started.</FileSheetStatusText> : null}
+      {parts.some(part => !effective?.materials?.[effective?.assignments?.[part.occurrenceIds[0]]]) ? <details className="mx-2 mt-2 rounded border border-border/60">
+        <summary className="cursor-pointer px-2 py-2 text-[11px]">Unassigned · {parts.filter(part => !effective?.materials?.[effective?.assignments?.[part.occurrenceIds[0]]]).length} parts</summary>
+        {partList(parts.filter(part => !effective?.materials?.[effective?.assignments?.[part.occurrenceIds[0]]]))}
+      </details> : null}
+    </FileSheetSubsection>
       {optionList("Presets", MATERIAL_FINISH_PRESETS.map(preset => ({value: `preset:${preset.id}`, label: preset.name})))}
       <FileSheetButtonRow columns={1}>
-        <Button size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} disabled={!choice}
+        <Button size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} disabled={!choice || !ids.length}
           onClick={() => { const result = applyMaterialChoice(appearance, overlay, ids, choice); if (result) { onOverlayChange?.(result.overlay); setChoice(""); } }}>
-          Apply to selected parts
+          {ids.length ? `Apply${chosenName ? ` ${chosenName}` : " material"} to ${title}` : "Select parts to apply"}
         </Button>
       </FileSheetButtonRow>
-      {material ? <FileSheetSubsection title={`Edit ${material.name}`}>
+      {ids.length && material ? <FileSheetSubsection title={`Edit ${material.name}`}>
         {sharedOutsideSelection ? <>
           <FileSheetStatusText>Shared by {usage} parts. Editing this material changes all of them.</FileSheetStatusText>
           <FileSheetButtonRow columns={1}>
@@ -122,7 +165,6 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedP
             <MaterialSlider key={key} label={label} value={sourceMaterialEditorValue(material, key)} onChange={value => change(key, value)} />)}
         </> : null}
       </FileSheetSubsection> : null}
-    </> : null}
     <FileSheetStatusText>Edits are remembered in this browser tab. Source files are unchanged.</FileSheetStatusText>
     <FileSheetButtonRow columns={1}><Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
       disabled={sourceMaterialOverlayIsEmpty(overlay)} onClick={() => onOverlayChange?.(null)}><RotateCcw className="size-3.5" />Reset authored</Button></FileSheetButtonRow>

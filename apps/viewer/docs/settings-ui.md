@@ -291,7 +291,11 @@ remain in Inspect. Materials may highlight components without enabling picking.
 Materials is part-first: the viewport or existing Inspect tree supplies selection,
 with Select all parts as an accessible fallback. The header names the selection
 and its current material (including Mixed and Unassigned). In this model and
-Presets are separate choices, followed by Apply to selected parts. Selecting a
+Presets remain visible without a selection. Material swatches show usage counts
+and expandable part lists; each list can select individual parts or every part
+using the material. Selected parts retain their current assignment and swatch
+while choosing a replacement. The Apply action names the finish and target.
+Unassigned parts are listed separately. Selecting a
 preset alone never creates an unused material. The apply action creates and
 assigns it together. Shared-material edits are explicit; users can instead make
 the selected parts unique. Part picking is scoped to this tab and never enables
