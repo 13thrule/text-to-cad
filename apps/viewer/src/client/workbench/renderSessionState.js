@@ -42,12 +42,12 @@ export function createRenderSessionState(value = null) {
     payload,
     openSectionIds: Array.isArray(source.openSectionIds)
       ? normalizeFileSheetOpenSectionIds(source.openSectionIds, [
-          FILE_SHEET_SECTION_IDS.THEME_RENDER,
-          FILE_SHEET_SECTION_IDS.THEME_MATERIALS,
+          FILE_SHEET_SECTION_IDS.RENDER,
+          FILE_SHEET_SECTION_IDS.MATERIALS,
           FILE_SHEET_SECTION_IDS.STEP_POSE,
           FILE_SHEET_SECTION_IDS.STEP_ANIMATION
         ])
-      : [FILE_SHEET_SECTION_IDS.THEME_RENDER],
+      : [FILE_SHEET_SECTION_IDS.RENDER],
     cadCamera: renderCameraSnapshot(source.cadCamera),
     cadProjection: normalizeCameraProjection(
       source.cadProjection || source.cadCamera?.projection,
@@ -156,7 +156,7 @@ export function renderSessionForEnabledChange(session, enabled, {
     return createRenderSessionState({
       ...current,
       enabled: true,
-      openSectionIds: [FILE_SHEET_SECTION_IDS.THEME_RENDER],
+      openSectionIds: [FILE_SHEET_SECTION_IDS.RENDER],
       cadCamera: camera || current.cadCamera,
       cadProjection: camera?.projection || activeProjection || current.cadProjection
     });

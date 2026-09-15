@@ -167,5 +167,5 @@ export function buildMaterialsSettingsTab(props = {}) {
   // `enabled` is sourceMaterialsPanelEnabled's answer, decided once by the
   // workspace for both the tab strip and this tab. Do not re-derive it here.
   if (!props.enabled) return null;
-  return { id: FILE_SHEET_SECTION_IDS.THEME_MATERIALS, title: "Materials", content: <MaterialsSettingsContent {...props} /> };
+  return { id: FILE_SHEET_SECTION_IDS.MATERIALS, title: "Materials", content: <MaterialsSettingsContent {...props} /> };
 }

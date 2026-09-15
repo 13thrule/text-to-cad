@@ -7356,7 +7356,7 @@ export default function CadWorkspace({
   const renderDisplaySettings = renderSession.enabled
     ? PHOTOGRAPHIC_VIEW_DEFAULTS.display
     : resolvedScene.display;
-  const materialPickingEnabled = renderSession.enabled && selectedFileSheetKind === "step" && effectiveFileSheetOpenSectionIds.includes(FILE_SHEET_SECTION_IDS.THEME_MATERIALS);
+  const materialPickingEnabled = renderSession.enabled && selectedFileSheetKind === "step" && effectiveFileSheetOpenSectionIds.includes(FILE_SHEET_SECTION_IDS.MATERIALS);
   const materialParts = materialSession.withViewerSelection(viewerSelectedPartIds);
   const settingsTabs = [
     supportsDisplayModes && !renderSession.enabled
