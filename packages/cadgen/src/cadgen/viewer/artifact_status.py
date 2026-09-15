@@ -28,11 +28,11 @@ __all__ = [
     "BUILDABLE_CODES",
     "RETIRED_RENDER_MODULE_WARNING",
     "artifact_status",
-    "retired_render_module_warnings",
     "owns_artifact_path",
     "owns_dxf_path",
     "owns_step_path",
     "resolve_artifact_verdict",
+    "retired_render_module_warnings",
 ]
 
 STEP_PACKAGE_KIND = "assembly-package"
@@ -115,6 +115,8 @@ def retired_render_module_warnings(step_path) -> list[str]:
     One ``os.path.exists`` on a path this module already resolved: no read, no
     parse, and every failure degrades to "no warning" like every other read here.
     """
+    if not step_path:
+        return []
     candidate = f"{step_path}.js"
     try:
         present = os.path.isfile(candidate)
