@@ -21,6 +21,24 @@ export const MATERIAL_FINISH_PRESETS = Object.freeze([
 ].map(Object.freeze));
 const FINISH_CHANNELS = ["roughness", "metalness", "clearcoat", "clearcoatRoughness"];
 
+export function materialForSelection(appearance, ids) {
+  const materials = new Set(ids.map(id => appearance?.assignments?.[id] || ""));
+  if (materials.size > 1) return { materialId: "", label: "Mixed" };
+  const materialId = [...materials][0] || "";
+  return { materialId, label: appearance?.materials?.[materialId]?.name || "Unassigned" };
+}
+
+export function applyMaterialChoice(appearance, overlay, ids, choice) {
+  if (!ids.length) return null;
+  if (choice.startsWith("preset:")) {
+    const added = addSourceMaterialPreset(appearance, overlay, choice.slice(7));
+    return added ? { ...added, overlay: assignSourceMaterialOverlay(added.overlay, ids, added.materialId) } : null;
+  }
+  const materialId = choice.startsWith("material:") ? choice.slice(9) : "";
+  if (!effectiveSourceAppearance(appearance, overlay)?.materials?.[materialId]) return null;
+  return { materialId, overlay: assignSourceMaterialOverlay(overlay, ids, materialId) };
+}
+
 export function sourceMaterialPresetId(material) {
   return MATERIAL_FINISH_PRESETS.find(preset => FINISH_CHANNELS.every(key =>
     Math.abs(sourceMaterialEditorValue(material, key) - preset[key]) < 0.001))?.id || "";
@@ -39,7 +57,7 @@ export function addSourceMaterialPreset(appearance, overlay, presetId) {
   const ids = new Set(Object.keys(effectiveSourceAppearance(appearance, overlay)?.materials || {}));
   let materialId = preset.id, index = 2;
   while (ids.has(materialId)) materialId = `${preset.id}-${index++}`;
-  const named = patchSourceMaterialOverlay(overlay, materialId, { name: preset.name, opacity: 1 });
+  const named = patchSourceMaterialOverlay(overlay, materialId, { name: index > 2 ? `${preset.name} ${index - 1}` : preset.name, opacity: 1 });
   return { materialId, overlay: applySourceMaterialPreset(named, materialId, presetId) };
 }
 

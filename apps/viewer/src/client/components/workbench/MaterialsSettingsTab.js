@@ -1,31 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, CopyPlus, RotateCcw } from "lucide-react";
+import { Check, RotateCcw } from "lucide-react";
 import { cn } from "@/ui/utils";
 import { FILE_SHEET_SECTION_IDS } from "@/workbench/fileSheetSections";
 import {
-  assignSourceMaterialOverlay,
-  addSourceMaterialPreset,
-  applySourceMaterialPreset,
+  applyMaterialChoice,
+  materialForSelection,
+  sourceMaterialOverlayIsEmpty,
   MATERIAL_FINISH_PRESETS,
-  sourceMaterialPresetId,
   duplicateSourceMaterialOverlay,
   effectiveSourceAppearance,
   patchSourceMaterialOverlay,
   sourceAppearanceHasMaterials,
   sourceMaterialFallbackColor,
-  sourceMaterialEditorValue,
-  sourceMaterialUsage
+  sourceMaterialEditorValue
 } from "@/workbench/sourceMaterialSession";
 import { Button } from "../ui/button";
-import { ScrollArea } from "../ui/scroll-area";
 import { Slider } from "../ui/slider";
 import {
   FILE_SHEET_COMPACT_BUTTON_CLASSES,
   FILE_SHEET_PRECISION_SLIDER_CLASSES,
   FileSheetButtonRow,
   FileSheetColorRow,
-  FileSheetSelectRow,
-  FileSheetToggleRow,
   FileSheetSliderField,
   FileSheetStatusText,
   FileSheetSubsection,
@@ -62,222 +57,79 @@ function MaterialSlider({ label, value, onChange }) {
   );
 }
 
-function selectedOccurrenceIds(targets, selectedTargetIds) {
-  const selected = new Set(selectedTargetIds);
-  return [...new Set(targets
-    .filter((target) => selected.has(target.id))
-    .flatMap((target) => target.occurrenceIds || []))];
-}
-
-function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlayChange, onHighlightParts, scope = "" }) {
+function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedPartIds = [], onSelectParts, onOverlayChange, scope = "" }) {
   const effective = useMemo(() => effectiveSourceAppearance(appearance, overlay), [appearance, overlay]);
-  const materials = effective?.materials || {};
-  const materialIds = Object.keys(materials);
-  const [selectedMaterialId, setSelectedMaterialId] = useState(materialIds[0] || "");
-  const [selectedTargetIds, setSelectedTargetIds] = useState([]);
-  const [highlightAssigned, setHighlightAssigned] = useState(false);
-
-  useEffect(() => {
-    setSelectedMaterialId((current) => materials[current] ? current : materialIds[0] || "");
-    setSelectedTargetIds([]);
-    setHighlightAssigned(false);
-  }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!materials[selectedMaterialId]) setSelectedMaterialId(materialIds[0] || "");
-  }, [materialIds.join("|"), materials, selectedMaterialId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const usage = useMemo(
-    () => sourceMaterialUsage(appearance, overlay, targets.flatMap((target) => (
-      target.group ? [] : [{ id: target.occurrenceIds?.[0] }]
-    ))),
-    [appearance, overlay, targets]
-  );
-  const materialParts = useMemo(() => targets.filter((target) => !target.group).map((target) => ({
-    id: target.occurrenceIds?.[0],
-    color: target.color
-  })), [targets]);
-  const fallbackColors = useMemo(() => Object.fromEntries(materialIds.map((materialId) => [
-    materialId,
-    sourceMaterialFallbackColor(effective, materialId, materialParts)
-  ])), [effective, materialIds.join("|"), materialParts]); // eslint-disable-line react-hooks/exhaustive-deps
-  const material = materials[selectedMaterialId] || null;
-  const occurrenceIds = selectedOccurrenceIds(targets, selectedTargetIds);
-  const assignedIds = Object.entries(effective?.assignments || {})
-    .filter(([, id]) => id === selectedMaterialId).map(([id]) => id);
-  const highlightKey = JSON.stringify(occurrenceIds.length ? occurrenceIds : highlightAssigned ? assignedIds : []);
-  useEffect(() => {
-    onHighlightParts?.(JSON.parse(highlightKey));
-    return () => onHighlightParts?.([]);
-  }, [highlightKey, onHighlightParts]);
-  const fallbackColor = fallbackColors[selectedMaterialId] || "#b8b8b8";
-  const changeChannel = (key, value) => {
-    onOverlayChange?.(patchSourceMaterialOverlay(overlay, selectedMaterialId, { [key]: value }));
-  };
-  const toggleTarget = (targetId) => {
-    setSelectedTargetIds((current) => current.includes(targetId)
-      ? current.filter((id) => id !== targetId)
-      : [...current, targetId]);
-  };
-  const duplicateForSelection = () => {
-    const result = duplicateSourceMaterialOverlay(appearance, overlay, selectedMaterialId, occurrenceIds);
-    if (!result?.overlay) return;
-    onOverlayChange?.(result.overlay);
-    setSelectedMaterialId(result.materialId);
-  };
-
-  return (
-    <div className="py-2" data-cad-materials-settings-section="true">
-      <FileSheetSubsection title="Materials">
-        <FileSheetSelectRow label="Add material" value="" triggerContent="Choose preset…"
-          options={MATERIAL_FINISH_PRESETS.map(preset => ({ value: preset.id, label: preset.name }))}
-          onValueChange={presetId => {
-            const added = addSourceMaterialPreset(appearance, overlay, presetId);
-            if (!added) return;
-            onOverlayChange?.(added.overlay);
-            setSelectedMaterialId(added.materialId);
-          }} />
-        {!materialIds.length ? <FileSheetStatusText>No materials yet. Add a preset, then assign it to components.</FileSheetStatusText> : null}
-        <div className="space-y-1 px-2" role="listbox" aria-label="Materials">
-          {materialIds.map((materialId) => {
-            const entry = materials[materialId];
-            const selected = materialId === selectedMaterialId;
-            return (
-              <button
-                key={materialId}
-                type="button"
-                role="option"
-                aria-selected={selected}
-                className={cn(
-                  "flex h-8 w-full items-center gap-2 rounded px-2 text-left text-[11px] transition-colors",
-                  selected ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                )}
-                onClick={() => setSelectedMaterialId(materialId)}
-              >
-                <span
-                  className="size-4 shrink-0 rounded-sm border border-border shadow-inner"
-                  style={{ backgroundColor: sourceMaterialEditorValue(entry, "baseColor", fallbackColors[materialId]) }}
-                  aria-hidden="true"
-                />
-                <span className="min-w-0 flex-1 truncate font-medium">{entry.name}</span>
-                <span className="shrink-0 tabular-nums opacity-70">{usage[materialId] || 0} {usage[materialId] === 1 ? "part" : "parts"}</span>
-              </button>
-            );
-          })}
-        </div>
-      </FileSheetSubsection>
-
-      {material ? (
-        <FileSheetSubsection title={material.name}>
-          <FileSheetSelectRow label="Finish" value={sourceMaterialPresetId(material)}
-            triggerContent={MATERIAL_FINISH_PRESETS.find(preset => preset.id === sourceMaterialPresetId(material))?.name || "Custom"}
-            options={MATERIAL_FINISH_PRESETS.map(preset => ({ value: preset.id, label: preset.name }))}
-            onValueChange={presetId => onOverlayChange?.(applySourceMaterialPreset(overlay, selectedMaterialId, presetId))} />
-          <FileSheetColorRow
-            label="Base color"
-            value={sourceMaterialEditorValue(material, "baseColor", fallbackColor)}
-            onChange={(value) => changeChannel("baseColor", value)}
-          />
-          <MaterialSlider label="Roughness" value={sourceMaterialEditorValue(material, "roughness")} onChange={(value) => changeChannel("roughness", value)} />
-          <MaterialSlider label="Metalness" value={sourceMaterialEditorValue(material, "metalness")} onChange={(value) => changeChannel("metalness", value)} />
-          <MaterialSlider label="Clearcoat" value={sourceMaterialEditorValue(material, "clearcoat")} onChange={(value) => changeChannel("clearcoat", value)} />
-          <MaterialSlider label="Coat roughness" value={sourceMaterialEditorValue(material, "clearcoatRoughness")} onChange={(value) => changeChannel("clearcoatRoughness", value)} />
-          <MaterialSlider label="Opacity" value={sourceMaterialEditorValue(material, "opacity")} onChange={(value) => changeChannel("opacity", value)} />
-        </FileSheetSubsection>
-      ) : null}
-
-      {material && targets.length ? (
-        <FileSheetSubsection title="Assign to components">
-          <FileSheetStatusText>{assignedIds.length ? `Applied to ${assignedIds.length} component${assignedIds.length === 1 ? "" : "s"}.` : "Not assigned yet. Select components below, then choose Assign."}</FileSheetStatusText>
-          <FileSheetToggleRow label="Highlight assigned" checked={highlightAssigned} onCheckedChange={setHighlightAssigned} />
-          <ScrollArea className="mx-2 h-48 overflow-hidden rounded border border-border/60">
-            <div className="p-1">
-              {targets.map((target) => {
-                const selected = selectedTargetIds.includes(target.id);
-                const assigned = [...new Set(target.occurrenceIds.map(id => effective?.assignments?.[id] || ""))];
-                const assignmentLabel = assigned.length > 1 ? "Mixed" : materials[assigned[0]]?.name || "Unassigned";
-                return (
-                  <button
-                    key={target.id}
-                    type="button"
-                    className={cn(
-                      "flex min-h-7 w-full items-center gap-2 rounded px-2 text-left text-[11px] transition-colors",
-                      selected ? "bg-accent text-accent-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
-                    )}
-                    style={{ paddingLeft: `${8 + Math.min(Number(target.depth) || 0, 4) * 10}px` }}
-                    onClick={() => toggleTarget(target.id)}
-                    aria-pressed={selected}
-                  >
-                    <span className={cn(
-                      "grid size-3.5 shrink-0 place-items-center rounded-sm border",
-                      selected ? "border-primary bg-primary text-primary-foreground" : "border-border"
-                    )}>
-                      {selected ? <Check className="size-2.5" aria-hidden="true" /> : null}
-                    </span>
-                    <span className={cn("min-w-0 flex-1 truncate", target.group && "font-medium text-foreground")}>{target.label}</span>
-                    <span className="max-w-[45%] truncate text-[10px] opacity-70" title={assignmentLabel}>{assignmentLabel}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </ScrollArea>
-          {!occurrenceIds.length ? (
-            <FileSheetStatusText>Select one or more components or groups.</FileSheetStatusText>
-          ) : null}
-          <FileSheetButtonRow columns={2}>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
-              disabled={!occurrenceIds.length}
-              onClick={() => {
-                onOverlayChange?.(assignSourceMaterialOverlay(overlay, occurrenceIds, selectedMaterialId));
-                setSelectedTargetIds([]);
-              }}
-            >
-              <Check className="size-3.5" aria-hidden="true" />
-              Assign
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
-              disabled={!occurrenceIds.length}
-              onClick={duplicateForSelection}
-            >
-              <CopyPlus className="size-3.5" aria-hidden="true" />
-              Duplicate
-            </Button>
-          </FileSheetButtonRow>
-        </FileSheetSubsection>
-      ) : null}
-
-      <FileSheetStatusText>Edits are remembered in this browser tab. Source files are unchanged.</FileSheetStatusText>
-
+  const parts = targets.filter(target => !target.group).map((part, index, all) => ({ ...part,
+    label: /^=>\[/.test(part.label) ? all.length === 1 ? scope.split("/").pop().replace(/\.step$/i, "") : `Part ${index + 1}` : part.label
+  }));
+  const selected = parts.filter(part => selectedPartIds.includes(part.occurrenceIds[0]));
+  const ids = selected.map(part => part.occurrenceIds[0]);
+  const current = materialForSelection(effective, ids);
+  const material = effective?.materials?.[current.materialId];
+  const usage = Object.values(effective?.assignments || {}).filter(id => id === current.materialId).length;
+  const selectionKey = JSON.stringify([scope, ids, current.materialId]);
+  const [choice, setChoice] = useState("");
+  const [editingShared, setEditingShared] = useState(false);
+  useEffect(() => { setChoice(""); setEditingShared(false); }, [selectionKey]);
+  const title = selected.length === 1 ? selected[0].label : `${selected.length} parts`;
+  const fallbackColor = sourceMaterialFallbackColor(effective, current.materialId, parts.map(part => ({ id: part.occurrenceIds[0], color: part.color })));
+  const sharedOutsideSelection = material && usage > ids.length;
+  const editable = material && (!sharedOutsideSelection || editingShared);
+  const change = (key, value) => onOverlayChange?.(patchSourceMaterialOverlay(overlay, current.materialId, { [key]: value }));
+  const optionList = (label, options) => <FileSheetSubsection title={label}>
+    <div className="grid grid-cols-2 gap-1 px-2" role="radiogroup" aria-label={label}>
+      {options.map(option => <button key={option.value} type="button" role="radio" aria-checked={choice === option.value}
+        onClick={() => setChoice(option.value)}
+        className={cn("flex min-h-8 w-full items-center justify-between rounded border px-2 text-left text-[11px]",
+          choice === option.value ? "border-primary bg-accent text-accent-foreground" : "border-border/60 text-muted-foreground hover:bg-accent/60")}>
+        <span>{option.label}</span>{choice === option.value ? <Check className="size-3.5" /> : null}
+      </button>)}
+    </div>
+  </FileSheetSubsection>;
+  return <div className="py-2" data-cad-materials-settings-section="true">
+    <FileSheetSubsection title={ids.length ? `Material for: ${title}` : "Select parts"}>
+      <FileSheetStatusText>{ids.length ? `Current material: ${current.label}` : "Click a part in the model. Shift-click to select several. Selections from the model tree carry into this view."}</FileSheetStatusText>
+      {ids.length ? <FileSheetStatusText>{selected.map(part => `${part.label} → ${effective?.materials?.[effective?.assignments?.[part.occurrenceIds[0]]]?.name || "Unassigned"}`).join(" · ")}</FileSheetStatusText> : null}
+      <FileSheetButtonRow columns={ids.length ? 2 : 1}>
+        <Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} disabled={!parts.length}
+          onClick={() => onSelectParts?.(parts.map(part => part.occurrenceIds[0]))}>Select all parts</Button>
+        {ids.length ? <Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} onClick={() => onSelectParts?.([])}>Clear selection</Button> : null}
+      </FileSheetButtonRow>
+    </FileSheetSubsection>
+    {ids.length ? <>
+      {Object.keys(effective?.materials || {}).length ? optionList("In this model", Object.entries(effective.materials).map(([id, entry]) => ({value: `material:${id}`, label: entry.name}))) : null}
+      {optionList("Presets", MATERIAL_FINISH_PRESETS.map(preset => ({value: `preset:${preset.id}`, label: preset.name})))}
       <FileSheetButtonRow columns={1}>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
-          disabled={!Object.keys(overlay?.materials || {}).length && !Object.keys(overlay?.assignments || {}).length}
-          onClick={() => onOverlayChange?.(null)}
-        >
-          <RotateCcw className="size-3.5" aria-hidden="true" />
-          Reset authored
+        <Button size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} disabled={!choice}
+          onClick={() => { const result = applyMaterialChoice(appearance, overlay, ids, choice); if (result) { onOverlayChange?.(result.overlay); setChoice(""); } }}>
+          Apply to selected parts
         </Button>
       </FileSheetButtonRow>
-    </div>
-  );
+      {material ? <FileSheetSubsection title={`Edit ${material.name}`}>
+        {sharedOutsideSelection ? <>
+          <FileSheetStatusText>Shared by {usage} parts. Editing this material changes all of them.</FileSheetStatusText>
+          <FileSheetButtonRow columns={1}>
+            <Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} onClick={() => setEditingShared(value => !value)}>{editingShared ? "Stop editing shared material" : "Edit shared material"}</Button>
+            <Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES} onClick={() => {
+              const result = duplicateSourceMaterialOverlay(appearance, overlay, current.materialId, ids);
+              if (result?.overlay) onOverlayChange?.(result.overlay);
+            }}>Make unique for selection</Button>
+          </FileSheetButtonRow>
+        </> : null}
+        {editable ? <>
+          <FileSheetColorRow label="Base color" value={sourceMaterialEditorValue(material, "baseColor", fallbackColor)} onChange={value => change("baseColor", value)} />
+          {[ ["Roughness", "roughness"], ["Metalness", "metalness"], ["Clearcoat", "clearcoat"], ["Coat roughness", "clearcoatRoughness"], ["Opacity", "opacity"] ].map(([label, key]) =>
+            <MaterialSlider key={key} label={label} value={sourceMaterialEditorValue(material, key)} onChange={value => change(key, value)} />)}
+        </> : null}
+      </FileSheetSubsection> : null}
+    </> : null}
+    <FileSheetStatusText>Edits are remembered in this browser tab. Source files are unchanged.</FileSheetStatusText>
+    <FileSheetButtonRow columns={1}><Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
+      disabled={sourceMaterialOverlayIsEmpty(overlay)} onClick={() => onOverlayChange?.(null)}><RotateCcw className="size-3.5" />Reset authored</Button></FileSheetButtonRow>
+  </div>;
 }
 
 export function buildMaterialsSettingsTab(props = {}) {
   if (!props.enabled && !sourceAppearanceHasMaterials(props.appearance)) return null;
-  return {
-    id: FILE_SHEET_SECTION_IDS.THEME_MATERIALS,
-    title: "Materials",
-    content: <MaterialsSettingsContent {...props} />
-  };
+  return { id: FILE_SHEET_SECTION_IDS.THEME_MATERIALS, title: "Materials", content: <MaterialsSettingsContent {...props} /> };
 }

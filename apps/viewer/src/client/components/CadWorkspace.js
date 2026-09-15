@@ -1321,7 +1321,10 @@ export default function CadWorkspace({
   // Per-model Render material edits live only for this Viewer session. The
   // package and authored source sidecar remain immutable.
   const [sourceMaterialOverlayByFile, setSourceMaterialOverlayByFile] = useState({});
-  const [materialHighlightPartIds, setMaterialHighlightPartIds] = useState([]);
+  const [materialSelection, setMaterialSelection] = useState(null);
+  useEffect(() => {
+    if (!renderSession.enabled) setMaterialSelection(null);
+  }, [renderSession.enabled]);
   // The ANIMATION system, loaded and held entirely apart from the kinematics
   // state above: kinematics and choreography are independent declarations in
   // the embedded source sidecar, and a model may ship either,
@@ -7395,6 +7398,14 @@ export default function CadWorkspace({
   const renderDisplaySettings = renderSession.enabled
     ? PHOTOGRAPHIC_VIEW_DEFAULTS.display
     : resolvedScene.display;
+  const materialPickingEnabled = renderSession.enabled && selectedFileSheetKind === "step" && effectiveFileSheetOpenSectionIds.includes(FILE_SHEET_SECTION_IDS.THEME_MATERIALS);
+  const materialSelectedIds = materialSelection?.scope === sourceMaterialScope ? materialSelection.ids : viewerSelectedPartIds;
+  const selectMaterialParts = (ids) => setMaterialSelection({ scope: sourceMaterialScope, ids });
+  const activateMaterialPart = (id, { multiSelect = false } = {}) => {
+    const valid = selectedSourceMaterialTargets.some(target => !target.group && target.occurrenceIds.includes(id));
+    if (!valid) { if (!multiSelect) selectMaterialParts([]); return; }
+    selectMaterialParts(multiSelect ? materialSelectedIds.includes(id) ? materialSelectedIds.filter(value => value !== id) : [...materialSelectedIds, id] : [id]);
+  };
   const settingsTabs = [
     supportsDisplayModes && !renderSession.enabled
       ? buildDisplaySettingsTab({
@@ -7420,7 +7431,8 @@ export default function CadWorkspace({
       targets: selectedSourceMaterialTargets,
       scope: sourceMaterialScope,
       enabled: selectedFileSheetKind === "step" || sourceAppearanceHasMaterials(selectedSourceAppearance),
-      onHighlightParts: setMaterialHighlightPartIds,
+      selectedPartIds: materialSelectedIds,
+      onSelectParts: selectMaterialParts,
       onOverlayChange: handleSourceMaterialOverlayChange
     }) : null
   ].filter(Boolean);
@@ -7480,7 +7492,9 @@ export default function CadWorkspace({
           onCameraZoomPercentChange={setViewerZoomPercent}
           onLodCameraChange={onLodCameraMoved}
           onMeshSourceAdoption={handleDisplayMeshAdoption}
-          materialHighlightPartIds={renderSession.enabled && effectiveFileSheetOpenSectionIds.includes(FILE_SHEET_SECTION_IDS.THEME_MATERIALS) ? materialHighlightPartIds : EMPTY_LIST}
+          materialHighlightPartIds={materialPickingEnabled ? materialSelectedIds : EMPTY_LIST}
+          materialPickingEnabled={materialPickingEnabled}
+          onMaterialPartActivate={activateMaterialPart}
           renderPartsIndividually={
             isUrdfView || Boolean(selectedStepParameterRuntime) || Boolean(selectedAnimationRuntime) ||
             sourceAppearanceHasMaterials(selectedDisplayMeshData?.appearance)

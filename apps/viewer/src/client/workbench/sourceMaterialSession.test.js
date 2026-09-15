@@ -13,6 +13,24 @@ import {
 } from "./sourceMaterialSession.js";
 import * as materialSession from "./sourceMaterialSession.js";
 
+test("part-first assignment applies a preset atomically only to the selected parts", () => {
+  const result = materialSession.applyMaterialChoice(appearance, null, ["finger"], "preset:matte-plastic");
+  const effective = effectiveSourceAppearance(appearance, result.overlay);
+  assert.equal(effective.assignments.palm, "steel");
+  assert.equal(effective.assignments.finger, result.materialId);
+  assert.equal(effective.materials[result.materialId].metalness, 0);
+  assert.equal(materialSession.applyMaterialChoice(appearance, null, [], "preset:rubber"), null);
+  assert.equal(materialSession.applyMaterialChoice(appearance, null, ["finger"], "material:missing"), null);
+});
+
+test("selection describes mixed, unassigned, and shared materials", () => {
+  assert.equal(materialSession.materialForSelection(appearance, ["palm", "finger"]).label, "Mixed");
+  assert.equal(materialSession.materialForSelection(appearance, ["bare"]).label, "Unassigned");
+  assert.equal(materialSession.materialForSelection(appearance, ["palm"]).materialId, "steel");
+  const assigned = materialSession.applyMaterialChoice(appearance, null, ["finger"], "material:steel");
+  assert.equal(effectiveSourceAppearance(appearance, assigned.overlay).assignments.finger, "steel");
+});
+
 const appearance = {
   materials: {
     steel: { name: "Steel", baseColor: "#778899", metalness: 0.8 },

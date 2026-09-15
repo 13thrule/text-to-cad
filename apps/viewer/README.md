@@ -136,17 +136,19 @@ geometry and lighting have drawn their first frame. This transition owns no
 second GPU scene and does not return during orbit or detail refinement. Render
 does not receive inspection selectors or DXF bend-guide overlays; STEP and
 embedded GLB animation remain independent of those inspection resources.
-The Materials tab offers six finish presets, lists named material usage, edits base color and
-the five supported PBR channels, and assigns or duplicates materials for chosen
-components or groups. Assignment rows show each component’s current material;
-Highlight assigned or selecting an assignment target highlights parts without enabling
-topology picking in Render. Presets preserve existing colors and opacity when
-changing a finish. Bare STEP models can add materials from the same preset picker.
-Its per-model overlay uses the existing browser-tab
-session state and Reset authored clears it; an authored appearance revision
-drops stale edits (geometry revisions do so for bare STEP models), and the Viewer
-never writes a sidecar or cache. Appearance wrappers retain their original
-geometry identity for detail-adoption and disposal acknowledgments.
+The Materials tab follows selected parts. Click parts in the Render viewport
+(Shift-click for multiple), carry a selection from the Inspect tree, or use
+Select all parts. Choose an existing material under In this model or a finish
+under Presets, then Apply to selected parts. A preset creates and assigns its
+material in one action. Mixed assignments are shown explicitly. Shared material
+editing requires Edit shared material; Make unique for selection duplicates
+and assigns a copy before editing. Color and surface sliders edit the currently
+assigned material, not an unrelated library selection.
+Part picking is enabled only while the STEP Materials tab is open; face/edge
+selectors stay disabled. Appearance wrappers retain their geometry identity
+for detail-adoption and disposal acknowledgments. Browser-tab material overlays
+survive reload; authored revisions invalidate them, and bare STEP geometry
+revisions do too. Reset authored clears local assignments and definitions.
 These settings use sessionStorage with other per-model
 ephemeral state; they are not written beside models, into the geometry cache,
 or into global app appearance. A normal geometry rebuild preserves the

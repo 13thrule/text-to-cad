@@ -1762,6 +1762,7 @@ const CadViewer = forwardRef(function CadViewer({
   materialOverrides = null,
   receiveShadows = false,
   renderMode = false,
+  materialPickingEnabled = false,
   appearance = "light",
   renderConfiguration = null,
   quality = null,
@@ -5580,7 +5581,7 @@ const CadViewer = forwardRef(function CadViewer({
     onMeasurePick: handleMeasurePick,
     onMeasureHoverPoint: handleMeasureHoverPoint,
     viewerReadyTick,
-    suppressTopologyPicking: renderMode || stepAnimationPlaying,
+    suppressTopologyPicking: (renderMode && !materialPickingEnabled) || stepAnimationPlaying,
     allowMeshVertexSnap
   });
 
