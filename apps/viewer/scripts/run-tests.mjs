@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // The backend is cadgen.viewer (Python, in packages/cadgen); its suite runs with
@@ -51,7 +51,9 @@ const batches = [
   { tests: tests.filter((test) => !rendersComponents(test)), nodeArgs: [] },
   {
     tests: tests.filter(rendersComponents),
-    nodeArgs: ["--import", path.join(packageRoot, "scripts", "registerJsxLoader.mjs")],
+    // A file URL, not a path: Node's ESM loader parses a Windows absolute path
+    // (`D:\...`) as a URL with scheme `d:` and refuses it (test.yml's Windows job).
+    nodeArgs: ["--import", pathToFileURL(path.join(packageRoot, "scripts", "registerJsxLoader.mjs")).href],
   },
 ];
 
