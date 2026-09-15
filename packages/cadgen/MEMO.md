@@ -67,8 +67,9 @@ installation therefore makes shape identity GEOMETRIC process-wide, for
 2. A pointer match is still the fast answer. Only when it fails do two shapes
    of the same kind compare by world geometry: sub-shape counts, vertex
    points, and one sample point per face (or per edge, below faces), rounded
-   to a micron. Orientation is not part of it, matching build123d's own
-   `is_same`.
+   to six decimal places so a re-composed rotation's last-bit noise does not
+   separate a shape from itself. Orientation is not part of it, matching
+   build123d's own `is_same`.
 3. Coincident duplicates collapse. Two faces sharing a plane and an outline,
    or an edge fused onto itself, now compare equal and hash together, so a
    `set` of them holds one and a `dict` keyed on them has one entry — where
