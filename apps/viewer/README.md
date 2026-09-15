@@ -289,7 +289,11 @@ source is newer than the build.
   Failed loads stay parked; denied admission retries only after the displayed
   level or camera intent changes. Pressure-driven coarsening caps subsequent
   refinement until the camera or viewport changes, preventing upgrade/downgrade
-  loops. Mesh-bound and clip-plane updates do not reset that cap. An idle
+  loops. Mesh-bound and clip-plane updates do not reset that cap. Resampling a
+  motionless viewport is not work: a sample carrying the same camera, viewport
+  and per-component distances, visibility and selection neither restarts the
+  settle debounce nor republishes status, so a viewport nobody is touching
+  reaches settled quality and stays there. An idle
   scheduler reports memory-limited targets separately from settled quality.
   Scenes with joints, embedded animation, drawing poses or an active/collapsing
   exploded view keep conservative eligibility, including paused/disabled pose

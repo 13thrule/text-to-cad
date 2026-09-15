@@ -29,7 +29,7 @@ import { VIEWER_SCENE_SCALE } from "cadgen-js/lib/viewer/sceneScale";
 import { VIEWER_PICK_MODE } from "cadgen-js/lib/viewer/constants";
 import { useAnimationClock } from "@/workbench/animationClockStore";
 import { useEmbeddedGlbAnimationClock } from "@/workbench/embeddedGlbAnimationClockStore";
-import { viewerPickModeForRenderPane, viewerSelectedPartIdsForRenderPane, viewerSelectorRuntimeForRenderPane } from "@/workbench/viewerPickMode";
+import { viewerHiddenPartIdsForRenderPane, viewerPickModeForRenderPane, viewerSelectedPartIdsForRenderPane, viewerSelectorRuntimeForRenderPane } from "@/workbench/viewerPickMode";
 import { viewerBendGuidesForRenderPane } from "@/workbench/renderPaneDrawing";
 
 const EMPTY_LIST = Object.freeze([]);
@@ -557,7 +557,7 @@ export default function CadRenderPane({
           : ((renderPartsIndividually || Boolean(stepParameters?.definition))
             || Boolean(resolvedStepAnimation?.clip))}
         pickableParts={materialPickingEnabled ? selectedMeshData?.parts || EMPTY_LIST : inspectionEnabled && hasParts && !retainingPreviousStepMesh ? assemblyParts : EMPTY_LIST}
-        hiddenPartIds={inspectionEnabled && hasParts ? hiddenPartIds : []}
+        hiddenPartIds={viewerHiddenPartIdsForRenderPane({ inspectionEnabled, hasParts, hiddenPartIds })}
         selectedPartIds={viewerSelectedPartIdsForRenderPane({ renderMode, hasParts, selectedPartIds })}
         hoveredPartId={inspectionEnabled && hasParts ? hoveredPartId : ""}
         hoveredReferenceId={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? hoveredReferenceId : ""}

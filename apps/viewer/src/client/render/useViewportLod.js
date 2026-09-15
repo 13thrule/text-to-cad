@@ -284,7 +284,13 @@ export function useViewportLod({ viewerRef, lodPackage, modelKey = "", applyComp
     }
     visibilityRef.current = sampler.visibility;
     sampledQualityRef.current = qualityId;
-    schedulerRef.current?.onCameraSample(viewportLodSampleForQuality(sampler, qualityId));
+    const changed = schedulerRef.current?.onCameraSample(viewportLodSampleForQuality(sampler, qualityId));
+    // A sample that changed nothing leaves an identical snapshot behind.
+    // Publishing it anyway turns every host resample into React state, whose
+    // render re-runs the effects that resample: an idle viewport would never
+    // stop sampling itself. Real transitions still publish — through this
+    // sample when it changes something, and through onIdle/onOccupiedChanged.
+    if (changed === false) return;
     if (typeof window !== "undefined") dispatchViewportLodStatus(window.__cadViewportLod?.());
   }, [viewerRef, dynamicScene, qualityId]);
 
