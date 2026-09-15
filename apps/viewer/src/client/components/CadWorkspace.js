@@ -56,6 +56,7 @@ import { useCadAssets } from "./workbench/hooks/useCadAssets";
 import { useEditingPreview } from "./workbench/hooks/useEditingPreview.js";
 import { useViewportQualityStatus } from "./workbench/hooks/useViewportQualityStatus.js";
 import { previewGeometryChanged } from "@/workbench/editingPreview.js";
+import { buildArtifactWarningAlert } from "@/workbench/artifactWarnings.js";
 import { resolveFileStatus } from "@/workbench/fileStatus.js";
 import { viewerLoadingState } from "@/workbench/viewerLoading.js";
 import {
@@ -2747,6 +2748,14 @@ export default function CadWorkspace({
     ? normalizeDxfThicknessMm(drawingThicknessMm) / DXF_PREVIEW_REFERENCE_THICKNESS_MM
     : 1;
 
+  // What the backend says about the document's NEIGHBOURS (a retired render
+  // module still sitting beside it, say). The geometry is correct, so this is
+  // the LAST alert considered below: any real failure outranks it, and it never
+  // blocks the viewport -- it rides the file-status badge and its dialog.
+  const artifactWarningAlert = useMemo(
+    () => buildArtifactWarningAlert(fileKey(selectedEntry), selectedArtifact.warnings),
+    [selectedEntry, selectedArtifact.warnings]
+  );
   const viewerAlert = useMemo(() => {
     const staleRuntime = buildViewerStaleRuntimeAlert(
       viewerServerInfo,
@@ -2772,7 +2781,7 @@ export default function CadWorkspace({
         selectedEntry,
         !!selectedMeshData,
         urdfStatus === ASSET_STATUS.ERROR ? urdfError : selectedUrdfPreviewError
-      ) || viewerRuntimeAlert;
+      ) || viewerRuntimeAlert || artifactWarningAlert;
     }
     const meshAlert = buildViewerMeshAlert(
       selectedEntry,
@@ -2788,8 +2797,9 @@ export default function CadWorkspace({
         ? null : selectedArtifact,
       { partial: selectedMeshPartial }
     );
-    return meshAlert || viewerRuntimeAlert;
+    return meshAlert || viewerRuntimeAlert || artifactWarningAlert;
   }, [
+    artifactWarningAlert,
     editingPreview.state,
     currentPreviewVisible,
     catalogError,

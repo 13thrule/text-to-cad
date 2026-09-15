@@ -350,9 +350,13 @@ class RetiredRenderModule(ArtifactStatusTestCase):
         status = self._status()
         self.assertEqual(status["state"], "compiled")
         (warning,) = status["warnings"]
-        self.assertIn("model.step.js", warning)
-        self.assertIn("@step(animation=...)", warning)
-        self.assertIn("sidecar", warning)
+        # The viewer's actionable triple, split here rather than in the client:
+        # the UI renders the fields it is handed and never parses the sentences.
+        self.assertEqual(sorted(warning), ["heading", "message", "recovery"])
+        self.assertIn("model.step.js", warning["heading"])
+        self.assertIn("@step(animation=...)", warning["message"])
+        self.assertIn("sidecar", warning["message"])
+        self.assertIn("model.step.js", warning["recovery"])
 
     def test_an_uncompiled_document_carries_it_too(self):
         status = self._status(package=False)
@@ -360,7 +364,7 @@ class RetiredRenderModule(ArtifactStatusTestCase):
         self.assertEqual(len(status["warnings"]), 1)
 
     def test_a_stp_document_is_covered_and_a_clean_one_is_silent(self):
-        self.assertIn("model.stp.js", self._status("model.stp")["warnings"][0])
+        self.assertIn("model.stp.js", self._status("model.stp")["warnings"][0]["heading"])
         self.assertNotIn("warnings", self._status("clean.step", companion=False))
 
 

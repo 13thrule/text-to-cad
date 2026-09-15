@@ -102,14 +102,25 @@ def _read_json(file_path):
 # animation rides the document's sidecar, put there by ``@step(animation=...)``
 # -- and a model that silently renders inert is the failure law 10 forbids. So
 # the entry carries a warning that names the replacement, and renders.
-RETIRED_RENDER_MODULE_WARNING = (
-    "{name} is a retired render module and is read by nothing. Animation is "
-    "declared with @step(animation=...), which embeds the module in this "
-    "document's .json sidecar. Move its clips into the decorator and delete it."
-)
+#
+# Every warning is the viewer's actionable triple -- a heading, an explanation,
+# and the recovery step -- because that is the shape its alerts render (see the
+# "Actionable errors" law in ``apps/viewer/README.md``). Sending one prose blob
+# instead would leave the client splitting sentences to find the recovery step,
+# so the split is made HERE, where the sentences are written. The client renders
+# the three fields it is handed and knows nothing about render modules: a new
+# warning below reaches the UI with no client change.
+RETIRED_RENDER_MODULE_WARNING = {
+    "heading": "{name} is a retired render module",
+    "message": (
+        "It is read by nothing. Animation is declared with @step(animation=...), "
+        "which embeds the module in this document's .json sidecar."
+    ),
+    "recovery": "Move its clips into the decorator and delete {name}.",
+}
 
 
-def retired_render_module_warnings(step_path) -> list[str]:
+def retired_render_module_warnings(step_path) -> list[dict]:
     """``[warning]`` when a stale companion module sits beside ``step_path``.
 
     One ``os.path.exists`` on a path this module already resolved: no read, no
@@ -124,7 +135,8 @@ def retired_render_module_warnings(step_path) -> list[str]:
         return []
     if not present:
         return []
-    return [RETIRED_RENDER_MODULE_WARNING.format(name=os.path.basename(candidate))]
+    name = os.path.basename(candidate)
+    return [{key: value.format(name=name) for key, value in RETIRED_RENDER_MODULE_WARNING.items()}]
 
 
 def owns_step_path(file_path) -> bool:
@@ -260,7 +272,7 @@ def artifact_status(file_ref, root_dir, *, snapshot=None, verdict=None) -> dict:
 
     def answer(status: dict) -> dict:
         if warnings:
-            status["warnings"] = list(warnings)
+            status["warnings"] = [dict(warning) for warning in warnings]
         return status
 
     snapshot = snapshot or {}
