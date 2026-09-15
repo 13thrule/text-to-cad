@@ -14,7 +14,6 @@ import {
   createProgressivePackageLoader,
   orderComponentsForProgressiveLoad,
   progressiveLoadProgress,
-  progressiveLoadStage,
   progressivePublishCeilings,
   progressivePublishDue,
   publishMeshCostAccounting,
@@ -115,7 +114,6 @@ test("policy constants: a batch publishes at either ceiling, and the ceilings do
   assert.deepEqual(progressivePublishCeilings(0, { maxComponents: 4, maxBytes: 10 }), { components: 4, bytes: 10 });
   assert.deepEqual(progressivePublishCeilings(9, { maxComponents: 4, maxBytes: 10 }), { components: 4, bytes: 10 });
   assert.equal(progressivePublishDue({ pendingComponents: 1, pendingBytes: 10 }, { maxComponents: 4, maxBytes: 10 }), true);
-  assert.equal(progressiveLoadStage(3, 12), "Loading geometry");
   assert.deepEqual(progressiveLoadProgress(3, 12), {
     phase: "geometry",
     label: "Loading geometry",
