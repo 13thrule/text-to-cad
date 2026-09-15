@@ -17,18 +17,18 @@ import {
   normalizeThemeSettings
 } from "./themeSettings.js";
 
-export const SCENE_APPEARANCE = Object.freeze({
+const SCENE_APPEARANCE = Object.freeze({
   SYSTEM: "system",
   LIGHT: "light",
   DARK: "dark"
 });
 
-export const RENDER_STUDIO = Object.freeze({
+const RENDER_STUDIO = Object.freeze({
   LIGHT: "light",
   DARK: "dark"
 });
 
-export const RENDER_STUDIO_PRESETS = Object.freeze([
+const RENDER_STUDIO_PRESETS = Object.freeze([
   Object.freeze({ id: RENDER_STUDIO.LIGHT, label: "Light studio" }),
   Object.freeze({ id: RENDER_STUDIO.DARK, label: "Dark studio" }),
 ]);
@@ -49,7 +49,7 @@ export const SCENE_QUALITY = Object.freeze({
   HIGH: "high"
 });
 
-export const SCENE_QUALITY_PRESETS = Object.freeze([
+const SCENE_QUALITY_PRESETS = Object.freeze([
   Object.freeze({
     id: SCENE_QUALITY.INTERACTIVE,
     label: "Interactive",
@@ -85,7 +85,7 @@ export const SCENE_QUALITY_PRESETS = Object.freeze([
   })
 ]);
 
-export const RENDER_PAYLOAD_KEYS = Object.freeze([
+const RENDER_PAYLOAD_KEYS = Object.freeze([
   "studio",
   "quality",
   "exposure",
@@ -94,13 +94,13 @@ export const RENDER_PAYLOAD_KEYS = Object.freeze([
   "camera"
 ]);
 
-export const RENDER_LIGHTING_KEYS = Object.freeze([
+const RENDER_LIGHTING_KEYS = Object.freeze([
   "rotation",
   "size",
   "fill"
 ]);
 
-export const RENDER_BACKDROP_KEYS = Object.freeze([
+const RENDER_BACKDROP_KEYS = Object.freeze([
   "color",
   "transparent",
   "ground",
@@ -216,7 +216,7 @@ function validateRenderBackdrop(value) {
   }
 }
 
-export function normalizeSceneAppearance(value = SCENE_APPEARANCE.SYSTEM, {
+function normalizeSceneAppearance(value = SCENE_APPEARANCE.SYSTEM, {
   prefersDark = false
 } = {}) {
   const normalized = String(value ?? SCENE_APPEARANCE.SYSTEM).trim().toLowerCase();
@@ -229,14 +229,14 @@ export function normalizeSceneAppearance(value = SCENE_APPEARANCE.SYSTEM, {
   throw new Error("appearance must be 'system', 'light', or 'dark'");
 }
 
-export function normalizeRenderStudioId(value) {
+function normalizeRenderStudioId(value) {
   if (typeof value !== "string" || !RENDER_STUDIO_IDS.has(value)) {
     throw new Error(`Unknown render studio '${value}'. Expected one of: ${[...RENDER_STUDIO_IDS].join(", ")}`);
   }
   return value;
 }
 
-export function normalizeRenderQuality(value = RENDER_QUALITY.FINAL) {
+function normalizeRenderQuality(value = RENDER_QUALITY.FINAL) {
   if (typeof value !== "string" || !RENDER_QUALITY_BY_ID.has(value)) {
     throw new Error(`Unknown render quality '${value}'. Expected one of: ${[...RENDER_QUALITY_BY_ID.keys()].join(", ")}`);
   }

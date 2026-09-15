@@ -1,9 +1,21 @@
 import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import * as THREE from 'three';
-import {buildGpuTubeFrames, gpuTubeMaterialStage} from './tubeGpuDeformation.js';
-import {tubeMaterialStage} from './tubeMaterialShader.js';
+import {TUBE_GPU_STAGE, tubeMaterialStage} from './tubeMaterialShader.js';
 import {compileTubePath,sampleTubePath,normalizeTubeDeformation,applyRecordTubeDeformation} from './tubeDeformation.js';
+
+const gpuTubeMaterialStage=(material)=>tubeMaterialStage(material,TUBE_GPU_STAGE);
+const REST_LINE={normal:[0,0,1],segments:[{kind:'line',start:[0,0,0],end:[10,0,0]}]};
+
+/** A posed GPU record, so the frame table is read where the shader reads it. */
+function gpuTubeRecord(path){
+  const source=new THREE.CylinderGeometry(.3,.3,10,16,10,false);source.rotateZ(-Math.PI/2);source.translate(5,0,0);
+  const mesh=new THREE.Mesh(source,new THREE.MeshStandardMaterial());mesh.updateMatrixWorld();
+  const record={mesh,geometry:source,gpuTubeDeformationAllowed:true,partBounds:{min:[0,-.3,-.3],max:[10,.3,.3]}};
+  applyRecordTubeDeformation(THREE,record,normalizeTubeDeformation({rest:REST_LINE,path}));
+  assert.ok(record.tubeGpuState?.active,'the GPU display path must be the one under test');
+  return record;
+}
 
 test('GPU frame positions stay within one micron of analytic paths at display samples',()=>{
   const paths=[
@@ -12,7 +24,7 @@ test('GPU frame positions stay within one micron of analytic paths at display sa
     {normal:[0,0,1],segments:[{kind:'bezier',points:[[0,0,0],[20,0,0],[5,25,8],[30,30,20]]}]}
   ];
   for(const raw of paths){
-    const path=compileTubePath(raw),{data,count}=buildGpuTubeFrames(path,sampleTubePath);
+    const path=compileTubePath(raw),{data,count}=gpuTubeRecord(raw).tubeGpuState.frames;
     for(let i=0;i<=2000;i++){
       const f=i/2000*(count-1),lo=Math.floor(f),hi=Math.min(lo+1,count-1),u=f-lo;
       const expected=sampleTubePath(path,path.length*i/2000);

@@ -327,11 +327,19 @@ const MEMORY_PROBE_HEAP_MB = 160;
 // tubes x grid samples, which is two per sample and is what filled 4 GB.
 const MEMORY_PROBE_MAX_PATHS_RETAINED = 32;
 
-test("peak retention is set by the biggest tube, not by the tube count times the grid", () => {
+// Off by default: this spawns a heap-capped child and measures megabytes, so
+// what it asserts depends on the machine and on V8's collector rather than on
+// this repository. It stays runnable — the probe it drives is a benchmark under
+// bench/ — for anyone changing how the fit grid holds its poses.
+test("peak retention is set by the biggest tube, not by the tube count times the grid", {
+  skip: process.env.CADGEN_MORPH_MEMORY_PROBE === "1"
+    ? false
+    : "set CADGEN_MORPH_MEMORY_PROBE=1 to run the morph memory benchmark",
+}, () => {
   // Measured in a child, because the assertion is about a resource this process
   // cannot constrain for itself: the bake runs under a heap V8 enforces, and
-  // finishing at all is half the claim. See morphMemoryProbe.mjs.
-  const probe = fileURLToPath(new URL("./morphMemoryProbe.mjs", import.meta.url));
+  // finishing at all is half the claim. See bench/morphMemoryProbe.mjs.
+  const probe = fileURLToPath(new URL("../../../bench/morphMemoryProbe.mjs", import.meta.url));
   const child = spawnSync(
     process.execPath,
     ["--expose-gc", `--max-old-space-size=${MEMORY_PROBE_HEAP_MB}`, probe],

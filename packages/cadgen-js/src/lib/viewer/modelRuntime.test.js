@@ -14,8 +14,8 @@ import {
 } from "./modelRuntime.js";
 import { VIEWER_SCENE_SCALE } from "./sceneScale.js";
 import {
-  buildCadSurfaceInstanceSets,
   dissolveCadSurfaceInstanceSets,
+  reconcileCadSurfaceInstanceSets,
   syncCadSurfaceInstanceRecord
 } from "../../common/cadSurfaceInstances.js";
 
@@ -169,7 +169,7 @@ test("clip-only changes update live instance materials without reconciling membe
     mesh.updateMatrix();
     return { partId: `part${index}`, geometry, mesh, material };
   });
-  const sets = buildCadSurfaceInstanceSets(THREE, records, group);
+  const sets = reconcileCadSurfaceInstanceSets(THREE, records, group);
   const set = [...sets][0];
   assert.equal(sets.size, 1);
   const matrix = set.object.instanceMatrix;

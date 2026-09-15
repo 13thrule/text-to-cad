@@ -273,22 +273,6 @@ function ensurePool() {
   return pool;
 }
 
-// Hand the pool's isolates back. A worker keeps the heap it grew for the
-// largest component it tessellated, and eight of those, on a model whose
-// biggest component decodes to tens of megabytes, is memory the renderer
-// process never returns while the pool lives — measured as the bulk of the
-// gap between what the scene retains and the renderer's RSS on the tendon
-// hand. Only the load and later LOD refinement use the pool, so a caller that
-// has finished loading releases it; the next request builds a fresh pool at
-// the cost of one module load per worker. A no-op while requests are in
-// flight: terminating then would reject work the caller is still waiting on.
-export function releaseSurfWorkerPool() {
-  if (!pool || pendingRequests.size > 0) {
-    return false;
-  }
-  return releaseIdlePool();
-}
-
 // Shed only isolates that own no request. Memory admission can fail while a
 // progressive package load is still alive because completed tessellations
 // leave their workers' high-water heaps resident. The caller may retry the
@@ -350,11 +334,21 @@ export function surfWorkerMemoryStats() {
   });
 }
 
-// A package load and a viewport refinement can briefly overlap. The immediate
-// release above must leave in-flight work alone, but its caller still needs to
-// know when the isolates are actually gone so retained-memory accounting can
-// be cleared. Resolve once the last pending request completes or aborts; no
-// pool is also a successfully released state.
+// Hand the pool's isolates back once they are idle. A worker keeps the heap it
+// grew for the largest component it tessellated, and eight of those, on a model
+// whose biggest component decodes to tens of megabytes, is memory the renderer
+// process never returns while the pool lives — measured as the bulk of the gap
+// between what the scene retains and the renderer's RSS on the tendon hand.
+// Only the load and later LOD refinement use the pool, so a caller that has
+// finished loading releases it; the next request builds a fresh pool at the
+// cost of one module load per worker.
+//
+// A package load and a viewport refinement can briefly overlap, so in-flight
+// work is left alone — terminating then would reject work the caller is still
+// waiting on — while its caller still needs to know when the isolates are
+// actually gone so retained-memory accounting can be cleared. Resolve once the
+// last pending request completes or aborts; no pool is also a successfully
+// released state.
 export function releaseSurfWorkerPoolWhenIdle() {
   const generation = poolGeneration;
   if (!pool) {
