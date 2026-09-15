@@ -94,13 +94,21 @@ session.
 
 ## Launching
 
-All commands run from this app's directory. Dev (Vite serves the client
-from source with HMR; edits to `src/` and `packages/cadgen-js` show live):
+Dev serves the client from source with HMR; edits to `src/` and to
+`cadgen-js` show live:
 
 ```bash
-npm run dev -- --host 127.0.0.1
-# open http://127.0.0.1:5173/?file=<path relative to the served root>
+cd <the directory to serve>
+npm --prefix <this app> run dev -- --host 127.0.0.1
+# open http://127.0.0.1:5173/?file=<path relative to that directory>
 ```
+
+**Dev serves the directory you ran `npm run dev` FROM**, not this app's
+directory — the backend has no directory flag in dev either, so the served root
+is npm's `INIT_CWD` and the hand-off is the spawned backend's cwd. This app's
+own directory is explicitly excluded: running there falls back to its parent,
+which is not what anyone wants. Every other command below runs from this app's
+directory.
 
 Dev spawns the real backend — `python -m cadgen.viewer --api-only` on an
 ephemeral port — and proxies `/__cad` and `/__tess_cache` to it, so there is one
