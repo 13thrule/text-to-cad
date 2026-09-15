@@ -566,6 +566,12 @@ export function buildUrdfMeshGeometry(urdfData, meshesByUrl, options = {}) {
       parts,
       has_source_colors: hasAuthoredDisplayColors,
       lightweightGeometry: true,
+      // A robot's link meshes are NEVER in world space: each one keeps the units and the
+      // frame of its own mesh file, and the `<mesh scale>`, the visual `<origin>` and the
+      // joint FK all live in the part transform. Declaring that here is what makes the
+      // renderer apply it — without the flag every link is drawn once, unscaled, at the
+      // origin, which is a metre-scale robot rendered as a pile of millimetre-scale meshes.
+      partTransformsBaked: false,
       geometrySource: {
         type: "urdf-source-parts",
         urdfData,
@@ -665,7 +671,10 @@ export function buildUrdfMeshGeometry(urdfData, meshesByUrl, options = {}) {
     edge_indices: new Uint32Array(0),
     bounds: mergeBounds(parts.map((part) => part.bounds)),
     parts,
-    has_source_colors: hasSourceColors
+    has_source_colors: hasSourceColors,
+    // Merged too: the concatenated buffer holds each link mesh's own local vertices, so
+    // placement still lives only in the part transform. See the lightweight branch.
+    partTransformsBaked: false
   };
 }
 
