@@ -22,14 +22,12 @@ from __future__ import annotations
 
 import threading
 import hashlib
-import sys
 import weakref
 from collections import Counter, OrderedDict
 from dataclasses import dataclass, replace
 from typing import Any
 
 from cadgen.store.objects import has_object, read_object, read_verified_object
-from cadgen.store.trees import flatten
 
 TREE_TAG = "__cadgen_tree__"
 PARTNER_TAG = "__cadgen_tree_shape__"
@@ -519,7 +517,6 @@ def materialize(tree_hash: str, *, label: str | None = None) -> Any:
     """A ``Compound`` for the tree. Raises FileNotFoundError when the tree or a
     component object is missing (the gate should have said stale)."""
     from cadgen.store.trees import capture_tree
-    from cadgen._internal.component_package import decode_geometry_component
 
     descriptor, payloads = capture_tree(tree_hash)
     return materialize_descriptor(descriptor, captured_objects=payloads, label=label, tree_hash=tree_hash)

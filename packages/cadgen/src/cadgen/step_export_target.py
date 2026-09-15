@@ -45,7 +45,7 @@ from cadgen._internal.generation import (
     run_script_generator,
 )
 from cadgen.metadata import normalize_mesh_numeric
-from cadgen._internal.mesh_animation import RenderModuleSnapshot
+from cadgen._internal.mesh_animation import AnimationSnapshot
 from cadgen.step_artifact_cli import _build_entry_spec, _cad_ref_for_step
 from cadgen.step_export import export_build123d_step_file
 from cadgen._internal.step_scene import (
@@ -461,7 +461,7 @@ def _export_mesh_jobs(
     *,
     logger: CliLogger,
     force: bool = False,
-    render_module: RenderModuleSnapshot | None = None,
+    animation_source: AnimationSnapshot | None = None,
 ) -> "tuple[frozenset[Path], dict[Path, dict]]":
     """Export every requested mesh job from ONE package: the store package
     when the model resolved current, else a one-shot temp package extracted
@@ -490,10 +490,10 @@ def _export_mesh_jobs(
             raise RuntimeError("mesh export view is missing its selected STEP document digest")
         from cadgen._internal.source_sidecar import appearance_digest, read_source_sidecar
 
-        if render_module is not None:
-            if render_module.document_hash != document_hash:
+        if animation_source is not None:
+            if animation_source.document_hash != document_hash:
                 raise RuntimeError("STEP changed after its animation was selected; retry the export")
-            appearance = render_module.appearance
+            appearance = animation_source.appearance
         else:
             sidecar = read_source_sidecar(spec.entry_path, document_hash=document_hash) if spec.entry_path is not None else None
             appearance = (sidecar or {}).get("appearance")
@@ -533,7 +533,7 @@ def _export_mesh_jobs(
             job.out.parent.mkdir(parents=True, exist_ok=True)
         payload = run_mesh_exporter(
             package_dir, pending, name=name, default_color=default_color, logger=logger,
-            render_module=render_module,
+            animation_source=animation_source,
             appearance=appearance,
         )
         if document_hash:
@@ -563,7 +563,7 @@ def _export_mesh_jobs(
         _build_export_package_from_scene(spec, scene, temp_package, logger=logger)
         payload = run_mesh_exporter(
             temp_package, jobs, name=name, default_color=default_color, logger=logger,
-            render_module=render_module,
+            animation_source=animation_source,
         )
     # A one-shot package has no document identity to key a ledger record on, so
     # nothing here is gated and everything is written.
@@ -818,14 +818,14 @@ def export_cad_target(
     # after a minute of meshing. The token it returns is what keeps an edited
     # animation source from being served out of the ledger. Carry the
     # same captured text to Node so edits during preparation cannot rekey it.
-    render_module: RenderModuleSnapshot | None = None
+    animation_source: AnimationSnapshot | None = None
     animation_request: dict[str, object] | None = None
     animation_key: str | None = None
     if animation is not None:
         from cadgen._internal.mesh_animation import parse_animation_option, resolve_animation
 
         animation_request = parse_animation_option(animation)
-        render_module, animation_key = resolve_animation(step_path, animation_request)
+        animation_source, animation_key = resolve_animation(step_path, animation_request)
 
     spec, package_dir, scene = _resolve_mesh_package(
         repo_root,
@@ -873,7 +873,7 @@ def export_cad_target(
 
     written, baked = _export_mesh_jobs(
         spec, package_dir, scene, resolved, logger=logger, force=force,
-        render_module=render_module,
+        animation_source=animation_source,
     )
     files = []
     warnings: list[str] = []

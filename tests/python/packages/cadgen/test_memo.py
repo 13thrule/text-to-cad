@@ -462,6 +462,33 @@ assert not any(read_entry('op', key).get('memoScheme') for key, _ in iter_entrie
             self.assertEqual("label", colored().label)
         self.assertEqual(2, memoization._stats["declined"])
 
+    def test_a_foreign_ocp_distribution_declines_instead_of_raising(self):
+        # OCP can be installed from a distribution other than the one cadgen
+        # names. importlib.metadata then raises PackageNotFoundError, which is
+        # an ImportError -- not one of the exceptions a decline is spelled
+        # with. Declaring @memo must never be able to break a model that runs
+        # without it, so an unidentifiable runtime declines reuse and executes.
+        from importlib.metadata import PackageNotFoundError
+        import cadgen._internal.op_memo as op_memo
+
+        real = op_memo._runtime_versions
+        real.cache_clear()
+        self.addCleanup(real.cache_clear)
+
+        def absent(name):
+            raise PackageNotFoundError(name)
+
+        with self._build():
+            with mock.patch("importlib.metadata.version", absent):
+                first = _plate()
+                second = _plate()
+            real.cache_clear()
+
+        self.assertTrue(first.is_valid)
+        self.assertEqual(_digest(first), _digest(second))
+        self.assertEqual(0, memoization._stats["hits"])
+        self.assertEqual(2, memoization._stats["declined"])
+
 
 if __name__ == "__main__":
     unittest.main()

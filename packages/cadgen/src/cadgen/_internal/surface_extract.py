@@ -29,7 +29,7 @@ from typing import Any
 from OCP.BRep import BRep_Tool
 from OCP.BRepAdaptor import BRepAdaptor_Curve, BRepAdaptor_Surface
 from OCP.BRepTools import BRepTools, BRepTools_WireExplorer
-from OCP.GeomAbs import GeomAbs_C0, GeomAbs_CurveType, GeomAbs_SurfaceType
+from OCP.GeomAbs import GeomAbs_CurveType, GeomAbs_SurfaceType
 from OCP.GeomConvert import GeomConvert
 from OCP.Geom import Geom_RectangularTrimmedSurface
 from OCP.Geom2dConvert import Geom2dConvert

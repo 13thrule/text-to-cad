@@ -111,7 +111,7 @@ def materialize_view_surfaces(descriptor: dict) -> dict:
         try:
             resolve_artifact({"kind": "surfaces", "tree": tree, "cids": missing, "producer": producer})
         except ArtifactJobError as error:
-            if "pinned surface producer" not in str(error):
+            if not surfaces.producer_unavailable(error):
                 raise
             current = resolve_artifact({"kind": "producer"})
             if surfaces.producer_key(current) == surfaces.producer_key(producer):

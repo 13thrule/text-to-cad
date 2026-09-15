@@ -316,7 +316,7 @@ class DocumentedEmbeddedAnimation(unittest.TestCase):
         self.assertNotIn("import ", self.module_text)
 
     def test_the_cli_preflight_reads_the_documented_clips(self) -> None:
-        from cadgen._internal.render_module import declared_clip_ids
+        from cadgen._internal.animation_source import declared_clip_ids
 
         self.assertEqual(["demo"], declared_clip_ids(self.module_text))
 

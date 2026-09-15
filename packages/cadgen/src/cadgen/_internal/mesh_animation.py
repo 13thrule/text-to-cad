@@ -223,7 +223,7 @@ def parse_animation_option(raw_animation: object, *, where: str = "--animation")
     return normalize_animation_request({"clip": text}, where=where)
 
 
-def animation_variant_token(request: dict[str, object], render_module_text: str) -> str:
+def animation_variant_token(request: dict[str, object], animation_source_text: str) -> str:
     """This animated export's identity, for the mesh-export ledger.
 
     A static mesh is a pure function of the document's bytes and its tolerances,
@@ -239,12 +239,12 @@ def animation_variant_token(request: dict[str, object], render_module_text: str)
     digest = hashlib.sha256(b"cadgen-animation-source-snapshot-v2\0")
     digest.update(canonical.encode("utf-8"))
     digest.update(b"\0")
-    digest.update(str(render_module_text).encode("utf-8"))
+    digest.update(str(animation_source_text).encode("utf-8"))
     return digest.hexdigest()[:32]
 
 
 @dataclass(frozen=True)
-class RenderModuleSnapshot:
+class AnimationSnapshot:
     """The selected embedded module's immutable source and diagnostic name."""
 
     path: Path
@@ -253,7 +253,7 @@ class RenderModuleSnapshot:
     appearance: dict | None
 
 
-def resolve_animation(document: Path, request: dict[str, object]) -> tuple[RenderModuleSnapshot, str]:
+def resolve_animation(document: Path, request: dict[str, object]) -> tuple[AnimationSnapshot, str]:
     """``(embedded animation snapshot, variant token)`` for an animated export.
 
     The clip NAME is checked HERE against the module the door just read -- a
@@ -263,7 +263,7 @@ def resolve_animation(document: Path, request: dict[str, object]) -> tuple[Rende
     builds its clips indirectly). Both the token and Node execution consume
     this same source snapshot, even if the author edits the file during meshing.
     """
-    from cadgen._internal.render_module import declared_clip_ids
+    from cadgen._internal.animation_source import declared_clip_ids
     from cadgen._internal.source_sidecar import read_source_sidecar, source_sidecar_path
     from cadgen.catalog import artifact_file_hash
 
@@ -290,4 +290,4 @@ def resolve_animation(document: Path, request: dict[str, object]) -> tuple[Rende
                 else "This model declares no animation clips"
             )
         )
-    return RenderModuleSnapshot(module_path, module_text, document_hash, sidecar.get("appearance")), animation_variant_token(request, module_text)
+    return AnimationSnapshot(module_path, module_text, document_hash, sidecar.get("appearance")), animation_variant_token(request, module_text)

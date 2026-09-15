@@ -89,7 +89,6 @@ import threading
 from collections import OrderedDict
 from functools import lru_cache
 
-from cadgen._internal.atomic_replace import replace_atomic
 
 # Salt: bump _OP_MEMO_VERSION whenever keying or hit semantics change.
 _OP_MEMO_VERSION = 7
@@ -344,13 +343,23 @@ def _runtime_versions() -> tuple[str, str, str]:
     Unknown versions decline the optional disk tier; they must not create a
     shared persistent namespace for unrelated kernel builds.
     """
-    from importlib.metadata import version
+    from importlib.metadata import PackageNotFoundError, version
 
     import OCP
     import build123d
 
+    try:
+        distribution = version("cadquery-ocp-novtk")
+    except PackageNotFoundError as error:
+        # OCP imported from some other distribution. That is an unknown
+        # version like any other, so decline the disk tier the same way --
+        # and as a ValueError, because PackageNotFoundError is an ImportError
+        # and callers that mean to decline do not catch those.
+        raise ValueError("op memo requires the cadquery-ocp-novtk distribution "
+                         "for persistent reuse") from error
+
     versions = (getattr(build123d, "__version__", None),
-                getattr(OCP, "__version__", None), version("cadquery-ocp-novtk"))
+                getattr(OCP, "__version__", None), distribution)
     if any(not isinstance(value, str) or not value.strip() or "unknown" in value.lower()
            for value in versions):
         raise ValueError("op memo requires known build123d and OCP versions for persistent reuse")

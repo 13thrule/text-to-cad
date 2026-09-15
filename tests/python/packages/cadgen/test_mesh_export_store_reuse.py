@@ -75,7 +75,9 @@ class MeshExportStoreReuseTest(unittest.TestCase):
         module = {"stl": "stl_build", "3mf": "threemf_build", "glb": "glb_build"}[fmt]
         code = f"from cadgen.cli.{module} import main; raise SystemExit(main())"
         return subprocess.run(
-            [PYTHON, "-c", code, target, "--verbose", *flags],
+            # Keep the positionals contiguous: 3.11 argparse rejects a
+            # positional that follows an optional in the middle of the argv.
+            [PYTHON, "-c", code, target, *flags, "--verbose"],
             cwd=str(self.root), env=self.env, capture_output=True, text=True, timeout=600,
         )
 

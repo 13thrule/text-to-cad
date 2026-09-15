@@ -8,7 +8,7 @@ from tests.python.support.paths import add_repo_path
 
 add_repo_path("packages/cadgen/src")
 
-from cadgen._internal.render_module import (  # noqa: E402
+from cadgen._internal.animation_source import (  # noqa: E402
     declared_clip_ids,
     read_animation_source,
 )

@@ -8,7 +8,6 @@ separately attested producer. Native imports remain local to operations.
 from __future__ import annotations
 
 import contextlib
-import copy
 import io
 import struct
 import hashlib
@@ -20,13 +19,6 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from cadgen._internal.atomic_replace import replace_atomic, temp_suffix
-from cadgen._internal.cache_schema import CACHE_SCHEMA_VERSION
-from cadgen.coordination import (
-    PHASE_COMPONENTS,
-    PHASE_FINALIZE,
-    PHASE_PACKAGE,
-    resolve as resolve_progress,
-)
 PACKAGE_KIND = "assembly-package"
 COMPONENT_DIRNAME = "components"
 DESCRIPTOR_NAME = "assembly.json"
@@ -347,9 +339,7 @@ def _build123d_shape_from_brep_bytes(payload: bytes) -> Any:
     class reproduces the serial build byte-for-byte."""
     import io
 
-    import build123d
     from OCP.BinTools import BinTools
-    from OCP.TopAbs import TopAbs_ShapeEnum
     from OCP.TopoDS import TopoDS_Shape
 
     topo = TopoDS_Shape()

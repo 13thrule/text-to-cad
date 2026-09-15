@@ -18,7 +18,7 @@ import struct
 from typing import Any
 
 from cadgen.store.index import entry_path, write_entry
-from cadgen.store.objects import is_object_hash, object_path, put_object
+from cadgen.store.objects import object_path, put_object
 
 TESS_VERSION = 4
 TESSELLATOR_VERSION = 2

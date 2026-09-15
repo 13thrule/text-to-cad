@@ -64,14 +64,6 @@ class NotDerivable(TypeError):
     """The function is outside the mirror subset; it must be an adapter."""
 
 
-class _RetiredOption(argparse.Action):
-    """A removed mirror option which exists only to teach its replacement."""
-
-    def __call__(self, parser, namespace, values, option_string=None):  # noqa: ANN001
-        del namespace, values
-        parser.error(f"{option_string} was retired; use {self.const}")
-
-
 def _scalar(annotation: Any, *, where: str) -> Any:
     if annotation in _SCALARS:
         return annotation
@@ -224,18 +216,6 @@ def cli_from_function(func: Callable[..., Any], *, prog: str) -> argparse.Argume
             options["nargs"] = "?"
             options["default"] = parameter.default
         parser.add_argument(name, **options)
-    # Retired options are metadata on the public function, not parameters. They
-    # stay out of help and parser_dests, cannot invoke the function, and exist
-    # only so a hard cutover can name its replacement instead of emitting an
-    # opaque "unrecognized arguments" error.
-    for flag, replacement in getattr(func, "__cadgen_retired_options__", {}).items():
-        parser.add_argument(
-            flag,
-            action=_RetiredOption,
-            const=replacement,
-            dest=argparse.SUPPRESS,
-            help=argparse.SUPPRESS,
-        )
     parser.add_argument(
         "--json",
         dest=JSON_FLAG_DEST,
