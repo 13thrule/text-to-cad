@@ -690,6 +690,12 @@ function createDefaultEdgeObject(THREE, geometry, baseTheme, edgeSettings, partI
     depthWrite: false
   });
   const object = new THREE.LineSegments(geometry, material);
+  // Every other edge path declares this order (the screen-space line, the instanced set,
+  // the wireframe line at 4); this one left it at 0, the surfaces' own order. Both lists
+  // are transparent, so a tie drops the sort to distance and a far line could be drawn
+  // before the near surface that is supposed to hide it — `hidden_lines_removed` then
+  // leaks the occluded line back on a host without Line2. Lines come after surfaces.
+  object.renderOrder = CAD_EDGE_LINE_RENDER_ORDER;
   object.userData.partId = partId;
   return { object, material };
 }
@@ -863,7 +869,16 @@ export function applyMaterialSettingsToRecord(THREE, record, materialSettings, {
   record.baseOpacity = clamp(displayModeSurfaceOpacity(displayMode, materialSettings.opacity) * sourceOpacity, 0, 1);
   record.material.opacity = record.baseOpacity;
   record.material.transparent = record.baseOpacity < 0.999;
-  record.material.depthWrite = displayMode === CAD_DISPLAY_MODE.TRANSPARENT ? false : record.baseOpacity >= 0.999;
+  // `hidden_lines_removed` is the one mode whose near-invisible surfaces exist to be a
+  // DEPTH MASK: the edges depth-test (displayModeShowsThroughEdges is false for it) and
+  // the surface is what an occluded line tests against. Deciding the write from opacity
+  // alone gave that mode's 0.045 fill no depth write, nothing occluded anything, and the
+  // mode drew every hidden line — the exact opposite of its name. The surfaces render
+  // before the edges (renderOrder 0 vs CAD_EDGE_LINE_RENDER_ORDER) so the mask is laid
+  // down first. `transparent` keeps its own rule, which is about blending, not depth.
+  record.material.depthWrite = displayMode === CAD_DISPLAY_MODE.TRANSPARENT
+    ? false
+    : displayMode === CAD_DISPLAY_MODE.HIDDEN_LINES_REMOVED || record.baseOpacity >= 0.999;
   record.material.envMapIntensity = Math.max(Number(materialSettings.envMapIntensity) || 0, 0);
   if (record.material.color && record.baseColor) {
     record.material.color.copy(record.baseColor);
