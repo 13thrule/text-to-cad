@@ -102,9 +102,9 @@ test("softbox size preserves total card flux while changing highlight area", () 
   }
 });
 
-test("procedural environments require their owning WebGL renderer", async () => {
-  await assert.rejects(
-    createEnvironmentResource(null, { lighting: { size: 1, fill: 0.25 } }),
+test("procedural environments require their owning WebGL renderer", () => {
+  assert.throws(
+    () => createEnvironmentResource(null, { lighting: { size: 1, fill: 0.25 } }),
     /WebGL renderer is required/
   );
 });

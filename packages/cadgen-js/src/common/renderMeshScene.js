@@ -1003,13 +1003,13 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
     backgroundTexture = colorTextureFromBackground(context.theme.background || {}, firstSize.width, firstSize.height);
     scene.background = backgroundTexture;
   }
-  const ready = (studioRuntime
-    ? createEnvironmentResource(renderer, studioConfiguration, { size: context.quality.environmentMapSize })
-    : Promise.resolve(null)
-  ).then((resource) => {
+  // PMREM generation is synchronous, but `ready` stays a promise so a failure
+  // reaches the caller after it holds a viewport it can dispose.
+  const ready = Promise.resolve().then(() => {
+    const resource = studioRuntime
+      ? createEnvironmentResource(renderer, studioConfiguration, { size: context.quality.environmentMapSize })
+      : null;
     if (disposed) {
-      if (scene.environment === resource?.texture) scene.environment = null;
-      if (scene.background === resource?.texture) scene.background = null;
       disposeEnvironmentResource(resource);
       return null;
     }

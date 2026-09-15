@@ -121,11 +121,13 @@ function ownedEnvironmentResource(identity, target) {
 }
 
 /**
- * Create a caller-owned PMREM resource. Rotation is intentionally absent from
- * its identity: callers apply it through scene.environmentRotation so rotating
- * the studio remains a cheap live update.
+ * Create a caller-owned PMREM resource. PMREM generation is a synchronous
+ * sequence of GPU passes, so this returns the resource itself rather than a
+ * promise. Rotation is intentionally absent from its identity: callers apply
+ * it through scene.environmentRotation so rotating the studio remains a cheap
+ * live update.
  */
-export async function createEnvironmentResource(renderer, configuration = {}, {
+export function createEnvironmentResource(renderer, configuration = {}, {
   size = 256
 } = {}) {
   if (!renderer) {

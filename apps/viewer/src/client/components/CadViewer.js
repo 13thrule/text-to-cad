@@ -3874,7 +3874,6 @@ const CadViewer = forwardRef(function CadViewer({
       return;
     }
 
-    let cancelled = false;
     runtime.scene.environmentIntensity = 1;
     const applyBackgroundFallback = () => {
       clearEnvironmentResource();
@@ -3883,7 +3882,9 @@ const CadViewer = forwardRef(function CadViewer({
       runtime.requestRender();
     };
 
-    const loadAndApplyEnvironment = async () => {
+    // PMREM generation is synchronous GPU work, so this effect never suspends
+    // and no in-flight environment can outlive the render mode that asked for it.
+    const applyEnvironment = () => {
       const resourceIdentity = environmentResourceIdentity(renderConfiguration, {
         size: renderEnvironmentMapSize
       });
@@ -3894,13 +3895,9 @@ const CadViewer = forwardRef(function CadViewer({
       }
 
       if (!runtime.environmentResource || runtime.environmentResourceIdentity !== resourceIdentity) {
-        const nextResource = await createEnvironmentResource(runtime.renderer, renderConfiguration, {
+        const nextResource = createEnvironmentResource(runtime.renderer, renderConfiguration, {
           size: renderEnvironmentMapSize
         });
-        if (cancelled) {
-          disposeEnvironmentResource(nextResource);
-          return;
-        }
         const previousResource = runtime.environmentResource;
         runtime.scene.environment = null;
         runtime.environmentResource = nextResource;
@@ -3916,24 +3913,20 @@ const CadViewer = forwardRef(function CadViewer({
       runtime.requestRender();
     };
 
-    loadAndApplyEnvironment().catch((error) => {
-      if (!cancelled) {
-        applyBackgroundFallback();
-        viewerAlertChangeRef.current?.({
-          severity: "warning",
-          summary: "Environment unavailable",
-          title: "Couldn’t prepare studio lighting",
-          message: "The reflection environment could not be created. The model is shown with the studio’s direct lighting, so reflective materials may look different.",
-          recovery: "Reload the viewer to retry the studio environment.",
-          details: String(error?.message || error)
-        });
-        console.error("Failed to apply environment resource", error);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
+    try {
+      applyEnvironment();
+    } catch (error) {
+      applyBackgroundFallback();
+      viewerAlertChangeRef.current?.({
+        severity: "warning",
+        summary: "Environment unavailable",
+        title: "Couldn’t prepare studio lighting",
+        message: "The reflection environment could not be created. The model is shown with the studio’s direct lighting, so reflective materials may look different.",
+        recovery: "Reload the viewer to retry the studio environment.",
+        details: String(error?.message || error)
+      });
+      console.error("Failed to apply environment resource", error);
+    }
   }, [
     applyActivePhotographicStudio,
     renderConfiguration,

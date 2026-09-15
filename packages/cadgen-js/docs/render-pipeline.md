@@ -118,8 +118,9 @@ backdrop color.
 `applyPhotographicStudio(THREE, runtime, configuration, options)` owns the
 synchronous light, ground and renderer state and updates those objects in place.
 `disposePhotographicStudio(runtime)` releases only those objects. The caller
-separately owns the asynchronous PMREM returned by
-`createEnvironmentResource(renderer, configuration, {size})`, assigns its
+separately owns the PMREM returned by
+`createEnvironmentResource(renderer, configuration, {size})` — synchronous GPU
+work, returned directly rather than as a promise — assigns its
 texture to `scene.environment`, and releases it through
 `disposeEnvironmentResource()`. `environmentResourceIdentity()` includes
 softbox size, fill, and PMREM resolution; it excludes rotation so rotating the
