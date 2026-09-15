@@ -34,7 +34,10 @@ import {
 ```
 
 `resolveSceneSettings({ appearance, render, quality, camera, display })` is the
-shared Viewer/snapshot policy resolver. It resolves one of two scenes.
+shared Viewer/snapshot policy resolver. It resolves ONE of two scenes — an
+Inspect theme or a Render recipe — and never a blend of them.
+`resolveDisplayMaterialSettings()` belongs to the display half; see
+[Display modes, CAD edges and geometry sharing](#display-modes-cad-edges-and-geometry-sharing).
 
 A missing `render` selects responsive CAD inspection defaults, where the
 top-level quality, camera, and display fields apply. That result carries
@@ -57,7 +60,12 @@ shape:
     size: 1, // relative softbox size, 0.25..3
     fill: 0.25 // opposing fill ratio, 0..1
   },
-  backdrop: { color: "#e7e7e5", transparent: false, ground: true },
+  backdrop: {
+    color: "#e7e7e5",
+    transparent: false,
+    ground: true,
+    groundPlacement: "origin" // or "lowest"
+  },
   camera: {
     preset, projection, position, target, up, direction, zoom,
     orthographicHalfHeight, focalLength
@@ -80,6 +88,11 @@ camera comes only from `render.camera`; per-output snapshot cameras are applied
 later by the capture adapter. Animation remains active because it is authored
 model choreography rather than CAD inspection state.
 
+The translucent ground defaults to the authored Z=0 plane, including when
+geometry extends below it. `groundPlacement: "lowest"` aligns it to the model
+minimum; it moves only the floor, never the model or the lighting.
+`backdrop.ground: false` removes the floor.
+
 `orthographicHalfHeight` is the positive pre-zoom vertical half-extent of an
 orthographic camera. It may remain in a perspective camera payload so switching
 back restores the prior orthographic scale.
@@ -96,12 +109,13 @@ orthographic `shaded_edges`, Original part colors, and interactive quality;
 it keeps authored albedo and opacity while applying matte workbench PBR
 channels, and the snapshot adapter turns normal CAD guides off for deterministic
 stills.
-Final uses the bounded finest mesh rung, a 0.25px viewport target, 4096px
+Final uses the bounded L3 (finest) mesh rung, a 0.25px viewport target, 4096px
 spotlight shadows, a 512px procedural environment, and 2x snapshot capture.
 Those values are derived from the quality id and do not expand the public JSON.
-
-`resolveDisplayMaterialSettings(materials, partColor)` applies the display-owned
-Original, Single color, or Color by part palette to normal CAD material settings.
+Explicit `output.renderScale` remains authoritative for the internal drawing
+buffer. PNG and video-frame output keeps the requested pixel dimensions:
+supersampled frames are downsampled in full before encoding, with labels drawn
+afterward.
 
 The two studios use one physical Render pipeline. A neutral HDR key card and
 opposing fill card generate a procedural PMREM for authored PBR reflections;
@@ -130,6 +144,33 @@ The ground uses `PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER` for its full
 square width. Camera fitting uses the same constant as far-plane padding, which
 keeps the finite two-triangle ground outside practical product views without
 weakening the model-fitted near plane.
+
+Environment radiance and direct illumination are calibrated together at zero EV
+across colored assemblies, gray mechanical models, and authored metal/plastic
+finishes.
+
+#### What Render's public contract does NOT have
+
+No global material, no color grading, no arbitrary lights, no floor physics, no
+glow controls. Adding one of these is a change to the law in the package
+README, not a new option here.
+
+Materials reaching that scene stay authored. STEP package material channels are
+inputs to the rig: assigned sparse materials use roughness 0.42, metalness 0.03,
+clearcoat 0, clearcoat roughness 0.26, and opacity 1; an absent base color
+retains the STEP color, and authored opacity multiplies its source alpha.
+Static direct mesh normalization retains only the appearance data the shared
+mesh-data contract represents — GLB base or vertex color and opacity, 3MF
+color, and no authored color for STL. Animated direct GLB keeps its native
+glTF hierarchy instead, so its textures and PBR channels stay attached to the
+scene.
+
+Snapshot job validation rejects a Render envelope combined with explicit
+top-level `camera`, `display`, `selection`, `jointValues` or `quality` fields —
+including null and empty values — before loading any asset. Render supports
+only the `view` capture mode; animation, video, kinematics, per-output cameras
+and output sizing remain available. An interactive viewer keeps dormant CAD
+session state separate rather than treating it as a snapshot request.
 
 Photographic Render creates its WebGL renderer with
 `logarithmicDepthBuffer: false`. Three's logarithmic depth shader path does not
@@ -279,6 +320,73 @@ occurrence/component/face colors.
 
 `fitCameraToModel(THREE, camera, bounds, options)` is the shared orthographic
 camera framing helper used by interactive rendering.
+
+### Display modes, CAD edges and geometry sharing
+
+Canonical display modes are `shaded`, `shaded_edges`, `transparent`,
+`hidden_edges`, `hidden_lines_removed`, `unshaded`, and `wireframe`. The
+retired `rendered` and `solid` values fail with their replacements. Normal CAD
+keeps authored albedo and opacity but applies the matte workbench PBR channels,
+because its inspection scene has no reflection environment.
+`resolveDisplayMaterialSettings()` applies the shared Original, Single color
+and Color by part policy without app state.
+
+**Scene geometry is the tessellator's INDEXED output.** A surf component's
+`meshData` shares the tessellation's vertex, normal and index buffers by
+reference (a decoded `.tess` cache entry is copied out of its one entry
+buffer) and is never expanded per triangle corner.
+
+**CAD edges are not a surface shader.** `surfMeshData.js` emits indexed line
+segments (`cadEdgePositions` + `cadEdgeIndices` + `cadEdgeClassRanges`, from
+the same tessellation's boundary polylines, ~1.5 bytes per surface triangle)
+and `cadScene.js` draws them as ONE instanced screen-space line draw per
+component (`cadEdgeInstances.js`): the instances are every (segment,
+occurrence) pair, decoded in the vertex shader from a per-component segment
+texture (32 B per drawn segment, cached on the component) and a per-set
+instance texture (128 B per occurrence: matrix, colour, opacity, visibility,
+highlight).
+
+`cadInk.js` fixes one dark model-edge palette and nominal widths per class:
+feature 1, tangent 0.65, seam 0.8, and degenerate 0 (hidden). Public
+`display.edges` keeps only enabled/silhouette choices; grid settings keep only
+enabled. Viewer and snapshots share the same grid spacing and fixed ink.
+Appearance updates preserve model lighting, materials, class ink, geometry,
+segment textures and occurrence slots; only the canvas and guides adapt.
+
+A thickness is a FULL width in DEVICE pixels — every line shader normalises its
+extrusion by the drawing buffer, never the CSS size, and the fragment stage
+filters a box with a symmetric ±0.75 px kernel. Integrated coverage equals the
+nominal width even for subpixel lines, and zero width has zero coverage. Both
+line paths share the filter; antialiasing does not inflate thin lines or depend
+on the framebuffer sample count.
+
+Per-occurrence highlight, dim, hide, focus, exploded placement and selection
+are slots in that texture, written by the same record passes
+(`applyDisplayRecordTransform`, `applyPartVisualState`,
+`syncRecordEdgeMaterials`) that drive a plain line object; highlighted
+occurrences draw in a second pass at the highlight render order. A deformed
+tube leaves its slot for private screen-space lines, one per drawn class, that
+bend with the surface and preserve the same class weights and colours.
+Basic-only hosts use separate per-class materials too, so appearance changes
+retain private edge geometry and cannot recolour another scene's component.
+GPU cost per component: two textures, one 4-vertex quad, two materials, one
+draw call (+1 while any occurrence is highlighted).
+
+**One upload per component.** Geometry built from a shared component is cached
+on the component object (`part.sourceMesh`), never on the composed package
+`meshData`: a package is re-composed on every progressive publish and LOD swap,
+and every occurrence, publish and swap reuses the one upload. A publish of the
+same model reaches the live scene through `api.update({ source })`, which
+reconciles records by occurrence id — records already on screen keep their
+mesh, materials, visual and deformation state and BVH; only new occurrences are
+built and only departed ones disposed (ownership and disposal:
+[resource-ownership.md](resource-ownership.md)). Effects that change vertex
+positions or normals acquire writable attributes before deforming them;
+material refreshes leave component data unchanged. This keeps large assemblies
+from duplicating these buffers for display. Assemblies keep geometry in their
+component buffers; they allocate no combined copy of all positions, normals and
+indices. Rendering and section views visit the placed components directly, and
+the Viewer accepts that component geometry.
 
 ### `common/renderModel.js`
 

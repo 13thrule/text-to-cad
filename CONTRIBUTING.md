@@ -575,8 +575,8 @@ Use path-targeted validation. Common checks from the repo root:
 
 ```bash
 scripts/test/test.sh
-scripts/dev/setup-symlinks.sh --check
 scripts/release/check-version.sh
+scripts/bundle/bundle.sh --check          # generated runtime freshness
 npm --prefix apps/viewer run test        # the Viewer's CLIENT half only
 scripts/test/test-python.sh              # includes the Viewer's BACKEND suite
 npm --prefix apps/docs run check
@@ -599,15 +599,16 @@ suite is `tests/python/packages/cadgen/viewer/`, part of the cadgen package suit
 
 For fast CAD Viewer source iteration, run the root viewer app in dev mode. Do
 not run the packaged viewer from an installed cadgen while modifying Viewer
-behavior:
+behavior. Run it from the DIRECTORY YOU WANT SERVED — the dev backend has no
+directory flag, so the served root is npm's `INIT_CWD`, and `apps/viewer` is
+excluded from that choice on purpose:
 
 ```bash
 npm --prefix apps/viewer run dev -- --host 127.0.0.1
 ```
 
-The dev server serves ONE root, fixed at startup (the directory Vite runs
-from); the page is the bare origin and `?file=` names the artifact relative to
-that root:
+The dev server serves ONE root, fixed at startup; the page is the bare origin
+and `?file=` names the artifact relative to that root:
 `http://127.0.0.1:<port>/?file=models/thang010146/STEP/gear_rack_gripper.step`.
 Do not assume a fixed dev port unless you pass
 Vite's standard `--port` flag. Packaged Viewer runtime checks are

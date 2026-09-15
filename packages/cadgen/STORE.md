@@ -5,6 +5,27 @@ changing anything under `cadgen/store/`, the build pipeline that writes to it,
 or a consumer that reads from it. It is written so that someone who only ran
 `pip install cadgen` can act on every sentence.
 
+Long on purpose, so jump to the section your change touches. The laws it
+serves are in [`README.md`](README.md); where the two disagree, this file is
+right.
+
+| § | What it settles | Read it before |
+|---|---|---|
+| [1](#1-vocabulary) | The one word per concept, and the retired ones | naming anything |
+| [2](#2-layout) | What lives under the root, and **the two sides law** | adding an entry or a reader |
+| [3](#3-tree-and-record) | Tree and record shapes, annotation edges | changing what a build writes |
+| [4](#4-the-gate) | The freshness clauses, in order | touching stale/current |
+| [5](#5-invariants) | Each invariant with the failure it prevents | any store write |
+| [6](#6-link-or-component) | Whether a child becomes a link or the parent's geometry | composition, materialize, packaging |
+| [7](#7-concurrency) | Why there is no lock | concurrent builds, publish races |
+| [8](#8-gc) | The only sweeper | anything that deletes |
+| [9](#9-the-daemon) | The build pool, job ledger and slots | daemon, workers, jobs |
+| [9a](#9a-lazy-children) | Lazy children: pins at the call, forcing, exact-`Compound` reference preservation | a decorated call's return, parallel child builds |
+| [9b](#9b-editing-previews-and-explicit-saves) | Announced preview trees, the feed, explicit saves | the viewer's live-edit path |
+| [9c](#9c-pure-parameterized-features) | `@memo`'s store side (author contract: [`MEMO.md`](MEMO.md)) | operation reuse |
+| [10](#10-debugging) | `store why`, resolving a tree, resets smallest first | diagnosing staleness |
+| [11](#11-never) | The explicit prohibitions | before proposing any of them |
+
 ## 1. Vocabulary
 
 One word per concept; the code uses these words and no others.
@@ -27,8 +48,19 @@ One word per concept; the code uses these words and no others.
 | **stale / current**, **gate** | the freshness state and the check that decides it |
 | **worker / spare / extra**, **job** | daemon vocabulary (the daemon's own documentation) |
 
-Retired words: node, package, descriptor, manifest, ref (as a store concept),
-memo (bare), scope, blob. They do not appear in code or documentation.
+Retired words: node, package, manifest, ref (as a store concept), scope, blob.
+They name nothing in the store, in its code or in its documentation.
+
+Two words are NOT retired, and each has exactly one meaning:
+
+- **op memo** — the per-operation cache above, always two words. `@memo` is
+  its one author-facing surface: the decorator's contract is
+  [`MEMO.md`](MEMO.md) and its store side is [§9c](#9c-pure-parameterized-features).
+  A bare "memo" for any other cache is still wrong.
+- **descriptor** — a render/export-side word: the owned descriptor an
+  appearance is applied to (README law 17), and the bounded pinned-link
+  descriptors of [§9a](#9a-lazy-children). It is never a synonym for a tree,
+  a component or a record; those three have their own words above.
 
 ## 2. Layout
 
@@ -948,7 +980,9 @@ deletable, never the only durable copy of an authored change.
 
 Only model-run producers advance editing order. Compiling saved bytes and
 attaching a coalesced subscriber to an existing producer do not create a new
-editing revision or hide the producer's preview.
+editing revision or hide the producer's preview. A concurrent child request
+adopts its announced job before executing, so a completed build leaves no
+orphaned pending status behind in the ledger.
 
 These ephemeral preview handles are not GC roots. The normal grace period
 protects newly published objects; explicit GC or cache deletion can expire an
@@ -961,7 +995,9 @@ The viewer automatically follows active edits for STEP entries. It reads this
 channel via `GET /__cad/preview`, validates transitive object availability, and
 fetches geometry from the existing object routes. The server
 does no kernel work and exposes no source/closure/model record. Without an
-available preview, the viewer reads the saved file. Preview kinematics are
+available preview, the viewer resolves the saved bytes with the topology and
+annotations that belong to them. It reports an incomplete or failed update as
+such, and never announces a background file write it did not perform. Preview kinematics are
 resolved against the preview tree; the saved sidecar is resolved separately against the read-back
 tree and bound to the saved bytes. Within one build, successful authored-tree
 kinematics resolution may be reused for that exact tree hash, with independent
