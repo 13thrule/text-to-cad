@@ -228,6 +228,31 @@ async function clickUntilChip(page, x, y, accept, timeout = 5_000) {
   return ref;
 }
 
+// Emptying the selection is bookkeeping between probes, so it uses the one
+// gesture whose outcome does not depend on what the raycast hits: a click on
+// bare background clears, whatever was selected. Clicking the selected
+// geometry again does not qualify -- see toggleOff.
+const BACKGROUND = [0.03, 0.5];
+
+async function clearSelection(page, box, tag) {
+  if (!(await chipRef(page))) return;
+  const left = await clickUntilChip(
+    page, box.x + box.width * BACKGROUND[0], box.y + box.height * BACKGROUND[1], (value) => !value,
+  );
+  if (left) fail(`${tag}: a background click left ${left} selected`);
+}
+
+// The toggle contract: a reference does not survive its own second click. The
+// second click need not resolve to the SAME reference -- a LOD swap moves the
+// silhouette, and a point one edge-tolerance from the generator resolves to the
+// cylinder's face instead -- so selecting the neighbour counts. Only the
+// reference still standing is a failure.
+async function toggleOff(page, x, y, ref, tag) {
+  const after = await clickUntilChip(page, x, y, (value) => value !== ref);
+  if (after === ref) fail(`${tag}: clicking ${ref} twice left it selected`);
+  return after;
+}
+
 // The docked tree/reference panel overlays the canvas on the right; its tabs
 // mark its left edge. Highlight measurements stop there.
 async function sceneWidth(page) {
@@ -283,10 +308,9 @@ async function pickingGate(tag, lod) {
         edgeHits.get(ref).push([fx, fy]);
         const hits = edgeHits.get(ref);
         const separated = hits.some(([x1, y1]) => hits.some(([x2, y2]) => Math.hypot(x2 - x1, y2 - y1) >= 0.08));
-        // Toggle this exact hit off before the next probe. Otherwise an empty
-        // click can leave the previous chip visible and manufacture repeats.
-        const leftover = await clickUntilChip(page, box.x + box.width * fx, box.y + box.height * fy, (value) => !value);
-        if (leftover) fail(`${tag}: clicking ${ref} twice left ${leftover} selected`);
+        // Empty the selection before the next probe. Otherwise an empty click
+        // can leave the previous chip visible and manufacture repeats.
+        await clearSelection(page, box, tag);
         if (hits.length >= 2 && separated) break outer;
     }
     const repeated = [...edgeHits.entries()].find(([, spots]) => (
@@ -306,10 +330,21 @@ async function pickingGate(tag, lod) {
     const [edgeRef, spots] = repeated;
     const scene = await sceneWidth(page);
     const edgeBaseline = await restingShot(page);
-    const reselected = await clickUntilChip(
-      page, box.x + box.width * spots[0][0], box.y + box.height * spots[0][1], (value) => !!value,
-    );
-    if (reselected !== edgeRef) fail(`${tag}: reselecting ${edgeRef} produced ${reselected || "no chip"}`);
+    // Measure whichever of this reference's own points still lands on an edge.
+    let measured = "";
+    let measuredSpot = spots[0];
+    for (const spot of spots) {
+      const x = box.x + box.width * spot[0];
+      const y = box.y + box.height * spot[1];
+      const ref = await clickUntilChip(page, x, y, (value) => !!value);
+      if (/\.e\d+$/.test(ref)) {
+        measured = ref;
+        measuredSpot = spot;
+        break;
+      }
+      await clearSelection(page, box, tag);
+    }
+    if (!measured) fail(`${tag}: ${edgeRef}'s own points no longer select an edge`);
     const edge = highlightComponents(await restingShot(page), edgeBaseline, scene, "edge");
     const top3 = (edge.sizes[0] || 0) + (edge.sizes[1] || 0) + (edge.sizes[2] || 0);
     if (edge.total < 60 || top3 / edge.total < 0.9) {
@@ -317,14 +352,13 @@ async function pickingGate(tag, lod) {
         fs.mkdirSync(args.out, { recursive: true });
         fs.writeFileSync(path.join(args.out, `${tag}-edge-highlight.png`), await page.screenshot());
       }
-      fail(`${tag}: edge ${edgeRef} highlight fragmented (${edge.sizes.length} pieces over ${edge.total}px)`);
+      fail(`${tag}: edge ${measured} highlight fragmented (${edge.sizes.length} pieces over ${edge.total}px)`);
     }
     // Return to an empty selection before face probes, so a miss cannot inherit
-    // the edge chip whose framebuffer was just checked.
-    const stuck = await clickUntilChip(
-      page, box.x + box.width * spots[0][0], box.y + box.height * spots[0][1], (value) => !value,
-    );
-    if (stuck) fail(`${tag}: edge selection did not clear before face probes (${stuck})`);
+    // the edge chip whose framebuffer was just checked. The scene is quiet here,
+    // so this is also where the toggle contract is asserted.
+    await toggleOff(page, box.x + box.width * measuredSpot[0], box.y + box.height * measuredSpot[1], measured, tag);
+    await clearSelection(page, box, tag);
 
     for (let i = 0; i < 3; i += 1) {
       await page.mouse.wheel(0, -220);
@@ -353,7 +387,7 @@ async function pickingGate(tag, lod) {
       fail(`${tag}: face ${faceRef} highlight fragmented (${(ratio * 100).toFixed(1)}%, ${face.total}px)`);
     }
     if (errors.length) fail(`${tag}: ${errors.join(" | ")}`);
-    console.log(`  ${tag}: ${lodEvents.length} LOD swap(s), face ${faceRef} ${(ratio * 100).toFixed(1)}% contiguous, edge ${edgeRef} coherent`);
+    console.log(`  ${tag}: ${lodEvents.length} LOD swap(s), face ${faceRef} ${(ratio * 100).toFixed(1)}% contiguous, edge ${measured} coherent`);
   } finally {
     await context.close();
   }

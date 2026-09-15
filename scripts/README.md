@@ -60,10 +60,12 @@ step; nothing else belongs here (one-off helpers go in `tmp/`).
 - `test-viewer-browser.sh` — self-contained browser checks for supported formats,
   Inspect/Render placement and appearance, and face/edge picking through detail
   changes. Generates its inputs in a temporary project and owns its viewer and
-  cache; `--out DIR` keeps the screenshots it grades. Requires a bundled Viewer
-  (`bundle.sh`) and Playwright's Chromium. Called by nobody: it is a manual gate,
-  because one run is over six minutes — too slow for `test.yml`, which already
-  covers launch and reuse with `test-viewer-launch.sh`.
+  cache; `--out DIR` keeps the screenshots it grades. Needs a bundled Viewer
+  (`bundle.sh`) and the Node Playwright's Chromium
+  (`npx --prefix packages/cadgen-js playwright install chromium`; `test.yml`
+  installs the Python one). Called by nobody: it is a manual gate, because one
+  run is over six minutes — too slow for `test.yml`, which already covers launch
+  and reuse with `test-viewer-launch.sh`.
 - `common.sh`, `unittest_files.py` — shared runner pieces (interpreter
   resolution, fail-closed unittest loading, the per-file parallel run). Sourced
   by the runners.
