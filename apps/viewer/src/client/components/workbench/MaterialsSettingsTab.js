@@ -143,7 +143,7 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedP
     {canUndo ? <FileSheetButtonRow columns={1}><Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
       onClick={() => { onOverlayChange?.(undo.before); setUndo(null); }}><RotateCcw className="size-3.5" />Undo</Button></FileSheetButtonRow> : null}
     {ids.length && material ? <FileSheetButtonRow columns={1}><Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
-      onClick={() => setEditingFinish(value => !value)}>{editingFinish ? "Done editing" : "Edit finish…"}</Button></FileSheetButtonRow> : null}
+      aria-expanded={editingFinish} onClick={() => setEditingFinish(value => !value)}>{editingFinish ? "Close advanced settings" : "Advanced settings…"}</Button></FileSheetButtonRow> : null}
       {ids.length && material && editingFinish ? <FileSheetSubsection title={`Edit ${material.name}`}>
         {sharedOutsideSelection ? <>
           <FileSheetStatusText>Shared by {usage} parts. Editing this material changes all of them.</FileSheetStatusText>

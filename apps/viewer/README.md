@@ -142,7 +142,7 @@ selection from Inspect, or Select all parts. Click an In this model swatch or
 Preset to apply immediately; a preset creates and assigns its material together.
 Undo restores the last local material change while this panel stays mounted.
 A material's options menu can select every part using it. Color and surface
-sliders stay behind Edit finish. Shared editing remains explicit, with Make
+sliders stay behind Advanced settings. Shared editing remains explicit, with Make
 unique for selection available before editing a shared material.
 Part picking is enabled only while the STEP Materials tab is open; face/edge
 selectors stay disabled. Appearance wrappers retain their geometry identity

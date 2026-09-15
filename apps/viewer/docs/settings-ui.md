@@ -292,7 +292,7 @@ Materials shows one compact parts list with assignment names and swatches.
 Select in the list or viewport, then click an existing material or preset to
 apply immediately. Undo restores the last local change while the panel remains
 mounted; it is discarded after unrelated overlay changes or a file switch.
-Select parts using a material lives in its options menu. Edit finish reveals
+Select parts using a material lives in its options menu. Advanced settings reveals
 color and surface sliders, with explicit shared editing and Make unique.
 Part picking is scoped to this tab and never enables face/edge selectors in
 Render. Browser-tab persistence remains separate from source.
