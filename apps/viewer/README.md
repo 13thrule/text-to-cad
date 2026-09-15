@@ -388,7 +388,9 @@ src/client/ # React app: CadWorkspace (state root), CadViewer (scene +
             #   effects application), workbench/ (tabs, sections, session
             #   state, playback), render/ (viewport)
 scripts/    # app tooling incl. selfContained.test.mjs
-            #   (the boundary fence) and the dev-backend spawn helpers
+            #   (the boundary fence), the dev-backend spawn helpers, and
+            #   the DOM-free React harness and module hooks that component
+            #   and hook tests render the client through
 docs/       # subsystem docs; settings-ui.md is the CURATED design-system
             #   reference for all settings UI work — binding, read it
             #   before touching controls
