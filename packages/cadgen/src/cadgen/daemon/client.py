@@ -353,7 +353,9 @@ def _connect(address: str) -> transport.Channel:
         # Its accept thread and this client observe the rejection concurrently, so
         # give the owner a bounded window to finish the atomic publication. An empty
         # key is a recovery probe when external cleanup removed the file entirely.
-        deadline = time.monotonic() + 0.5
+        # Windows replacement can spend two 750 ms sharing-violation ladders,
+        # including the unseen-copy retry. Leave a little scheduling headroom.
+        deadline = time.monotonic() + 2.0
         while True:
             repaired = transport.read_authkey(address)
             if repaired and not transport.keys_match(key, repaired):

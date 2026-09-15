@@ -147,6 +147,8 @@ def ensure_authkey(address: str) -> bytes:
 
 def publish_authkey(address: str, authkey: bytes) -> None:
     """Atomically restore a live lock owner's credential after external damage."""
+    from cadgen._internal.atomic_replace import replace_atomic
+
     if not authkey:
         raise ValueError("daemon authkey must not be empty")
     if keys_match(read_authkey(address), authkey):
@@ -157,7 +159,7 @@ def publish_authkey(address: str, authkey: bytes) -> None:
     try:
         with os.fdopen(os.open(temp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600), "wb") as handle:
             handle.write(authkey)
-        os.replace(temp, path)
+        replace_atomic(temp, path)
         if os.name != "nt":
             os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
     finally:

@@ -384,11 +384,23 @@ class ServerShutdownTest(unittest.TestCase):
 
     def test_real_rejected_stale_key_is_republished_and_retried(self):
         with tempfile.TemporaryDirectory(prefix="cadgen-auth-repair-") as tmp:
-            self._assert_real_key_repair(str(Path(tmp) / "daemon.sock"), replace=True)
+            with mock.patch.object(transport, "state_dir", return_value=Path(tmp)):
+                address = transport.private_address(transport.identity_digest(uuid.uuid4().hex))
+                try:
+                    self._assert_real_key_repair(address, replace=True)
+                finally:
+                    transport.clear_address(address)
+                    transport._authkey_path(address).unlink(missing_ok=True)
 
     def test_real_missing_key_is_republished_and_retried(self):
         with tempfile.TemporaryDirectory(prefix="cadgen-auth-repair-") as tmp:
-            self._assert_real_key_repair(str(Path(tmp) / "daemon.sock"), replace=False)
+            with mock.patch.object(transport, "state_dir", return_value=Path(tmp)):
+                address = transport.private_address(transport.identity_digest(uuid.uuid4().hex))
+                try:
+                    self._assert_real_key_repair(address, replace=False)
+                finally:
+                    transport.clear_address(address)
+                    transport._authkey_path(address).unlink(missing_ok=True)
 
     def _assert_real_key_repair(self, address: str, *, replace: bool) -> None:
         owned_key = b"owned-key"
