@@ -122,6 +122,20 @@ class DocumentTreePackagingTest(unittest.TestCase):
         self.assertEqual(document["assembly"]["root"]["name"], "主装配")
         self.assertEqual(document["occurrences"][0]["name"], "圆角2_1_2")
 
+    def test_a_fused_native_compound_with_no_wrapper_children_is_one_part(self):
+        from build123d import Location, Solid
+        from cadgen.store.build import build_tree_through_step
+
+        # A fuse whose pieces do not all touch yields a Compound of solids with no
+        # wrapper children: one part, the way build123d handed it back.
+        fused = Solid.make_box(2, 3, 4).fuse(Solid.make_box(2, 3, 4).moved(Location((10, 0, 0))))
+        fused.label = "frame:underbone"
+        _, tree, _, _ = build_tree_through_step(fused, self.root / "fused.step", root_name="fused")
+        self.assertEqual(tree["entryKind"], "part")
+        self.assertEqual(tree["assembly"]["root"]["nodeType"], "part")
+        self.assertEqual(len(tree["occurrences"]), 1)
+        self.assertEqual(tree["occurrences"][0]["name"], "frame:underbone")
+
     def test_a_native_compound_product_keeps_its_product_boundary(self):
         from build123d import Compound, Location
         from cadgen._internal import component_package

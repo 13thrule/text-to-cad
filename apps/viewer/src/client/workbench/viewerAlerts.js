@@ -78,6 +78,31 @@ export function buildViewerAnnotationAlert(entry) {
   };
 }
 
+export function buildViewerStaleRuntimeAlert(serverInfo, runtimeError = "") {
+  const serverDetail = String(runtimeError || "").trim();
+  if (!serverInfo?.restartRequired && !/CAD Viewer code changed after this server started/i.test(serverDetail)) {
+    return null;
+  }
+  const port = Number(serverInfo?.port) || "unknown";
+  const root = String(serverInfo?.rootPath || "unknown");
+  return {
+    severity: "error",
+    kind: "service",
+    summary: "Viewer restart required",
+    title: "Restart this CAD Viewer",
+    message: "The viewer’s code changed after its server started, so the browser and Python backend may no longer match.",
+    recovery: "Run `cadgen viewer` from the same directory, then open the URL it prints. "
+      + "Reloading this page alone cannot update the Python server.",
+    details: [
+      `Port: ${port}`,
+      `Root: ${root}`,
+      `Started identity: ${String(serverInfo?.identityToken || "unknown")}`,
+      `Current identity: ${String(serverInfo?.currentIdentityToken || "unknown")}`,
+      serverDetail && `Server response: ${serverDetail}`,
+    ].filter(Boolean).join("\n"),
+  };
+}
+
 export function resolveFileStatusAlert(fileStatus, viewerAlert = null, annotationAlert = null) {
   if (!fileStatus || fileStatus.busy) {
     return null;

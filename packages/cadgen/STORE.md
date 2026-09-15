@@ -601,7 +601,8 @@ even when they also contain a private native wrapper.
 ## 7. Concurrency
 
 No persistent build locks. CPU admission and identical child coalescing may
-wait; memory admission fails when progress cannot fit (§9). Explicit builds
+wait; memory admission waits on builds in flight and fails only when nothing
+running could make room (§9). Explicit builds
 are not cancelled merely because a newer editing request exists.
 
 - **Same model twice.** Both builds run. Each publishes objects (idempotent)
@@ -712,10 +713,11 @@ kernel when the holder dies) before it binds — a private socket is a private
 daemon; a second daemon starting for the same address stands down at
 once, touching nothing; the winner is by construction alone, so a socket file it
 finds is dead and may be removed. Clients elect one spawner the same way and
-the rest wait for the address; the authkey is created once via a linked temp
-file. This is the one lock cadgen keeps — a singleton for the daemon, never a
-build lock (§7): twenty clients starting at once used to start twenty daemons
-that unlinked each other's live sockets.
+the rest wait for the address. The lock holder creates that address's authkey
+once via a linked temp file and republishes its in-memory key if an external
+cleanup replaces the file. This is the one lock cadgen keeps — a singleton for
+the daemon, never a build lock (§7): twenty clients starting at once used to
+start twenty daemons that unlinked each other's live sockets.
 
 The **store root is a field on every request** (`store_root`), applied per
 job in the worker, never inherited from whichever build spawned the daemon:
@@ -781,9 +783,13 @@ Idle workers are reclaimed oldest first. Busy/suspended workers retain at
 least a worker reservation. Ordinary root requests preserve dependency
 headroom; nested requests can spend it. A known oversized root reservation or
 retained worker may use that headroom only as the sole worker charge, and
-only within the total allowance. A later child that cannot fit fails
-explicitly while the parent's geometry remains owned. If another dependency cannot fit, the build receives an
-explicit error rather than waiting indefinitely with parent geometry held.
+only within the total allowance. A request that cannot fit waits while builds
+hold run slots or spawns are still starting, since each hands its charge back
+when it finishes; a parent fanning out its children submits them all at once
+and only a core's worth run. It fails explicitly, with the parent's geometry
+still owned, only when nothing is in flight that could release memory, so a
+tree of parents all waiting on children they cannot admit errors instead of
+hanging.
 Reclamation drops process state only; it never runs persistent-store GC.
 Reservations and sampled RSS form a soft operating budget. Arbitrary future
 native allocations cannot be predicted or stopped by this admission check;

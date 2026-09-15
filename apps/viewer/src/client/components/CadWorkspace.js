@@ -7,6 +7,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import CadRenderPane from "./workbench/CadRenderPane";
 import { useViewportLod } from "../render/useViewportLod";
 import { lodSceneMayMove } from "../render/lodCameraSample.js";
+import { registerLodDisplaySource } from "../render/lodSceneAdoption.js";
 import FileViewerSidebar from "./workbench/FileViewerSidebar";
 import { buildDisplaySettingsTab } from "./workbench/DisplaySettingsTab";
 import { buildRenderSettingsTab } from "./workbench/RenderSettingsTab";
@@ -123,6 +124,7 @@ import {
   buildViewerAnnotationAlert,
   buildViewerMeshAlert,
   buildViewerEditAlert,
+  buildViewerStaleRuntimeAlert,
   fileStatusAlertKey,
   resolveFileStatusAlert
 } from "@/workbench/viewerAlerts";
@@ -2014,7 +2016,10 @@ export default function CadWorkspace({
     [selectedMeshData]
   );
   const selectedDisplayMeshData = useMemo(() => {
-    return applySourceMaterialOverlayToMeshData(selectedMeshData, selectedSourceMaterialOverlay, selectedSourceAppearance);
+    return registerLodDisplaySource(
+      applySourceMaterialOverlayToMeshData(selectedMeshData, selectedSourceMaterialOverlay, selectedSourceAppearance),
+      selectedMeshData
+    );
   }, [selectedMeshData, selectedSourceAppearance, selectedSourceMaterialOverlay]);
   const handleDisplayMeshAdoption = useCallback((source, ok, detail) =>
     onMeshSourceAdoption(sourceMaterialGeometry(source), ok, detail), [onMeshSourceAdoption]);
@@ -2775,6 +2780,11 @@ export default function CadWorkspace({
     : 1;
 
   const viewerAlert = useMemo(() => {
+    const staleRuntime = buildViewerStaleRuntimeAlert(
+      viewerServerInfo,
+      catalogError || selectedArtifact.error || error || editingPreview.state?.error
+    );
+    if (staleRuntime) return staleRuntime;
     const editFailure = buildViewerEditAlert(editingPreview.state, currentPreviewVisible, Boolean(selectedMeshData && !selectedMeshPartial));
     if (editFailure) return editFailure;
     if (catalogError && !selectedMeshData) return {
@@ -2829,7 +2839,8 @@ export default function CadWorkspace({
     urdfError,
     urdfStatus,
     viewerLoading,
-    viewerRuntimeAlert
+    viewerRuntimeAlert,
+    viewerServerInfo
   ]);
   const focusedAssemblyTopologyActive = Boolean(
     isAssemblyView &&
@@ -7694,7 +7705,7 @@ export default function CadWorkspace({
                 handleScreenshotCopy={handleScreenshotCopy}
               />
 
-              {!previewMode && !selectedEntry && !missingFileRef && !fileParamSelectionPending ? (
+              {!previewMode && !viewerAlert && !selectedEntry && !missingFileRef && !fileParamSelectionPending ? (
                 <CadWorkspaceHome
                   entries={catalogEntries}
                   onSelectEntry={handleSelectEntry}

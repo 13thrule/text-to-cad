@@ -36,6 +36,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 # Bump when the wire format changes. It is part of the address, so mismatched peers never
@@ -89,32 +90,33 @@ def private_address(key: str) -> str:
     return str(Path(tempfile.gettempdir()) / f"cadgen-b{PROTOCOL}-{key}.sock")
 
 
-def _authkey_path(key: str) -> Path:
-    return state_dir() / f"cadgen-daemon-v{PROTOCOL}-{key}.key"
+def _authkey_path(address: str) -> Path:
+    """The credential owned by exactly one daemon address."""
+    if os.name != "nt":
+        return Path(str(address) + ".key")
+    return state_dir() / f"cadgen-daemon-v{PROTOCOL}-{_lock_name(address)}.key"
 
 
-def read_authkey(key: str) -> bytes | None:
+def read_authkey(address: str) -> bytes | None:
     """The shared secret for this daemon, or None if it has not been created."""
     try:
-        return _authkey_path(key).read_bytes().strip() or None
+        return _authkey_path(address).read_bytes().strip() or None
     except OSError:
         return None
 
 
-def ensure_authkey(key: str) -> bytes:
+def ensure_authkey(address: str) -> bytes:
     """Create the shared secret if absent, and return it -- atomically.
 
-    Written before the listener exists, so a client that finds an address always finds a
-    key to go with it. Twenty clients starting at once all call this; the key must be
-    created exactly once or the daemon and half its clients hold different secrets and
-    every handshake between them fails. So the secret is written to a private temp file
-    and LINKED into place: ``os.link`` is create-if-absent on every platform, the loser
-    of a race reads what the winner linked. 0600 on POSIX; on Windows the per-user temp
-    directory is already ACL'd to the owner, and the pipe itself is the real access
-    control.
+    The daemon calls this only after taking the address's singleton lock and before
+    creating its listener. The secret is written to a private temp file and LINKED into
+    place: os.link is create-if-absent on every platform. A raced existing file must be
+    readable and nonempty; the function never returns a secret that clients cannot read
+    from the published path. 0600 on POSIX; on Windows the per-user temp directory is
+    already ACL'd to the owner, and the pipe itself is the real access control.
     """
-    path = _authkey_path(key)
-    existing = read_authkey(key)
+    path = _authkey_path(address)
+    existing = read_authkey(address)
     if existing:
         return existing
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -127,11 +129,13 @@ def ensure_authkey(key: str) -> bytes:
     except FileExistsError:
         # Someone else created it first; theirs is THE key.
         for _ in range(200):
-            existing = read_authkey(key)
+            existing = read_authkey(address)
             if existing:
                 secret = existing
                 break
             time.sleep(0.005)
+        else:
+            raise OSError(f"daemon key exists but is empty or unreadable: {path}")
     finally:
         with contextlib.suppress(OSError):
             temp.unlink()
@@ -139,6 +143,28 @@ def ensure_authkey(key: str) -> bytes:
         with contextlib.suppress(OSError):
             os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
     return secret
+
+
+def publish_authkey(address: str, authkey: bytes) -> None:
+    """Atomically restore a live lock owner's credential after external damage."""
+    from cadgen._internal.atomic_replace import replace_atomic
+
+    if not authkey:
+        raise ValueError("daemon authkey must not be empty")
+    if keys_match(read_authkey(address), authkey):
+        return
+    path = _authkey_path(address)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(f"{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+    try:
+        with os.fdopen(os.open(temp, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600), "wb") as handle:
+            handle.write(authkey)
+        replace_atomic(temp, path)
+        if os.name != "nt":
+            os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    finally:
+        with contextlib.suppress(OSError):
+            temp.unlink()
 
 
 class SingletonLock:
@@ -214,13 +240,6 @@ def daemon_lock(address: str) -> SingletonLock:
 def spawn_lock(address: str) -> SingletonLock:
     """The lock the ONE spawning client holds while it starts the daemon for ``address``."""
     return SingletonLock(state_dir() / f"cadgen-daemon-v{PROTOCOL}-{_lock_name(address)}.spawn.lock")
-
-
-def forget_authkey(key: str) -> None:
-    try:
-        _authkey_path(key).unlink()
-    except OSError:
-        pass
 
 
 def address_is_stale(address: str) -> bool:
@@ -300,7 +319,7 @@ class Channel:
 
 
 class AuthenticationError(OSError):
-    """A live peer rejected the key; spawning another daemon cannot repair it."""
+    """A live peer rejected the key; never spawn another daemon over it."""
 
 
 def connect(address: str, authkey: bytes) -> Channel:
@@ -377,10 +396,17 @@ class Server:
     finish or disconnect; close does not wait for that peer or add a helper thread.
     """
 
-    def __init__(self, address: str, authkey: bytes, backlog: int = 8) -> None:
+    def __init__(
+        self,
+        address: str,
+        authkey: bytes,
+        backlog: int = 8,
+        on_authentication_error: Callable[[], None] | None = None,
+    ) -> None:
         self._family = _family()
         self._listener = mpc.Listener(address, family=self._family, authkey=authkey, backlog=backlog)
         self.address = address
+        self._on_authentication_error = on_authentication_error
         self._guard = threading.Lock()
         self._accept_guard = threading.Lock()
         self._accepting = False
@@ -403,7 +429,11 @@ class Server:
                             return None
                         self._accepting = True
                     connection = self._listener.accept()
-                except (OSError, EOFError, mpc.AuthenticationError):
+                except mpc.AuthenticationError:
+                    if self._on_authentication_error is not None:
+                        with contextlib.suppress(OSError):
+                            self._on_authentication_error()
+                except (OSError, EOFError):
                     pass
                 finally:
                     with self._guard:
@@ -467,9 +497,9 @@ __all__ = [
     "clear_address",
     "connect",
     "ensure_authkey",
-    "forget_authkey",
     "identity_digest",
     "keys_match",
+    "publish_authkey",
     "SingletonLock",
     "daemon_lock",
     "spawn_lock",

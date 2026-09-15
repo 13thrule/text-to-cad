@@ -515,7 +515,9 @@ def _walk_compound(compound: Any, *, root_name: str, progress: Any) -> _Walk:
                 baseline,
                 identities_verified=verified_baseline is not None,
             )
-        root["nodeType"] = "assembly"
+        # A native compound with no wrapper children (a fuse whose pieces do not
+        # all touch) walks to one leaf: it is that part, not a childless assembly.
+        root["nodeType"] = "assembly" if root.get("children") else "part"
     if not occurrences and not links:
         raise RuntimeError(f"model {root_name!r} has no geometry")
     walk.root = root

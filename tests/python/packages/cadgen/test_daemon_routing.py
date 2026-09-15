@@ -93,8 +93,8 @@ if __name__ == "__main__":
 """
 
 
-def _authkey() -> bytes:
-    key = transport.read_authkey(daemon_client.daemon_identity())
+def _authkey(address: str) -> bytes:
+    key = transport.read_authkey(str(address))
     if not key:
         raise RuntimeError("the daemon has not written its auth key")
     return key
@@ -167,7 +167,7 @@ class DaemonRouting(unittest.TestCase):
             if cls.server.poll() is not None:
                 raise RuntimeError(f"daemon exited during startup:\n{cls.log_path.read_text(encoding='utf-8')}")
             try:
-                probe = transport.connect(cls.address, _authkey())
+                probe = transport.connect(cls.address, _authkey(cls.address))
             except (OSError, RuntimeError):
                 time.sleep(0.1)
                 continue
@@ -318,7 +318,7 @@ class DaemonRouting(unittest.TestCase):
         self.assertTrue((self.stores["b"] / "index" / "model").is_dir())
 
     def test_status_does_not_trip_the_token_exit(self):
-        channel = transport.connect(self.address, _authkey())
+        channel = transport.connect(self.address, _authkey(self.address))
         try:
             channel.send(json.dumps({"kind": "status", "token": "not-this-daemon"}).encode("utf-8"))
             raw = channel.recv(30.0)
@@ -362,7 +362,7 @@ class DaemonRouting(unittest.TestCase):
                 self.assertTrue(thread.is_alive(), "the build finished before reaching its barrier")
                 time.sleep(0.02)
             self.assertTrue(ready.exists(), "the build never reached its barrier")
-            channel = transport.connect(self.address, _authkey())
+            channel = transport.connect(self.address, _authkey(self.address))
             try:
                 channel.send(json.dumps({"tool": "run", "argv": ["left.py"], "cwd": str(self.src), "token": "stale"}).encode("utf-8"))
                 raw = channel.recv(30.0)
@@ -374,7 +374,7 @@ class DaemonRouting(unittest.TestCase):
             # Its dependency request carries the new token because the client computes
             # that token from the live source tree. The draining daemon must finish it
             # on the old pool instead of closing the listener under its own root job.
-            dependency = transport.connect(self.address, _authkey())
+            dependency = transport.connect(self.address, _authkey(self.address))
             try:
                 dependency.send(json.dumps({
                     "tool": "run",

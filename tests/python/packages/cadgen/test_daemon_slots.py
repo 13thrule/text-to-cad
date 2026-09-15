@@ -155,10 +155,10 @@ def _write_fixture(src: Path) -> None:
     (src / "parent_b.py").write_text(PARENT_B, encoding="utf-8")
 
 
-def _authkey() -> bytes:
-    key = transport.read_authkey(daemon_client.daemon_identity())
+def _authkey(address: str) -> bytes:
+    key = transport.read_authkey(str(address))
     if not key:
-        raise RuntimeError("the daemon has not written its auth key")
+        raise OSError("the daemon has not written its auth key")
     return key
 
 
@@ -298,7 +298,7 @@ class DaemonExecutor(_Executor):
             if cls.server.poll() is not None:
                 raise RuntimeError(f"daemon exited during startup:\n{cls.log_path.read_text(encoding='utf-8')}")
             try:
-                transport.connect(cls.address, _authkey()).close()
+                transport.connect(cls.address, _authkey(cls.address)).close()
                 break
             except (OSError, RuntimeError):
                 time.sleep(0.1)
@@ -378,7 +378,7 @@ class DaemonExecutor(_Executor):
             deadline = time.monotonic() + 120
             while time.monotonic() < deadline:
                 try:
-                    transport.connect(address, _authkey()).close()
+                    transport.connect(address, _authkey(address)).close()
                     break
                 except OSError:
                     time.sleep(0.1)

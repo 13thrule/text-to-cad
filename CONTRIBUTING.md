@@ -278,11 +278,13 @@ law: nothing in `cadgen.viewer` imports the CAD kernel at module scope, so
 `cadgen viewer` starts as fast as `cadgen --help` and the kernel loads only in
 the compile worker.
 
-Launcher reuse keys on realpath(root) × identity token (the cadgen version
-salted with the newest mtime across `cadgen/viewer/*.py` and the default client
-location), so another checkout's instance can never be handed back for a
-worktree's root — and a resident instance running pre-pull or pre-rebuild code
-fails the match and a fresh one starts.
+Launcher reuse keys on realpath(root) × identity token (the cadgen version plus
+a content digest of every cadgen Python runtime file and the exact built client
+selected for the launch), so another checkout's instance can never be handed
+back for a worktree's root, `--dist` cannot reuse a different client, and a
+resident instance running pre-pull or pre-rebuild code fails the match. A
+resident that sees those files change refuses new model-data requests with a
+restart-required response while leaving its existing process and view alone.
 
 Worktrees deliberately carry no `node_modules`; link them from the primary
 checkout before building. cadgen-js needs all three of its runtime

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+import tempfile
 import threading
 import time
 import unittest
 from unittest import mock
 import uuid
 
-from cadgen.daemon import transport
+from cadgen.daemon import client, transport
 from cadgen.daemon.transport import Channel
 
 
@@ -174,6 +176,22 @@ class ServerShutdownTest(unittest.TestCase):
             self.assertEqual(errors, [])
             self.assertEqual(results, [None])
             connection.close.assert_called_once_with()
+
+    def test_rejected_authentication_repairs_the_owned_key_and_keeps_accepting(self):
+        connection = mock.Mock()
+        native = mock.Mock()
+        native.accept.side_effect = [transport.mpc.AuthenticationError("stale"), connection]
+        repair = mock.Mock()
+        with mock.patch.object(transport.mpc, "Listener", return_value=native):
+            listener = transport.Server(
+                "private",
+                b"secret",
+                on_authentication_error=repair,
+            )
+            channel = listener.accept()
+        self.assertIsNotNone(channel)
+        repair.assert_called_once_with()
+        channel.close()
 
     def test_close_without_accept_is_immediate_and_repeated_accept_stays_closed(self):
         pending = _PendingListener()
@@ -360,6 +378,49 @@ class ServerShutdownTest(unittest.TestCase):
                 self.assertIsInstance(results[0], Channel)
                 with results[0] as accepted:
                     self.assertEqual(accepted.recv(1), b"authenticated request")
+        finally:
+            listener.close()
+            thread.join(2)
+
+    def test_real_rejected_stale_key_is_republished_and_retried(self):
+        with tempfile.TemporaryDirectory(prefix="cadgen-auth-repair-") as tmp:
+            with mock.patch.object(transport, "state_dir", return_value=Path(tmp)):
+                address = transport.private_address(transport.identity_digest(uuid.uuid4().hex))
+                try:
+                    self._assert_real_key_repair(address, replace=True)
+                finally:
+                    transport.clear_address(address)
+                    transport._authkey_path(address).unlink(missing_ok=True)
+
+    def test_real_missing_key_is_republished_and_retried(self):
+        with tempfile.TemporaryDirectory(prefix="cadgen-auth-repair-") as tmp:
+            with mock.patch.object(transport, "state_dir", return_value=Path(tmp)):
+                address = transport.private_address(transport.identity_digest(uuid.uuid4().hex))
+                try:
+                    self._assert_real_key_repair(address, replace=False)
+                finally:
+                    transport.clear_address(address)
+                    transport._authkey_path(address).unlink(missing_ok=True)
+
+    def _assert_real_key_repair(self, address: str, *, replace: bool) -> None:
+        owned_key = b"owned-key"
+        if replace:
+            transport.publish_authkey(address, b"stale-key")
+        listener = transport.Server(
+            address,
+            owned_key,
+            on_authentication_error=lambda: transport.publish_authkey(address, owned_key),
+        )
+        thread, results, errors = self.accept_in_thread(listener)
+        try:
+            with client._connect(address) as connection:
+                connection.send(b"recovered")
+            thread.join(2)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(errors, [])
+            self.assertEqual(transport.read_authkey(address), owned_key)
+            with results[0] as accepted:
+                self.assertEqual(accepted.recv(1), b"recovered")
         finally:
             listener.close()
             thread.join(2)

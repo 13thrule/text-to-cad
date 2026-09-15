@@ -79,10 +79,11 @@ _TOOL_IMPORTS = {
 from cadgen.daemon import broker as broker_mod  # noqa: E402
 from cadgen.daemon import pool as pool_mod  # noqa: E402 - after _TOOL_IMPORTS, which worker.py reads
 
-_POOL = pool_mod.Pool()
 # Daemon-wide job slots and the in-flight registry (STORE.md §9). Workers reach it
 # over the daemon's own socket.
 _BROKER = broker_mod.Broker()
+# Admission waits on the jobs holding those slots rather than refusing a spawn.
+_POOL = pool_mod.Pool(in_flight=lambda: _BROKER.snapshot()["running"])
 
 
 class _DaemonShutdown(BaseException):
@@ -203,7 +204,7 @@ def _wait_for_inflight_consumer(conn: transport.Channel, entry: dict) -> int | N
             pass
 
 
-def _status_payload() -> dict:
+def _status_payload(startup_token: str) -> dict:
     """What the supervisor knows that nothing else can: which workers exist, which
     model each is bound to, and what it is doing. A socket file on disk proves none
     of it."""
@@ -219,7 +220,7 @@ def _status_payload() -> dict:
         "socket": str(daemon_address()),
         "identity": daemon_identity(),
         "version": __version__,
-        "token": compute_version_token(),
+        "token": startup_token,
         "startedAt": _STARTED_AT,
         "requests": _REQUESTS_SERVED[0],
         "inflight": sum(1 for thread in list(_INFLIGHT) if thread.is_alive()),
@@ -519,8 +520,8 @@ def _active_requests() -> list[threading.Thread]:
 _DAEMON_LOCK: transport.SingletonLock | None = None
 
 
-def _bind(address: str, authkey: bytes) -> transport.Server | None:
-    """One daemon per identity, decided by a lock -- never by probing or sweeping.
+def _bind(address: str) -> transport.Server | None:
+    """One daemon per address, decided by a lock -- never by probing or sweeping.
 
     Probing a leftover socket was a race: twenty clients starting at once spawn twenty
     daemons, the losers' probes against a backlog-8 listener are REFUSED, each reads
@@ -540,7 +541,13 @@ def _bind(address: str, authkey: bytes) -> transport.Server | None:
     if transport.address_is_stale(address):
         transport.clear_address(address)
     try:
-        return transport.Server(address, authkey, backlog=128)
+        authkey = transport.ensure_authkey(address)
+        return transport.Server(
+            address,
+            authkey,
+            backlog=128,
+            on_authentication_error=lambda: transport.publish_authkey(address, authkey),
+        )
     except OSError as exc:
         _log(f"cannot bind {address}: {exc}")
         lock.release()
@@ -552,8 +559,7 @@ def serve() -> int:
     os.environ["CADGEN_DAEMON_CHILD"] = "1"
     address = daemon_address()
     token = compute_version_token()
-    authkey = transport.ensure_authkey(daemon_identity())
-    server = _bind(address, authkey)
+    server = _bind(address)
     if server is None:
         return 0
     bound = {"address": True}
@@ -622,7 +628,7 @@ def serve() -> int:
                             conn = None  # the bounded watcher owns it
                     else:
                         with contextlib.suppress(OSError):
-                            _send(conn, {"status": _status_payload()})
+                            _send(conn, {"status": _status_payload(token)})
                     continue
                 token_changed = request.get("token") != token
                 dependency_finishing_old_work = bool(

@@ -412,11 +412,12 @@ def _endpoint() -> tuple[str, bytes] | None:
     if address and key:
         return address, key.encode("ascii")
     if os.environ.get("CADGEN_DAEMON_CHILD") and os.environ.get("CADGEN_DAEMON") != "0":
-        from cadgen.daemon.client import daemon_address, daemon_identity
+        from cadgen.daemon.client import daemon_address
 
-        daemon_key = transport.read_authkey(daemon_identity())
+        address = daemon_address()
+        daemon_key = transport.read_authkey(address)
         if daemon_key:
-            return daemon_address(), daemon_key
+            return address, daemon_key
     return None
 
 

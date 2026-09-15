@@ -6,8 +6,10 @@ worker is busy gets an *extra* — a spare bound to the same model for the lengt
 of one job — and runs now. A request for a model with no worker binds a spare. A
 request with no spare left spawns if its memory reservation fits. Admission
 counts resident worker trees (including extraction children), keeps headroom
-for dependencies, and reclaims idle workers first. Exhaustion fails explicitly
-rather than waiting while a parent retains geometry. These are soft RSS and
+for dependencies, and reclaims idle workers first. Exhaustion waits for the
+builds in flight to finish (a parent fanning out its children submits them all
+at once, and only a core's worth can run) and fails explicitly only when nothing
+is running that could release memory. These are soft RSS and
 reservation bounds, not a hard limit on a native operation's allocations.
 Publication ordering remains the publish rule's concern.
 
@@ -281,7 +283,8 @@ class Worker:
 class Pool:
     """See the module docstring."""
 
-    def __init__(self, clock=time.monotonic, *, policy: MemoryPolicy | None = None, memory_reader=None) -> None:
+    def __init__(self, clock=time.monotonic, *, policy: MemoryPolicy | None = None, memory_reader=None,
+                 in_flight=None) -> None:
         self._cv = threading.Condition()
         self._clock = clock
         self._workers: list[Worker] = []
@@ -290,6 +293,9 @@ class Pool:
         self._spares_pending = 0
         self._policy = policy if policy is not None else MemoryPolicy.from_environment()
         self._memory_reader = memory_reader or process_tree_bytes
+        # How many jobs hold a run slot right now. Each one hands its charge back when
+        # it finishes, so admission waits on them instead of refusing.
+        self._in_flight = in_flight or (lambda: 0)
         self._stats = {"jobsServed": 0, "imports": 0, "concurrent": 0, "crashes": 0, "recycles": 0, "unbinds": 0,
                        "memoryReclaims": 0, "memoryRefusals": 0}
         self._closed = False
@@ -469,6 +475,7 @@ class Pool:
             return
         ceiling = self._policy.limit_bytes - (0 if dependency else self._policy.dependency_bytes)
         deadline = time.monotonic() + 5.0  # wait only for idle-process teardown
+        stalled_since = None
         while True:
             usage = self._memory_locked()["chargedBytes"]
             if usage + additional <= ceiling:
@@ -499,15 +506,29 @@ class Pool:
                 )
                 if sole_charge and usage + additional <= self._policy.limit_bytes:
                     return
+            # A build holding a run slot finishes and releases its worker; a spawn
+            # still starting becomes such a build. Wait for them. Only when nothing
+            # is in flight can no wait help: every busy worker is then a parent kept
+            # alive by the geometry it retains for its children.
+            if self._in_flight() or self._active_pending or self._spares_pending:
+                stalled_since = None
+                self._cv.wait(timeout=0.05)
+                continue
+            now = time.monotonic()
+            stalled_since = stalled_since or now
+            if now - stalled_since < 2.0:  # a freshly spawned worker takes a moment to claim its slot
+                self._cv.wait(timeout=0.05)
+                continue
             self._stats["memoryRefusals"] += 1
             raise MemoryAdmissionError(
                 f"cadgen memory admission: {usage / MIB:.0f} MiB charged plus "
                 f"{additional / MIB:.0f} MiB requested exceeds the "
                 f"{ceiling / MIB:.0f} MiB {'dependency' if dependency else 'build'} allowance "
                 f"({self._policy.limit_bytes / MIB:.0f} MiB total). "
-                "Idle workers were reclaimed; active builds retain their geometry. "
+                "Idle workers were reclaimed; active builds retain their geometry and nothing "
+                "is running that could release memory. "
                 "An oversized reservation may use the total allowance only while it is the sole charge. "
-                "Wait for active work to finish, increase CADGEN_MEMORY_MB, or reduce the workload."
+                "Increase CADGEN_MEMORY_MB or reduce the workload."
             )
 
     def _used_locked(self, worker: Worker) -> Worker:

@@ -186,13 +186,37 @@ class Admission(unittest.TestCase):
             future = executor.submit(self.pool.acquire, "pending")
             try:
                 self.assertTrue(entered.wait(2))
-                with self.assertRaises(pool.MemoryAdmissionError):
-                    self.pool.acquire("cannot-overbook")
+                # The pending spawn holds its reservation, so a second request
+                # waits on it rather than overbooking.
+                overbook = executor.submit(self.pool.acquire, "cannot-overbook")
+                self.assertFalse(overbook.done())
             finally:
                 finish.set()
             worker = future.result(timeout=5)
+            # Once the spawn has landed nothing is in flight to release memory.
+            with self.assertRaises(pool.MemoryAdmissionError):
+                overbook.result(timeout=10)
         self.assertTrue(worker.busy)
         self.assertEqual(self.pool.snapshot()["memory"]["pendingWorkers"], 0)
+
+    def test_admission_waits_for_builds_in_flight_instead_of_refusing(self):
+        running = [1]
+        waiting = pool.Pool(policy=memory.MemoryPolicy(12 * MIB, 4 * MIB, 4 * MIB),
+                            memory_reader=lambda pids: {pid: 2 * MIB for pid in pids},
+                            in_flight=lambda: running[0])
+        self.addCleanup(waiting.shutdown)
+        parent = waiting.acquire("parent")
+        first = waiting.acquire("first", dependency=True)
+        second = waiting.acquire("second", dependency=True)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            third = executor.submit(waiting.acquire, "third", dependency=True)
+            self.assertFalse(third.done())
+            self.assertFalse(third.running() and third.done())
+            waiting.release(first)  # a finished build hands its worker back
+            child = third.result(timeout=5)
+        self.assertTrue(child.busy and child.alive())
+        self.assertTrue(parent.busy and second.busy)
+        self.assertEqual(waiting.snapshot()["memoryRefusals"], 0)
 
     def test_retiring_rss_is_not_freed_before_process_exit(self):
         old = self.pool.acquire("old")
