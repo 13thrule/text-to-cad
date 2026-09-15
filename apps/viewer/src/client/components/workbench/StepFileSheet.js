@@ -1221,8 +1221,8 @@ export default function StepFileSheet({
   ];
   const sections = renderMode
     ? [
-        allSections.find((section) => section?.id === FILE_SHEET_SECTION_IDS.THEME_RENDER),
-        allSections.find((section) => section?.id === FILE_SHEET_SECTION_IDS.THEME_MATERIALS),
+        allSections.find((section) => section?.id === FILE_SHEET_SECTION_IDS.RENDER),
+        allSections.find((section) => section?.id === FILE_SHEET_SECTION_IDS.MATERIALS),
         allSections.find((section) => section?.id === FILE_SHEET_SECTION_IDS.STEP_POSE),
         allSections.find((section) => section?.id === FILE_SHEET_SECTION_IDS.STEP_ANIMATION)
       ].filter(Boolean)

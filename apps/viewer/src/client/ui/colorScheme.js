@@ -1,4 +1,4 @@
-export const SYSTEM_COLOR_SCHEME_ID = "system";
+const SYSTEM_COLOR_SCHEME_ID = "system";
 export const LIGHT_COLOR_SCHEME_ID = "light";
 export const DARK_COLOR_SCHEME_ID = "dark";
 export const DEFAULT_COLOR_SCHEME_ID = SYSTEM_COLOR_SCHEME_ID;
@@ -27,12 +27,12 @@ const COLOR_SCHEME_REGISTRY = Object.freeze(
 
 export const COLOR_SCHEMES = COLOR_SCHEME_OPTIONS;
 
-export function normalizeColorSchemeId(colorSchemeId) {
+function normalizeColorSchemeId(colorSchemeId) {
   const normalizedId = String(colorSchemeId || "").trim().toLowerCase();
   return Object.hasOwn(COLOR_SCHEME_REGISTRY, normalizedId) ? normalizedId : DEFAULT_COLOR_SCHEME_ID;
 }
 
-export function getColorSchemeOption(colorSchemeId) {
+function getColorSchemeOption(colorSchemeId) {
   return COLOR_SCHEME_REGISTRY[normalizeColorSchemeId(colorSchemeId)];
 }
 
@@ -121,15 +121,6 @@ export function writeColorSchemePreference(colorSchemeId, options = {}) {
     options.onWriteError({ key: COLOR_SCHEME_COOKIE_NAME, error: failure });
   }
   return persisted || (!storage && !target);
-}
-
-export function getColorSchemeControlLabel(colorSchemeId, { prefersDark = false } = {}) {
-  const option = getColorSchemeOption(colorSchemeId);
-  if (option.id !== SYSTEM_COLOR_SCHEME_ID) {
-    return option.label;
-  }
-  const resolvedMode = resolveColorSchemeMode(colorSchemeId, { prefersDark });
-  return `${option.label} (${getColorSchemeOption(resolvedMode).label})`;
 }
 
 export function applyColorSchemeToDocument(colorSchemeId, root = document.documentElement, { prefersDark = false } = {}) {

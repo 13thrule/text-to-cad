@@ -39,19 +39,14 @@ export function applyMaterialChoice(appearance, overlay, ids, choice) {
   return { materialId, overlay: assignSourceMaterialOverlay(overlay, ids, materialId) };
 }
 
-export function sourceMaterialPresetId(material) {
-  return MATERIAL_FINISH_PRESETS.find(preset => FINISH_CHANNELS.every(key =>
-    Math.abs(sourceMaterialEditorValue(material, key) - preset[key]) < 0.001))?.id || "";
-}
-
-export function applySourceMaterialPreset(overlay, materialId, presetId) {
+function applySourceMaterialPreset(overlay, materialId, presetId) {
   const preset = MATERIAL_FINISH_PRESETS.find(item => item.id === presetId);
   if (!preset) return sessionOverlay(overlay);
   return patchSourceMaterialOverlay(overlay, materialId,
     Object.fromEntries(FINISH_CHANNELS.map(key => [key, preset[key]])));
 }
 
-export function addSourceMaterialPreset(appearance, overlay, presetId) {
+function addSourceMaterialPreset(appearance, overlay, presetId) {
   const preset = MATERIAL_FINISH_PRESETS.find(item => item.id === presetId);
   if (!preset) return null;
   const ids = new Set(Object.keys(effectiveSourceAppearance(appearance, overlay)?.materials || {}));
@@ -84,11 +79,19 @@ export function sourceAppearanceHasMaterials(appearance) {
   return Boolean(resolved && Object.keys(resolved.materials || {}).length);
 }
 
+// The one rule for whether the Materials tab exists: every STEP can be given
+// materials in-session, and any other format that already ships named ones can
+// be retouched. It decides both the tab strip entry and the tab itself, so the
+// two can never disagree about whether the panel is there.
+export function sourceMaterialsPanelEnabled(fileSheetKind, appearance) {
+  return String(fileSheetKind || "") === "step" || sourceAppearanceHasMaterials(appearance);
+}
+
 export function effectiveSourceAppearance(appearance, overlay) {
   return resolveSourceAppearance(appearance, sessionOverlay(overlay));
 }
 
-export function sourceMaterialParts(meshData) {
+function sourceMaterialParts(meshData) {
   return (Array.isArray(meshData?.parts) ? meshData.parts : []).map((part) => ({
     id: normalizedId(part?.occurrenceId || part?.id),
     label: String(part?.label || part?.name || part?.occurrenceId || part?.id || "Part").trim() || "Part",
@@ -96,7 +99,21 @@ export function sourceMaterialParts(meshData) {
   })).filter((part) => part.id);
 }
 
-export function sourceMaterialTargets(meshData) {
+// A STEP occurrence with no authored name arrives carrying the exchange file's
+// placeholder (`=>[...]`), which is not a name to show anyone. A lone unnamed
+// body is the model, so it takes the model's file name; several unnamed bodies
+// become ordinals. Resolved here so every consumer gets a label it can render.
+const PLACEHOLDER_PART_LABEL = /^=>\[/u;
+
+function displayPartLabel(part, index, partCount, scope) {
+  if (!PLACEHOLDER_PART_LABEL.test(part.label)) return part.label;
+  const modelName = partCount === 1
+    ? String(scope || "").split("/").pop().replace(/\.step$/iu, "")
+    : "";
+  return modelName || `Part ${index + 1}`;
+}
+
+export function sourceMaterialTargets(meshData, scope = "") {
   const parts = sourceMaterialParts(meshData);
   const partById = new Map(parts.map((part) => [part.id, part]));
   const targets = [];
@@ -120,22 +137,16 @@ export function sourceMaterialTargets(meshData) {
     return occurrenceIds;
   };
   if (meshData?.assemblyRoot) visit(meshData.assemblyRoot);
-  for (const part of parts) {
-    targets.push({ ...part, occurrenceIds: [part.id], depth: 0, group: false });
-  }
+  parts.forEach((part, index) => {
+    targets.push({
+      ...part,
+      label: displayPartLabel(part, index, parts.length, scope),
+      occurrenceIds: [part.id],
+      depth: 0,
+      group: false
+    });
+  });
   return targets;
-}
-
-export function sourceMaterialUsage(appearance, overlay, parts) {
-  const effective = effectiveSourceAppearance(appearance, overlay);
-  const counts = Object.fromEntries(Object.keys(effective?.materials || {}).map((id) => [id, 0]));
-  for (const part of Array.isArray(parts) ? parts : []) {
-    const materialId = normalizedId(effective?.assignments?.[normalizedId(part?.id)]);
-    if (materialId && Object.hasOwn(counts, materialId)) {
-      counts[materialId] += 1;
-    }
-  }
-  return counts;
 }
 
 export function sourceMaterialFallbackColor(effectiveAppearance, materialId, parts, neutral = "#b8b8b8") {
@@ -165,7 +176,7 @@ export function patchSourceMaterialOverlay(overlay, materialId, patch) {
   };
 }
 
-export function assignSourceMaterialOverlay(overlay, occurrenceIds, materialId) {
+function assignSourceMaterialOverlay(overlay, occurrenceIds, materialId) {
   const current = sessionOverlay(overlay);
   const id = normalizedId(materialId);
   const assignments = { ...current.assignments };
@@ -176,7 +187,7 @@ export function assignSourceMaterialOverlay(overlay, occurrenceIds, materialId) 
   return { materials: { ...current.materials }, assignments };
 }
 
-export function nextSourceMaterialCopyId(appearance, overlay, sourceId) {
+function nextSourceMaterialCopyId(appearance, overlay, sourceId) {
   const prefix = `${normalizedId(sourceId) || "material"}-copy`;
   const effective = effectiveSourceAppearance(appearance, overlay);
   const ids = new Set(Object.keys(effective?.materials || {}));

@@ -13,9 +13,9 @@ export const FILE_SHEET_SECTION_IDS = Object.freeze({
   DXF_MATERIAL: "material",
   DXF_BENDS: "bends",
   DXF_LAYERS: "dxfLayers",
-  THEME_DISPLAY: "display",
-  THEME_RENDER: "render",
-  THEME_MATERIALS: "materials",
+  DISPLAY: "display",
+  RENDER: "render",
+  MATERIALS: "materials",
   FILE_METADATA: "metadata"
 });
 
@@ -34,8 +34,8 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
   const normalizedKind = normalizeString(kind);
   if (options.renderMode === true) {
     return [
-      FILE_SHEET_SECTION_IDS.THEME_RENDER,
-      ...(options.hasMaterialsPanel ? [FILE_SHEET_SECTION_IDS.THEME_MATERIALS] : []),
+      FILE_SHEET_SECTION_IDS.RENDER,
+      ...(options.hasMaterialsPanel ? [FILE_SHEET_SECTION_IDS.MATERIALS] : []),
       ...(normalizedKind === "step" && options.hasStepPosePanel
         ? [FILE_SHEET_SECTION_IDS.STEP_POSE]
         : []),
@@ -77,7 +77,7 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
         // Measurements then follows: it and Reference are both readouts about geometry the
         // user has picked, as against the Tree's inventory of what is in the file.
         FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS,
-        FILE_SHEET_SECTION_IDS.THEME_DISPLAY
+        FILE_SHEET_SECTION_IDS.DISPLAY
       ];
     case "urdf":
     case "srdf":
@@ -91,7 +91,7 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
         ...(isSdf ? [FILE_SHEET_SECTION_IDS.ROBOT_SDF] : []),
         ...(options.motionEnabled ? [FILE_SHEET_SECTION_IDS.ROBOT_MOTION] : []),
         ...(showJoints ? [FILE_SHEET_SECTION_IDS.ROBOT_JOINTS] : []),
-        FILE_SHEET_SECTION_IDS.THEME_DISPLAY
+        FILE_SHEET_SECTION_IDS.DISPLAY
       ];
     case "mesh":
       // Direct GLB may add embedded animation. Measurement stays the static
@@ -99,7 +99,7 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
       return [
         ...(options.hasEmbeddedGlbAnimationPanel ? [FILE_SHEET_SECTION_IDS.STEP_ANIMATION] : []),
         ...(options.measurementAvailable === false ? [] : [FILE_SHEET_SECTION_IDS.STEP_MEASUREMENTS]),
-        FILE_SHEET_SECTION_IDS.THEME_DISPLAY
+        FILE_SHEET_SECTION_IDS.DISPLAY
       ];
     default:
       return [];
@@ -109,7 +109,7 @@ export function renderedFileSheetSectionIds(kind, options = {}) {
 export function defaultOpenFileSheetSectionIds(kind, options = {}) {
   const normalizedKind = normalizeString(kind);
   if (options.renderMode === true) {
-    return [FILE_SHEET_SECTION_IDS.THEME_RENDER];
+    return [FILE_SHEET_SECTION_IDS.RENDER];
   }
   const isSdf = options.isSdf === true || normalizedKind === "sdf";
   const showJoints = options.showJoints !== false;

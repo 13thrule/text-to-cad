@@ -91,10 +91,6 @@ export function createDecodeSizeEstimator({
   };
 }
 
-export function progressiveLoadStage(loaded, total) {
-  return progressiveLoadProgress(loaded, total).label;
-}
-
 export function progressiveLoadProgress(loaded, total, detail = undefined) {
   const normalizedTotal = Math.max(0, Math.floor(Number(total) || 0));
   const normalizedLoaded = Math.max(0, Math.min(
@@ -149,7 +145,7 @@ const NOOP_ANIMATION_HANDLE = Object.freeze({
   visible() { return this; }
 });
 
-export function partialAnimationModel(model) {
+function partialAnimationModel(model) {
   return {
     ...model,
     get(target) {
@@ -173,7 +169,7 @@ export function tolerantAnimationClip(clip) {
 // §7), following the window.__cadModelPlacement / __CAD_VIEWER_LOD__ precedent:
 // written on EVERY progressive publish, nulled on cancel, never React state.
 // Harmless without a window (Node tests).
-export function meshCostAccounting({ meshData, componentMeshDataByCid, loaded, total, publishCount, final, meshRevision = "" }) {
+function meshCostAccounting({ meshData, componentMeshDataByCid, loaded, total, publishCount, final, meshRevision = "" }) {
   let componentTotalBytes = 0;
   let componentTotalTriangles = 0;
   const components = Object.values(componentMeshDataByCid || {});

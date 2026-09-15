@@ -117,7 +117,7 @@ function RenderSettingsContent({
 
 export function buildRenderSettingsTab(props) {
   return {
-    id: FILE_SHEET_SECTION_IDS.THEME_RENDER,
+    id: FILE_SHEET_SECTION_IDS.RENDER,
     title: "Studio",
     content: <RenderSettingsContent {...props} />
   };

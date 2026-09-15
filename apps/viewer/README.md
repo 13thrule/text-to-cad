@@ -143,7 +143,10 @@ the photographic scene receives no selected parts, because the Inspect selection
 tint and occlusion ghost would repaint the material being previewed. Click an In
 this model swatch or Preset to apply immediately; a preset creates and assigns
 its material together.
-Undo restores the last local material change while this panel stays mounted.
+Undo restores the last local material change. The edits, that one step of
+history and the panel's part selection are the model's session, held by the
+workspace rather than the panel, so looking at Studio and coming back leaves
+all three where they were.
 A material's options menu can select every part using it. Color and surface
 sliders stay behind Advanced settings. Shared editing remains explicit, with Make
 unique for selection available before editing a shared material.
@@ -385,7 +388,9 @@ src/client/ # React app: CadWorkspace (state root), CadViewer (scene +
             #   effects application), workbench/ (tabs, sections, session
             #   state, playback), render/ (viewport)
 scripts/    # app tooling incl. selfContained.test.mjs
-            #   (the boundary fence) and the dev-backend spawn helpers
+            #   (the boundary fence), the dev-backend spawn helpers, and
+            #   the DOM-free React harness and module hooks that component
+            #   and hook tests render the client through
 docs/       # subsystem docs; settings-ui.md is the CURATED design-system
             #   reference for all settings UI work — binding, read it
             #   before touching controls

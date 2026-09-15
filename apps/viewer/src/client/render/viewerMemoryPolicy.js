@@ -3,12 +3,12 @@
 // so this is deliberately not described as a process-RSS limit. The fixed GPU
 // headroom covers driver-side overhead that buffer byte lengths cannot see.
 
-export const VIEWER_MEMORY_MIB = 1024 * 1024;
-export const DEFAULT_VIEWER_MEMORY_BUDGET_BYTES = 1536 * VIEWER_MEMORY_MIB;
-export const DEFAULT_VIEWER_GPU_HEADROOM_BYTES = 256 * VIEWER_MEMORY_MIB;
-export const DEFAULT_VIEWER_REPLACEMENT_HEADROOM_BYTES = 128 * VIEWER_MEMORY_MIB;
+const VIEWER_MEMORY_MIB = 1024 * 1024;
+const DEFAULT_VIEWER_MEMORY_BUDGET_BYTES = 1536 * VIEWER_MEMORY_MIB;
+const DEFAULT_VIEWER_GPU_HEADROOM_BYTES = 256 * VIEWER_MEMORY_MIB;
+const DEFAULT_VIEWER_REPLACEMENT_HEADROOM_BYTES = 128 * VIEWER_MEMORY_MIB;
 
-export const VIEWER_MEMORY_CATEGORIES = Object.freeze([
+const VIEWER_MEMORY_CATEGORIES = Object.freeze([
   "displayCpu",
   "selectors",
   "bvh",

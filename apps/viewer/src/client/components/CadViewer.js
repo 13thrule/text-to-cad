@@ -1528,6 +1528,12 @@ function disposeSceneObject(object) {
 // sync — the effect that turns a published mesh state into display records —
 // held the main thread, and whether it rebuilt the scene or reused its records.
 // Read by the headless timing harness; never React state.
+//
+// A long session syncs the scene thousands of times, and a benchmark reads the
+// recent ones (usually the last), so the log is a window while count and
+// totalMs stay the totals for the whole session.
+const SCENE_SYNC_LOG_LIMIT = 200;
+
 function recordSceneSyncTiming(startedAt, { mode, records, reason = "" }) {
   if (typeof window === "undefined") {
     return;
@@ -1537,6 +1543,9 @@ function recordSceneSyncTiming(startedAt, { mode, records, reason = "" }) {
   stats.count += 1;
   stats.totalMs += ms;
   stats.entries.push({ atMs: Math.round(performance.now()), ms: Math.round(ms * 10) / 10, mode, records, reason });
+  if (stats.entries.length > SCENE_SYNC_LOG_LIMIT) {
+    stats.entries.splice(0, stats.entries.length - SCENE_SYNC_LOG_LIMIT);
+  }
 }
 
 // Why a live scene was rebuilt rather than reused: the build-key fields that
