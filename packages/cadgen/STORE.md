@@ -12,7 +12,7 @@ right.
 | § | What it settles | Read it before |
 |---|---|---|
 | [1](#1-vocabulary) | The one word per concept, and the retired ones | naming anything |
-| [2](#2-layout) | What lives under the root, and **the two sides law** | adding an entry or a reader |
+| [2](#2-layout) | What lives under the root, **the two sides law**, and geometry identity versions | adding an entry or a reader, bumping any version |
 | [3](#3-tree-and-record) | Tree and record shapes, annotation edges | changing what a build writes |
 | [4](#4-the-gate) | The freshness clauses, in order | touching stale/current |
 | [5](#5-invariants) | Each invariant with the failure it prevents | any store write |
@@ -155,6 +155,33 @@ includes its extraction algorithm/schema along with the inputs that affect its
 output; this does not change the content address of any object it produces.
 The `.step` document, its sidecar and declared mesh files are
 **outputs** in the project, not store contents; the record lists them with shas.
+
+### Geometry identity and versions
+
+A component's id (cid) is a hash of exactly three inputs: its BREP bytes, its
+intrinsic face colours, and the string `GEOMETRY_SCHEME` (currently
+`cadgen-geometry-input-v3`, in `_internal/component_package.py`). That
+string is the **only** version on geometry identity. Everything derived from
+a component — surfaces (`SURF_VERSION`), tessellations (the tessellation
+scheme), index payloads (their `schemaVersion`) — carries its own version and
+validates its own compatibility, so a fix in a producer retires that layer's
+entries alone and never moves a cid.
+
+- Bump `GEOMETRY_SCHEME` only when the same bytes must map to a different
+  tree: a codec or interpretation change. It re-keys every user's store, so
+  it is rare and deliberate, and the reason goes in the commit and here.
+- Bump the derived artifact's own version for an extractor, mesher or surface
+  fix. Never reach for geometry identity to invalidate a derived layer.
+- Wiping a store is an operator action (`cadgen store gc`, `store forget`),
+  never a hash side effect.
+
+Until cadgen 0.5.1 a global `CACHE_SCHEMA_VERSION` number salted the cid and
+was bumped for producer fixes as well as geometry changes (17: mesh section
+removed from `assembly.json`; 18: periodic spline domains; 19: components are
+the re-read STEP bytes, not the script's shapes; 20: distinct occurrence
+colours on a shared TShape). It stopped being hashed when geometry and
+derived display assets were separated, and it is retired; do not reintroduce
+a salt of that kind.
 
 ## 3. Tree and record
 
@@ -1110,7 +1137,8 @@ Explicit model saves still obey every child/output/publication requirement.
   the hash; entries: temp + rename).
 - Put a path, a timestamp, or anything machine-specific into an object.
 - Derive a model's dependencies from its tree's links.
-- Add a version salt to a store name.
+- Add a version salt to a store name, or a global schema number to component
+  identity (§2, geometry identity and versions).
 - Add a lock that a reader consults to decide freshness — or any build lock
   at all; the publish rule and pins are the whole concurrency story.
 - Let a door, the viewer, snapshot or any render path open `index/model` or

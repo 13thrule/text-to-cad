@@ -50,8 +50,9 @@ class RenderContractSyncTest(unittest.TestCase):
             python_version,
             js_version,
             "SURF_VERSION diverged between the Python extractor and the JS "
-            "surf parser — bump both together (and CACHE_SCHEMA_VERSION with "
-            "them; a .surf the client cannot parse renders nothing).",
+            "surf parser — bump both together; a .surf the client cannot parse "
+            "renders nothing. SURF_VERSION is the surface artifact's own version "
+            "and never touches geometry identity (GEOMETRY_SCHEME).",
         )
 
     def test_sidecar_schema_matches_the_js_source_sidecar_loader(self) -> None:

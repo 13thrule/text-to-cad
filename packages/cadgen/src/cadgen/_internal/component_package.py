@@ -550,7 +550,15 @@ def _write_component_artifacts_atomic(
     return out_surf
 
 
-# Geometry inputs are independent of disposable surface producer versions.
+# The ONLY version on geometry identity. A component's cid hashes its BREP
+# bytes, its intrinsic face colours, and this scheme string; nothing else.
+# Bump it only when the same bytes must map to a different tree (a codec or
+# interpretation change): that re-keys every user's store, so it is rare and
+# deliberate. An extractor, mesher or surface fix bumps the version of that
+# derived artifact (SURF_VERSION, the tessellation scheme, the index payload
+# contracts) and never this string. There is no global cache-schema salt any
+# more; STORE.md "Geometry identity and versions" records the rule and the
+# retired salt's history.
 GEOMETRY_SCHEME = "cadgen-geometry-input-v3"
 GEOMETRY_CODECS = frozenset({"bintools-v4", "bintools-v3", "breptools-ascii-v3"})
 COMPONENT_KINDS = frozenset({"native", "eager-only"})

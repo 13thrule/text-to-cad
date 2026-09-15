@@ -16,7 +16,6 @@ from cadgen import catalog as cad_catalog
 from cadgen._internal import source_hash as cad_source_hash
 from cadgen.catalog import StepImportOptions
 from cadgen._internal.glb_topology import read_step_topology_manifest_from_glb
-from cadgen._internal.cache_schema import CACHE_SCHEMA_VERSION
 from cadgen._internal.glb_topology import STEP_TOPOLOGY_SCHEMA_VERSION
 from cadgen._internal.step_scene import LoadedStepScene, OccurrenceNode, SelectorBundle
 from tests.python.support.cad_test_roots import IsolatedCadRoots
