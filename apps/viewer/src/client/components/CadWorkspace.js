@@ -7688,7 +7688,7 @@ export default function CadWorkspace({
                 handleScreenshotCopy={handleScreenshotCopy}
               />
 
-              {!previewMode && !selectedEntry && !missingFileRef && !fileParamSelectionPending ? (
+              {!previewMode && !viewerAlert && !selectedEntry && !missingFileRef && !fileParamSelectionPending ? (
                 <CadWorkspaceHome
                   entries={catalogEntries}
                   onSelectEntry={handleSelectEntry}
