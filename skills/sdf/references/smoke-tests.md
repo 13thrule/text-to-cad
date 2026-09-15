@@ -8,23 +8,23 @@ Use smoke tests after the SDF passes bundled validation. The goal is to catch si
 
 ```bash
 cadgen sdf validate path/to/model.sdf
-cadgen sdf validate path/to/model.sdf --strict
+cadgen sdf validate path/to/model.sdf --strict --gz-check never
 ```
 
-Bundled validation runs during explicit target generation. Use `--strict` when warnings should block handoff.
+Use `--strict` when warnings should block handoff. Pair it with `--gz-check never` unless `gz` is installed: the default `--gz-check auto` warns when the tool is missing, and under `--strict` that warning alone fails the file.
 
 ### SDFormat parser check
 
-When Gazebo tooling is installed:
+`cadgen sdf validate` already runs `gz sdf --check` whenever `gz` is on PATH. Run it directly to read the parser's own output:
 
 ```bash
 gz sdf --check path/to/model.sdf
 ```
 
-or through the skill CLI:
+or make it mandatory, so a missing `gz` is an error instead of a warning:
 
 ```bash
-cadgen sdf validate path/to/model.sdf --gz-check auto
+cadgen sdf validate path/to/model.sdf --gz-check required
 ```
 
 Use the exact simulator environment that will consume the file when possible.
