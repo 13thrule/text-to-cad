@@ -1041,8 +1041,12 @@ class SnapshotCliTests(unittest.TestCase):
 
     def test_render_job_rejects_top_level_selection_shaped_keys(self) -> None:
         # "hide"/"focus" belong inside the selection object; at top level they
-        # are unknown keys and fail through the ordinary closed-schema error.
-        with self.assertRaisesRegex(SnapshotError, r"unknown render job key\(s\): hide"):
+        # are unknown keys and fail through the closed-schema error, which
+        # names the nesting instead of leaving the author to guess it.
+        with self.assertRaisesRegex(
+            SnapshotError,
+            r'unknown render job key\(s\): hide.*hide nest under the selection object: "selection": \{"hide": \["#o1.2"\]\}',
+        ):
             resolve_render_job_packet(
                 {
                     "input": "models/part.step",

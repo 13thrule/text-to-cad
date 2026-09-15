@@ -783,9 +783,19 @@ def resolve_render_job(
     # the key were absent.
     unknown_keys = sorted(set(job) - SUPPORTED_JOB_KEYS)
     if unknown_keys:
+        # --focus/--hide are the one flag pair whose job spelling is not the
+        # bare flag name: they nest under "selection". Name that, or the
+        # generic message sends the author back to a flag list that is right.
+        misplaced = [key for key in unknown_keys if key in {"focus", "hide", "refs"}]
+        hint = (
+            f" ({', '.join(misplaced)} nest under the selection object: "
+            f'"selection": {{"{misplaced[0]}": ["#o1.2"]}})'
+            if misplaced
+            else ""
+        )
         raise SnapshotError(
             f"unknown render job key(s): {', '.join(unknown_keys)}; "
-            f"supported keys: {', '.join(sorted(SUPPORTED_JOB_KEYS))}"
+            f"supported keys: {', '.join(sorted(SUPPORTED_JOB_KEYS))}{hint}"
         )
 
     resolved_cwd = (cwd or Path.cwd()).resolve()

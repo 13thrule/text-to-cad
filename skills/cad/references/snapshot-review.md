@@ -53,6 +53,19 @@ Set `input` to the primary STEP/STP artifact using a relative or absolute path (
 
 Use `--focus '#o1.2' ...` to emphasize specific part or subassembly occurrence refs — in `view` renders the focused refs keep full opacity while the rest of the assembly is ghosted in place (framing and context are preserved); in `section` mode focus isolates the refs entirely. Use `--hide '#o1.2' ...` to omit parts from the render in every mode. Do not combine focus and hide in the same snapshot command or job. These filters accept occurrence refs only, not face, edge, vertex, or shape selectors.
 
+In a JSON job these two flags are the one exception to "job key = flag name without dashes": they nest under a job-level `selection` object, and a top-level `"hide"` or `"focus"` is rejected as an unknown key. Selection applies to the whole job, not to one output — to hide or focus parts for a single view, give that view its own job in a `jobs` array.
+
+```json
+{
+  "input": "STEP/assembly.step",
+  "mode": "view",
+  "selection": { "hide": ["#o1.3", "#o1.4"] },
+  "outputs": [{ "path": "tmp/render/without_covers.png", "camera": "iso" }]
+}
+```
+
+`"selection": { "focus": ["#o1.2"] }` is the `--focus` form. Every other flag keeps the plain rule (`--kinematics` → `"kinematics"`, `--animation CLIP --time S` → `"animation": {"clip": ..., "time": ...}`).
+
 ## Output paths
 
 Name the file and you get that file:
