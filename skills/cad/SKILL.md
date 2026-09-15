@@ -63,7 +63,7 @@ The command surface (the `cadgen` console script, installed with the package):
 python <model>.py            # its __main__ calls the model, which builds it
 cadgen step build IN OUT     # re-emit an existing STEP with durable annotations
 cadgen stl build ...         # one door per mesh format; `3mf` and `glb` are the others
-cadgen step inspect ...      # refs, measure, align, frame, diff
+cadgen step inspect ...      # refs, measure, align, frame, diff, interfere, validate
 cadgen step snapshot ...     # PNG visual review packets (and clip videos), for STEP
 cadgen stl snapshot ...      # the same, for a mesh file; `3mf` and `glb` again
 cadgen store why <model>.py  # why the model is stale or current, clause by clause
@@ -278,11 +278,16 @@ nothing during its longest phase.
 **Failures** print the exception and the frames *in your own model*, not the runtime's:
 
 ```text
-[cadgen] FAILED: ValueError: bad radius
-[cadgen]   src/widget.py:9 in bracket
-[cadgen]       return _profile(radius)
-[cadgen] re-run with --verbose for the full traceback
+[python widget.py] FAILED: ValueError: bad radius
+[python widget.py]   src/widget.py:9 in bracket
+[python widget.py]       return _profile(radius)
+[python widget.py]   src/widget.py:4 in _profile
+[python widget.py]       raise ValueError("bad radius")
+[python widget.py] re-run with --verbose for the full traceback
 ```
+
+Every line is prefixed with the command that produced it — `[python <script>]` for a
+model run, `[cadgen step snapshot]` and the like for a door.
 
 A failed child raises at the site in the parent that first read its geometry, naming the call and carrying the child worker's output.
 
