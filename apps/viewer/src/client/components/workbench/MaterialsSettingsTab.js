@@ -56,7 +56,11 @@ function MaterialSlider({ label, value, onChange }) {
   );
 }
 
-function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedPartIds = [], onSelectParts, onOverlayChange, scope = "" }) {
+// Undo, the overlay and the selection all belong to the workspace's material
+// session hook: this panel unmounts whenever the Studio tab is shown, and
+// anything it kept for itself would not survive that.
+function MaterialsSettingsContent({ appearance, overlay, undo = null, targets = [], selectedPartIds = [],
+  onSelectParts, onOverlayChange, onUndo, onReset, scope = "" }) {
   const effective = useMemo(() => effectiveSourceAppearance(appearance, overlay), [appearance, overlay]);
   const parts = targets.filter(target => !target.group);
   const selected = parts.filter(part => selectedPartIds.includes(part.occurrenceIds[0]));
@@ -65,13 +69,8 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedP
   const material = effective?.materials?.[current.materialId];
   const usage = Object.values(effective?.assignments || {}).filter(id => id === current.materialId).length;
   const selectionKey = JSON.stringify([scope, ids, current.materialId]);
-  const [undo, setUndo] = useState(null);
   const [editingFinish, setEditingFinish] = useState(false);
-  const canUndo = undo && undo.scope === scope && undo.after === overlay;
-  const update = (next) => {
-    setUndo({ before: overlay, after: next, scope });
-    onOverlayChange?.(next);
-  };
+  const update = (next) => onOverlayChange?.(next);
   const apply = (choice) => {
     const result = applyMaterialChoice(appearance, overlay, ids, choice);
     if (result) update(result.overlay);
@@ -137,8 +136,8 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedP
     {optionList("In this model", Object.entries(effective?.materials || {}).map(([id, entry]) => ({ value: `material:${id}`, label: entry.name, materialId: id })))}
     {optionList("Presets", MATERIAL_FINISH_PRESETS.map(preset => ({value: `preset:${preset.id}`, label: preset.name})))}
     <FileSheetStatusText>{ids.length ? "Click a material to apply it." : "Select a part to change its material."}</FileSheetStatusText>
-    {canUndo ? <FileSheetButtonRow columns={1}><Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
-      onClick={() => { onOverlayChange?.(undo.before); setUndo(null); }}><RotateCcw className="size-3.5" />Undo</Button></FileSheetButtonRow> : null}
+    {undo ? <FileSheetButtonRow columns={1}><Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
+      onClick={() => onUndo?.()}><RotateCcw className="size-3.5" />Undo</Button></FileSheetButtonRow> : null}
     {ids.length && material ? <FileSheetButtonRow columns={1}><Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
       aria-expanded={editingFinish} onClick={() => setEditingFinish(value => !value)}>{editingFinish ? "Close advanced settings" : "Advanced settings…"}</Button></FileSheetButtonRow> : null}
       {ids.length && material && editingFinish ? <FileSheetSubsection title={`Edit ${material.name}`}>
@@ -160,7 +159,7 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], selectedP
       </FileSheetSubsection> : null}
     <FileSheetStatusText>Edits are remembered in this browser tab. Source files are unchanged.</FileSheetStatusText>
     <FileSheetButtonRow columns={1}><Button variant="outline" size="sm" className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
-      disabled={sourceMaterialOverlayIsEmpty(overlay)} onClick={() => update(null)}><RotateCcw className="size-3.5" />Reset authored</Button></FileSheetButtonRow>
+      disabled={sourceMaterialOverlayIsEmpty(overlay)} onClick={() => onReset?.()}><RotateCcw className="size-3.5" />Reset authored</Button></FileSheetButtonRow>
   </div>;
 }
 
