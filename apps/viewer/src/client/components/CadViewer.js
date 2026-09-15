@@ -2163,6 +2163,7 @@ const CadViewer = forwardRef(function CadViewer({
     recordEdgesVisible
   );
   const partVisualStateEnabled =
+    (Array.isArray(selectedPartIds) && selectedPartIds.length > 0) ||
     pickMode === VIEWER_PICK_MODE.PARTS ||
     pickMode === VIEWER_PICK_MODE.ASSEMBLY ||
     (

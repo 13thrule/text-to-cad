@@ -182,11 +182,7 @@ function entryStepModuleSignature(entry) {
 }
 
 function entryMaterialsSignature(entry) {
-  return normalizeString(entry?.appearanceHash) || (
-    entry?.sourceSidecar?.appearance || entry?.previewAppearance
-      ? normalizeString(entry?.documentHash || entry?.hash)
-      : ""
-  );
+  return normalizeString(entry?.appearanceHash || entry?.documentHash || entry?.hash);
 }
 
 function entryLargeFileSignature(entry) {

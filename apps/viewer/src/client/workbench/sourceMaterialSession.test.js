@@ -11,6 +11,7 @@ import {
   sourceMaterialOverlayIsEmpty,
   sourceMaterialUsage
 } from "./sourceMaterialSession.js";
+import * as materialSession from "./sourceMaterialSession.js";
 
 const appearance = {
   materials: {
@@ -98,4 +99,28 @@ test("fallback colors come only from consistently colored assigned parts", () =>
   assert.equal(sourceMaterialFallbackColor(effective, "steel", parts), "#123456");
   assert.equal(sourceMaterialFallbackColor(effective, "rubber", parts), "#b8b8b8");
   assert.equal(sourceMaterialFallbackColor(effective, "steel-copy", parts), "#b8b8b8");
+});
+
+test("a preset can be assigned to a bare STEP without changing its intrinsic appearance", () => {
+  const mesh = { parts: [{ id: "case", sourceColor: "#123456", sourceOpacity: 0.5 }] };
+  const added = materialSession.addSourceMaterialPreset(null, null, "polished-metal");
+  const overlay = assignSourceMaterialOverlay(added.overlay, ["case"], added.materialId);
+  const displayed = applySourceMaterialOverlayToMeshData(mesh, overlay);
+  assert.equal(displayed.parts[0].material.metalness, 1);
+  assert.equal(displayed.parts[0].color, "#123456");
+  assert.equal(displayed.parts[0].opacity, 0.5);
+  assert.equal(mesh.parts[0].material, undefined);
+  assert.equal(applySourceMaterialOverlayToMeshData(mesh, null), mesh);
+  const second = materialSession.addSourceMaterialPreset(null, overlay, "polished-metal");
+  assert.notEqual(second.materialId, added.materialId);
+  assert.equal(effectiveSourceAppearance(null, second.overlay).assignments.case, added.materialId);
+});
+
+test("changing finish preserves color and opacity while replacing every finish channel", () => {
+  const overlay = materialSession.applySourceMaterialPreset(null, "steel", "matte-plastic");
+  const effective = effectiveSourceAppearance(appearance, overlay);
+  assert.equal(effective.materials.steel.baseColor, "#778899");
+  assert.equal(effective.materials.steel.metalness, 0);
+  assert.equal(effective.materials.steel.clearcoat, 0);
+  assert.equal(overlay.materials.steel.opacity, undefined);
 });

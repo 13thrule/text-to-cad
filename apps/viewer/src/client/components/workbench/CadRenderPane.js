@@ -289,6 +289,7 @@ export default function CadRenderPane({
   assemblyParts,
   hiddenPartIds,
   selectedPartIds,
+  materialHighlightPartIds = EMPTY_LIST,
   hoveredPartId,
   hoveredReferenceId,
   selectedReferenceIds,
@@ -555,7 +556,7 @@ export default function CadRenderPane({
             || Boolean(resolvedStepAnimation?.clip))}
         pickableParts={inspectionEnabled && hasParts && !retainingPreviousStepMesh ? assemblyParts : EMPTY_LIST}
         hiddenPartIds={inspectionEnabled && hasParts ? hiddenPartIds : []}
-        selectedPartIds={inspectionEnabled && hasParts ? selectedPartIds : []}
+        selectedPartIds={renderMode ? materialHighlightPartIds : hasParts ? selectedPartIds : []}
         hoveredPartId={inspectionEnabled && hasParts ? hoveredPartId : ""}
         hoveredReferenceId={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? hoveredReferenceId : ""}
         selectedReferenceIds={inspectionEnabled && hasTopology && !retainingPreviousStepMesh ? selectedReferenceIds : []}

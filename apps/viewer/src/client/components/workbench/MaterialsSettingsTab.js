@@ -4,6 +4,10 @@ import { cn } from "@/ui/utils";
 import { FILE_SHEET_SECTION_IDS } from "@/workbench/fileSheetSections";
 import {
   assignSourceMaterialOverlay,
+  addSourceMaterialPreset,
+  applySourceMaterialPreset,
+  MATERIAL_FINISH_PRESETS,
+  sourceMaterialPresetId,
   duplicateSourceMaterialOverlay,
   effectiveSourceAppearance,
   patchSourceMaterialOverlay,
@@ -20,6 +24,8 @@ import {
   FILE_SHEET_PRECISION_SLIDER_CLASSES,
   FileSheetButtonRow,
   FileSheetColorRow,
+  FileSheetSelectRow,
+  FileSheetToggleRow,
   FileSheetSliderField,
   FileSheetStatusText,
   FileSheetSubsection,
@@ -63,16 +69,18 @@ function selectedOccurrenceIds(targets, selectedTargetIds) {
     .flatMap((target) => target.occurrenceIds || []))];
 }
 
-function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlayChange, scope = "" }) {
+function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlayChange, onHighlightParts, scope = "" }) {
   const effective = useMemo(() => effectiveSourceAppearance(appearance, overlay), [appearance, overlay]);
   const materials = effective?.materials || {};
   const materialIds = Object.keys(materials);
   const [selectedMaterialId, setSelectedMaterialId] = useState(materialIds[0] || "");
   const [selectedTargetIds, setSelectedTargetIds] = useState([]);
+  const [highlightAssigned, setHighlightAssigned] = useState(false);
 
   useEffect(() => {
     setSelectedMaterialId((current) => materials[current] ? current : materialIds[0] || "");
     setSelectedTargetIds([]);
+    setHighlightAssigned(false);
   }, [scope]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -95,6 +103,13 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlay
   ])), [effective, materialIds.join("|"), materialParts]); // eslint-disable-line react-hooks/exhaustive-deps
   const material = materials[selectedMaterialId] || null;
   const occurrenceIds = selectedOccurrenceIds(targets, selectedTargetIds);
+  const assignedIds = Object.entries(effective?.assignments || {})
+    .filter(([, id]) => id === selectedMaterialId).map(([id]) => id);
+  const highlightKey = JSON.stringify(occurrenceIds.length ? occurrenceIds : highlightAssigned ? assignedIds : []);
+  useEffect(() => {
+    onHighlightParts?.(JSON.parse(highlightKey));
+    return () => onHighlightParts?.([]);
+  }, [highlightKey, onHighlightParts]);
   const fallbackColor = fallbackColors[selectedMaterialId] || "#b8b8b8";
   const changeChannel = (key, value) => {
     onOverlayChange?.(patchSourceMaterialOverlay(overlay, selectedMaterialId, { [key]: value }));
@@ -114,6 +129,15 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlay
   return (
     <div className="py-2" data-cad-materials-settings-section="true">
       <FileSheetSubsection title="Materials">
+        <FileSheetSelectRow label="Add material" value="" triggerContent="Choose preset…"
+          options={MATERIAL_FINISH_PRESETS.map(preset => ({ value: preset.id, label: preset.name }))}
+          onValueChange={presetId => {
+            const added = addSourceMaterialPreset(appearance, overlay, presetId);
+            if (!added) return;
+            onOverlayChange?.(added.overlay);
+            setSelectedMaterialId(added.materialId);
+          }} />
+        {!materialIds.length ? <FileSheetStatusText>No materials yet. Add a preset, then assign it to components.</FileSheetStatusText> : null}
         <div className="space-y-1 px-2" role="listbox" aria-label="Materials">
           {materialIds.map((materialId) => {
             const entry = materials[materialId];
@@ -136,7 +160,7 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlay
                   aria-hidden="true"
                 />
                 <span className="min-w-0 flex-1 truncate font-medium">{entry.name}</span>
-                <span className="shrink-0 tabular-nums opacity-70">{usage[materialId] || 0}</span>
+                <span className="shrink-0 tabular-nums opacity-70">{usage[materialId] || 0} {usage[materialId] === 1 ? "part" : "parts"}</span>
               </button>
             );
           })}
@@ -145,6 +169,10 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlay
 
       {material ? (
         <FileSheetSubsection title={material.name}>
+          <FileSheetSelectRow label="Finish" value={sourceMaterialPresetId(material)}
+            triggerContent={MATERIAL_FINISH_PRESETS.find(preset => preset.id === sourceMaterialPresetId(material))?.name || "Custom"}
+            options={MATERIAL_FINISH_PRESETS.map(preset => ({ value: preset.id, label: preset.name }))}
+            onValueChange={presetId => onOverlayChange?.(applySourceMaterialPreset(overlay, selectedMaterialId, presetId))} />
           <FileSheetColorRow
             label="Base color"
             value={sourceMaterialEditorValue(material, "baseColor", fallbackColor)}
@@ -160,10 +188,14 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlay
 
       {material && targets.length ? (
         <FileSheetSubsection title="Assign to components">
+          <FileSheetStatusText>{assignedIds.length ? `Applied to ${assignedIds.length} component${assignedIds.length === 1 ? "" : "s"}.` : "Not assigned yet. Select components below, then choose Assign."}</FileSheetStatusText>
+          <FileSheetToggleRow label="Highlight assigned" checked={highlightAssigned} onCheckedChange={setHighlightAssigned} />
           <ScrollArea className="mx-2 h-48 overflow-hidden rounded border border-border/60">
             <div className="p-1">
               {targets.map((target) => {
                 const selected = selectedTargetIds.includes(target.id);
+                const assigned = [...new Set(target.occurrenceIds.map(id => effective?.assignments?.[id] || ""))];
+                const assignmentLabel = assigned.length > 1 ? "Mixed" : materials[assigned[0]]?.name || "Unassigned";
                 return (
                   <button
                     key={target.id}
@@ -183,7 +215,7 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlay
                       {selected ? <Check className="size-2.5" aria-hidden="true" /> : null}
                     </span>
                     <span className={cn("min-w-0 flex-1 truncate", target.group && "font-medium text-foreground")}>{target.label}</span>
-                    {target.group ? <span className="shrink-0 text-[10px] opacity-60">group</span> : null}
+                    <span className="max-w-[45%] truncate text-[10px] opacity-70" title={assignmentLabel}>{assignmentLabel}</span>
                   </button>
                 );
               })}
@@ -199,7 +231,10 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlay
               size="sm"
               className={FILE_SHEET_COMPACT_BUTTON_CLASSES}
               disabled={!occurrenceIds.length}
-              onClick={() => onOverlayChange?.(assignSourceMaterialOverlay(overlay, occurrenceIds, selectedMaterialId))}
+              onClick={() => {
+                onOverlayChange?.(assignSourceMaterialOverlay(overlay, occurrenceIds, selectedMaterialId));
+                setSelectedTargetIds([]);
+              }}
             >
               <Check className="size-3.5" aria-hidden="true" />
               Assign
@@ -219,6 +254,8 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlay
         </FileSheetSubsection>
       ) : null}
 
+      <FileSheetStatusText>Edits are remembered in this browser tab. Source files are unchanged.</FileSheetStatusText>
+
       <FileSheetButtonRow columns={1}>
         <Button
           type="button"
@@ -237,7 +274,7 @@ function MaterialsSettingsContent({ appearance, overlay, targets = [], onOverlay
 }
 
 export function buildMaterialsSettingsTab(props = {}) {
-  if (!sourceAppearanceHasMaterials(props.appearance)) return null;
+  if (!props.enabled && !sourceAppearanceHasMaterials(props.appearance)) return null;
   return {
     id: FILE_SHEET_SECTION_IDS.THEME_MATERIALS,
     title: "Materials",

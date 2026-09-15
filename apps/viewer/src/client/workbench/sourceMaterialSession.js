@@ -4,6 +4,44 @@ import {
 } from "cadgen-js/common/sourceSidecar.js";
 
 const EMPTY_OVERLAY = Object.freeze({ materials: Object.freeze({}), assignments: Object.freeze({}) });
+// Appearance wrappers share geometry; retain its identity for LOD ownership
+// acknowledgments, including delayed teardown of an older display wrapper.
+const materialGeometrySources = new WeakMap();
+export function sourceMaterialGeometry(display) {
+  return materialGeometrySources.get(display) || display;
+}
+
+export const MATERIAL_FINISH_PRESETS = Object.freeze([
+  { id: "matte-plastic", name: "Matte plastic", roughness: 0.75, metalness: 0, clearcoat: 0, clearcoatRoughness: 0.2 },
+  { id: "glossy-plastic", name: "Glossy plastic", roughness: 0.2, metalness: 0, clearcoat: 0.8, clearcoatRoughness: 0.1 },
+  { id: "rubber", name: "Rubber", roughness: 0.95, metalness: 0, clearcoat: 0, clearcoatRoughness: 0.2 },
+  { id: "satin-metal", name: "Satin metal", roughness: 0.35, metalness: 1, clearcoat: 0, clearcoatRoughness: 0.2 },
+  { id: "polished-metal", name: "Polished metal", roughness: 0.08, metalness: 1, clearcoat: 0, clearcoatRoughness: 0.2 },
+  { id: "ceramic", name: "Glazed ceramic", roughness: 0.2, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.12 }
+].map(Object.freeze));
+const FINISH_CHANNELS = ["roughness", "metalness", "clearcoat", "clearcoatRoughness"];
+
+export function sourceMaterialPresetId(material) {
+  return MATERIAL_FINISH_PRESETS.find(preset => FINISH_CHANNELS.every(key =>
+    Math.abs(sourceMaterialEditorValue(material, key) - preset[key]) < 0.001))?.id || "";
+}
+
+export function applySourceMaterialPreset(overlay, materialId, presetId) {
+  const preset = MATERIAL_FINISH_PRESETS.find(item => item.id === presetId);
+  if (!preset) return sessionOverlay(overlay);
+  return patchSourceMaterialOverlay(overlay, materialId,
+    Object.fromEntries(FINISH_CHANNELS.map(key => [key, preset[key]])));
+}
+
+export function addSourceMaterialPreset(appearance, overlay, presetId) {
+  const preset = MATERIAL_FINISH_PRESETS.find(item => item.id === presetId);
+  if (!preset) return null;
+  const ids = new Set(Object.keys(effectiveSourceAppearance(appearance, overlay)?.materials || {}));
+  let materialId = preset.id, index = 2;
+  while (ids.has(materialId)) materialId = `${preset.id}-${index++}`;
+  const named = patchSourceMaterialOverlay(overlay, materialId, { name: preset.name, opacity: 1 });
+  return { materialId, overlay: applySourceMaterialPreset(named, materialId, presetId) };
+}
 
 function normalizedId(value) {
   return String(value || "").trim();
@@ -151,9 +189,9 @@ export function sourceMaterialEditorValue(material, key, fallbackColor = "#b8b8b
   return SOURCE_MATERIAL_DEFAULTS[key];
 }
 
-export function applySourceMaterialOverlayToMeshData(meshData, overlay) {
-  if (!meshData?.appearance || !sourceAppearanceHasMaterials(meshData.appearance)) return meshData;
-  const effective = effectiveSourceAppearance(meshData.appearance, overlay);
+export function applySourceMaterialOverlayToMeshData(meshData, overlay, appearance = meshData?.appearance) {
+  if (!meshData) return meshData;
+  const effective = effectiveSourceAppearance(appearance, overlay);
   if (!effective) return meshData;
   const parts = (Array.isArray(meshData.parts) ? meshData.parts : []).map((part) => {
     const occurrenceId = normalizedId(part?.occurrenceId || part?.id);
@@ -179,5 +217,7 @@ export function applySourceMaterialOverlayToMeshData(meshData, overlay) {
       opacity: sourceOpacity * channels.opacity
     };
   });
-  return { ...meshData, appearance: effective, parts };
+  const displayed = { ...meshData, appearance: effective, parts };
+  materialGeometrySources.set(displayed, sourceMaterialGeometry(meshData));
+  return displayed;
 }

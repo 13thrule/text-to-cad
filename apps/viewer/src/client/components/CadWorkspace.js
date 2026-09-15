@@ -337,6 +337,7 @@ import { copyTextToClipboard, readTextFromClipboard } from "@/ui/clipboard";
 import {
   applySourceMaterialOverlayToMeshData,
   sourceMaterialOverlayIsEmpty,
+  sourceMaterialGeometry,
   sourceAppearanceHasMaterials,
   sourceMaterialTargets
 } from "@/workbench/sourceMaterialSession";
@@ -396,7 +397,7 @@ function sourceAnimationKeyForEntry(entry) {
 
 function sourceAppearanceKeyForEntry(entry) {
   const appearance = entry?.editingPreview ? entry.previewAppearance : entry?.sourceSidecar?.appearance;
-  if (!appearance) return "";
+  if (!appearance) return String(entry?.documentHash || entry?.hash || "").trim();
   return String(entry?.appearanceHash || entry?.documentHash || entry?.hash || "").trim();
 }
 const CAD_WORKSPACE_TOP_BAR_HEIGHT = 44;
@@ -1320,6 +1321,7 @@ export default function CadWorkspace({
   // Per-model Render material edits live only for this Viewer session. The
   // package and authored source sidecar remain immutable.
   const [sourceMaterialOverlayByFile, setSourceMaterialOverlayByFile] = useState({});
+  const [materialHighlightPartIds, setMaterialHighlightPartIds] = useState([]);
   // The ANIMATION system, loaded and held entirely apart from the kinematics
   // state above: kinematics and choreography are independent declarations in
   // the embedded source sidecar, and a model may ship either,
@@ -2009,12 +2011,10 @@ export default function CadWorkspace({
     [selectedMeshData]
   );
   const selectedDisplayMeshData = useMemo(() => {
-    if (!selectedMeshData || !sourceAppearanceHasMaterials(selectedSourceAppearance)) return selectedMeshData;
-    const source = selectedMeshData.appearance === selectedSourceAppearance
-      ? selectedMeshData
-      : { ...selectedMeshData, appearance: selectedSourceAppearance };
-    return applySourceMaterialOverlayToMeshData(source, selectedSourceMaterialOverlay);
+    return applySourceMaterialOverlayToMeshData(selectedMeshData, selectedSourceMaterialOverlay, selectedSourceAppearance);
   }, [selectedMeshData, selectedSourceAppearance, selectedSourceMaterialOverlay]);
+  const handleDisplayMeshAdoption = useCallback((source, ok, detail) =>
+    onMeshSourceAdoption(sourceMaterialGeometry(source), ok, detail), [onMeshSourceAdoption]);
   const handleSourceMaterialOverlayChange = useCallback((nextOverlay) => {
     if (!sourceMaterialScope) return;
     setSourceMaterialOverlayByFile((current) => {
@@ -3323,7 +3323,7 @@ export default function CadWorkspace({
       selectedAnimationError
     ),
     hasEmbeddedGlbAnimationPanel: Boolean(embeddedGlbAnimationRuntime),
-    hasMaterialsPanel: sourceAppearanceHasMaterials(selectedSourceAppearance),
+    hasMaterialsPanel: selectedFileSheetKind === "step" || sourceAppearanceHasMaterials(selectedSourceAppearance),
     measurementAvailable: effectiveSupportsMeasure,
     hasDxfBendsPanel: selectedFileSheetKind === "dxf" && drawingBends.length > 0,
     hasDxfLayersPanel: selectedFileSheetKind === "dxf" && drawingLayers.length > 1,
@@ -7419,6 +7419,8 @@ export default function CadWorkspace({
       overlay: selectedSourceMaterialOverlay,
       targets: selectedSourceMaterialTargets,
       scope: sourceMaterialScope,
+      enabled: selectedFileSheetKind === "step" || sourceAppearanceHasMaterials(selectedSourceAppearance),
+      onHighlightParts: setMaterialHighlightPartIds,
       onOverlayChange: handleSourceMaterialOverlayChange
     }) : null
   ].filter(Boolean);
@@ -7477,10 +7479,11 @@ export default function CadWorkspace({
             : DXF_DEFAULT_THICKNESS_MM}
           onCameraZoomPercentChange={setViewerZoomPercent}
           onLodCameraChange={onLodCameraMoved}
-          onMeshSourceAdoption={onMeshSourceAdoption}
+          onMeshSourceAdoption={handleDisplayMeshAdoption}
+          materialHighlightPartIds={renderSession.enabled && effectiveFileSheetOpenSectionIds.includes(FILE_SHEET_SECTION_IDS.THEME_MATERIALS) ? materialHighlightPartIds : EMPTY_LIST}
           renderPartsIndividually={
             isUrdfView || Boolean(selectedStepParameterRuntime) || Boolean(selectedAnimationRuntime) ||
-            sourceAppearanceHasMaterials(selectedSourceAppearance)
+            sourceAppearanceHasMaterials(selectedDisplayMeshData?.appearance)
           }
           stepParameters={selectedStepParameterRuntime}
           stepAnimation={selectedAnimationRuntime}

@@ -509,6 +509,15 @@ test("material overlays round-trip and reset when authored appearance changes", 
   assert.equal(readFileSessionState("models", entry.file, entry, { storage })?.slices?.materials, undefined);
 });
 
+test("materials added to a bare STEP survive reload but expire on geometry replacement", () => {
+  const storage = createMemoryStorage();
+  const entry = { file: "bare.step", kind: "step", hash: "geometry-a" };
+  const materials = { materials: { plastic: { name: "Plastic", metalness: 0 } }, assignments: { body: "plastic" } };
+  writeFileSessionState("models", entry.file, createFileSessionSnapshot({ entry, slices: { materials } }), { storage });
+  assert.deepEqual(readFileSessionState("models", entry.file, entry, { storage }).slices.materials, materials);
+  assert.equal(readFileSessionState("models", entry.file, { ...entry, hash: "geometry-b" }, { storage }).slices.materials, undefined);
+});
+
 test("an animation slice stored before the gate existed reopens gated on", () => {
   // End to end, because neither half proves it alone: the stored bytes have no
   // `enabled` field, and the transport the tab actually opens with is whatever
