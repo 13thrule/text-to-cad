@@ -712,10 +712,11 @@ kernel when the holder dies) before it binds — a private socket is a private
 daemon; a second daemon starting for the same address stands down at
 once, touching nothing; the winner is by construction alone, so a socket file it
 finds is dead and may be removed. Clients elect one spawner the same way and
-the rest wait for the address; the authkey is created once via a linked temp
-file. This is the one lock cadgen keeps — a singleton for the daemon, never a
-build lock (§7): twenty clients starting at once used to start twenty daemons
-that unlinked each other's live sockets.
+the rest wait for the address. The lock holder creates that address's authkey
+once via a linked temp file and republishes its in-memory key if an external
+cleanup replaces the file. This is the one lock cadgen keeps — a singleton for
+the daemon, never a build lock (§7): twenty clients starting at once used to
+start twenty daemons that unlinked each other's live sockets.
 
 The **store root is a field on every request** (`store_root`), applied per
 job in the worker, never inherited from whichever build spawned the daemon:

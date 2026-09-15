@@ -193,12 +193,15 @@ did not start. Dev lives on Vite's port (5173, strict) and never enters the
 instance registry.
 
 Reuse keys on realpath(served directory) × an identity token — the cadgen
-version salted with the newest mtime across the server's `.py` files and the
-built client — so an instance serving a different directory, the same directory
-from another install, or code that has since been edited, pulled, or rebuilt is
-never handed back by mistake. In a checkout, a server that finds `src/` beside
-the `dist/` it serves also warns once on stderr when any source is newer than
-the build — detection only; it keeps serving.
+version plus a content digest of the installed cadgen Python runtime and the
+exact built client selected for this launch — so an instance serving a
+different directory, another `--dist`, the same directory from another
+install, or code that has since been edited, pulled, or rebuilt is never handed
+back by mistake. A running server that detects either half changing refuses new
+model-data requests and tells the browser to restart the Viewer; reloading that
+page alone cannot update its imported Python code. In a checkout, a server that
+finds `src/` beside the `dist/` it serves also warns once on stderr when any
+source is newer than the build.
 
 ## Behaviours worth knowing before concluding something is broken
 

@@ -345,12 +345,23 @@ def _run_with_retry(payload: dict, *, on_stream=None, on_event=None,
 
 
 def _connect(address: str) -> transport.Channel:
-    key = transport.read_authkey(daemon_identity())
-    if not key:
-        # No key means no daemon has started under this identity, so there is nothing to
-        # connect to. Raising keeps this indistinguishable from a refused connection.
-        raise OSError("no daemon key")
-    return transport.connect(address, key)
+    key = transport.read_authkey(address) or b""
+    try:
+        return transport.connect(address, key)
+    except transport.AuthenticationError:
+        # A live lock owner repairs a replaced key after rejecting this handshake.
+        # Its accept thread and this client observe the rejection concurrently, so
+        # give the owner a bounded window to finish the atomic publication. An empty
+        # key is a recovery probe when external cleanup removed the file entirely.
+        deadline = time.monotonic() + 0.5
+        while True:
+            repaired = transport.read_authkey(address)
+            if repaired and not transport.keys_match(key, repaired):
+                return transport.connect(address, repaired)
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(0.005)
+        raise
 
 
 def _connect_or_spawn(address: str) -> transport.Channel | None:
@@ -447,9 +458,6 @@ def _spawn_daemon(address: str) -> subprocess.Popen | None:
     env["CADGEN_DAEMON_CHILD"] = "1"
     env.setdefault("CADGEN_DAEMON_SOCKET", str(address))
     try:
-        # Before the daemon exists, so a client that finds an address always finds the key
-        # that goes with it.
-        transport.ensure_authkey(daemon_identity())
         log_file_path = log_path(address)
         log_file_path.parent.mkdir(parents=True, exist_ok=True)
         with open(log_file_path, "ab") as log_file:

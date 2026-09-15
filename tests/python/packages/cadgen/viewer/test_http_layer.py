@@ -259,6 +259,8 @@ class ServerInfo(HttpLayerTestCase):
         self.assertEqual(info["app"], "cad-viewer")
         self.assertEqual(info["backend"], "local-fs")
         self.assertEqual(info["serverMode"], "serve")
+        self.assertEqual(info["currentIdentityToken"], info["identityToken"])
+        self.assertIs(info["restartRequired"], False)
         self.assertEqual(info["serverFeatures"], ["path-directory"])
         self.assertEqual(info["stepArtifactGenerationAvailable"], False)
         self.assertEqual(info["pid"], os.getpid())
@@ -272,7 +274,8 @@ class ServerInfo(HttpLayerTestCase):
         _, _, body = self.fixture.request("GET", "/__cad/server")
         text = body.decode("utf-8")
         order = [
-            '"app"', '"viewerVersion"', '"identityToken"', '"serverMode"', '"serverFeatures"', '"backend"',
+            '"app"', '"viewerVersion"', '"identityToken"', '"currentIdentityToken"',
+            '"restartRequired"', '"serverMode"', '"serverFeatures"', '"backend"',
             '"rootPath"', '"rootName"', '"port"', '"pid"',
             '"stepArtifactGenerationAvailable"',
             '"packageDir"', '"startedAt"', '"url"',

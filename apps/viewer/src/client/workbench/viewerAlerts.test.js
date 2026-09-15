@@ -4,11 +4,34 @@ import {
   buildViewerAnnotationAlert,
   buildViewerEditAlert,
   buildViewerMeshAlert,
+  buildViewerStaleRuntimeAlert,
   fileStatusAlertKey,
   resolveFileStatusAlert
 } from "./viewerAlerts.js";
 
 const step = { file: "STEP/moonwatch.step", kind: "part" };
+
+test("changed server code requires a restart rather than a browser-only reload", () => {
+  assert.equal(buildViewerStaleRuntimeAlert({ restartRequired: false }), null);
+  const alert = buildViewerStaleRuntimeAlert({
+    restartRequired: true,
+    port: 3266,
+    rootPath: "/models",
+    identityToken: "old",
+    currentIdentityToken: "new",
+  });
+  assert.equal(alert.summary, "Viewer restart required");
+  assert.match(alert.recovery, /cadgen viewer/);
+  assert.match(alert.recovery, /Reloading this page alone cannot/);
+  assert.match(alert.details, /Port: 3266\nRoot: \/models/);
+  assert.equal(
+    buildViewerStaleRuntimeAlert(
+      { port: 3266, rootPath: "/models" },
+      "CAD Viewer code changed after this server started. Restart the viewer."
+    ).summary,
+    "Viewer restart required"
+  );
+});
 
 test("connection failure explains recovery without blaming the compiler", () => {
   const alert = buildViewerMeshAlert(step, false, "", {

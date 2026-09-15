@@ -519,8 +519,8 @@ def _active_requests() -> list[threading.Thread]:
 _DAEMON_LOCK: transport.SingletonLock | None = None
 
 
-def _bind(address: str, authkey: bytes) -> transport.Server | None:
-    """One daemon per identity, decided by a lock -- never by probing or sweeping.
+def _bind(address: str) -> transport.Server | None:
+    """One daemon per address, decided by a lock -- never by probing or sweeping.
 
     Probing a leftover socket was a race: twenty clients starting at once spawn twenty
     daemons, the losers' probes against a backlog-8 listener are REFUSED, each reads
@@ -540,7 +540,13 @@ def _bind(address: str, authkey: bytes) -> transport.Server | None:
     if transport.address_is_stale(address):
         transport.clear_address(address)
     try:
-        return transport.Server(address, authkey, backlog=128)
+        authkey = transport.ensure_authkey(address)
+        return transport.Server(
+            address,
+            authkey,
+            backlog=128,
+            on_authentication_error=lambda: transport.publish_authkey(address, authkey),
+        )
     except OSError as exc:
         _log(f"cannot bind {address}: {exc}")
         lock.release()
@@ -552,8 +558,7 @@ def serve() -> int:
     os.environ["CADGEN_DAEMON_CHILD"] = "1"
     address = daemon_address()
     token = compute_version_token()
-    authkey = transport.ensure_authkey(daemon_identity())
-    server = _bind(address, authkey)
+    server = _bind(address)
     if server is None:
         return 0
     bound = {"address": True}

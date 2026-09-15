@@ -21,6 +21,7 @@ preflight fail. Do not add them.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import stat
@@ -100,7 +101,7 @@ def read_viewer_version() -> str:
     imported anything heavy, and ``.dist-info`` is what an installed wheel
     carries. ``""`` is a source tree on ``PYTHONPATH`` with no install behind
     it, which is how this repo's own test runners supply cadgen -- there the
-    mtime salt does all the work.
+    runtime digest does all the work.
     """
     from importlib.metadata import PackageNotFoundError, version
 
@@ -133,38 +134,93 @@ def newest_mtime_ns(base_dir, *, suffix: str = "") -> int:
     return newest
 
 
-def identity_token() -> str:
-    """This code's identity: the cadgen version SALTED with its files' newest mtime.
+def _identity_files(base_dir, suffix: str) -> tuple[str, list[str]]:
+    base = os.path.realpath(os.fspath(base_dir))
+    files = []
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = sorted(name for name in dirnames if name != "__pycache__")
+        for filename in filenames:
+            if not suffix or filename.endswith(suffix):
+                files.append(os.path.join(dirpath, filename))
+    return base, sorted(files)
 
-    The daemon's shape (``compute_version_token`` in cadgen/daemon/client.py):
-    ``<version>:<newest mtime_ns>``, over BOTH halves of the viewer — this
-    package's ``.py`` files and the built client at its DEFAULT location
-    (``cadgen.assets.viewer_dist_dir()``, never a ``--dist`` override: both
-    sides of a reuse comparison must salt with the same directory, and the
-    relauncher does not know what the resident was pointed at). The version
-    alone is frozen between releases, so in a checkout it made reuse
-    source-blind: a ``git pull`` followed by a launch reused a resident server
-    running last week's code. The mtime salt ends that — a pull or rebuild
-    changes the token, the resident's recorded token no longer matches, and a
-    fresh instance starts. In an installed wheel the files never change after
-    install, so the token is constant and behavior is exactly version-keyed
-    reuse.
 
-    Computed identically at announce time (``/__cad/server``), registry write,
-    and the reuse probe — but the running server ANSWERS with the token it
-    computed at its own start (held on ``CadApp``), never a re-read: a re-read
-    would let a stale resident claim freshness after a pull.
+def _update_identity_digest(digest, base_dir, *, suffix: str = "") -> None:
+    """Add one runtime tree's path, names and bytes to ``digest``."""
+    base, files = _identity_files(base_dir, suffix)
+    digest.update(os.fsencode(base))
+    digest.update(b"\0")
+    for file_path in files:
+        digest.update(os.fsencode(os.path.relpath(file_path, base)))
+        digest.update(b"\0")
+        try:
+            with open(file_path, "rb") as handle:
+                while chunk := handle.read(64 * 1024):
+                    digest.update(chunk)
+        except OSError as error:
+            # A tree changing under the walk must not accidentally match a
+            # resident. The next stable launch computes the stable identity.
+            digest.update(f"!{type(error).__name__}:{error.errno}".encode("ascii"))
+        digest.update(b"\0")
 
-    The walk covers ~20 server files and ~25 dist files: well under a
-    millisecond, paid once per launch.
+
+def _update_identity_metadata_digest(digest, base_dir, *, suffix: str = "") -> None:
+    """Add the same tree's names and stat identity without reading its bytes."""
+    base, files = _identity_files(base_dir, suffix)
+    digest.update(os.fsencode(base))
+    digest.update(b"\0")
+    for file_path in files:
+        digest.update(os.fsencode(os.path.relpath(file_path, base)))
+        digest.update(b"\0")
+        try:
+            value = os.stat(file_path)
+            digest.update(
+                f"{value.st_size}:{value.st_mtime_ns}:{value.st_ctime_ns}".encode("ascii")
+            )
+        except OSError as error:
+            digest.update(f"!{type(error).__name__}:{error.errno}".encode("ascii"))
+        digest.update(b"\0")
+
+
+def _identity_metadata_signature(dist_dir: str) -> str:
+    package_dir = Path(__file__).resolve().parents[1]
+    digest = hashlib.sha256()
+    _update_identity_metadata_digest(digest, package_dir, suffix=".py")
+    collation = package_dir / "viewer" / "collation.json"
+    if collation.is_file():
+        _update_identity_metadata_digest(digest, collation.parent, suffix=".json")
+    if dist_dir:
+        _update_identity_metadata_digest(digest, dist_dir)
+    else:
+        digest.update(b"no-client\0")
+    return digest.hexdigest()
+
+
+def identity_token(dist_dir: str) -> str:
+    """Identity of the Python runtime and exact built client this server uses.
+
+    The Viewer imports cadgen runtime modules outside ``cadgen.viewer`` — in
+    particular the daemon client, transport and store. Fingerprinting only the
+    viewer package let an old resident survive changes to those modules while
+    serving a newly rebuilt browser client. The token therefore covers every
+    Python file in the installed cadgen package, the Viewer's data table, and
+    the exact dist directory selected by this launch (including its realpath).
+
+    Content, rather than the newest mtime, is the identity. This catches any
+    changed member even when another file has a later timestamp, and does not
+    restart a correct server after a byte-identical rebuild.
     """
-    from cadgen import assets
-
-    newest = max(
-        newest_mtime_ns(Path(__file__).resolve().parent, suffix=".py"),
-        newest_mtime_ns(assets.viewer_dist_dir()),
-    )
-    return f"{read_viewer_version()}:{newest}"
+    package_dir = Path(__file__).resolve().parents[1]
+    digest = hashlib.sha256()
+    _update_identity_digest(digest, package_dir, suffix=".py")
+    collation = package_dir / "viewer" / "collation.json"
+    if collation.is_file():
+        _update_identity_digest(digest, collation.parent, suffix=".json")
+    if dist_dir:
+        _update_identity_digest(digest, dist_dir)
+    else:
+        digest.update(b"no-client\0")
+    return f"{read_viewer_version()}:{digest.hexdigest()}"
 
 
 def _is_ascii_digits(value: str) -> bool:
@@ -199,14 +255,31 @@ class CadApp:
         self.viewer_version = read_viewer_version()
         # Computed ONCE, at start: the identity this instance announces and
         # registers is the identity of the code it is actually running.
-        self.identity_token = identity_token()
+        self.identity_token = identity_token(self.dist_dir)
+        self._current_identity_token = self.identity_token
+        self._identity_metadata_token = _identity_metadata_signature(self.dist_dir)
+        self._identity_checked_at = time.monotonic()
+        self._identity_lock = threading.Lock()
         self.started_at = time.time()
         self.lock = threading.Lock()
         self.ops = create_cadgen_ops(root_path)
 
     # --- server info ------------------------------------------------------
 
+    def _read_current_identity_token(self, *, force: bool = False) -> str:
+        """Current on-disk identity, with metadata guarding the content read."""
+        now = time.monotonic()
+        with self._identity_lock:
+            if force or now - self._identity_checked_at >= 2.0:
+                signature = _identity_metadata_signature(self.dist_dir)
+                if signature != self._identity_metadata_token:
+                    self._current_identity_token = identity_token(self.dist_dir)
+                    self._identity_metadata_token = signature
+                self._identity_checked_at = now
+            return self._current_identity_token
+
     def server_info(self) -> dict:
+        current_identity_token = self._read_current_identity_token(force=True)
         return {
             "app": "cad-viewer",
             "viewerVersion": self.viewer_version,
@@ -214,6 +287,8 @@ class CadApp:
             # resident answering a reuse probe must report the code it runs,
             # not the code now on disk.
             "identityToken": self.identity_token,
+            "currentIdentityToken": current_identity_token,
+            "restartRequired": current_identity_token != self.identity_token,
             "serverMode": "serve",
             "serverFeatures": LOCAL_SERVER_FEATURES,
             "backend": "local-fs",
@@ -258,6 +333,25 @@ class CadApp:
                     f"missing {POST_GUARD_HEADER} header (cross-site POST blocked); "
                     f"send '{POST_GUARD_HEADER}: 1'"
                 )
+            },
+        )
+        return True
+
+    def _rejected_as_stale_runtime(self, response) -> bool:
+        current = self._read_current_identity_token()
+        if current == self.identity_token:
+            return False
+        response.send_json(
+            409,
+            {
+                "ok": False,
+                "code": "viewer_restart_required",
+                "error": (
+                    "CAD Viewer code changed after this server started. Restart the viewer "
+                    "and open the URL it prints before loading more model data."
+                ),
+                "identityToken": self.identity_token,
+                "currentIdentityToken": current,
             },
         )
         return True
@@ -323,6 +417,8 @@ class CadApp:
             if self._rejected_by_host_check(request, response):
                 return
             if pathname.startswith(TESS_CACHE_ROUTE_PREFIX):
+                if self._rejected_as_stale_runtime(response):
+                    return
                 # Shared component-tessellation cache. Checked BEFORE the dist
                 # fallthrough: this is an API family, not a page asset.
                 self._handle_tess_get(request, response)
@@ -336,6 +432,8 @@ class CadApp:
             try:
                 if pathname == "/__cad/server":
                     response.send_json(200, self.server_info())
+                elif self._rejected_as_stale_runtime(response):
+                    return
                 elif pathname == "/__cad/catalog":
                     self._handle_catalog(request, response)
                 elif pathname == "/__cad/artifact":
@@ -368,6 +466,8 @@ class CadApp:
             if self._rejected_by_host_check(request, response):
                 return
             if self._rejected_as_cross_site_post(request, response):
+                return
+            if self._rejected_as_stale_runtime(response):
                 return
             try:
                 if pathname == "/__cad/artifact":
