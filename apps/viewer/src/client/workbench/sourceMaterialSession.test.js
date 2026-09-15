@@ -2,14 +2,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  applyMaterialChoice,
   applySourceMaterialOverlayToMeshData,
-  assignSourceMaterialOverlay,
   duplicateSourceMaterialOverlay,
   effectiveSourceAppearance,
   patchSourceMaterialOverlay,
   sourceMaterialFallbackColor,
-  sourceMaterialOverlayIsEmpty,
-  sourceMaterialUsage
+  sourceMaterialOverlayIsEmpty
 } from "./sourceMaterialSession.js";
 import * as materialSession from "./sourceMaterialSession.js";
 
@@ -39,14 +38,13 @@ const appearance = {
   assignments: { palm: "steel", finger: "rubber" }
 };
 
-test("material session patches stay separate and assignments report usage", () => {
+test("material session patches stay separate from the authored appearance", () => {
   const overlay = patchSourceMaterialOverlay(null, "steel", { roughness: 0.2 });
-  const reassigned = assignSourceMaterialOverlay(overlay, ["finger"], "steel");
+  const reassigned = applyMaterialChoice(appearance, overlay, ["finger"], "material:steel").overlay;
   assert.deepEqual(appearance.materials.steel, { name: "Steel", baseColor: "#778899", metalness: 0.8 });
-  assert.deepEqual(sourceMaterialUsage(appearance, reassigned, [{ id: "palm" }, { id: "finger" }]), {
-    steel: 2,
-    rubber: 0
-  });
+  const effective = effectiveSourceAppearance(appearance, reassigned);
+  assert.equal(effective.materials.steel.roughness, 0.2);
+  assert.deepEqual(effective.assignments, { palm: "steel", finger: "steel" });
 });
 
 test("duplicate creates one session material and redirects only chosen occurrences", () => {
@@ -89,7 +87,7 @@ test("reassignment restores intrinsic color and composes intrinsic alpha", () =>
       opacity: 0.4
     }]
   };
-  const overlay = assignSourceMaterialOverlay(null, ["palm"], "rubber");
+  const overlay = applyMaterialChoice(appearance, null, ["palm"], "material:rubber").overlay;
   const displayed = applySourceMaterialOverlayToMeshData(meshData, overlay);
   assert.equal(displayed.parts[0].color, "#123456");
   assert.equal(displayed.parts[0].opacity, 0.4);
@@ -121,24 +119,25 @@ test("fallback colors come only from consistently colored assigned parts", () =>
 
 test("a preset can be assigned to a bare STEP without changing its intrinsic appearance", () => {
   const mesh = { parts: [{ id: "case", sourceColor: "#123456", sourceOpacity: 0.5 }] };
-  const added = materialSession.addSourceMaterialPreset(null, null, "polished-metal");
-  const overlay = assignSourceMaterialOverlay(added.overlay, ["case"], added.materialId);
-  const displayed = applySourceMaterialOverlayToMeshData(mesh, overlay);
+  const added = applyMaterialChoice(null, null, ["case"], "preset:polished-metal");
+  const displayed = applySourceMaterialOverlayToMeshData(mesh, added.overlay);
   assert.equal(displayed.parts[0].material.metalness, 1);
   assert.equal(displayed.parts[0].color, "#123456");
   assert.equal(displayed.parts[0].opacity, 0.5);
   assert.equal(mesh.parts[0].material, undefined);
   assert.equal(applySourceMaterialOverlayToMeshData(mesh, null), mesh);
-  const second = materialSession.addSourceMaterialPreset(null, overlay, "polished-metal");
+  const second = applyMaterialChoice(null, added.overlay, ["lid"], "preset:polished-metal");
   assert.notEqual(second.materialId, added.materialId);
   assert.equal(effectiveSourceAppearance(null, second.overlay).assignments.case, added.materialId);
 });
 
-test("changing finish preserves color and opacity while replacing every finish channel", () => {
-  const overlay = materialSession.applySourceMaterialPreset(null, "steel", "matte-plastic");
-  const effective = effectiveSourceAppearance(appearance, overlay);
-  assert.equal(effective.materials.steel.baseColor, "#778899");
-  assert.equal(effective.materials.steel.metalness, 0);
-  assert.equal(effective.materials.steel.clearcoat, 0);
-  assert.equal(overlay.materials.steel.opacity, undefined);
+test("a preset writes every finish channel and leaves the part's own color alone", () => {
+  const { materialId, overlay } = applyMaterialChoice(appearance, null, ["palm"], "preset:matte-plastic");
+  const added = effectiveSourceAppearance(appearance, overlay).materials[materialId];
+  assert.equal(added.roughness, 0.75);
+  assert.equal(added.metalness, 0);
+  assert.equal(added.clearcoat, 0);
+  assert.equal(added.clearcoatRoughness, 0.2);
+  assert.equal(added.opacity, 1);
+  assert.equal(added.baseColor, undefined, "a finish preset never repaints the STEP color");
 });

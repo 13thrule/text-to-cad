@@ -33,8 +33,7 @@ async function ticks() { for (let i = 0; i < 12; i++) await Promise.resolve(); }
 
 test("material-only display wrappers acknowledge the exact published geometry", async () => {
   const f = fixture(), promise = f.expect(); f.publish();
-  const added = materials.addSourceMaterialPreset(null, null, "satin-metal");
-  const overlay = materials.assignSourceMaterialOverlay(added.overlay, ["a1"], added.materialId);
+  const { overlay } = materials.applyMaterialChoice(null, null, ["a1"], "preset:satin-metal");
   const display = materials.applySourceMaterialOverlayToMeshData(f.candidate, overlay);
   assert.equal(f.tracker.adopted(display), false, "a copied display object cannot acknowledge the publication");
   assert.equal(f.tracker.adopted(materials.sourceMaterialGeometry(display)), true);
