@@ -547,8 +547,15 @@ def _format_refs_text(result: dict[str, object], *, quiet: bool, verbose: bool) 
         if not isinstance(token, dict):
             continue
         summary = token.get("summary") if isinstance(token.get("summary"), dict) else {}
-        headline = f"{token.get('document')} faces={summary.get('faceCount')} edges={summary.get('edgeCount')}"
-        lines.append(headline)
+        # Counts only exist once a selector index has been built (`--facts` and
+        # friends). Printing `faces=0 edges=0` for a bare `refs` read as an empty
+        # document; say the parts that are known and nothing else.
+        counted = [
+            f"{name}={summary[key]}"
+            for name, key in (("faces", "faceCount"), ("edges", "edgeCount"))
+            if summary.get(key) is not None
+        ]
+        lines.append(" ".join([str(token.get("document")), *counted]))
         if quiet:
             continue
         entry_facts = token.get("entryFacts") if isinstance(token.get("entryFacts"), dict) else {}

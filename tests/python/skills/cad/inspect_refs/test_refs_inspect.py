@@ -701,6 +701,36 @@ class InspectRefsTests(unittest.TestCase):
         self.assertIn("planes: 1 major groups", text)
         self.assertIn("z=0", text)
 
+    def test_a_manifest_without_tallies_reports_no_counts(self) -> None:
+        """`selector_count` floors a missing tally at 0 for the assertion
+        helpers, and the bare `refs` summary passed that 0 on as fact: a
+        six-faced box printed `faces=0 edges=0`, which reads as an empty
+        document. An absent count is unknown, not zero."""
+        from cadgen.reporting import entry_summary_payload
+
+        manifest = {
+            "bbox": {"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 10.0]},
+            "stats": {"occurrenceCount": 1, "shapeCount": 1},
+        }
+
+        payload = entry_summary_payload(manifest, kind="part")
+
+        self.assertEqual(1, payload["shapeCount"])
+        self.assertNotIn("faceCount", payload)
+        self.assertNotIn("edgeCount", payload)
+
+    def test_refs_text_omits_counts_it_does_not_have(self) -> None:
+        result = {
+            "ok": True,
+            "tokens": [{"document": "plate.step", "summary": {"kind": "part"}, "selections": []}],
+            "errors": [],
+        }
+
+        text = inspect_cli._format_refs_text(result, quiet=False, verbose=False)
+
+        self.assertEqual("plate.step", text)
+        self.assertNotIn("faces=", text)
+
     def test_diff_planes_returns_entry_planes(self) -> None:
         with self._mock_glb_topology(_refs_manifest(self.cad_ref)):
             result = refs_inspect.diff_entry_targets(
