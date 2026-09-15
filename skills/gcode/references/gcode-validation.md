@@ -2,6 +2,8 @@
 
 `scripts/gcode_tool.py validate` performs static checks only. It does not simulate extrusion physics, firmware state, acceleration limits, or slicer-specific semantics.
 
+`validate` loads the same wrapper profile as `slice`, so `native_config` must point at a file that exists. A wrapper whose `native_config` path is missing exits 2 with `{"ok": false, "error": "Profile native_config does not exist: ..."}` before any G-code is read. Validate against the same wrapper that produced the G-code rather than a hand-written stub.
+
 ## Required Checks
 
 Validation fails when:
@@ -39,7 +41,9 @@ By default, motion bounds are `X=0..bed_size_mm[0]`, `Y=0..bed_size_mm[1]`, and 
 
 ## Interpreting Results
 
-`ok: true` means the file passed these static checks. It does not mean the G-code is safe to print on real hardware. Still review:
+`ok: true` (exit 0) means the file passed these static checks. Failed checks exit 1 with the `errors` array populated; a bad profile or unreadable input exits 2 with a bare `{"ok": false, "error": ...}` and no `stats`. `validate` always prints JSON, with or without `--json`.
+
+`ok: true` does not mean the G-code is safe to print on real hardware. Still review:
 
 - Printer/profile match.
 - Filament and temperature settings.

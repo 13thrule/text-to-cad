@@ -5,7 +5,9 @@ Reports measurements as JSON. It never emits pass/fail, verdicts, or
 readiness statuses; comparisons against process limits belong to the
 skill workflow using `references/process-limits.md`.
 
-Requires: trimesh, numpy, rtree (pip install trimesh numpy rtree)
+Requires the skill's full dependency set (pip install -r requirements.txt).
+Without scipy/networkx the wall-thickness block degrades to an error object
+while the rest of the report still prints.
 
 Usage:
     python dfam_tool.py measure <mesh> [--samples 2000] [--angle-limit 45]
