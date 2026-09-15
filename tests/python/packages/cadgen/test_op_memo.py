@@ -1,4 +1,4 @@
-"""Op-memoization invariants (design/incremental-generation.md, Phase 1).
+"""Op-memoization invariants.
 
 The contract under test: memoized kernel ops return canonically reconstructed
 shapes whose bytes are independent of cache state (cold or warm, first run or
