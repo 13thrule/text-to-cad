@@ -13,7 +13,15 @@ through source publication; see :mod:`cadgen.store._references`.
 Deferred without forcing: ``Pos/Rot/Location * child`` and ``.moved()`` compose
 a placement; ``.label`` and ``.color`` are recorded and applied on force.
 Everything else — ``.faces()``, ``.bounding_box()``, a boolean, ``.solids()``,
-``copy.copy``, ``bool(child)`` — reaches the shape and forces. build123d reads
+``copy.copy``, ``bool(child)`` — reaches the shape and forces. So does
+``.children`` and every anytree view over it (``.descendants``, ``.leaves``,
+``.is_leaf``, ``.height``, ``.size``): those answer from the node's child
+list, which forcing fills in, and a promise that forced only on the shape
+answered them with an EMPTY tree — a two-part child read as zero parts, at exit
+0 — until something happened to touch geometry first. ``repr()`` is the one
+node read that does not force: it says the promise is pending, because a
+message (anytree formats a child into its duplicate-child error) must not
+start a build. build123d reads
 the shape through two names, the ``wrapped`` property and the ``_wrapped``
 attribute it is backed by (its empty-shape checks are ``if self._wrapped is
 None``), so ``_wrapped`` is the property here: a promise can never be mistaken
@@ -168,20 +176,48 @@ class LazyCompound(Compound):
                 and not self.__dict__.get("_lazy_forcing")):
             self._force()
 
+    def _force_node_state(self):
+        """A READ of the child list forces: the list is what forcing fills in.
+
+        ``children``, ``descendants``, ``leaves``, ``is_leaf``, ``height``, ``size``
+        and ``repr()`` all answer from ``_NodeMixin__children``. A pending promise
+        holds an empty one, so reading it before geometry reported a two-part
+        child as zero parts at exit 0 (tom-cad FEEDBACK issue 4). Attached or
+        not, a read is a read. Only a fully constructed promise forces:
+        ``Compound.__init__`` runs anytree's children setter, which reads the
+        list, before the job is recorded.
+        """
+        self._capture_attached_reference()
+        if ("_lazy_job" in self.__dict__ and not self._forced
+                and not self.__dict__.get("_lazy_forcing")):
+            self._force()
+
+    def __repr__(self) -> str:
+        # A repr is a message, not a read. build123d's Compound.__repr__ counts
+        # children, and anytree formats a child into its duplicate-child
+        # TreeError before anything is attached: forcing a build to print a
+        # promise would make an error message a side effect.
+        if not self._forced:
+            state = self.__dict__
+            return f"LazyCompound(model={state.get('_lazy_model')!r}, label={state.get('label')!r}, pending)"
+        return Compound.__repr__(self)
+
     @property
     def children(self):
-        # Once attached, ordinary construction had populated this hierarchy.
-        # A reader such as the native XCAF exporter must never see an empty
-        # leaf merely because its private geometry is still deferred.
-        self._force_attached_reference()
+        # Any read forces (see _force_node_state); once attached, ordinary
+        # construction had populated this hierarchy and a reader such as the
+        # native XCAF exporter must never see an empty leaf merely because its
+        # private geometry is still deferred.
+        self._force_node_state()
         return Compound.children.fget(self)
 
     @property
     def _NodeMixin__children_or_empty(self):
         # anytree's ``plain_shape.parent = child`` mutates this private list
-        # without consulting the public children property or Compound hooks.
-        # Populate/capture the existing hierarchy before that ordinary edit.
-        self._force_attached_reference()
+        # without consulting the public children property or Compound hooks,
+        # and ``is_leaf``/``height`` read it directly. Populate/capture the
+        # existing hierarchy before that ordinary read or edit.
+        self._force_node_state()
         return Compound._NodeMixin__children_or_empty.fget(self)
 
     @children.setter

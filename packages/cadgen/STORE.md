@@ -830,12 +830,13 @@ Inside a body, a child call returns at once with a `LazyCompound`
 (`cadgen.store.lazy`) — a `build123d.Compound` whose `.wrapped` is a property.
 The gate runs at the call: a stale child is submitted to the pool and the
 promise carries the job; a current child is a promise with no job. Geometry
-arrives on the first read of `.wrapped` — usually at the closing
+arrives on the first read of `.wrapped` or of the child list — usually at the closing
 `Compound(children=[...])`, after every sibling has been submitted — so
 siblings build in parallel and the parent waits only for children it
 submitted itself. Deferred without forcing: `Pos/Rot/Location * child`,
 `.moved()`, `.label =`, `.color =`. Everything else (`.faces()`,
-`.bounding_box()`, booleans, `copy.copy`) forces. Most compound constructors
+`.bounding_box()`, `.children` and the node views over it, booleans,
+`copy.copy`) forces. Most compound constructors
 also force; the exact-reference case below postpones native reconstruction:
 a body that reads a child before placing the next forces it there, and
 parallelism follows the dependencies the author wrote. Forcing waits for the

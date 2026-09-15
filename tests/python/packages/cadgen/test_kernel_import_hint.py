@@ -95,6 +95,35 @@ class KernelImportHintTest(unittest.TestCase):
         self.assertIn("bd.Align.CENTER", hint)
         self.assertNotIn("imported the CAD kernel at module top", hint)
 
+    def test_a_cadgen_internal_import_site_is_skipped_for_the_causal_project_line(self) -> None:
+        """A model's own import can reach the kernel through a cadgen-internal
+        module (e.g. ``cadgen._internal.step_scene``, which imports OCP at its
+        own top level) rather than through the ``bd`` proxy. The hint must
+        still name the project's import, not the internal module that
+        happened to do the actual `import OCP` (tom-cad report, 2026-09-10:
+        the hint pointed at `cadgen/_internal/step_scene.py:16` with no trace
+        of the causal project import)."""
+        (self.project / "hinted3.py").write_text(
+            textwrap.dedent('''
+            from cadgen import step
+            import cadgen._internal.step_scene  # noqa: F401 -- reaches OCP at cadgen's own top level
+
+            @step(out="hinted3.step")
+            def hinted3():
+                from cadgen import build123d as bd
+                return bd.Box(5, 5, 5)
+
+
+            if __name__ == "__main__":
+                hinted3()
+            '''),
+            encoding="utf-8",
+        )
+        stderr = self._run("hinted3")
+        hint = next((line for line in stderr.splitlines() if line.startswith("hint:")), "")
+        self.assertIn("hinted3.py", _posix_slashes(hint))
+        self.assertNotIn("step_scene.py", hint)
+
     def test_a_kernel_free_module_body_gets_no_hint(self) -> None:
         (self.project / "clean.py").write_text(
             textwrap.dedent('''

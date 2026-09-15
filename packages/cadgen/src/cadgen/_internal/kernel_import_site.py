@@ -10,9 +10,14 @@ palette constant built from a kernel type resolves an attribute at import
 time and triggers the real import through the lazy proxy.
 
 A ``sys.meta_path`` finder that never finds anything: it only notes the first
-request for ``build123d`` or ``OCP`` and the innermost frame outside the
-importer and cadgen's own lazy proxy that made it. Installed by ``cadgen``'s
-package ``__init__`` so it is in place before any model module body runs.
+request for ``build123d`` or ``OCP`` and the innermost frame outside cadgen's
+own package -- the lazy proxy is one route in, but any other cadgen-internal
+module that happens to import the kernel at its own top level (e.g. a module
+under ``cadgen/_internal`` reached transitively from a model's own import) is
+just as much cadgen's business, not the model author's; naming that internal
+file instead of the causal project import leaves the hint with nothing
+actionable to fix. Installed by ``cadgen``'s package ``__init__`` so it is in
+place before any model module body runs.
 """
 
 from __future__ import annotations
@@ -23,7 +28,7 @@ from pathlib import Path
 
 _KERNEL_TOP_LEVEL = ("build123d", "OCP")
 _SITE: tuple[str, int, str] | None = None
-_PROXY = str(Path(__file__).resolve().parent.parent / "build123d.py")
+_CADGEN_PACKAGE_DIR = Path(__file__).resolve().parent.parent
 
 
 class _KernelImportRecorder:
@@ -36,10 +41,18 @@ class _KernelImportRecorder:
         return None
 
 
+def _is_cadgen_internal(filename: str) -> bool:
+    try:
+        resolved = Path(filename).resolve()
+    except OSError:
+        return False
+    return resolved == _CADGEN_PACKAGE_DIR or _CADGEN_PACKAGE_DIR in resolved.parents
+
+
 def _caller_site() -> tuple[str, int, str] | None:
     for frame in reversed(traceback.extract_stack()):
         filename = frame.filename
-        if "importlib" in filename or filename.startswith("<frozen") or filename == _PROXY or filename == __file__:
+        if "importlib" in filename or filename.startswith("<frozen") or _is_cadgen_internal(filename):
             continue
         return (filename, frame.lineno, frame.line or "")
     return None

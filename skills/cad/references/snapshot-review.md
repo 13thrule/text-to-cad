@@ -102,6 +102,19 @@ optional and every other key refused. It needs `animation`, refuses an
 `animation.time`, refuses a `start` past the end of the clip, and needs ffmpeg
 installed. See `kinematics.md`, "Rendering the whole clip".
 
+In a JSON job these two flags are the one exception to "job key = flag name without dashes": they nest under a job-level `selection` object, and a top-level `"hide"` or `"focus"` is rejected as an unknown key. Selection applies to the whole job, not to one output — to hide or focus parts for a single view, give that view its own job in a `jobs` array.
+
+```json
+{
+  "input": "STEP/assembly.step",
+  "mode": "view",
+  "selection": { "hide": ["#o1.3", "#o1.4"] },
+  "outputs": [{ "path": "tmp/render/without_covers.png", "camera": "iso" }]
+}
+```
+
+`"selection": { "focus": ["#o1.2"] }` is the `--focus` form. Every other flag keeps the plain rule (`--kinematics` → `"kinematics"`, `--animation CLIP --time S` → `"animation": {"clip": ..., "time": ...}`).
+
 ## Output paths
 
 Name the file and you get that file:

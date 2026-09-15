@@ -462,6 +462,23 @@ builds, the dependency is still tracked, but the link is gone and the
 component is written again. Reach for `.moved()` or the operator form; there
 is no case that needs `.located()`.
 
+## `Compound.intersect()` ignores an assembly's own moved placement
+
+`asm.moved(...)` on an assembly `Compound(children=[...])` bakes the transform
+into `asm.wrapped` but leaves the anytree `.children` at their original,
+unmoved locations (build123d issue #1394; fixed upstream in commit
+`217db07e`, not yet in any tagged release — still broken on the pinned
+0.11.1). `Compound._intersect()` dispatches over `.children` when the compound
+has any, so `moved_asm.intersect(other)` silently tests `other` against the
+ORIGINAL unmoved children instead of the shape you just placed — two boxes
+moved 10 mm apart (`distance_to` correctly reports 8 mm) still report an 8 mm³
+overlap. Work around it by pulling the placed solids out with `.solids()`
+(which walks `.wrapped`, not `.children`) before intersecting, or by running
+`BRepAlgoAPI_Common` on the `.wrapped` OCCT shapes directly. `cadgen step
+inspect interfere` is unaffected: it does its own booleans on placed OCCT
+shapes. Keep a known-collision positive control beside any fit check that
+leans on `intersect()`.
+
 ## Dense periodic spline profiles: kernel ops to avoid
 
 On faces bounded by one periodic `Spline` fit through hundreds of samples,

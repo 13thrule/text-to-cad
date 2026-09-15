@@ -75,12 +75,25 @@ test("placement follow-up skips an exact adopted package but keeps posed wrapper
   const adopted = { parts: [] };
   const geometrySource = { vertices: new Float32Array(0) };
   const posed = { geometrySource, parts: [] };
-  const runtime = { cadScene: { source: adopted } };
+  const runtime = { cadScene: { source: adopted }, placedSourceParts: adopted.parts };
   assert.equal(sceneSourceAlreadyPlaced(runtime, adopted), true);
   assert.equal(sceneSourceAlreadyPlaced(runtime, posed), false);
   runtime.cadScene.source = geometrySource;
   assert.equal(sceneSourceAlreadyPlaced(runtime, posed), false, "wrapper placement remains distinct from retained geometry");
   assert.equal(sceneSourceAlreadyPlaced(null, adopted), false);
+});
+
+test("a robot pose published on the adopted wrapper still reaches placement", () => {
+  // A URDF/SDF pose rewrites `parts` on the wrapper the scene already owns, so
+  // the wrapper identity alone cannot say whether these rows were placed.
+  const rest = [{ id: "arm:v1", transform: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1] }];
+  const posedWrapper = { partTransformsBaked: false, parts: rest };
+  const runtime = { cadScene: { source: posedWrapper }, placedSourceParts: rest };
+  assert.equal(sceneSourceAlreadyPlaced(runtime, posedWrapper), true, "the rows this scene placed are not placed twice");
+
+  posedWrapper.parts = [{ id: "arm:v1", transform: [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 0.06, 1] }];
+  assert.equal(sceneSourceAlreadyPlaced(runtime, posedWrapper), false, "new rows on the same wrapper must be placed");
+  assert.equal(sceneSourceAlreadyPlaced({ cadScene: { source: posedWrapper } }, posedWrapper), false);
 });
 
 test("eligibility excludes merged, robot/drawing, active and residual dynamic states", () => {

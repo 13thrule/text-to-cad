@@ -29,12 +29,18 @@ if ! head -1 "$FIXTURE" | grep -q 'ISO-10303-21'; then
 fi
 
 out_dir=""
-if [ "$#" -ne 0 ]; then
-  if [ "$#" -ne 2 ] || [ "$1" != "--out" ] || [ -z "$2" ]; then
-    echo "usage: $0 [--out SCREENSHOT_DIR]" >&2
-    exit 2
-  fi
-  out_dir="$2"
+only_gate=""
+while [ "$#" -ne 0 ]; do
+  case "$1" in
+    --out) out_dir="${2:-}"; shift 2 || true ;;
+    # One gate while working on it: picking, format, scene, quality, kinematics.
+    --only) only_gate="${2:-}"; shift 2 || true ;;
+    *) echo "usage: $0 [--out SCREENSHOT_DIR] [--only GATE]" >&2; exit 2 ;;
+  esac
+done
+if { [ -n "$out_dir" ] && [ "$out_dir" = "--only" ]; } || [ "$only_gate" = "--out" ]; then
+  echo "usage: $0 [--out SCREENSHOT_DIR] [--only GATE]" >&2
+  exit 2
 fi
 
 project="$(mktemp -d)"
@@ -179,6 +185,20 @@ cat > "$project/smoke.urdf" <<'URDF'
 </robot>
 URDF
 
+# Paired by matching <robot name>, so the same two links carry the SRDF
+# planning semantics whose group state is the other way a joint is driven.
+cat > "$project/smoke.srdf" <<'SRDF'
+<?xml version="1.0"?>
+<robot name="viewer_smoke">
+  <group name="arm_group">
+    <joint name="shoulder"/>
+  </group>
+  <group_state name="lifted" group="arm_group">
+    <joint name="shoulder" value="0.5"/>
+  </group_state>
+</robot>
+SRDF
+
 "$PYTHON" -c 'import os, pathlib, sys; os.setsid() if os.name != "nt" else None; pathlib.Path(sys.argv[3]).write_text(str(os.getpid()), encoding="ascii"); os.chdir(sys.argv[1]); os.execv(sys.executable, [sys.executable, "-m", "cadgen.viewer", "--host", sys.argv[2], "--json", "--new", "--no-registry"])' \
   "$project" "$HOST" "$viewer_pidfile" >"$log" 2>&1 &
 server_pid=$!
@@ -200,10 +220,7 @@ if [ -z "$port" ]; then
   exit 1
 fi
 
-if [ -n "$out_dir" ]; then
-  node "$REPO_ROOT/tests/browser/viewer-e2e.mjs" \
-    --out "$out_dir" --dir "$project" --url "http://$HOST:$port"
-else
-  node "$REPO_ROOT/tests/browser/viewer-e2e.mjs" \
-    --dir "$project" --url "http://$HOST:$port"
-fi
+e2e_args=(--dir "$project" --url "http://$HOST:$port")
+[ -n "$out_dir" ] && e2e_args+=(--out "$out_dir")
+[ -n "$only_gate" ] && e2e_args+=(--only "$only_gate")
+node "$REPO_ROOT/tests/browser/viewer-e2e.mjs" "${e2e_args[@]}"

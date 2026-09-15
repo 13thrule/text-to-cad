@@ -14,12 +14,22 @@ import {
   solveUrdfLinkWorldTransforms,
   transformPoint
 } from "./kinematics.js";
+import { displayTransformForPart } from "../../common/stepModuleEffects.js";
 
 function translationTransform(x, y, z) {
   return [
     1, 0, 0, x,
     0, 1, 0, y,
     0, 0, 1, z,
+    0, 0, 0, 1
+  ];
+}
+
+function scaleTransform(factor) {
+  return [
+    factor, 0, 0, 0,
+    0, factor, 0, 0,
+    0, 0, factor, 0,
     0, 0, 0, 1
   ];
 }
@@ -555,6 +565,70 @@ test("URDF mesh geometry can keep source meshes for lightweight viewer rendering
     min: [0, 0, 0],
     max: [3, 1, 0]
   });
+});
+
+// Regression: a robot's link meshes are never in world space -- each keeps its own mesh
+// file's units and frame, and `<mesh scale>` + the visual origin + the joint FK live in the
+// part transform. The renderer only applies that transform when the mesh data declares
+// partTransformsBaked: false. Without the flag every link drew once, unscaled, at the
+// origin -- a metre-scale robot rendered as a pile of millimetre-scale link meshes.
+test("URDF mesh geometry declares that part transforms are not baked", () => {
+  const urdfData = {
+    rootLink: "base_link",
+    rootWorldTransform: translationTransform(0, 0, 0),
+    links: [
+      {
+        name: "base_link",
+        visuals: [
+          {
+            id: "base_link:visual",
+            partFileRef: "link-mesh",
+            localTransform: scaleTransform(0.001)
+          }
+        ]
+      },
+      {
+        name: "second_link",
+        visuals: [
+          {
+            id: "second_link:visual",
+            partFileRef: "link-mesh",
+            localTransform: scaleTransform(0.001)
+          }
+        ]
+      }
+    ],
+    joints: [
+      {
+        name: "fixed_joint",
+        type: "fixed",
+        parentLink: "base_link",
+        childLink: "second_link",
+        originTransform: translationTransform(0.3, 0, 0)
+      }
+    ]
+  };
+  const meshes = new Map([["link-mesh", partMesh({ min: [0, 0, 0], max: [100, 10, 10] })]]);
+
+  for (const options of [{ lightweight: true }, {}]) {
+    const meshGeometry = buildUrdfMeshGeometry(urdfData, meshes, options);
+    assert.equal(meshGeometry.partTransformsBaked, false);
+
+    const posed = poseUrdfMeshData(urdfData, meshGeometry, {});
+    const [first, second] = posed.meshData.parts;
+    // displayTransformForPart is the renderer's hook: it hands the part transform to the
+    // scene ONLY for unbaked mesh data, so this is the assertion that fails without the flag.
+    assert.deepEqual(displayTransformForPart(posed.meshData, first), first.transform);
+    assert.deepEqual(displayTransformForPart(posed.meshData, second), second.transform);
+    // The mesh stays in its own units; the scale and the joint offset live in the transform.
+    assert.equal(first.transform[0], 0.001);
+    assert.equal(second.transform[0], 0.001);
+    assert.equal(second.transform[3], 0.3);
+    assert.deepEqual(posed.meshData.bounds, {
+      min: [0, 0, 0],
+      max: [0.4, 0.01, 0.01]
+    });
+  }
 });
 
 test("URDF mesh data leaves uncolored robots for theme fill colors", () => {

@@ -4157,6 +4157,11 @@ const CadViewer = forwardRef(function CadViewer({
       sceneBuildRef.current = { key: sceneBuildKey, viewerTheme };
     }
     runtime.cadScene = cadScene;
+    // The rows this build/adoption placed. A later placement pass compares it
+    // (sceneSourceAlreadyPlaced) so it repeats the per-occurrence loop only for
+    // rows this effect did NOT place -- a posed robot publishes new rows over
+    // the same wrapper and the same geometry source.
+    runtime.placedSourceParts = Array.isArray(meshData?.parts) ? meshData.parts : null;
     runtime.displayRecords = cadScene.displayRecords;
     runtime.syncScreenSpaceLineMaterials?.();
     setDisplayRecordsToken((token) => token + 1);
@@ -4354,6 +4359,14 @@ const CadViewer = forwardRef(function CadViewer({
     if (typeof window !== "undefined") {
       // Byte attribution for the headless memory harness (read, never polled here).
       window.__cadRenderMemoryProbe = () => renderMemoryAccounting(runtimeRef.current);
+      // Read-only debug/test seam beside __cadModelPlacement: the LIVE record
+      // transforms, so a browser test can assert where a posed occurrence
+      // actually renders rather than what the data upstream of it said.
+      window.__cadDisplayRecords = () => (runtimeRef.current?.displayRecords || []).map((record) => ({
+        partId: String(record?.partId || ""),
+        linkName: String(record?.sourcePart?.linkName || ""),
+        matrix: record?.mesh?.matrix?.toArray?.() || null
+      }));
     }
 
     const currentPartVisualState = partVisualStateRef.current;

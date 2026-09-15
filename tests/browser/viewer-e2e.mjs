@@ -13,12 +13,14 @@ const { chromium } = createRequire(path.join(REPO, "packages/cadgen-js/package.j
 const { PNG } = createRequire(path.join(REPO, "apps/viewer/package.json"))("pngjs");
 
 function parseArgs(argv) {
-  const args = { url: "", dir: "", out: "" };
+  const args = { url: "", dir: "", out: "", only: "" };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
     if (flag === "--url") args.url = argv[++i] || "";
     else if (flag === "--dir") args.dir = argv[++i] || "";
     else if (flag === "--out") args.out = argv[++i] || "";
+    // One gate at a time while working on it: --only kinematics.
+    else if (flag === "--only") args.only = argv[++i] || "";
     else throw new Error(`unknown argument: ${flag}`);
   }
   return args;
@@ -33,6 +35,7 @@ const fixtures = [
   { format: "step", file: "assembly.step", parts: true },
   { format: "dxf", file: "smoke.dxf", parts: false },
   { format: "urdf", file: "smoke.urdf", parts: false },
+  { format: "srdf", file: "smoke.srdf", parts: false },
 ];
 const expectedBounds = { min: [39, -3, -5], max: [45, 3, 9] };
 const viewport = { width: 1400, height: 900 };
@@ -323,7 +326,9 @@ async function canvasMenuItems(page, canvas) {
 }
 
 async function formatGate() {
-  const tools = ["Select", "Pan", "Draw", "Orbit", "Copy screenshot"];
+  // Orbit left the floating toolbar when Fullscreen moved to the navbar
+  // (6be6e598a); the control it became is asserted in its new home.
+  const tools = ["Select", "Pan", "Draw", "Copy screenshot", "Fullscreen"];
   const camera = ["Reset Zoom", "Zoom To Fit"];
   const tree = ["Show all", "Expand all", "Collapse all"];
   const presentTree = ["Expand all", "Collapse all"];
@@ -503,13 +508,127 @@ async function qualityGate() {
   }
 }
 
+// --- robot kinematics ------------------------------------------------------
+// The shoulder's FK, as the renderer must place it: the child link's own
+// matrix is T(0,0,0.06) * Ry(angle). Column-major, like Matrix4.toArray().
+const ARM_JOINT_HEIGHT = 0.06;
+const IDENTITY_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+function shoulderFk(angleDeg) {
+  const angle = (angleDeg * Math.PI) / 180;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return [cos, 0, -sin, 0, 0, 1, 0, 0, sin, 0, cos, 0, 0, 0, ARM_JOINT_HEIGHT, 1];
+}
+
+function matrixDistance(actual, expected) {
+  if (!Array.isArray(actual) || actual.length !== 16) return Number.POSITIVE_INFINITY;
+  return Math.max(...expected.map((value, index) => Math.abs(Number(actual[index]) - value)));
+}
+
+async function recordMatrix(page, partId) {
+  return page.evaluate((id) => {
+    const records = window.__cadDisplayRecords?.() || [];
+    return records.find((record) => record.partId === id)?.matrix || null;
+  }, partId);
+}
+
+// Poll rather than assert once: a joint edit and a group state both animate to
+// their target over a few frames.
+async function settledArmMatrix(page, angleDeg, what, tolerance = 1e-5) {
+  const expected = shoulderFk(angleDeg);
+  try {
+    await page.waitForFunction(({ want, epsilon }) => {
+      const record = (window.__cadDisplayRecords?.() || []).find((row) => row.partId === "arm:v1");
+      const matrix = record?.matrix;
+      return Array.isArray(matrix) && matrix.every((value, index) => Math.abs(value - want[index]) <= epsilon);
+    }, { want: expected, epsilon: tolerance }, { timeout: 15_000 });
+  } catch {
+    const actual = await recordMatrix(page, "arm:v1");
+    failures.push(`${what}: arm link renders at [${(actual || []).map((v) => Number(v).toFixed(4))}], `
+      + `expected FK [${expected.map((v) => v.toFixed(4))}]`);
+    return false;
+  }
+  return true;
+}
+
+async function kinematicsGate() {
+  const { context, page, errors } = await newPage();
+  try {
+    await openFile(page, "smoke.urdf");
+    const records = await page.evaluate(() => window.__cadDisplayRecords?.() || []);
+    if (records.length !== 2) {
+      failures.push(`urdf kinematics: expected one record per link, saw ${records.length}`);
+    }
+    // Rest pose: the child link sits at its joint origin, not piled on the root.
+    const base = await recordMatrix(page, "base:v1");
+    if (matrixDistance(base, IDENTITY_MATRIX) > 1e-6) {
+      failures.push(`urdf kinematics: root link is not at the robot origin [${base}]`);
+    }
+    await settledArmMatrix(page, 0, "urdf rest pose");
+
+    // The user's control, not the data behind it: type into the joint's value box.
+    const valueBox = page.getByRole("textbox", { name: "shoulder value in deg", exact: true });
+    await valueBox.waitFor({ timeout: 15_000 });
+    await valueBox.click();
+    await valueBox.fill("45");
+    await valueBox.press("Enter");
+    await settledArmMatrix(page, 45, "urdf joint value entry");
+
+    // And the slider itself, which commits through the scrub path. The Joints
+    // section is the only open one for a robot, so it owns the only slider.
+    const sliders = page.locator('[data-slot="slider"]');
+    const sliderCount = await sliders.count();
+    if (sliderCount !== 1) {
+      failures.push(`urdf kinematics: expected the shoulder to be the only slider, saw ${sliderCount}`);
+    } else {
+      const box = await sliders.first().boundingBox();
+      await page.mouse.click(box.x + box.width * 0.25, box.y + box.height / 2);
+      await page.waitForTimeout(1500);
+      const shown = await valueBox.inputValue();
+      const scrubbed = Number.parseFloat(String(shown).replace(/[^\d.+-]/g, ""));
+      if (!Number.isFinite(scrubbed) || Math.abs(scrubbed - 45) < 1) {
+        failures.push(`urdf kinematics: dragging the slider did not change the joint value (${shown})`);
+      } else {
+        await settledArmMatrix(page, scrubbed, `urdf joint slider (${shown})`, 2e-3);
+      }
+    }
+    if (errors.length) failures.push(`urdf kinematics: ${errors.join(" | ")}`);
+  } finally {
+    await context.close();
+  }
+
+  const srdf = await newPage();
+  try {
+    await openFile(srdf.page, "smoke.srdf");
+    await settledArmMatrix(srdf.page, 0, "srdf rest pose");
+    const groupState = srdf.page.getByRole("combobox", { name: "Group state", exact: true });
+    await groupState.waitFor({ timeout: 15_000 });
+    await groupState.click();
+    await srdf.page.getByRole("option", { name: "lifted", exact: true }).click();
+    // The SRDF group state is authored in radians.
+    await settledArmMatrix(srdf.page, (0.5 * 180) / Math.PI, "srdf group state");
+    if (srdf.errors.length) failures.push(`srdf kinematics: ${srdf.errors.join(" | ")}`);
+  } finally {
+    await srdf.context.close();
+  }
+  console.log("  kinematics: URDF rest FK, joint value entry, joint slider, and an SRDF group state all place the child link");
+}
+
+const gates = [
+  ["picking", async () => {
+    await pickingGate("cold+lod", true);
+    await pickingGate("warm+lod", true);
+    await pickingGate("lod-off", false);
+  }],
+  ["format", formatGate],
+  ["scene", sceneGates],
+  ["quality", qualityGate],
+  ["kinematics", kinematicsGate],
+];
+const selected = args.only ? gates.filter(([name]) => name === args.only) : gates;
+if (!selected.length) fail(`unknown --only gate: ${args.only} (${gates.map(([name]) => name).join(", ")})`);
 try {
-  await pickingGate("cold+lod", true);
-  await pickingGate("warm+lod", true);
-  await pickingGate("lod-off", false);
-  await formatGate();
-  await sceneGates();
-  await qualityGate();
+  for (const [, gate] of selected) await gate();
 } finally {
   await browser.close();
 }
@@ -520,4 +639,4 @@ if (failures.length) {
   for (const failure of failures) console.error(`  - ${failure}`);
   process.exit(1);
 }
-console.log(`viewer browser e2e: PASS (${fixtures.length} formats, 3 picking paths, 4 placement/appearance scenes, 2 quality cycles)`);
+console.log(`viewer browser e2e: PASS (${selected.map(([name]) => name).join(", ")})`);
