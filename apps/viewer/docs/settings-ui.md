@@ -288,18 +288,14 @@ Kinematics when joints exist, and Animation when clips exist. Kinematics and
 Animation remain available in both modes. CAD measurement and topology picking
 remain in Inspect. Materials may highlight components without enabling picking.
 
-Materials is part-first: the viewport or existing Inspect tree supplies selection,
-with Select all parts as an accessible fallback. The header names the selection
-and its current material (including Mixed and Unassigned). In this model and
-Presets remain visible without a selection. Material swatches show usage counts
-and expandable part lists; each list can select individual parts or every part
-using the material. Selected parts retain their current assignment and swatch
-while choosing a replacement. The Apply action names the finish and target.
-Unassigned parts are listed separately. Selecting a
-preset alone never creates an unused material. The apply action creates and
-assigns it together. Shared-material edits are explicit; users can instead make
-the selected parts unique. Part picking is scoped to this tab and never enables
-face/edge selectors in Render. Browser-tab persistence remains separate from source.
+Materials shows one compact parts list with assignment names and swatches.
+Select in the list or viewport, then click an existing material or preset to
+apply immediately. Undo restores the last local change while the panel remains
+mounted; it is discarded after unrelated overlay changes or a file switch.
+Select parts using a material lives in its options menu. Edit finish reveals
+color and surface sliders, with explicit shared editing and Make unique.
+Part picking is scoped to this tab and never enables face/edge selectors in
+Render. Browser-tab persistence remains separate from source.
 
 The top Setup section contains Quality. Reset sits below the Backdrop section.
 Camera contains Lens and Exposure; Lighting contains Rotation,

@@ -136,18 +136,14 @@ geometry and lighting have drawn their first frame. This transition owns no
 second GPU scene and does not return during orbit or detail refinement. Render
 does not receive inspection selectors or DXF bend-guide overlays; STEP and
 embedded GLB animation remain independent of those inspection resources.
-The Materials tab follows selected parts. Click parts in the Render viewport
-(Shift-click for multiple), carry a selection from the Inspect tree, or use
-Select all parts. Choose an existing material under In this model or a finish
-under Presets, then use the Apply action naming the material and selected parts.
-In this model stays visible without a selection: color swatches show usage
-counts, expandable assigned-part lists, and a Select parts using action.
-The selected-part rows show their current assignments while a replacement is
-chosen; assignments only change on Apply. Unassigned parts are listed separately. A preset creates and assigns its
-material in one action. Mixed assignments are shown explicitly. Shared material
-editing requires Edit shared material; Make unique for selection duplicates
-and assigns a copy before editing. Color and surface sliders edit the currently
-assigned material, not an unrelated library selection.
+The Materials tab shows a compact parts list with each current assignment.
+Click a part in the list or Render viewport (Shift-click for multiple), carry a
+selection from Inspect, or Select all parts. Click an In this model swatch or
+Preset to apply immediately; a preset creates and assigns its material together.
+Undo restores the last local material change while this panel stays mounted.
+A material's options menu can select every part using it. Color and surface
+sliders stay behind Edit finish. Shared editing remains explicit, with Make
+unique for selection available before editing a shared material.
 Part picking is enabled only while the STEP Materials tab is open; face/edge
 selectors stay disabled. Appearance wrappers retain their geometry identity
 for detail-adoption and disposal acknowledgments. Browser-tab material overlays
