@@ -1047,6 +1047,44 @@ def _entries_by_step_path(specs: Sequence[EntrySpec]) -> dict[Path, EntrySpec]:
     }
 
 
+class RetiredRenderModuleError(ValueError):
+    """A ``<name>.step.js`` still sits beside a model's declared STEP output."""
+
+
+def retired_render_module_path(step_path: Path) -> Path | None:
+    """The stale ``<out>.step.js`` / ``<out>.stp.js`` beside ``step_path``.
+
+    Animation used to live in a companion ES module discovered by convention.
+    It does not any more: ``@step(animation=...)`` embeds the module text in
+    the document's sidecar, which is what every renderer reads. A leftover file
+    is therefore not read by anything, and the failure it produces is the one
+    law 10 forbids -- a model that renders inert, at exit 0.
+    """
+    if step_path is None:
+        return None
+    companion = step_path.with_name(step_path.name + ".js")
+    try:
+        return companion if companion.is_file() else None
+    except OSError:
+        return None
+
+
+def _refuse_retired_render_module(spec: EntrySpec) -> None:
+    """Law 8 at the source door: the retired file fails, naming what replaced it."""
+    if spec.source != "generated" or not spec.step_output:
+        return
+    companion = retired_render_module_path(spec.step_path)
+    if companion is None:
+        return
+    raise RetiredRenderModuleError(
+        f"{_display_path(companion)} is a retired render module and is read by nothing. "
+        "Animation is declared on the model: @step(animation=...) embeds the module text "
+        "in the document's sidecar, which is what the viewer, snapshots and mesh exports "
+        "read. Move this file's clips into the decorator and delete it; "
+        "see the cad skill's kinematics reference (references/kinematics.md)."
+    )
+
+
 def _validate_step_target(spec: EntrySpec, *, tool_name: str) -> None:
     if spec.step_path is None:
         raise ValueError(f"{tool_name} target has no STEP path: {spec.source_ref}")
@@ -1054,6 +1092,10 @@ def _validate_step_target(spec: EntrySpec, *, tool_name: str) -> None:
         metadata = spec.generator_metadata
         if metadata is None or metadata.format != "step":
             raise ValueError(f"{tool_name} target is not a @step model: {spec.source_ref}")
+        # Here rather than in the build: a model whose tree is already current
+        # takes the no-op path, and a retired file beside its document must
+        # fail every run, not only the ones that rebuild geometry.
+        _refuse_retired_render_module(spec)
         return
     raise ValueError(
         f"{tool_name} builds @step Python sources only: {spec.source_ref}. "

@@ -329,5 +329,40 @@ class InvalidUtf8(ArtifactStatusTestCase):
         )
 
 
+class RetiredRenderModule(ArtifactStatusTestCase):
+    """A leftover ``<name>.step.js`` warns; it never refuses the document.
+
+    Animation moved into ``@step(animation=...)`` and travels in the sidecar,
+    so the companion file is read by nothing. A door never refuses a document
+    (law 1), so the viewer says so and renders anyway -- the build is where
+    the same file is a hard error.
+    """
+
+    def _status(self, name="model.step", *, companion=True, package=True):
+        step_path = self.tree.step(name)
+        if companion:
+            Path(step_path + ".js").write_text("export const clips = {};", encoding="utf-8")
+        if package:
+            self.tree.package(step_path)
+        return artifact_status(name, str(self.tree.root))
+
+    def test_a_rendered_document_still_renders_and_names_the_replacement(self):
+        status = self._status()
+        self.assertEqual(status["state"], "compiled")
+        (warning,) = status["warnings"]
+        self.assertIn("model.step.js", warning)
+        self.assertIn("@step(animation=...)", warning)
+        self.assertIn("sidecar", warning)
+
+    def test_an_uncompiled_document_carries_it_too(self):
+        status = self._status(package=False)
+        self.assertEqual(status["state"], "not-compiled")
+        self.assertEqual(len(status["warnings"]), 1)
+
+    def test_a_stp_document_is_covered_and_a_clean_one_is_silent(self):
+        self.assertIn("model.stp.js", self._status("model.stp")["warnings"][0])
+        self.assertNotIn("warnings", self._status("clean.step", companion=False))
+
+
 if __name__ == "__main__":
     unittest.main()
