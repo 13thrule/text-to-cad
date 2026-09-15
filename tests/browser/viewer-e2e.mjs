@@ -129,14 +129,30 @@ function isHighlight(data, offset) {
   return b > 140 && b - r > 40 && g > 100 && g < 230;
 }
 
-function highlightComponents(png, mode = "face") {
-  const step = mode === "edge" ? 1 : 2;
+function highlightMask(png, step, sceneWidth) {
   const width = Math.floor(png.width / step);
   const height = Math.floor(png.height / step);
-  let mask = new Uint8Array(width * height);
-  for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+  const columns = Math.min(width, Math.ceil(sceneWidth / step));
+  const mask = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) for (let x = 0; x < columns; x += 1) {
     if (isHighlight(png.data, ((y * step) * png.width + x * step) * 4)) mask[y * width + x] = 1;
   }
+  return { mask, width, height };
+}
+
+// What the selection ADDED to the scene, not every blue pixel on the page. The
+// docked reference panel is blue-on-white and only appears once something is
+// selected, and the orientation gizmo is permanently blue, so a whole-page mask
+// scored both as dozens of extra highlight "pieces" (67 over 7834px here) no
+// matter how coherent the highlight itself was. Clipping at the panel and
+// subtracting the unselected frame leaves exactly the pixels the pick lit up.
+function highlightComponents(selected, baseline, sceneWidth, mode = "face") {
+  const step = mode === "edge" ? 1 : 2;
+  const lit = highlightMask(selected, step, sceneWidth);
+  const before = highlightMask(baseline, step, sceneWidth);
+  const { width, height } = lit;
+  let mask = new Uint8Array(lit.mask.length);
+  for (let i = 0; i < mask.length; i += 1) mask[i] = lit.mask[i] && !before.mask[i] ? 1 : 0;
   if (mode === "edge") {
     const dilated = new Uint8Array(mask);
     for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
@@ -186,6 +202,53 @@ async function chipRef(page) {
   return text ? text.replace("Copy ", "").trim() : "";
 }
 
+// Desktop activation is deliberately delayed 220ms so a second click can still
+// become a double click, and the chip only changes once that timer commits.
+// Reading it a fixed 240ms after the click left ~20ms for the commit plus the
+// React render and lost that race on a fast Linux box. (No pair of these clicks
+// can become a real dblclick: Playwright dispatches each one with clickCount 1,
+// so the page never sees detail=2.) A miss must be waited out, a state change
+// must not be.
+const ACTIVATION_SETTLE_MS = 700;
+
+async function clickForChip(page, x, y) {
+  await page.mouse.click(x, y);
+  await page.waitForTimeout(ACTIVATION_SETTLE_MS);
+  return chipRef(page);
+}
+
+async function clickUntilChip(page, x, y, accept, timeout = 5_000) {
+  await page.mouse.click(x, y);
+  const deadline = Date.now() + timeout;
+  let ref = await chipRef(page);
+  while (!accept(ref) && Date.now() < deadline) {
+    await page.waitForTimeout(100);
+    ref = await chipRef(page);
+  }
+  return ref;
+}
+
+// The docked tree/reference panel overlays the canvas on the right; its tabs
+// mark its left edge. Highlight measurements stop there.
+async function sceneWidth(page) {
+  const left = await page.evaluate((half) => {
+    const lefts = [...document.querySelectorAll('[role="tab"], [role="tablist"]')]
+      .map((node) => node.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0 && rect.left > half)
+      .map((rect) => rect.left);
+    return lefts.length ? Math.min(...lefts) : 0;
+  }, viewport.width / 2);
+  return left > 0 ? Math.floor(left) : viewport.width;
+}
+
+// Park the pointer over the panel so a hover highlight cannot join the mask,
+// and settle the frame before reading it.
+async function restingShot(page) {
+  await page.mouse.move(viewport.width - 4, viewport.height - 4);
+  await page.waitForTimeout(400);
+  return PNG.sync.read(await page.screenshot());
+}
+
 async function pickingGate(tag, lod) {
   const { context, page, errors } = await newPage({ lod });
   try {
@@ -214,12 +277,7 @@ async function pickingGate(tag, lod) {
     let probes = 0;
     outer: for (const [fx, fy] of probePoints) {
         probes += 1;
-        await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
-        // Desktop activation is deliberately delayed 220ms to distinguish a
-        // double click. Settle that one interaction, then make chip lookup
-        // immediate; an absent chip must not add another locator timeout.
-        await page.waitForTimeout(240);
-        const ref = await chipRef(page);
+        const ref = await clickForChip(page, box.x + box.width * fx, box.y + box.height * fy);
         if (!/\.e\d+$/.test(ref)) continue;
         if (!edgeHits.has(ref)) edgeHits.set(ref, []);
         edgeHits.get(ref).push([fx, fy]);
@@ -227,9 +285,8 @@ async function pickingGate(tag, lod) {
         const separated = hits.some(([x1, y1]) => hits.some(([x2, y2]) => Math.hypot(x2 - x1, y2 - y1) >= 0.08));
         // Toggle this exact hit off before the next probe. Otherwise an empty
         // click can leave the previous chip visible and manufacture repeats.
-        await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
-        await page.waitForTimeout(240);
-        if (await chipRef(page)) fail(`${tag}: clicking ${ref} twice did not clear the selection`);
+        const leftover = await clickUntilChip(page, box.x + box.width * fx, box.y + box.height * fy, (value) => !value);
+        if (leftover) fail(`${tag}: clicking ${ref} twice left ${leftover} selected`);
         if (hits.length >= 2 && separated) break outer;
     }
     const repeated = [...edgeHits.entries()].find(([, spots]) => (
@@ -247,18 +304,27 @@ async function pickingGate(tag, lod) {
       fail(`${tag}: no edge returned one stable reference across two separated points after ${probes} probes (${summary})`);
     }
     const [edgeRef, spots] = repeated;
-    await page.mouse.click(box.x + box.width * spots[0][0], box.y + box.height * spots[0][1]);
-    await page.waitForTimeout(400);
-    const edge = highlightComponents(PNG.sync.read(await page.screenshot()), "edge");
+    const scene = await sceneWidth(page);
+    const edgeBaseline = await restingShot(page);
+    const reselected = await clickUntilChip(
+      page, box.x + box.width * spots[0][0], box.y + box.height * spots[0][1], (value) => !!value,
+    );
+    if (reselected !== edgeRef) fail(`${tag}: reselecting ${edgeRef} produced ${reselected || "no chip"}`);
+    const edge = highlightComponents(await restingShot(page), edgeBaseline, scene, "edge");
     const top3 = (edge.sizes[0] || 0) + (edge.sizes[1] || 0) + (edge.sizes[2] || 0);
     if (edge.total < 60 || top3 / edge.total < 0.9) {
+      if (args.out) {
+        fs.mkdirSync(args.out, { recursive: true });
+        fs.writeFileSync(path.join(args.out, `${tag}-edge-highlight.png`), await page.screenshot());
+      }
       fail(`${tag}: edge ${edgeRef} highlight fragmented (${edge.sizes.length} pieces over ${edge.total}px)`);
     }
     // Return to an empty selection before face probes, so a miss cannot inherit
     // the edge chip whose framebuffer was just checked.
-    await page.mouse.click(box.x + box.width * spots[0][0], box.y + box.height * spots[0][1]);
-    await page.waitForTimeout(240);
-    if (await chipRef(page)) fail(`${tag}: edge selection did not clear before face probes`);
+    const stuck = await clickUntilChip(
+      page, box.x + box.width * spots[0][0], box.y + box.height * spots[0][1], (value) => !value,
+    );
+    if (stuck) fail(`${tag}: edge selection did not clear before face probes (${stuck})`);
 
     for (let i = 0; i < 3; i += 1) {
       await page.mouse.wheel(0, -220);
@@ -269,19 +335,21 @@ async function pickingGate(tag, lod) {
     if (lod && !lodEvents.length) fail(`${tag}: no LOD swap fired`);
     if (!lod && lodEvents.length) fail(`${tag}: LOD-off page emitted swaps`);
 
+    const faceBaseline = await restingShot(page);
     let faceRef = "";
     for (const [fx, fy] of [[0.5, 0.5], [0.45, 0.5], [0.55, 0.5], [0.5, 0.4], [0.5, 0.6]]) {
-      await page.mouse.click(box.x + box.width * fx, box.y + box.height * fy);
-      await page.waitForTimeout(240);
-      const ref = await chipRef(page);
+      const ref = await clickForChip(page, box.x + box.width * fx, box.y + box.height * fy);
       if (/\.f\d+$/.test(ref)) faceRef = ref;
       if (faceRef) break;
     }
     if (!faceRef) fail(`${tag}: no face pick landed on the rendered cylinder`);
-    await page.waitForTimeout(400);
-    const face = highlightComponents(PNG.sync.read(await page.screenshot()));
+    const face = highlightComponents(await restingShot(page), faceBaseline, scene);
     const ratio = face.total ? (face.sizes[0] || 0) / face.total : 0;
     if (face.total < 300 || ratio < 0.97) {
+      if (args.out) {
+        fs.mkdirSync(args.out, { recursive: true });
+        fs.writeFileSync(path.join(args.out, `${tag}-face-highlight.png`), await page.screenshot());
+      }
       fail(`${tag}: face ${faceRef} highlight fragmented (${(ratio * 100).toFixed(1)}%, ${face.total}px)`);
     }
     if (errors.length) fail(`${tag}: ${errors.join(" | ")}`);
