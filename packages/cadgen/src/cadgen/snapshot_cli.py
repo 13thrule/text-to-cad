@@ -688,6 +688,54 @@ def normalize_render_job_selection(
     return normalized
 
 
+# The shapes the renderer can draw. Kept beside the door because "renderable" is a RENDERER
+# fact, not a validity one: `cadgen sdf validate` accepts every shape SDFormat defines.
+SDF_RENDERABLE_GEOMETRY = ("box", "cylinder", "mesh", "sphere")
+
+
+def unrenderable_sdf_geometry(input_path: Path) -> list[tuple[str, str]]:
+    """``(link, kind)`` for every VISUAL shape the renderer cannot draw.
+
+    A capsule, plane, ellipsoid, heightmap or polyline has no mesh in the renderer, so the
+    composer drops it and the model renders as EMPTY SPACE at exit 0. The browser parser
+    refuses these too — that is what the Viewer shows — but the door answers first so the
+    CLI fails before starting a browser, and says the same thing.
+
+    COLLISION geometry is deliberately not checked. It is never drawn, so an undrawable one
+    costs the picture nothing, and a ``<plane>`` ground collision is the single most common
+    shape in a real Gazebo world — refusing those would block loading and snapshotting every
+    one of them for no visual gain. The Viewer counts them in its SDF sheet instead; this
+    door has no non-blocking channel of its own (a snapshot's ``warnings`` come back from the
+    renderer, not from job resolution), so it passes over them in silence.
+
+    Returns [] when the file cannot be read: a description this cannot parse is left to the
+    renderer exactly as before, so the check never refuses more than it understands.
+    """
+    import xml.etree.ElementTree as ET
+
+    def local(tag: object) -> str:
+        return str(tag).rsplit("}", 1)[-1]
+
+    try:
+        root = ET.parse(input_path).getroot()
+    except Exception:
+        return []
+    found: list[tuple[str, str]] = []
+    for link in root.iter():
+        if local(link.tag) != "link":
+            continue
+        link_name = link.get("name") or "(unnamed)"
+        for container in link:
+            if local(container.tag) != "visual":
+                continue
+            geometry = next((c for c in container if local(c.tag) == "geometry"), None)
+            shapes = [local(c.tag) for c in geometry] if geometry is not None else []
+            kind = shapes[0] if shapes else "missing"
+            if kind not in SDF_RENDERABLE_GEOMETRY:
+                found.append((link_name, kind))
+    return found
+
+
 def robot_joint_names(kind: str, input_path: Path) -> frozenset[str] | None:
     """The joint names a pose request may name, or None when they cannot be read.
 
@@ -789,6 +837,22 @@ def resolve_robot_render_job(
             f"exploded view requires STEP assembly occurrence structure; {label} robots "
             "cannot be exploded"
         )
+
+    if kind == "sdf":
+        unrenderable = unrenderable_sdf_geometry(input_path)
+        if unrenderable:
+            listed = "; ".join(
+                f"link {name} visual uses <{shape}>" if shape != "missing"
+                else f"link {name} visual has no <geometry>"
+                for name, shape in unrenderable[:4]
+            )
+            more = f" (and {len(unrenderable) - 4} more)" if len(unrenderable) > 4 else ""
+            raise SnapshotError(
+                f"{input_path.name} has visual geometry this renderer cannot draw: {listed}{more}. "
+                f"Supported: {', '.join(SDF_RENDERABLE_GEOMETRY)}. "
+                "Replace the shape or reference a mesh file — rendering it would silently "
+                "leave those links out of the picture."
+            )
 
     joint_values = job.get("jointValues")
     if joint_values is not None and not is_plain_object(joint_values):
