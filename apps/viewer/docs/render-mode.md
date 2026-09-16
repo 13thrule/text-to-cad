@@ -120,11 +120,19 @@ raycast accelerators.
 authored placement: a robot at its joint defaults, an assembly before its mates
 move anything, an animated document at its load-time framing estimate, a mesh
 as loaded. Driving a joint, choosing an SRDF group state, changing a mate value,
-scrubbing an animation and a progressive load finishing all change what is lit,
-shadowed, clipped and floored — never how the model is framed, and never what
-100% means. **Reset view** re-fits to that same zero-pose box rather than to the
-pose on screen, so it reproduces the view the model opened at. Only a different
-model gets a new fit.
+scrubbing an animation and a detail swap all change what is lit, shadowed,
+clipped and floored — never how the model is framed, and never what 100% means.
+**Reset view** re-fits to that same zero-pose box rather than to the pose on
+screen, so it reproduces the view the model opened at.
+
+Three things reopen that decision, and none of them is a pose: a different
+model; a progressive load reaching its full extent, having framed on the handful
+of components that arrived first; and a **rebuilt model whose zero pose
+changed** — a new revision is a new zero pose, so a save that grew the geometry
+re-fits rather than leaving the new geometry clipped outside the old frame. The
+last two stand down once the user has taken the view; their camera is a
+deliberate choice about this model, and Reset view still takes them to the new
+zero pose.
 
 Mode changes keep the new canvas covered with the destination backdrop until
 geometry and lighting have drawn their first frame. This transition owns no

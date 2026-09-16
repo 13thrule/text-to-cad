@@ -158,6 +158,71 @@ export function runtimeFramingBounds(runtime, fallbackBounds = null) {
   return runtime?.zeroPoseBounds || runtime?.modelBounds || fallbackBounds;
 }
 
+// How far a zero-pose box has to move before it counts as a DIFFERENT zero pose.
+// It is measured against the box's own size, so it means the same thing on a
+// 3 mm part and a 3 m robot. A detail swap re-tessellates the same geometry and
+// can shift a corner by a float; a source revision that grew the model moves it
+// by orders of magnitude more than this.
+export const ZERO_POSE_REVISION_EPSILON = 1e-4;
+
+export function sameZeroPoseBounds(a, b, epsilon = ZERO_POSE_REVISION_EPSILON) {
+  if (!a || !b || !Array.isArray(a.min) || !Array.isArray(b.min)) {
+    return false;
+  }
+  const scale = Math.max(
+    ...[0, 1, 2].map((axis) => Math.abs(finiteNumber(b.max?.[axis]) - finiteNumber(b.min?.[axis]))),
+    1e-9
+  );
+  for (const key of ["min", "max"]) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      if (Math.abs(finiteNumber(a[key]?.[axis]) - finiteNumber(b[key]?.[axis])) > epsilon * scale) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+// When the camera fits, and why. A model is framed ONCE, on its zero pose, and
+// three things reopen that decision -- none of them a pose:
+//
+// - "model": a different model. Always fits.
+// - "complete": a progressive load frames on its first publish, against the
+//   handful of components that have arrived, and the model then grows well
+//   outside that frame, so it frames again once every component is composed.
+// - "revision": the model was rebuilt from edited source and its ZERO POSE
+//   changed. A new revision is a new zero pose, and the camera is grounded on
+//   the zero pose, so a rebuild that grew the geometry must not leave the new
+//   geometry clipped outside the old frame. A detail swap or another publish of
+//   the SAME geometry is not a revision (see sameZeroPoseBounds), and neither is
+//   a joint, a group state, a mate or an animation frame -- those never move the
+//   zero pose at all.
+//
+// The last two stand down once the user has taken the view: their camera is a
+// deliberate choice about this model and an automatic fit would throw it away on
+// every save. Reset view still takes them to the new zero pose.
+export function reframeReason({
+  modelKey = "",
+  framedModelKey = "",
+  framedCompleteModelKey = "",
+  modelComplete = true,
+  zeroPoseBounds = null,
+  framedZeroPoseBounds = null,
+  userMovedCamera = false
+} = {}) {
+  const key = String(modelKey || "");
+  if (String(framedModelKey || "") !== key) {
+    return "model";
+  }
+  if (!modelComplete || userMovedCamera) {
+    return "";
+  }
+  if (String(framedCompleteModelKey || "") !== key) {
+    return "complete";
+  }
+  return sameZeroPoseBounds(zeroPoseBounds, framedZeroPoseBounds) ? "" : "revision";
+}
+
 export function getKeyboardOrbitCommand(event) {
   if (!event) {
     return null;
