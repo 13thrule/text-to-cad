@@ -91,7 +91,7 @@ test("status and timeout failures also identify the processing service", () => {
 });
 
 test("failed STEP artifact explains what is missing and retains a renderable fallback", () => {
-  for (const [code, reason] of [["missing_glb", "Generated GLB is missing"], ["missing_source_path", "missing its source path"]]) {
+  for (const [code, reason] of [["missing_glb", "Generated GLB is missing"], ["missing_step_topology", "missing STEP topology metadata"]]) {
     const entry = { ...step, artifact: { ok: false, error: code, message: "Original diagnostic" } };
     const alert = buildViewerMeshAlert(entry, false, "");
     assert.equal(alert.severity, "error");

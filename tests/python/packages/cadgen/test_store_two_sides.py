@@ -12,7 +12,10 @@ twice and the pin once) built through the real pipeline:
 3. records are deletable — ``rm -rf index/model index/output`` loses no
    artifact, and the rebuild re-creates the records without a new object;
 4. copied document bytes reuse the same canonical tree without a producer
-   record, a text STEP parse, or a compile.
+   record, a text STEP parse, or a compile;
+5. the document renders identically with NO source and with BROKEN source —
+   README law 1, over the sidecar-driven surfaces (pose, clip frame, label
+   focus, animated GLB) that properties 2 and 3 do not reach.
 """
 
 from __future__ import annotations
@@ -77,8 +80,18 @@ from cadgen import build123d as bd
 from arm import arm
 from pin import pin
 
+KINEMATICS = {
+    "mates": [{"name": "spin", "kind": "revolute", "parent": "#base", "child": "#post",
+               "axis": {"origin": [0, 0, 10], "dir": [0, 0, 1]}, "limits": [-90, 90]}],
+    "poses": {"turned": {"spin": 30}},
+}
+ANIMATION = r"""export const clips = { lift: {
+    label: "Lift the post", duration: 4, loop: true,
+    update(t, m) { m.get("post").translate([0, 0, 6 * t]); }
+}};"""
 
-@step(out="robot.step")
+
+@step(out="robot.step", kinematics=KINEMATICS, animation=ANIMATION)
 def robot():
     base = label_shape(bd.Box(60, 60, 3), "base")
     front = bd.Pos(0, 20, 5) * arm()
@@ -114,11 +127,13 @@ def forbid_record_reads():
         yield
 
 
-def _cli(*argv: str, cwd: Path) -> subprocess.CompletedProcess:
+def _cli(*argv: str, cwd: Path, cache: Path | None = None) -> subprocess.CompletedProcess:
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join(
         p for p in [str(REPO / "packages" / "cadgen" / "src"), env.get("PYTHONPATH", "")] if p
     )
+    if cache is not None:
+        env["CADGEN_CACHE_DIR"] = str(cache)
     return subprocess.run(
         [sys.executable, "-m", "cadgen.cli", *argv],
         cwd=str(cwd), env=env, capture_output=True, text=True, timeout=600,
@@ -317,6 +332,90 @@ class TwoSidesLaw(unittest.TestCase):
         self.assertTrue(scene.roots)
         self.assertTrue(scene.prototype_shapes)
         self.assertEqual(expected_tree, tree_for_document_hash(document_hash))
+
+    # --- property 5: the document renders without its source ------------------------
+
+    @staticmethod
+    def _render_packet(document: str, out_dir: Path) -> list[dict]:
+        """The three sidecar-driven stills, as ONE batched packet.
+
+        A pose, a clip frame and a label focus each reach the sidecar by a
+        different route, and batching them shares one browser across the three
+        so the whole property stays inside its time budget.
+        """
+        def job(name: str, **extra: object) -> dict:
+            return {
+                "input": document,
+                "mode": "view",
+                "outputs": [{"path": str(out_dir / f"{name}.png"), "width": 240, "height": 180}],
+                **extra,
+            }
+
+        return [
+            job("pose", kinematics="turned"),
+            job("frame", animation={"clip": "lift", "time": 1}),
+            job("focus", selection={"focus": ["#base"]}),
+        ]
+
+    def _render_and_export(self, document: str, *, cwd: Path, cache: Path | None) -> dict[str, bytes]:
+        out_dir = cwd / "out"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        packet = cwd / "packet.json"
+        packet.write_text(json.dumps(self._render_packet(document, out_dir)), encoding="utf-8")
+        snapshot = _cli("step", "snapshot", "--job", packet.name, cwd=cwd, cache=cache)
+        self.assertEqual(0, snapshot.returncode, snapshot.stderr)
+        glb = _cli(
+            "glb", "build", document, str(out_dir / "clip.glb"),
+            "--animation", '{"clip": "lift", "fps": 10, "seconds": 1}',
+            cwd=cwd, cache=cache,
+        )
+        self.assertEqual(0, glb.returncode, glb.stderr)
+        produced = {path.name: path.read_bytes() for path in sorted(out_dir.iterdir())}
+        self.assertEqual({"pose.png", "frame.png", "focus.png", "clip.glb"}, set(produced))
+        # Three identical images would satisfy byte-equality while proving
+        # nothing: each still must show that its half of the sidecar was read.
+        stills = {produced[f"{name}.png"] for name in ("pose", "frame", "focus")}
+        self.assertEqual(3, len(stills), "the three sidecar-driven stills are the same image")
+        return produced
+
+    @unittest.skipUnless(shutil.which("node"), "the render runtimes need node")
+    def test_property_5_a_document_renders_with_no_source_and_with_broken_source(self) -> None:
+        """Law 1: deleting every ``.py`` must not change what renders.
+
+        The document and its sidecar are copied ALONE to a directory that has no
+        model, no project and its own empty store, and where the only Python is
+        a file that does not parse and the only companion module is the retired
+        ``.step.js`` a renderer must ignore. Every sidecar-driven surface — a
+        declared pose, a clip frame, a label focus, and a baked animated GLB —
+        has to come back byte-for-byte what the same commands produced beside
+        the source.
+        """
+        reference = self._render_and_export("robot.step", cwd=self.root, cache=None)
+
+        elsewhere = Path(self._tmp.name) / "elsewhere"
+        elsewhere.mkdir()
+        for name in ("robot.step", "robot.step.json"):
+            shutil.copyfile(self.root / name, elsewhere / name)
+        # Bait: source that cannot even be parsed, and the retired companion module.
+        (elsewhere / "robot.py").write_text("this is not python (((\n", encoding="utf-8")
+        (elsewhere / "robot.step.js").write_text("((( not javascript either\n", encoding="utf-8")
+        isolated_cache = Path(self._tmp.name) / "isolated-cache"
+        isolated_cache.mkdir()
+
+        isolated = self._render_and_export("robot.step", cwd=elsewhere, cache=isolated_cache)
+
+        for name, expected in reference.items():
+            self.assertEqual(expected, isolated[name], f"{name} differs without its source")
+
+        # Nothing ran or recorded Python: a compile keys its record on the
+        # DOCUMENT, so every record in the isolated store is step-sourced.
+        for entry in (isolated_cache / "index" / "model").glob("*"):
+            record = json.loads(entry.read_text(encoding="utf-8"))
+            self.assertEqual("step", record.get("sourceKind"), record)
+            self.assertNotIn(".py", json.dumps(record), record)
+        for path in isolated_cache.rglob("*"):
+            if path.is_file():
+                self.assertNotIn(b"robot.py", path.read_bytes(), f"{path} names the planted script")
 
 
 if __name__ == "__main__":

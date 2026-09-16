@@ -211,15 +211,15 @@ test("entryIconStatus marks buildable STEP artifacts as generating in production
 
   assert.deepEqual(
     entryIconStatus({
-      file: "benchmarks/missing-source.step",
+      file: "benchmarks/missing-topology.step",
       kind: "part",
       artifact: {
         ok: false,
-        error: "missing_source_path"
+        error: "missing_step_topology"
       }
     }, {
       sourceFormat: "step",
-      entryKey: "benchmarks/missing-source.step",
+      entryKey: "benchmarks/missing-topology.step",
       hasMesh: true
     }),
     {

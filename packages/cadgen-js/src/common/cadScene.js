@@ -444,7 +444,6 @@ function stablePartFillKey(part, index) {
   return [
     String(part?.occurrenceId || ""),
     String(part?.id || ""),
-    String(part?.partSourcePath || part?.sourcePath || ""),
     String(part?.label || part?.name || ""),
     String(index).padStart(8, "0")
   ].join("\u0000");

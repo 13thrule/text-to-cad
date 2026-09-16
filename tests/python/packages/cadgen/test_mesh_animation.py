@@ -511,7 +511,7 @@ class WhatTheLedgerServes(unittest.TestCase):
         spec = mock.Mock()
         spec.step_path = self.document
         with mock.patch.object(
-            step_export_target, "_resolve_mesh_package", return_value=(spec, Path("/pkg"), None)
+            step_export_target, "_resolve_mesh_package", return_value=(spec, Path("/pkg"))
         ), mock.patch.object(
             step_export_target, "_effective_export_tolerances", return_value=(None, None)
         ), mock.patch.object(
