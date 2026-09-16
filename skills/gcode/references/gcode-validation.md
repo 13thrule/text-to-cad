@@ -2,7 +2,7 @@
 
 `scripts/gcode_tool.py validate` performs static checks only. It does not simulate extrusion physics, firmware state, acceleration limits, or slicer-specific semantics.
 
-`validate` loads the same wrapper profile as `slice`, so `native_config` must point at a file that exists. A wrapper whose `native_config` path is missing exits 2 with `{"ok": false, "error": "Profile native_config does not exist: ..."}` before any G-code is read. Validate against the same wrapper that produced the G-code rather than a hand-written stub.
+`validate` reads the wrapper profile's `machine` and `filament` blocks and needs no slicer, so it runs wherever the G-code is — the machine that sliced it or any other. A `native_config` that is not on this machine is a warning on the report, not a refusal; slicing with that wrapper still needs the file. Validate against the same wrapper that produced the G-code rather than a hand-written stub: the bounds and temperatures it checks are only as right as the wrapper is.
 
 ## Required Checks
 
@@ -41,7 +41,7 @@ By default, motion bounds are `X=0..bed_size_mm[0]`, `Y=0..bed_size_mm[1]`, and 
 
 ## Interpreting Results
 
-`ok: true` (exit 0) means the file passed these static checks. Failed checks exit 1 with the `errors` array populated; a bad profile or unreadable input exits 2 with a bare `{"ok": false, "error": ...}` and no `stats`. `validate` always prints JSON, with or without `--json`.
+`ok: true` (exit 0) means the file passed these static checks. Failed checks exit 1 with the `errors` array populated; a malformed profile or unreadable input exits 2 with a bare `{"ok": false, "error": ...}` and no `stats`. `--json` prints the whole report as one object; without it the same findings print as `Validation <status>:` plus one `error:`/`warning:` line each.
 
 `ok: true` does not mean the G-code is safe to print on real hardware. Still review:
 
