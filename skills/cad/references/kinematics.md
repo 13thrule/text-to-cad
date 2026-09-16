@@ -244,7 +244,7 @@ name with `time=`.
 ### Rendering the whole clip
 
 `--video` renders the SPAN instead of a moment, into the `.mp4` or `.gif` the
-OUT names. Everything else is unchanged — same theme, display settings, camera
+OUT names. Everything else is unchanged — same display or Render settings, camera
 and size profile as a still, and the same `--kinematics` base pose underneath:
 
 ```bash
@@ -261,7 +261,7 @@ The request's keys, all optional:
 | `seconds` | what is left of the clip from `start` | how much of the clip to render |
 | `start` | `0` | seconds into the clip where the video begins; must be inside it |
 | `quality` | `review` | `draft`, `review`, or `high` |
-| `loop` | `true` | GIF only — an `.mp4` that sets it is refused |
+| `loop` | `true` | GIF only — an `.mp4` carries no loop count, so `"loop": false` on one is refused |
 
 The span is measured against the clip rather than trusted, because the clip
 evaluator ANSWERS a time past the end instead of refusing it: a clip that does

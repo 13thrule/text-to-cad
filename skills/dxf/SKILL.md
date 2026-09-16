@@ -157,11 +157,14 @@ Copy the full template for the applicable workflow from
    model script and call it, which is tracked by result and never touches an
    artifact.
 
-One model per file: a source declaring both a `@step` and a `@dxf` model is
-rejected — a drawing gets its own script. A drawing composes models, never the
-reverse: calling a `@dxf` function from a `@step` body is just its 2D geometry
-and links nothing. The viewer catalog is artifacts-only: scripts never list;
-the `.dxf` the run writes is the entry the viewer renders.
+One model per file is the recommendation, and a drawing gets its own script:
+a file MAY declare several models — two `@dxf` drawings, or a `@dxf` beside a
+`@step` — and each is its own record, output and job (a sole model writes
+`<file>.dxf`; models sharing a file write `<function>.dxf`), but they share the
+file's closure, so editing one rebuilds them all. A drawing composes models,
+never the reverse: calling a `@dxf` function from a `@step` body is just its 2D
+geometry and links nothing. The viewer catalog is artifacts-only: scripts never
+list; the `.dxf` the run writes is the entry the viewer renders.
 
 ## Use this skill when
 

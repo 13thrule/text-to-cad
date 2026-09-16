@@ -8,10 +8,10 @@ Deterministic geometry checks decide pass/fail; mandatory snapshot review (see `
 
 ## Tool
 
-The launcher lives in the CAD skill directory:
+Every inspection verb is a subcommand of the installed `cadgen` console script:
 
 ```bash
-cadgen step inspect {refs|diff|frame|measure|align} ...
+cadgen step inspect {refs|diff|frame|measure|align|interfere|validate} ...
 ```
 
 Targets take native path semantics, like every other cadgen path argument: a relative target resolves against the command cwd, an absolute target works from anywhere, and `~` expands. A target naming a file that does not exist reports file-not-found for that path. Prefer cwd-relative targets from the workspace that owns the artifact anyway — reports name a target by its cwd-relative path when it is inside the cwd, and by its bare file name when it is not, so cwd-relative targets read better in a report. Common data-output flags: `--format json|text` (default is machine-readable), `--quiet`, `--verbose`.
@@ -136,8 +136,9 @@ A group's label means what the group's id means, everywhere: `refs` reports its 
 the same name.
 
 Numeric refs are unchanged and always work; labels are an additional spelling, not a
-replacement. `snapshot --mode list` shows each part's `name`, and `inspect refs` reports the
-exact ref to paste as `labelRef`.
+replacement. `snapshot --mode list` shows each part's `name`, and `inspect refs --detail`
+reports the exact ref to paste as `labelRef` — including the numbered form when several
+parts share a label.
 
 A label may contain letters, digits, `_` and `:`, and may not start with a digit. Parts whose
 label cannot be spelled that way, or which collides with the numeric grammar (`f12`, `o1`,
