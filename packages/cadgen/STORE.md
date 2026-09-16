@@ -839,7 +839,13 @@ CPU scheduling and reuse remain independent of memory admission:
 **Memory admission.** The daemon sums worker RSS including extraction
 descendants, pending spawn reservations, and retiring workers until they exit.
 Idle workers are reclaimed oldest first. Busy/suspended workers retain at
-least a worker reservation. Ordinary root requests preserve dependency
+least a worker reservation. That reservation is calibrated, not configured: it
+starts at a 512 MiB seed and, on every accounting pass, becomes the lowest RSS
+among workers that are idle and have served no job — what a worker costs once
+it has imported the kernel and before it holds any geometry — never below the
+seed. A worker that has run a body is excluded, so retained geometry cannot
+inflate the reservation that keeps it resident; the dependency headroom is
+derived from the same number. Ordinary root requests preserve dependency
 headroom; nested requests can spend it. A known oversized root reservation or
 retained worker may use that headroom only as the sole worker charge, and
 only within the total allowance. A request that cannot fit waits while builds
@@ -857,15 +863,20 @@ active shared work is not killed merely to recover budget.
 | Setting | Default |
 |---|---|
 | `CADGEN_MEMORY_MB` | 70% of discovered physical/cgroup RAM; `0` disables |
-| `CADGEN_WORKER_MEMORY_MB` | up to 2048 MiB, scaled down for smaller limits |
-| `CADGEN_DEPENDENCY_MEMORY_MB` | one worker reservation, bounded by the limit |
 | `CADGEN_COMPONENT_MEMORY_MB` | 384 MiB per extraction subprocess |
+
+The per-worker reservation and the dependency headroom have no settings; the
+pool calibrates both. Setting the removed `CADGEN_WORKER_MEMORY_MB` or
+`CADGEN_DEPENDENCY_MEMORY_MB` is an error at policy construction rather than a
+value silently ignored.
 
 This is a soft admission envelope, not a native allocator limit. A single
 OCCT operation may grow between RSS samples. Where RSS cannot be enumerated,
 reservations still apply. Transient execution receives extraction-pool sizing,
 but has no daemon-wide aggregate process budget. CPU slot counts remain upper
-bounds, and extraction concurrency also fits the parent worker allowance.
+bounds, and extraction concurrency also fits a per-worker extraction ceiling
+(a third of the budget, capped at 2048 MiB), which is not the admission
+reservation and is likewise unconfigurable.
 Geometry publication no longer starts extraction subprocesses for native
 components. Surface requests use the shared artifact-job admission and one
 private derivation per requested component; they have no model binding,
