@@ -111,6 +111,7 @@ if _UNSUPPORTED_PYTHON:
 from cadgen import assets  # noqa: E402
 
 from . import registry  # noqa: E402
+from . import reload as dev_reload  # noqa: E402
 from .handler import CadHTTPServer, make_handler_class  # noqa: E402
 from .http_app import create_cad_app, identity_token, newest_mtime_ns  # noqa: E402
 
@@ -646,14 +647,74 @@ def serve(argv: list[str], *, prog: str = DEFAULT_PROG) -> int:
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
 
+    # Development auto-reload. Only a cadgen running from a source CHECKOUT
+    # watches its own Python and comes back on this same port; an installed
+    # wheel never starts a watcher at all. The whole mechanism, and the one
+    # predicate that gates it, is `reload.py`.
+    reloader = None
+    restart = {"argv": None}
+    if app.auto_reload:
+        def request_restart() -> None:
+            restart["argv"] = dev_reload.restart_argv(argv, port=port)
+            _err(f"code changed; restarting on port {port}\n")
+            # From the watcher thread: shutdown() blocks until serve_forever
+            # returns, and the exec happens below, on the main thread, with the
+            # accept loop already stopped.
+            server.shutdown()
+
+        reloader = dev_reload.SourceReloader(
+            is_idle=app.restart_is_safe, restart=request_restart
+        )
+        reloader.start()
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        if reloader is not None:
+            reloader.stop()
+
+    if restart["argv"] is not None:
+        # Returns only when the re-exec itself failed, and then the port is
+        # already given up: say so and exit non-zero rather than pretending to
+        # still serve.
+        _restart_in_place(server, app, restart["argv"], no_registry=args["no_registry"], prog=prog)
         if not args["no_registry"]:
             registry.unregister()
+        return 1
+    if not args["no_registry"]:
+        registry.unregister()
     return 0
+
+
+def _restart_in_place(server, app, argv: list[str], *, no_registry: bool, prog: str) -> None:
+    """Free the port, then become the new code. Returns only if that failed.
+
+    ``serve_forever`` has already stopped accepting, but its handler threads are
+    daemons: the reloader only fires when nothing is counted in flight, and this
+    drain covers the sliver between that check and the close. Then the listening
+    socket is closed BEFORE the new image binds — a clean close-then-bind is
+    enough because the restart pins the port explicitly, so the new process
+    refuses loudly rather than silently landing somewhere else.
+    """
+    deadline = time.monotonic() + 2.0
+    while app.busy_requests() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    server.server_close()
+    if sys.platform.startswith("win") and not no_registry:
+        # Windows gets a NEW pid (see reload.execute_restart), so this entry
+        # would outlive its process; the restarted server registers its own. On
+        # POSIX the pid survives the exec and the entry is still correct, so it
+        # is left in place and simply written over.
+        registry.unregister()
+    try:
+        dev_reload.execute_restart(argv)
+    except OSError as error:
+        _err(
+            f"CAD Viewer could not restart itself ({error}) and has given up its port. "
+            f"Run `{prog}` again to pick up the new code.\n"
+        )
 
 
 if __name__ == "__main__":

@@ -45,8 +45,7 @@ function failureStatus(error, { hasGeometry, editingState, showingPreview }) {
     : "The viewer couldn’t prepare this file for display.");
   return status(label, [
     explanation,
-    usableModelVisible && record.code !== "viewer_restart_required"
-      ? "You’re still viewing the previous version." : "",
+    usableModelVisible ? "You’re still viewing the previous version." : "",
   ].filter(Boolean).join(" "), "error");
 }
 
@@ -78,6 +77,11 @@ function loadingExplanation(progress, { updating, renderMode }) {
  * that already has partial geometry. `updating` covers a replacement of a
  * complete same-file view. `showingPreview` is true only after the current
  * authored preview has actually reached the viewport.
+ *
+ * `reloading` is the development backend restarting itself onto its own port
+ * after its Python changed. It outranks everything: the page is about to
+ * reload, so no other verdict about this file is worth showing. It is
+ * unreachable in an installed wheel, which never watches its own code.
  */
 export function resolveFileStatus({
   hasFile = false,
@@ -89,10 +93,20 @@ export function resolveFileStatus({
   editingState = null,
   showingPreview = false,
   qualityStatus = null,
-  hasGeometry = false
+  hasGeometry = false,
+  reloading = false
 } = {}) {
   if (!hasFile) {
     return null;
+  }
+
+  if (reloading) {
+    return status(
+      "Reloading",
+      "The viewer’s code changed. The page reloads as soon as the updated viewer is ready.",
+      "info",
+      true
+    );
   }
 
   const failure = failureStatus(error, { hasGeometry, editingState, showingPreview });

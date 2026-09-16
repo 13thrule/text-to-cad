@@ -145,11 +145,32 @@ version plus a content digest of the installed cadgen Python runtime and the
 exact built client selected for this launch — so an instance serving a
 different directory, another `--dist`, the same directory from another
 install, or code that has since been edited, pulled, or rebuilt is never handed
-back by mistake. A running server that detects either half changing refuses new
-model-data requests and tells the browser to restart the Viewer; reloading that
-page alone cannot update its imported Python code. In a checkout, a server that
+back by mistake. The token is computed ONCE per launch, on both sides of that
+comparison, and a running server never re-reads it. In a checkout, a server that
 finds `src/` beside the `dist/` it serves also warns once on stderr when any
 source is newer than the build.
+
+### Auto-reload is a development convenience
+
+A cadgen running from a SOURCE CHECKOUT watches its own Python and, when it
+changes, restarts itself in place: it finishes the work in flight, re-executes
+with the same arguments on the SAME port — so the URL in the browser and Vite's
+proxy target both stay valid — and the page reloads itself once the new process
+answers. One line, `code changed; restarting on port N`, goes to stderr. A
+compile the Viewer is proxying for the browser holds the restart until it
+finishes, and a burst of edits (a rebase, a bundle) produces one restart, not
+forty. A `touch`, or a rebuild that produces the same bytes, produces none.
+
+**An installed wheel does none of this.** It never watches, never restarts, and
+reports `autoReload: false`; nothing edits a wheel's Python underneath a running
+server, and a tool a user installed must not restart itself. The one predicate
+that decides — is this cadgen a source checkout? — lives in
+`cadgen/viewer/reload.py` and is not an environment variable.
+
+Only the PYTHON is watched. Development means `npm run dev`, where Vite owns the
+client and HMR already handles it. A checkout's `cadgen viewer` serves the last
+`npm run build` on purpose: it is how you check the production client, not how
+you develop it, and it will keep serving that build until you run it again.
 
 ## Behaviours worth knowing before concluding something is broken
 

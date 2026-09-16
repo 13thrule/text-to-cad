@@ -29,6 +29,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import reload as dev_reload
 from .backend import ForbiddenAssetError, LocalAssetBackend
 from .cadgen_ops import create_cadgen_ops
 from .content_types import content_type_for_static_asset
@@ -59,6 +60,15 @@ _LOOPBACK_NAMES = frozenset({"127.0.0.1", "localhost", "::1"})
 TESS_CACHE_ROUTE_PREFIX = "/__tess_cache/"
 TESS_CACHE_BATCH_PATH = "/__tess_cache/batch"
 TESS_CACHE_PROBE_PATH = "/__tess_cache/probe"
+
+# Routes that do NOT hold the development auto-reload back (``reload.py``).
+# `/__cad/server` is what the browser's own reload watcher polls — counting it
+# would let that watcher defer the very restart it is waiting for — and the
+# other two PARK, waiting on the daemon's ledger or a pooled derivation rather
+# than doing work. Interrupting a parked poll costs the client one re-poll
+# after it reloads; interrupting a compile would cost a build, which is why
+# every other route, `POST /__cad/artifact` above all, is counted.
+_UNCOUNTED_ROUTES = frozenset({"/__cad/server", "/__cad/preview", "/__cad/surfaces", "/__cad/surfaces/cancel"})
 
 _PACKAGE_DIR = str(Path(__file__).resolve().parent)
 
@@ -163,40 +173,13 @@ def _update_identity_digest(digest, base_dir, *, suffix: str = "") -> None:
         digest.update(b"\0")
 
 
-def _update_identity_metadata_digest(digest, base_dir, *, suffix: str = "") -> None:
-    """Add the same tree's names and stat identity without reading its bytes."""
-    base, files = _identity_files(base_dir, suffix)
-    digest.update(os.fsencode(base))
-    digest.update(b"\0")
-    for file_path in files:
-        digest.update(os.fsencode(os.path.relpath(file_path, base)))
-        digest.update(b"\0")
-        try:
-            value = os.stat(file_path)
-            digest.update(
-                f"{value.st_size}:{value.st_mtime_ns}:{value.st_ctime_ns}".encode("ascii")
-            )
-        except OSError as error:
-            digest.update(f"!{type(error).__name__}:{error.errno}".encode("ascii"))
-        digest.update(b"\0")
-
-
-def _identity_metadata_signature(dist_dir: str) -> str:
-    package_dir = Path(__file__).resolve().parents[1]
-    digest = hashlib.sha256()
-    _update_identity_metadata_digest(digest, package_dir, suffix=".py")
-    collation = package_dir / "viewer" / "collation.json"
-    if collation.is_file():
-        _update_identity_metadata_digest(digest, collation.parent, suffix=".json")
-    if dist_dir:
-        _update_identity_metadata_digest(digest, dist_dir)
-    else:
-        digest.update(b"no-client\0")
-    return digest.hexdigest()
-
-
 def identity_token(dist_dir: str) -> str:
     """Identity of the Python runtime and exact built client this server uses.
+
+    Computed ONCE per launch, on both sides of the launcher's reuse comparison,
+    and never re-read by a running server. Whether a running server's code has
+    since changed is a separate question with a separate answer — and it is
+    asked only in a source checkout, by ``reload.py``.
 
     The Viewer imports cadgen runtime modules outside ``cadgen.viewer`` — in
     particular the daemon client, transport and store. Fingerprinting only the
@@ -255,39 +238,42 @@ class CadApp:
         # Computed ONCE, at start: the identity this instance announces and
         # registers is the identity of the code it is actually running.
         self.identity_token = identity_token(self.dist_dir)
-        self._current_identity_token = self.identity_token
-        self._identity_metadata_token = _identity_metadata_signature(self.dist_dir)
-        self._identity_checked_at = time.monotonic()
-        self._identity_lock = threading.Lock()
+        # The single development predicate (reload.py). In an installed wheel
+        # this is False and the whole mechanism is absent: nothing is watched,
+        # no request is counted, and the browser never polls for a restart.
+        self.auto_reload = dev_reload.running_from_source_checkout()
+        self._request_lock = threading.Lock()
+        self._busy_requests = 0
         self.started_at = time.time()
         self.lock = threading.Lock()
         self.ops = create_cadgen_ops(root_path)
 
+    # --- development auto-reload accounting -------------------------------
+
+    def busy_requests(self) -> int:
+        """Requests in flight that a restart would interrupt (see ``_UNCOUNTED_ROUTES``)."""
+        with self._request_lock:
+            return self._busy_requests
+
+    def restart_is_safe(self) -> bool:
+        """``SourceReloader``'s idle gate: nothing this restart would destroy."""
+        return self.busy_requests() == 0
+
     # --- server info ------------------------------------------------------
 
-    def _read_current_identity_token(self, *, force: bool = False) -> str:
-        """Current on-disk identity, with metadata guarding the content read."""
-        now = time.monotonic()
-        with self._identity_lock:
-            if force or now - self._identity_checked_at >= 2.0:
-                signature = _identity_metadata_signature(self.dist_dir)
-                if signature != self._identity_metadata_token:
-                    self._current_identity_token = identity_token(self.dist_dir)
-                    self._identity_metadata_token = signature
-                self._identity_checked_at = now
-            return self._current_identity_token
-
     def server_info(self) -> dict:
-        current_identity_token = self._read_current_identity_token(force=True)
         return {
             "app": "cad-viewer",
             "viewerVersion": self.viewer_version,
             # The start-time token, NOT identity_token() re-evaluated: a
             # resident answering a reuse probe must report the code it runs,
-            # not the code now on disk.
+            # not the code now on disk. It is also what the browser's
+            # development reload watcher compares against to notice that this
+            # server has become a NEW process on the same port.
             "identityToken": self.identity_token,
-            "currentIdentityToken": current_identity_token,
-            "restartRequired": current_identity_token != self.identity_token,
+            # Whether this server watches its own code and restarts itself.
+            # False in every installed wheel; the client polls only when true.
+            "autoReload": self.auto_reload,
             "serverMode": "serve",
             "serverFeatures": LOCAL_SERVER_FEATURES,
             "backend": "local-fs",
@@ -332,25 +318,6 @@ class CadApp:
                     f"missing {POST_GUARD_HEADER} header (cross-site POST blocked); "
                     f"send '{POST_GUARD_HEADER}: 1'"
                 )
-            },
-        )
-        return True
-
-    def _rejected_as_stale_runtime(self, response) -> bool:
-        current = self._read_current_identity_token()
-        if current == self.identity_token:
-            return False
-        response.send_json(
-            409,
-            {
-                "ok": False,
-                "code": "viewer_restart_required",
-                "error": (
-                    "CAD Viewer code changed after this server started. Restart the viewer "
-                    "and open the URL it prints before loading more model data."
-                ),
-                "identityToken": self.identity_token,
-                "currentIdentityToken": current,
             },
         )
         return True
@@ -408,6 +375,24 @@ class CadApp:
     # --- dispatch ---------------------------------------------------------
 
     def handle(self, request, response) -> None:
+        """Count the request, then dispatch it.
+
+        The counting exists only for the development auto-reload, so an
+        installed wheel takes no lock and keeps no counter: ``auto_reload`` is
+        False there and this is a straight call.
+        """
+        if not self.auto_reload or request.path in _UNCOUNTED_ROUTES:
+            self._dispatch(request, response)
+            return
+        with self._request_lock:
+            self._busy_requests += 1
+        try:
+            self._dispatch(request, response)
+        finally:
+            with self._request_lock:
+                self._busy_requests -= 1
+
+    def _dispatch(self, request, response) -> None:
         method = request.method
         pathname = request.path
         query = request.query
@@ -416,8 +401,6 @@ class CadApp:
             if self._rejected_by_host_check(request, response):
                 return
             if pathname.startswith(TESS_CACHE_ROUTE_PREFIX):
-                if self._rejected_as_stale_runtime(response):
-                    return
                 # Shared component-tessellation cache. Checked BEFORE the dist
                 # fallthrough: this is an API family, not a page asset.
                 self._handle_tess_get(request, response)
@@ -431,8 +414,6 @@ class CadApp:
             try:
                 if pathname == "/__cad/server":
                     response.send_json(200, self.server_info())
-                elif self._rejected_as_stale_runtime(response):
-                    return
                 elif pathname == "/__cad/catalog":
                     self._handle_catalog(request, response)
                 elif pathname == "/__cad/artifact":
@@ -465,8 +446,6 @@ class CadApp:
             if self._rejected_by_host_check(request, response):
                 return
             if self._rejected_as_cross_site_post(request, response):
-                return
-            if self._rejected_as_stale_runtime(response):
                 return
             try:
                 if pathname == "/__cad/artifact":
