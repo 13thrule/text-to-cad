@@ -26,6 +26,15 @@ reuse and dev-vs-prod are in [the app README](../README.md#launching).
   at module scope.
 - **The server never touches the network.** Every byte it serves or reads is
   local.
+- **In a source checkout ONLY, the server restarts itself.** When cadgen's
+  Python changes, a checkout's server finishes the work in flight and
+  re-executes on the same port; `/__cad/server` answers `autoReload: true` and
+  its `identityToken` becomes a new value, which is the client's cue to reload
+  the page. An installed wheel answers `autoReload: false`, never watches and
+  never restarts — it is a development convenience, not a product behaviour,
+  and it is not switched on by an environment variable. The full rationale is
+  in `cadgen/viewer/reload.py`; the client half is
+  `src/client/workbench/viewerAutoReload.js`.
 - **No route hands a path to a desktop program.** The server answers with bytes
   and JSON. It never spawns a file manager or any other GUI application, and
   there is no download route, no content-disposition header, and no export

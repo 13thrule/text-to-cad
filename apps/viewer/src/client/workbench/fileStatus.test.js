@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { resolveFileStatus } from "./fileStatus.js";
-import { buildViewerMeshAlert, buildViewerStaleRuntimeAlert, resolveFileStatusAlert } from "./viewerAlerts.js";
+import { buildViewerMeshAlert, resolveFileStatusAlert } from "./viewerAlerts.js";
 
 const ready = { hasFile: true, hasGeometry: true };
 
@@ -70,10 +70,6 @@ test("failure tooltips explain the visible version and keep diagnostics in the d
   assert.equal(update.label, "Update failed");
   assert.match(update.title, /previous version/);
   assert.doesNotMatch(update.title, /parser trace/);
-
-  const restart = resolveFileStatus({ ...ready, error: buildViewerStaleRuntimeAlert({ restartRequired: true }) });
-  assert.match(restart.title, /Restart the viewer/);
-  assert.doesNotMatch(restart.title, /previous version/);
 });
 
 test("a failed save explains that the updated model remains visible", () => {

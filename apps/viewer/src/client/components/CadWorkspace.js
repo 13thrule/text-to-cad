@@ -59,6 +59,7 @@ import { useViewportQualityStatus } from "./workbench/hooks/useViewportQualitySt
 import { previewGeometryChanged } from "@/workbench/editingPreview.js";
 import { buildArtifactWarningAlert } from "@/workbench/artifactWarnings.js";
 import { resolveFileStatus } from "@/workbench/fileStatus.js";
+import { useViewerAutoReload } from "@/workbench/useViewerAutoReload.js";
 import { viewerLoadingState } from "@/workbench/viewerLoading.js";
 import {
   resolveDesktopPanelWidths,
@@ -127,7 +128,6 @@ import {
   buildViewerAnnotationAlert,
   buildViewerMeshAlert,
   buildViewerEditAlert,
-  buildViewerStaleRuntimeAlert,
   fileStatusAlertKey,
   resolveFileStatusAlert
 } from "@/workbench/viewerAlerts";
@@ -1145,6 +1145,10 @@ export default function CadWorkspace({
   ));
   const [openTabs, setOpenTabs] = useState([]);
   const [viewerServerInfo, setViewerServerInfo] = useState(null);
+  // Development only: a cadgen running from a source checkout restarts itself
+  // on its own port when its Python changes, and this reloads the page once it
+  // is back. An installed wheel reports autoReload:false and never polls.
+  const viewerReloading = useViewerAutoReload(viewerServerInfo);
   const viewerServerBackend = String(viewerServerInfo?.backend || "").trim().toLowerCase();
   const [selectedKey, setSelectedKey] = useState("");
   const [fileSheetOpenSectionIds, setFileSheetOpenSectionIds] = useState(null);
@@ -2758,11 +2762,6 @@ export default function CadWorkspace({
     [selectedEntry, selectedArtifact.warnings]
   );
   const viewerAlert = useMemo(() => {
-    const staleRuntime = buildViewerStaleRuntimeAlert(
-      viewerServerInfo,
-      catalogError || selectedArtifact.error || error || editingPreview.state?.error
-    );
-    if (staleRuntime) return staleRuntime;
     const editFailure = buildViewerEditAlert(editingPreview.state, currentPreviewVisible, Boolean(selectedMeshData && !selectedMeshPartial));
     if (editFailure) return editFailure;
     if (catalogError && !selectedMeshData) return {
@@ -2819,8 +2818,7 @@ export default function CadWorkspace({
     urdfError,
     urdfStatus,
     viewerLoading,
-    viewerRuntimeAlert,
-    viewerServerInfo
+    viewerRuntimeAlert
   ]);
   const focusedAssemblyTopologyActive = Boolean(
     isAssemblyView &&
@@ -4920,7 +4918,8 @@ export default function CadWorkspace({
     editingState: editingAvailable ? editingPreview.state : null,
     showingPreview: currentPreviewVisible,
     qualityStatus: viewportQualityStatus,
-    hasGeometry: Boolean((selectedMeshData && !selectedMeshPartial) || selectedEntryIsDrawingDocument)
+    hasGeometry: Boolean((selectedMeshData && !selectedMeshPartial) || selectedEntryIsDrawingDocument),
+    reloading: viewerReloading
   });
   const fileStatusAlert = resolveFileStatusAlert(fileStatus, viewerAlert, annotationAlert);
   const currentFileStatusAlertKey = fileStatusAlertKey(fileKey(selectedEntry), fileStatusAlert);

@@ -296,41 +296,61 @@ class RollAndReuse(LauncherFixture):
             self.assertEqual(json.loads(r.read())["port"], payload["port"])
 
 
-class IdentityToken(LauncherFixture):
-    """Reuse identity covers the complete Python runtime and selected client.
+class StagedApp(LauncherFixture):
+    """A staged copy of the cadgen package, launched as its own installation.
 
-    The version alone is frozen between releases, so in a checkout a `git pull`
-    followed by a launch reused a resident server running last week's code.
-    With the salt, a resident whose code has since changed on disk fails the
-    match, a fresh instance starts, and the old one is left alone.
-
-    Everything runs against a STAGED copy of the cadgen package + its own dist,
+    Everything below runs against a STAGED copy of the cadgen package + its own dist,
     so touching mtimes never dirties the real checkout — whose developer may
-    have a live viewer keyed on those very files.
+    have a live viewer keyed on those very files. The staging is INSTALLED-WHEEL
+    shaped by default (the package's parent is ``site-packages``, with no
+    project file above it) so these launches are production launches: they do
+    not watch their own code. ``stage_app(checkout=True)`` stages the other
+    shape, for the tests that want the development auto-reload.
     """
 
-    def stage_app(self) -> str:
-        staged = os.path.join(self._tmp.name, "staged-identity")
+    def stage_app(self, *, checkout: bool = False) -> str:
+        staged = os.path.join(self._tmp.name, f"staged-{'checkout' if checkout else 'wheel'}")
+        if os.path.isdir(staged):
+            shutil.rmtree(staged)
+        parent = "src" if checkout else "site-packages"
         # The whole package, not just cadgen/viewer: the child imports `cadgen`
         # first, and a half-package on PYTHONPATH would shadow the real one.
         shutil.copytree(
             str(PACKAGE_DIR.parent),
-            os.path.join(staged, "src", "cadgen"),
+            os.path.join(staged, parent, "cadgen"),
             ignore=shutil.ignore_patterns("__pycache__", "_runtime"),
         )
+        if checkout:
+            # What `running_from_source_checkout` looks for, and the only thing
+            # separating these two stagings.
+            Path(staged, "pyproject.toml").write_text(
+                '[project]\nname = "cadgen"\nversion = "0.0.0"\n', encoding="utf-8"
+            )
         os.makedirs(os.path.join(staged, "dist"))
         Path(staged, "dist", "index.html").write_text("<html>viewer</html>", encoding="utf-8")
         return staged
 
-    def launch_staged(self, staged: str, root: str) -> subprocess.Popen:
+    @staticmethod
+    def staged_sources(staged: str) -> str:
+        return os.path.join(staged, "src" if os.path.isdir(os.path.join(staged, "src")) else "site-packages")
+
+    def launch_staged(
+        self, staged: str, root: str, extra: list[str] | None = None, *, stderr_path: str = ""
+    ) -> subprocess.Popen:
+        # A live process's stderr PIPE cannot be read without blocking, and
+        # these launches never exit, so a test that reads the narration sends
+        # it to a file instead.
+        log = open(stderr_path, "w", encoding="utf-8") if stderr_path else subprocess.PIPE
+        if stderr_path:
+            self.addCleanup(log.close)
         child = subprocess.Popen(
-            [*LAUNCH, "--json"],
+            [*LAUNCH, "--json", *(extra or [])],
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=log,
             text=True,
             cwd=root,
             env=self.env(
-                PYTHONPATH=os.path.join(staged, "src"),
+                PYTHONPATH=self.staged_sources(staged),
                 # The default dist location is the salt's other half.
                 CADGEN_VIEWER_DIST=os.path.join(staged, "dist"),
             ),
@@ -339,9 +359,49 @@ class IdentityToken(LauncherFixture):
         return child
 
     @staticmethod
+    def change_runtime_code(staged: str) -> None:
+        """Edit runtime code OUTSIDE cadgen.viewer, as a pull would.
+
+        The viewer imports daemon transport through its artifact path, so this
+        must re-key the launcher's reuse token and, in a checkout, trip the
+        auto-reload watcher.
+        """
+        runtime_file = Path(StagedApp.staged_sources(staged), "cadgen", "daemon", "transport.py")
+        runtime_file.write_text(
+            runtime_file.read_text(encoding="utf-8") + "\n# changed runtime\n", encoding="utf-8"
+        )
+
+    @staticmethod
     def server_info(port: int) -> dict:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/__cad/server", timeout=5) as response:
             return json.loads(response.read())
+
+    def wait_for_identity_change(self, port: int, before: str, timeout: float = 30.0) -> dict:
+        """The restarted server, answering the SAME port with a new identity."""
+        deadline = time.monotonic() + timeout
+        last = None
+        while time.monotonic() < deadline:
+            try:
+                info = self.server_info(port)
+            except (urllib.error.URLError, OSError, ValueError, TimeoutError) as error:
+                last = error  # the port is closed for the moment it takes to re-bind
+                time.sleep(0.1)
+                continue
+            if info["identityToken"] != before:
+                return info
+            last = info
+            time.sleep(0.1)
+        self.fail(f"port {port} never came back with a new identity; last={last!r}")
+
+
+class IdentityToken(StagedApp):
+    """Reuse identity covers the complete Python runtime and selected client.
+
+    The version alone is frozen between releases, so in a checkout a `git pull`
+    followed by a launch reused a resident server running last week's code.
+    With the salt, a resident whose code has since changed on disk fails the
+    match, a fresh instance starts, and the old one is left alone.
+    """
 
     def test_a_stale_resident_fails_the_match_and_is_left_alone(self) -> None:
         staged = self.stage_app()
@@ -357,24 +417,22 @@ class IdentityToken(LauncherFixture):
 
         token_at_start = self.server_info(a["port"])["identityToken"]
         self.assertRegex(token_at_start, r"^[^:]*:[0-9a-f]{64}$", "the token is version:digest")
+        self.assertIs(
+            self.server_info(a["port"])["autoReload"],
+            False,
+            "an installed wheel does not watch its own code",
+        )
 
-        # A pull changes runtime code outside cadgen.viewer. The viewer imports
-        # daemon transport through its artifact path, so this must re-key too.
-        runtime_file = Path(staged, "src", "cadgen", "daemon", "transport.py")
-        runtime_file.write_text(runtime_file.read_text(encoding="utf-8") + "\n# changed runtime\n", encoding="utf-8")
+        self.change_runtime_code(staged)
 
-        stale_info = self.server_info(a["port"])
-        self.assertEqual(stale_info["identityToken"], token_at_start)
-        self.assertNotEqual(stale_info["currentIdentityToken"], token_at_start)
-        self.assertIs(stale_info["restartRequired"], True)
-        with self.assertRaises(urllib.error.HTTPError) as refused:
-            urllib.request.urlopen(f"http://127.0.0.1:{a['port']}/__cad/catalog", timeout=5)
-        self.assertEqual(refused.exception.code, 409)
-        self.assertEqual(json.loads(refused.exception.read())["code"], "viewer_restart_required")
-
-        # The resident answers with the token computed AT ITS OWN START —
-        # never a re-read, which would let a stale server claim freshness.
+        # An installed wheel keeps serving what it started with: nothing
+        # restarts, nothing is refused, and the resident still answers with the
+        # token computed AT ITS OWN START.
+        time.sleep(2.0)
         self.assertEqual(self.server_info(a["port"])["identityToken"], token_at_start)
+        self.assertEqual(self.server_info(a["port"])["pid"], first.pid)
+        with urllib.request.urlopen(f"http://127.0.0.1:{a['port']}/__cad/catalog", timeout=5) as ok:
+            self.assertEqual(ok.status, 200)
 
         # The next launch computes a token the resident's entry no longer
         # matches: a NEW instance starts, and the old one is left alone.
@@ -411,7 +469,7 @@ class IdentityToken(LauncherFixture):
             stderr=subprocess.PIPE,
             text=True,
             cwd=root,
-            env=self.env(PYTHONPATH=os.path.join(staged, "src")),
+            env=self.env(PYTHONPATH=self.staged_sources(staged)),
         )
         self._children.append(second)
         b = self.json_line(self.wait_for_url_line(second))
@@ -421,6 +479,61 @@ class IdentityToken(LauncherFixture):
             self.server_info(b["port"])["identityToken"],
             self.server_info(a["port"])["identityToken"],
         )
+
+
+class DevelopmentAutoReload(StagedApp):
+    """A checkout restarts itself onto its own port; a wheel never does.
+
+    These are subprocess tests because the subject IS the process: the exec,
+    the port it comes back on, and the registry entry another launch reads.
+    """
+
+    def test_a_checkout_restarts_itself_on_the_same_port_and_stays_reusable(self) -> None:
+        staged = self.stage_app(checkout=True)
+        root = self.make_root()
+        log_path = os.path.join(self._tmp.name, "restart.log")
+        first = self.launch_staged(staged, root, stderr_path=log_path)
+        a = self.json_line(self.wait_for_url_line(first))
+        self.assertEqual(a["action"], "started")
+        before = self.server_info(a["port"])
+        self.assertIs(before["autoReload"], True)
+
+        self.change_runtime_code(staged)
+        after = self.wait_for_identity_change(a["port"], before["identityToken"])
+
+        self.assertEqual(after["port"], a["port"], "the URL the browser has open stays valid")
+        self.assertEqual(after["rootPath"], before["rootPath"], "and it serves the same directory")
+        self.assertGreater(after["startedAt"], before["startedAt"], "it is a new server")
+        self.assertIn(
+            f"code changed; restarting on port {a['port']}",
+            Path(log_path).read_text(encoding="utf-8"),
+        )
+
+        # The registry entry names the restarted process, so the launcher's
+        # reuse contract still holds: `cadgen viewer` here hands back THIS
+        # instance rather than starting a second one on another port.
+        relaunch = self.launch_staged(staged, root)
+        stdout, _ = relaunch.communicate(timeout=30)
+        reused = self.json_line(stdout)
+        self.assertEqual(reused["action"], "reused")
+        self.assertEqual(reused["port"], a["port"])
+
+    def test_the_dev_server_backend_comes_back_on_its_ephemeral_port(self) -> None:
+        # Exactly what apps/viewer/vite.config.mjs spawns. Vite reads the port
+        # off the announce line ONCE and proxies there for the rest of the
+        # session, so a restart that moved would strand the dev server.
+        staged = self.stage_app(checkout=True)
+        root = self.make_root()
+        child = self.launch_staged(
+            staged, root, ["--ephemeral", "--no-registry", "--api-only"]
+        )
+        announced = self.json_line(self.wait_for_url_line(child))
+        before = self.server_info(announced["port"])
+
+        self.change_runtime_code(staged)
+        after = self.wait_for_identity_change(announced["port"], before["identityToken"])
+        self.assertEqual(after["port"], announced["port"])
+        self.assertEqual(after["serverFeatures"], before["serverFeatures"])
 
 
 class DistFreshnessWarning(unittest.TestCase):
