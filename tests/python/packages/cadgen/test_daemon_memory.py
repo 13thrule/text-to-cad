@@ -31,17 +31,36 @@ class Accounting(unittest.TestCase):
         self.assertEqual(memory.process_tree_bytes([10, 99], rows=rows), {10: 100})
 
     def test_policy_reserves_dependency_capacity_and_honors_explicit_zero(self):
-        env = {key: "" for key in ("CADGEN_MEMORY_MB", "CADGEN_WORKER_MEMORY_MB",
-                                  "CADGEN_DEPENDENCY_MEMORY_MB", "CADGEN_COMPONENT_MEMORY_MB")}
+        env = {key: "" for key in ("CADGEN_MEMORY_MB", "CADGEN_COMPONENT_MEMORY_MB")}
         with mock.patch.dict(os.environ, env), mock.patch.object(memory, "physical_memory_bytes", return_value=12 * 1024 * MIB):
             policy = memory.MemoryPolicy.from_environment()
             self.assertEqual(policy.limit_bytes, 12 * 1024 * MIB * 7 // 10)
-            self.assertEqual(policy.dependency_bytes, policy.worker_bytes)
+            self.assertEqual(policy.seed_bytes, memory.WORKER_SEED_BYTES)
+            # Headroom for one nested request, derived from the same reservation.
+            self.assertEqual(policy.dependency_reserve(policy.seed_bytes), policy.seed_bytes)
+            self.assertEqual(memory.MemoryPolicy(600 * MIB).dependency_reserve(512 * MIB), 88 * MIB)
             with mock.patch.dict(os.environ, {"CADGEN_MEMORY_MB": "0"}):
                 self.assertEqual(memory.MemoryPolicy.from_environment().limit_bytes, 0)
 
+    def test_removed_worker_reservation_settings_teach_instead_of_being_ignored(self):
+        for name in ("CADGEN_WORKER_MEMORY_MB", "CADGEN_DEPENDENCY_MEMORY_MB"):
+            with self.subTest(name), mock.patch.dict(os.environ, {name: "512"}):
+                with self.assertRaisesRegex(ValueError, f"{name} was removed") as raised:
+                    memory.MemoryPolicy.from_environment()
+                self.assertIn("CADGEN_MEMORY_MB", str(raised.exception))
+                self.assertIn("512 MiB seed", str(raised.exception))
+
+    def test_baseline_is_the_leanest_never_used_worker_and_never_below_the_seed(self):
+        seed = memory.WORKER_SEED_BYTES
+        self.assertEqual(memory.worker_baseline([], seed=seed), seed)
+        # A partial import reads low; the seed absorbs it.
+        self.assertEqual(memory.worker_baseline([300 * MIB, 505 * MIB], seed=seed), seed)
+        self.assertEqual(memory.worker_baseline([900 * MIB, 780 * MIB], seed=seed), 780 * MIB)
+        # No sample: the last baseline stands rather than collapsing to the seed.
+        self.assertEqual(memory.worker_baseline([], seed=seed, previous=780 * MIB), 780 * MIB)
+
     def test_component_processes_fit_the_parent_reservation(self):
-        policy = memory.MemoryPolicy(8192 * MIB, 2048 * MIB, 2048 * MIB, 384 * MIB)
+        policy = memory.MemoryPolicy(8192 * MIB, component_bytes=384 * MIB)
         with mock.patch.object(memory.MemoryPolicy, "from_environment", return_value=policy):
             with mock.patch.object(memory, "process_tree_bytes", return_value={os.getpid(): 300 * MIB}):
                 self.assertEqual(memory.component_worker_limit(8), 4)
@@ -58,7 +77,7 @@ class Admission(unittest.TestCase):
             patcher.start()
             self.addCleanup(patcher.stop)
         self.resident = {}
-        self.policy = memory.MemoryPolicy(12 * MIB, 4 * MIB, 4 * MIB)
+        self.policy = memory.MemoryPolicy(12 * MIB, 4 * MIB)
         self.pool = pool.Pool(policy=self.policy, memory_reader=lambda pids: {
             pid: self.resident.get(pid, 2 * MIB) for pid in pids
         })
@@ -142,7 +161,7 @@ class Admission(unittest.TestCase):
 
     def test_configured_oversized_reservation_runs_alone_but_cannot_starve_a_child(self):
         isolated = pool.Pool(
-            policy=memory.MemoryPolicy(6 * MIB, 4 * MIB, 4 * MIB),
+            policy=memory.MemoryPolicy(6 * MIB, 4 * MIB),
             memory_reader=lambda pids: {pid: 2 * MIB for pid in pids},
         )
         self.addCleanup(isolated.shutdown)
@@ -153,7 +172,7 @@ class Admission(unittest.TestCase):
 
     def test_reservation_larger_than_the_total_limit_fails_before_spawn(self):
         impossible = pool.Pool(
-            policy=memory.MemoryPolicy(3 * MIB, 4 * MIB, 0),
+            policy=memory.MemoryPolicy(3 * MIB, 4 * MIB),
             memory_reader=lambda _pids: {},
         )
         self.addCleanup(impossible.shutdown)
@@ -179,7 +198,7 @@ class Admission(unittest.TestCase):
                     raise AssertionError("test never released the pending spawn")
                 super().__init__()
 
-        self.pool = pool.Pool(policy=memory.MemoryPolicy(8 * MIB, 4 * MIB, 4 * MIB),
+        self.pool = pool.Pool(policy=memory.MemoryPolicy(8 * MIB, 4 * MIB),
                               memory_reader=lambda pids: {pid: 2 * MIB for pid in pids})
         self.addCleanup(self.pool.shutdown)
         with mock.patch.object(pool, "Worker", StartingWorker), concurrent.futures.ThreadPoolExecutor() as executor:
@@ -201,7 +220,7 @@ class Admission(unittest.TestCase):
 
     def test_admission_waits_for_builds_in_flight_instead_of_refusing(self):
         running = [1]
-        waiting = pool.Pool(policy=memory.MemoryPolicy(12 * MIB, 4 * MIB, 4 * MIB),
+        waiting = pool.Pool(policy=memory.MemoryPolicy(12 * MIB, 4 * MIB),
                             memory_reader=lambda pids: {pid: 2 * MIB for pid in pids},
                             in_flight=lambda: running[0])
         self.addCleanup(waiting.shutdown)
@@ -241,12 +260,102 @@ class Admission(unittest.TestCase):
             fresh = future.result(timeout=5)
         self.assertTrue(fresh.busy and old.killed)
 
+    def test_an_unmeasured_pool_charges_a_pending_spawn_the_seed(self):
+        seeded = pool.Pool(policy=memory.MemoryPolicy(64 * MIB, 5 * MIB),
+                           memory_reader=lambda _pids: {})
+        self.addCleanup(seeded.shutdown)
+        with seeded._cv:
+            seeded._active_pending = 1
+            snapshot = seeded._memory_locked()
+        self.assertEqual(snapshot["workerReservationBytes"], 5 * MIB)
+        self.assertEqual(snapshot["chargedBytes"], 5 * MIB, "a pending spawn is charged the seed")
+        self.assertEqual(snapshot["dependencyReserveBytes"], 5 * MIB)
+
+    def test_measured_idle_workers_raise_the_reservation_and_the_busy_floor(self):
+        resident = {}
+        calibrating = pool.Pool(policy=memory.MemoryPolicy(64 * MIB, 5 * MIB),
+                                memory_reader=lambda pids: {pid: resident[pid] for pid in pids if pid in resident})
+        self.addCleanup(calibrating.shutdown)
+        spare, busy = _StubWorker(), _StubWorker()
+        busy.busy = True
+        resident[spare.pid] = 9 * MIB  # imported the kernel, has run nothing
+        with calibrating._cv:
+            calibrating._workers.extend((spare, busy))
+            calibrating._active_pending = 1
+            snapshot = calibrating._memory_locked()
+        self.assertEqual(snapshot["workerReservationBytes"], 9 * MIB)
+        self.assertEqual(snapshot["dependencyReserveBytes"], 9 * MIB)
+        # The measured spare, the unmeasured busy worker at the new floor, and
+        # the pending spawn -- all three at the calibrated reservation.
+        self.assertEqual(snapshot["chargedBytes"], 27 * MIB)
+
+    def test_a_worker_fat_with_geometry_cannot_raise_its_own_reservation(self):
+        resident = {}
+        calibrating = pool.Pool(policy=memory.MemoryPolicy(64 * MIB, 5 * MIB),
+                                memory_reader=lambda pids: {pid: resident.get(pid, 0) for pid in pids})
+        self.addCleanup(calibrating.shutdown)
+        retained = _StubWorker()
+        retained.jobs_served = 1  # idle, but holding a finished build's geometry
+        resident[retained.pid] = 30 * MIB
+        with calibrating._cv:
+            calibrating._workers.append(retained)
+            snapshot = calibrating._memory_locked()
+        self.assertEqual(snapshot["workerReservationBytes"], 5 * MIB)
+        self.assertEqual(snapshot["chargedBytes"], 30 * MIB, "its own RSS is still charged in full")
+
+    def test_a_baseline_never_falls_below_the_seed(self):
+        lean = pool.Pool(policy=memory.MemoryPolicy(64 * MIB, 5 * MIB),
+                         memory_reader=lambda pids: {pid: 2 * MIB for pid in pids})
+        self.addCleanup(lean.shutdown)
+        with lean._cv:
+            lean._workers.append(_StubWorker())
+            snapshot = lean._memory_locked()
+        self.assertEqual(snapshot["workerReservationBytes"], 5 * MIB)
+
+    def test_a_ten_child_fan_out_completes_on_the_calibrated_reservation(self):
+        # The f7f293fa4 scenario: a parent submits every child at once while only
+        # a core's worth can run. Ten children cannot be resident together at the
+        # calibrated 9 MiB each, so the surplus must wait on the builds in flight
+        # instead of being refused.
+        running = [1]  # the parent holds a run slot throughout
+        fanning = pool.Pool(policy=memory.MemoryPolicy(48 * MIB, 5 * MIB),
+                            memory_reader=lambda pids: {pid: 9 * MIB for pid in pids},
+                            in_flight=lambda: running[0])
+        self.addCleanup(fanning.shutdown)
+        with fanning._cv:
+            fanning._workers.append(_StubWorker())  # a warm spare: the calibration sample
+            self.assertEqual(fanning._memory_locked()["workerReservationBytes"], 9 * MIB)
+        parent = fanning.acquire("parent")
+        admitted, proceed = threading.Semaphore(0), threading.Event()
+
+        def build(index):
+            worker = fanning.acquire(f"child-{index}", dependency=True)
+            admitted.release()
+            proceed.wait(30)  # hold the worker while its siblings are still asking
+            fanning.release(worker)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+            futures = [executor.submit(build, index) for index in range(10)]
+            # The parent plus four children is the whole 48 MiB budget.
+            for _ in range(4):
+                self.assertTrue(admitted.acquire(timeout=10))
+            self.assertFalse(admitted.acquire(timeout=0.5), "a fifth child overbooked the budget")
+            self.assertLessEqual(fanning.snapshot()["memory"]["chargedBytes"], 48 * MIB)
+            self.assertEqual(len([f for f in futures if f.done()]), 0)
+            proceed.set()
+            for future in futures:
+                future.result(timeout=30)
+        self.assertTrue(parent.busy and parent.alive() and not parent.killed)
+        self.assertEqual(fanning.snapshot()["memoryRefusals"], 0)
+        self.assertEqual(fanning.snapshot()["memory"]["workerReservationBytes"], 9 * MIB)
+
     def test_spare_replenishment_cannot_consume_dependency_reserve(self):
         with mock.patch.dict(os.environ, {"CADGEN_DAEMON_SPARES": "8"}):
             self.pool.ensure_spares()
             with self.pool._cv:
-                self.assertLessEqual(self.pool._spares_pending * self.policy.worker_bytes,
-                                     self.policy.limit_bytes - self.policy.dependency_bytes)
+                reserve = self.policy.dependency_reserve(self.pool._reservation)
+                self.assertLessEqual(self.pool._spares_pending * self.pool._reservation,
+                                     self.policy.limit_bytes - reserve)
         # Joining is unnecessary: shutdown also covers workers arriving later.
 
 

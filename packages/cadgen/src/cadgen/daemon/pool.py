@@ -6,7 +6,11 @@ worker is busy gets an *extra* — a spare bound to the same model for the lengt
 of one job — and runs now. A request for a model with no worker binds a spare. A
 request with no spare left spawns if its memory reservation fits. Admission
 counts resident worker trees (including extraction children), keeps headroom
-for dependencies, and reclaims idle workers first. Exhaustion waits for the
+for dependencies, and reclaims idle workers first. That reservation is not
+configured: it starts at the seed and is recalibrated on every accounting pass
+from the RSS of workers that are idle and have run nothing, which is what a
+worker costs before geometry (``memory.worker_baseline``). The dependency
+headroom follows from the same number. Exhaustion waits for the
 builds in flight to finish (a parent fanning out its children submits them all
 at once, and only a core's worth can run) and fails explicitly only when nothing
 is running that could release memory. These are soft RSS and
@@ -42,7 +46,7 @@ import tempfile
 import threading
 import time
 
-from cadgen.daemon.memory import MemoryPolicy, MIB, process_tree_bytes
+from cadgen.daemon.memory import MemoryPolicy, MIB, process_tree_bytes, worker_baseline
 
 DEFAULT_SPARES = 2
 DEFAULT_RECYCLE_AFTER = 1000
@@ -292,6 +296,9 @@ class Pool:
         self._active_pending = 0
         self._spares_pending = 0
         self._policy = policy if policy is not None else MemoryPolicy.from_environment()
+        # What one worker is estimated to cost. The seed until a never-used idle
+        # worker has been measured; recalibrated by every _memory_locked.
+        self._reservation = self._policy.seed_bytes
         self._memory_reader = memory_reader or process_tree_bytes
         # How many jobs hold a run slot right now. Each one hands its charge back when
         # it finishes, so admission waits on them instead of refusing.
@@ -322,9 +329,10 @@ class Pool:
             borrowed = sum(worker.busy and not worker.model for worker in self._workers)
             want = spare_count() - len(self._spares_locked()) - borrowed - self._spares_pending
             if self._policy.limit_bytes:
-                usage = self._memory_locked()["chargedBytes"]
-                available = self._policy.limit_bytes - self._policy.dependency_bytes - usage
-                want = min(want, max(0, available // self._policy.worker_bytes))
+                snapshot = self._memory_locked()
+                available = (self._policy.limit_bytes - snapshot["dependencyReserveBytes"]
+                             - snapshot["chargedBytes"])
+                want = min(want, max(0, available // max(1, snapshot["workerReservationBytes"])))
             if want <= 0:
                 return
             self._spares_pending += want
@@ -375,7 +383,7 @@ class Pool:
                 worker.busy = True  # reserve before releasing the bookkeeping lock
             try:
                 self._admit_locked(
-                    additional=0 if worker else self._policy.worker_bytes,
+                    spawning=worker is None,
                     dependency=dependency,
                     isolated_worker=worker,
                 )
@@ -387,10 +395,7 @@ class Pool:
                     self._stats["memoryReclaims"] += 1
                     self._drop_locked(worker)
                     worker = None
-                    self._admit_locked(
-                        additional=self._policy.worker_bytes,
-                        dependency=dependency,
-                    )
+                    self._admit_locked(spawning=True, dependency=dependency)
                 else:
                     raise
             if worker is None:
@@ -432,16 +437,24 @@ class Pool:
         workers = [*self._workers, *self._retiring]
         measured = self._memory_reader([w.pid for w in workers]) if self._policy.limit_bytes else {}
         resident = sum(measured.values())
+        # Recalibrate from the workers that have run nothing; the reader is already in hand.
+        self._reservation = worker_baseline(
+            (measured[w.pid] for w in self._workers
+             if not w.busy and not w.jobs_served and w.pid in measured),
+            seed=self._policy.seed_bytes,
+            previous=self._reservation,
+        )
+        reservation = self._reservation
         charged = sum(
-            max(measured.get(w.pid, self._policy.worker_bytes), self._policy.worker_bytes if w.busy else 0)
+            max(measured.get(w.pid, reservation), reservation if w.busy else 0)
             for w in workers
         )
         pending = self._active_pending + self._spares_pending
-        retiring_bytes = sum(measured.get(w.pid, self._policy.worker_bytes) for w in self._retiring)
+        retiring_bytes = sum(measured.get(w.pid, reservation) for w in self._retiring)
         return {"limitBytes": self._policy.limit_bytes, "residentBytes": resident,
-                "chargedBytes": charged + pending * self._policy.worker_bytes,
-                "workerReservationBytes": self._policy.worker_bytes,
-                "dependencyReserveBytes": self._policy.dependency_bytes,
+                "chargedBytes": charged + pending * reservation,
+                "workerReservationBytes": reservation,
+                "dependencyReserveBytes": self._policy.dependency_reserve(reservation),
                 "measuredWorkers": len(measured), "unmeasuredWorkers": len(workers) - len(measured),
                 "pendingWorkers": pending, "retiringWorkers": len(self._retiring),
                 "retiringBytes": retiring_bytes}
@@ -454,30 +467,34 @@ class Pool:
         # Already-retiring workers are charged for admission until they exit,
         # but must not cause us to schedule the same reclamation twice.
         planned = snapshot["chargedBytes"] - snapshot["retiringBytes"]
-        ceiling = self._policy.limit_bytes - self._policy.dependency_bytes
+        ceiling = self._policy.limit_bytes - snapshot["dependencyReserveBytes"]
         idle = sorted((w for w in self._workers if not w.busy), key=lambda w: w.use_seq)
         measured = self._memory_reader([w.pid for w in idle])
         for worker in idle:
             if planned <= ceiling:
                 break
-            planned -= measured.get(worker.pid, self._policy.worker_bytes)
+            planned -= measured.get(worker.pid, snapshot["workerReservationBytes"])
             self._stats["memoryReclaims"] += 1
             self._drop_locked(worker)
 
     def _admit_locked(
         self,
         *,
-        additional: int,
+        spawning: bool,
         dependency: bool,
         isolated_worker: Worker | None = None,
     ) -> None:
         if not self._policy.limit_bytes:
             return
-        ceiling = self._policy.limit_bytes - (0 if dependency else self._policy.dependency_bytes)
         deadline = time.monotonic() + 5.0  # wait only for idle-process teardown
         stalled_since = None
         while True:
-            usage = self._memory_locked()["chargedBytes"]
+            # Each pass recalibrates, so a reservation and the headroom derived
+            # from it track what the workers now resident actually cost.
+            snapshot = self._memory_locked()
+            usage = snapshot["chargedBytes"]
+            additional = snapshot["workerReservationBytes"] if spawning else 0
+            ceiling = self._policy.limit_bytes - (0 if dependency else snapshot["dependencyReserveBytes"])
             if usage + additional <= ceiling:
                 return
             idle = sorted((w for w in self._workers if not w.busy), key=lambda w: w.use_seq)
@@ -488,8 +505,8 @@ class Pool:
             if self._retiring and time.monotonic() < deadline:
                 self._cv.wait(timeout=0.05)
                 continue
-            # A configured reservation, or the measured retained cache of the
-            # selected worker, can be larger than the normal build allowance.
+            # The measured retained cache of the selected worker can be larger
+            # than the normal build allowance.
             # It may use the dependency reserve only when it is literally the
             # sole charge. If it later asks for a child, that admission fails
             # explicitly while the parent and its geometry remain alive.

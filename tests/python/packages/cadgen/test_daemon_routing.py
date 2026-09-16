@@ -134,10 +134,8 @@ class DaemonRouting(unittest.TestCase):
             "CADGEN_DAEMON_STATE_DIR": str(cls.work / "state"),
             "CADGEN_JOBS": "2",
             # Routing concurrency is the subject here; memory admission has its own
-            # suite. Give these tiny solids stable, bounded test reservations.
+            # suite. Give these tiny solids a stable, bounded budget.
             "CADGEN_MEMORY_MB": "8192",
-            "CADGEN_WORKER_MEMORY_MB": "512",
-            "CADGEN_DEPENDENCY_MEMORY_MB": "512",
         })
         cls._env_patch = mock.patch.dict(os.environ, env, clear=True)
         cls._env_patch.start()

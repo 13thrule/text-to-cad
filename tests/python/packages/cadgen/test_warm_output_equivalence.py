@@ -211,8 +211,6 @@ class _Daemon:
             # known, bounded budget. Host-sized defaults can legitimately
             # reject that concurrency; memory admission has its own tests.
             "CADGEN_MEMORY_MB": "8192",
-            "CADGEN_WORKER_MEMORY_MB": "512",
-            "CADGEN_DEPENDENCY_MEMORY_MB": "512",
         }
 
     def __enter__(self):

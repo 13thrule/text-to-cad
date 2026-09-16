@@ -109,7 +109,7 @@ sys.addaudithook(audit)
     def daemon(self, child_prelude):
         address = transport.private_address(transport.identity_digest(str(self.root) + "native-server"))
         listener = transport.Server(address, self.private.key, backlog=8)
-        workers = pool.Pool(policy=MemoryPolicy(limit_bytes=1024 * MIB, worker_bytes=1024 * MIB, dependency_bytes=0))
+        workers = pool.Pool(policy=MemoryPolicy(limit_bytes=1024 * MIB, seed_bytes=1024 * MIB))
         ledger, handlers = JobLedger(), []
         processes = []
         original_popen = subprocess.Popen
