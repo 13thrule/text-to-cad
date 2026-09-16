@@ -420,12 +420,14 @@ class VideoRender(unittest.TestCase):
         class Page:
             def __init__(self):
                 self.frames_asked = []
+                self.sequences_prepared = 0
 
             async def set_viewport_size(self, size):
                 return None
 
             async def evaluate(self, script, arg=None):
                 if "__snapshotRenderSequence(" in script:
+                    self.sequences_prepared += 1
                     return {"ok": True, "frames": 3, "fps": 30, "seconds": 0.1, "start": 0.0}
                 if "__snapshotRenderSequenceFrame" in script:
                     self.frames_asked.append(arg)
@@ -466,11 +468,11 @@ class VideoRender(unittest.TestCase):
                     job, narrate=snapshot_narrator(_logger_for(stream))
                 )
             )
-        return result, encoded, renderer.page.frames_asked
+        return result, encoded, renderer.page
 
     def test_every_frame_is_written_once_and_the_encoder_gets_them_all(self):
-        result, encoded, asked = self._render(_NotATty())
-        self.assertEqual(asked, [0, 1, 2])
+        result, encoded, page = self._render(_NotATty())
+        self.assertEqual(page.frames_asked, [0, 1, 2])
         self.assertEqual(
             encoded["frames"], ["frame_000000.png", "frame_000001.png", "frame_000002.png"]
         )
@@ -478,11 +480,20 @@ class VideoRender(unittest.TestCase):
         self.assertEqual(encoded["fps"], 30)
 
     def test_the_result_reports_the_camera_the_page_resolved(self):
-        result, _, _ = self._render(_NotATty())
+        result, _, _page = self._render(_NotATty())
         output = result["outputs"][0]
         self.assertEqual(output["camera"], "iso")
         self.assertEqual(output["video"], {"frames": 3, "fps": 30, "seconds": 0.1, "start": 0.0})
         self.assertEqual(output["mimeType"], "video/mp4")
+
+    def test_the_sequence_is_prepared_once_so_one_frame_holds_for_the_clip(self):
+        # The camera and the stage are locked to the union the preparation
+        # measures (headlessRenderEntry sequenceFrameBounds). Preparing per
+        # frame would re-measure it against that frame's pose, and the clip
+        # would visibly breathe. One preparation, then frames.
+        _, _, page = self._render(_NotATty())
+        self.assertEqual(page.sequences_prepared, 1)
+        self.assertEqual(page.frames_asked, [0, 1, 2])
 
     def test_the_frame_total_is_disclosed_before_the_first_frame(self):
         # The one number that says how long this will run. Without it a typo'd

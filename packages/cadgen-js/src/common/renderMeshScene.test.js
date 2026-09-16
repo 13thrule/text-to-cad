@@ -485,6 +485,62 @@ test("photographic scene requests reject explicitly supplied CAD controls", () =
   }
 });
 
+// A stub renderer: captureModel does everything except produce pixels, and the
+// camera it leaves behind IS the frame the pixels would have been drawn with.
+function stubViewport(model, scene) {
+  return {
+    scene, model, context: null, sceneBuildStarted: 0,
+    ready: Promise.resolve(),
+    orthographicCamera: new THREE.OrthographicCamera(),
+    perspectiveCamera: new THREE.PerspectiveCamera(),
+    renderer: {
+      setSize() {}, getPixelRatio() { return 1; }, render() {},
+      domElement: { width: 64, height: 64, toDataURL() { return "data:image/png;base64,AAAA"; } }
+    }
+  };
+}
+
+function orthographicFrame(camera) {
+  return [camera.left, camera.right, camera.top, camera.bottom, camera.zoom, ...camera.position.toArray()]
+    .map((value) => Number(value.toFixed(9)));
+}
+
+// A video's camera is locked to ONE box for the whole clip. Without that lock
+// every frame re-fits to its own pose and a static part crawls around the image
+// while the clip plays -- the breathing `frameBounds` exists to stop. This is
+// the assertion that the lock is actually applied, frame by frame: the unit
+// above it only checks that the union is computed correctly.
+test("a locked frame fits the same camera on every frame of a clip", async () => {
+  const stepAnimation = resolveAnimationFrame(SLIDE_CLIPS, { clip: "slide", time: 0 });
+  const job = { mode: "view", kind: "step", outputs: [{ path: "frame.png", width: 64, height: 64, camera: "iso" }], stepAnimation };
+  const meshData = twoPartMeshData();
+  const context = renderJobContext(meshData, job);
+  const model = buildModel(THREE, { kind: "step", meshData }, modelOptionsForRenderJob(context, job));
+  const scene = new THREE.Scene();
+  scene.add(model.root);
+  const viewport = { ...stubViewport(model, scene), context };
+  try {
+    // The union of the whole clip, as prepareHeadlessRenderSequence measures it.
+    const frameBounds = { min: [0, 0, 0], max: [4.75, 1, 0] };
+    const frames = [];
+    const posed = [];
+    for (const elapsedSec of [0, 2, 3.75]) {
+      const modelState = { callbacks: { animation: resolveAnimationFrame(SLIDE_CLIPS, { clip: "slide", time: elapsedSec }) } };
+      await captureModel(viewport, { job, frameBounds, modelState });
+      frames.push(orthographicFrame(viewport.orthographicCamera));
+      // The pose really did move underneath it, so an unlocked fit would differ.
+      posed.push(model.bounds.max[0]);
+      await captureModel(viewport, { job, modelState });
+      posed.push(orthographicFrame(viewport.orthographicCamera));
+    }
+    assert.deepEqual(frames[1], frames[0], "frame 2 of the clip is framed like frame 1");
+    assert.deepEqual(frames[2], frames[0], "and so is the last one");
+    assert.notDeepEqual(posed[1], posed[3], "without the lock the same three poses do NOT share a camera");
+  } finally {
+    model.dispose();
+  }
+});
+
 test("capture diagnostics separate readiness, pose, tight framing, draw submission and PNG readback", async (t) => {
   let clock = 0;
   t.mock.method(performance, "now", () => clock);

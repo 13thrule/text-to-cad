@@ -209,6 +209,7 @@ import {
   KEYBOARD_ORBIT_NUDGE_RAD,
   normalizeViewportFrameInsets,
   readViewPlaneOrientation,
+  reframeReason,
   runtimeFramingBounds,
   stepKeyboardOrbit,
   WHEEL_PINCH_DELTA_BOOST,
@@ -1889,6 +1890,7 @@ const CadViewer = forwardRef(function CadViewer({
   });
   const viewportFrameInsetsRef = useRef(normalizedViewportFrameInsets);
   const framedModelKeyRef = useRef("");
+  const framedZeroPoseBoundsRef = useRef(null);
   // The model key this view was framed against once every component had
   // arrived. A progressive load frames on the first publish so something is on
   // screen immediately, and that first batch is a fraction of the model.
@@ -3506,6 +3508,7 @@ const CadViewer = forwardRef(function CadViewer({
   const handleRuntimeContextRestored = useCallback(() => {
     framedModelKeyRef.current = "";
     framedCompleteModelKeyRef.current = "";
+    framedZeroPoseBoundsRef.current = null;
     lastEmittedPerspectiveRef.current = null;
     defaultPerspectiveResettingRef.current = false;
     viewerAlertChangeRef.current?.(null);
@@ -4420,21 +4423,26 @@ const CadViewer = forwardRef(function CadViewer({
     controls.zoomSpeed = DEFAULT_ZOOM_SPEED;
     runtime.edgePickThreshold = Math.max(radius / 320, 0.65);
 
-    // A progressive load frames on the first publish, against the handful of
-    // components that have arrived, and the model then grows well outside that
-    // frame. So it frames again once every component is composed — unless the
-    // user has taken the view, in which case their camera stands.
+    // Whether the camera fits at all, and why: a different model, a progressive
+    // load reaching its full extent, or a rebuild whose ZERO POSE changed. The
+    // decision (and what is deliberately NOT a reason: any pose, any detail
+    // swap) lives in reframeReason.
     const missingComponentIds = meshData?.missingComponentIds;
     const modelIsComplete = !(Array.isArray(missingComponentIds) && missingComponentIds.length > 0);
-    const reframeForCompleteModel = modelIsComplete
-      && framedModelKeyRef.current === (modelKey || "")
-      && framedCompleteModelKeyRef.current !== (modelKey || "")
-      && !runtime.userMovedCamera;
+    const reframe = reframeReason({
+      modelKey,
+      framedModelKey: framedModelKeyRef.current,
+      framedCompleteModelKey: framedCompleteModelKeyRef.current,
+      modelComplete: modelIsComplete,
+      zeroPoseBounds,
+      framedZeroPoseBounds: framedZeroPoseBoundsRef.current,
+      userMovedCamera: runtime.userMovedCamera
+    });
     if (modelIsComplete) {
       framedCompleteModelKeyRef.current = modelKey || "";
     }
-    if (framedModelKeyRef.current !== (modelKey || "") || reframeForCompleteModel) {
-      if (framedModelKeyRef.current !== (modelKey || "")) {
+    if (reframe) {
+      if (reframe === "model") {
         runtime.userMovedCamera = false;
       }
       const nextPerspective = resolvePerspectiveSnapshot(
@@ -4454,7 +4462,7 @@ const CadViewer = forwardRef(function CadViewer({
         // is the one this same effect emitted when it framed the first batch,
         // so honouring it here would just re-apply the too-close view the
         // re-frame exists to replace.
-        const restored = !reframeForCompleteModel
+        const restored = reframe === "model"
           && nextPerspectiveMatchesScene
           && applyPerspectiveSnapshot(runtime, nextPerspective, { scheduleIdle: false });
         if (!restored) {
@@ -4484,6 +4492,9 @@ const CadViewer = forwardRef(function CadViewer({
       resetRuntimeZoomBaseline(runtime);
       syncCameraZoomPercent(runtime);
       framedModelKeyRef.current = modelKey || "";
+      // The box this fit was measured against, so the next publish can tell a
+      // rebuilt model from another publish of the same one.
+      framedZeroPoseBoundsRef.current = zeroPoseBounds;
       lastEmittedPerspectiveRef.current = readScopedPerspectiveSnapshot(runtime, {
         modelKey,
         sceneScaleMode: normalizedSceneScaleMode

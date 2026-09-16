@@ -824,12 +824,41 @@ async function kinematicsGate() {
       await resetView(hinge.page);
       await cameraHeld(hinge.page, hingeZeroPoseCamera, "step reset view while posed");
     }
+
+    // A pose must not re-frame; a REVISION must. Saving a rebuilt model over the
+    // open one gives it a new zero pose, and a camera still fitted to the old one
+    // leaves the new geometry clipped outside the frame. The grown arm reaches
+    // x = 158 where the first revision stopped at 58, so the old frame cannot
+    // contain it.
+    for (const name of ["hinge.step", "hinge.step.json"]) {
+      fs.copyFileSync(path.join(root, ".revision", name), path.join(root, name));
+    }
+    const grown = await hinge.page.waitForFunction(() => {
+      const placement = window.__cadModelPlacement;
+      return Number(placement?.boundsMax?.[0]) > 100;
+    }, null, { timeout: 60_000 }).then(() => true).catch(() => false);
+    if (!grown) {
+      failures.push("step revision: the viewer never picked up the rebuilt model");
+    } else {
+      // Settle: the fit lands in the same effect that adopts the new geometry.
+      await hinge.page.waitForTimeout(1_500);
+      const revised = await cameraState(hinge.page);
+      if (cameraDrift(revised, hingeZeroPoseCamera) <= CAMERA_EPSILON) {
+        failures.push(`step revision: the camera kept the previous revision's frame — ${describeCamera(revised)}`);
+      } else if (!(Number(revised?.halfHeight) > Number(hingeZeroPoseCamera?.halfHeight))) {
+        failures.push(`step revision: the model grew but the frame did not — ${describeCamera(revised)}, `
+          + `was ${describeCamera(hingeZeroPoseCamera)}`);
+      } else if (Math.abs(Number(revised?.zoomPercent) - 100) > 0.5) {
+        failures.push(`step revision: the new fit does not read as 100% (${revised?.zoomPercent})`);
+      }
+    }
     if (hinge.errors.length) failures.push(`step kinematics: ${hinge.errors.join(" | ")}`);
   } finally {
     await hinge.context.close();
   }
   console.log("  kinematics: URDF rest FK, joint value entry, joint slider, an SRDF group state and a STEP mate "
-    + "all place the child link, and none of them move the camera off the zero-pose fit");
+    + "all place the child link and none of them move the camera off the zero-pose fit, "
+    + "while a saved revision re-fits to its own zero pose");
 }
 
 const gates = [

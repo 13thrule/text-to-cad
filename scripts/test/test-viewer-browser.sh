@@ -155,9 +155,30 @@ def hinge():
 if __name__ == "__main__":
     hinge()
 HINGE
+# A SECOND revision of the same model, with an arm long enough that the model
+# no longer fits the frame the first one was fitted to. It is built into a
+# dot-directory, which the catalog scan skips, so the served root still holds
+# one hinge; the gate copies it over the first to stand in for a rebuild that a
+# source edit saved while the model was open.
+# The model name decides the output name, so the two revisions build side by
+# side instead of one overwriting the other. Literal substitutions only: GNU and
+# BSD sed do not spell a word boundary the same way.
+sed -e 's/bd.Pos(30, 0, 6) \* bd.Box(56, 4, 4)/bd.Pos(80, 0, 6) * bd.Box(156, 4, 4)/' \
+    -e 's/def hinge()/def hinge_grown()/' \
+    -e 's/^    hinge()$/    hinge_grown()/' \
+  "$project/hinge.py" > "$project/hinge_grown.py"
+if ! grep -q 'bd.Box(156, 4, 4)' "$project/hinge_grown.py" \
+   || ! grep -q 'def hinge_grown()' "$project/hinge_grown.py"; then
+  echo "FAIL: the grown hinge revision did not diverge from the first" >&2
+  exit 1
+fi
+
 # The served project holds artifacts only: a model script beside them would
 # enter the catalog as a buildable entry and change what the other gates see.
-if ! (cd "$project" && "$PYTHON" hinge.py && rm hinge.py) >"$log" 2>&1; then
+if ! (cd "$project" && "$PYTHON" hinge.py && "$PYTHON" hinge_grown.py \
+        && mkdir -p .revision && mv hinge_grown.step .revision/hinge.step \
+        && mv hinge_grown.step.json .revision/hinge.step.json \
+        && rm hinge.py hinge_grown.py) >"$log" 2>&1; then
   echo "FAIL: the kinematics STEP fixture did not build" >&2
   sed 's/^/    /' "$log" >&2
   exit 1
