@@ -446,7 +446,7 @@ test("parseSdf ignores CAD Viewer link pose playback tracks as static metadata",
 // Geometry the renderer cannot draw used to become a silent placeholder: the composer
 // dropped it and the model rendered as empty space at exit 0. URDF has always thrown on
 // unsupported visual geometry; SDF now matches it.
-test("parseSdf refuses a mesh with no uri and a shape with no dimensions", () => {
+test("parseSdf refuses a visual mesh with no uri and a visual shape with no dimensions", () => {
   const withMeshNoUri = () => parseWithRoot(sdfRoot([
     el("model", { name: "robot" }, [
       el("link", { name: "base_link" }, [el("visual", {}, [el("geometry", {}, [el("mesh")])])])
@@ -456,14 +456,14 @@ test("parseSdf refuses a mesh with no uri and a shape with no dimensions", () =>
 
   const withEmptyBox = () => parseWithRoot(sdfRoot([
     el("model", { name: "robot" }, [
-      el("link", { name: "base_link" }, [el("collision", {}, [el("geometry", {}, [el("box")])])])
+      el("link", { name: "base_link" }, [el("visual", {}, [el("geometry", {}, [el("box")])])])
     ])
   ]));
   // A <box> IS drawable; saying "box is unsupported" would send the reader to the wrong place.
-  assert.throws(withEmptyBox, /collision 1 is a <box> with missing or non-positive dimensions/);
+  assert.throws(withEmptyBox, /visual 1 is a <box> with missing or non-positive dimensions/);
 });
 
-test("parseSdf refuses a shape the renderer has never drawn, naming the supported set", () => {
+test("parseSdf refuses a VISUAL shape the renderer has never drawn, naming the supported set", () => {
   for (const shape of ["capsule", "plane", "ellipsoid", "heightmap", "polyline"]) {
     const parse = () => parseWithRoot(sdfRoot([
       el("model", { name: "robot" }, [
@@ -473,6 +473,36 @@ test("parseSdf refuses a shape the renderer has never drawn, naming the supporte
     assert.throws(parse, new RegExp(`SDF link ground visual 1 uses <${shape}> geometry`), shape);
     assert.throws(parse, /Supported: box, cylinder, mesh, sphere/, shape);
   }
+});
+
+// Collision geometry is never drawn, so an undrawable one costs the picture nothing and must
+// not block a load. A <plane> ground collision is the commonest shape in a real Gazebo world.
+test("parseSdf loads a world whose COLLISION geometry it cannot draw, and counts it", () => {
+  const sdfData = parseWithRoot(sdfRoot([
+    el("model", { name: "world" }, [
+      el("link", { name: "ground" }, [
+        el("visual", { name: "v" }, [
+          el("geometry", {}, [el("box", {}, [textEl("size", "10 10 0.1")])])
+        ]),
+        el("collision", { name: "c" }, [
+          el("geometry", {}, [el("plane", {}, [textEl("size", "100 100")])])
+        ])
+      ]),
+      el("link", { name: "pillar" }, [
+        el("collision", { name: "c" }, [el("geometry", {}, [el("capsule")])]),
+        el("collision", { name: "c2" }, [el("geometry", {}, [el("mesh")])])
+      ])
+    ])
+  ]));
+
+  const byName = new Map(sdfData.links.map((entry) => [entry.name, entry]));
+  assert.deepEqual(byName.get("ground").visuals[0].primitive, { type: "box", size: [10, 10, 0.1] });
+  assert.equal(byName.get("ground").collisions[0].unsupportedGeometry, "plane");
+  assert.equal(byName.get("pillar").collisions[0].unsupportedGeometry, "capsule");
+  assert.equal(byName.get("pillar").collisions[1].unsupportedGeometry, "mesh");
+  // The count is the Viewer's non-blocking channel: its SDF sheet shows "Unsupported geom."
+  assert.equal(sdfData.sdf.unsupportedCollisionCount, 3);
+  assert.equal(sdfData.sdf.unsupportedVisualCount, 0);
 });
 
 test("parseSdf refuses a visual with no geometry at all", () => {
@@ -545,7 +575,7 @@ test("parseSdf reads box, cylinder and sphere link geometry", () => {
   assert.equal(sdfData.sdf.unsupportedVisualCount, 0);
 });
 
-test("parseSdf refuses a drawable shape whose dimensions are degenerate", () => {
+test("parseSdf refuses a drawable VISUAL shape whose dimensions are degenerate", () => {
   assert.throws(
     () => parseWithRoot(sdfRoot([
       el("model", { name: "rig" }, [
@@ -556,16 +586,16 @@ test("parseSdf refuses a drawable shape whose dimensions are degenerate", () => 
     ])),
     /is a <box> with missing or non-positive dimensions/
   );
-  assert.throws(
-    () => parseWithRoot(sdfRoot([
-      el("model", { name: "rig" }, [
-        el("link", { name: "base_link" }, [
-          el("collision", {}, [el("geometry", {}, [el("cylinder", {}, [textEl("radius", "0.03")])])])
-        ])
+  // The same shape in a collision is counted, not refused.
+  const sdfData = parseWithRoot(sdfRoot([
+    el("model", { name: "rig" }, [
+      el("link", { name: "base_link" }, [
+        el("visual", {}, [el("geometry", {}, [el("box", {}, [textEl("size", "1 1 1")])])]),
+        el("collision", {}, [el("geometry", {}, [el("cylinder", {}, [textEl("radius", "0.03")])])])
       ])
-    ])),
-    /is a <cylinder> with missing or non-positive dimensions/
-  );
+    ])
+  ]));
+  assert.equal(sdfData.links[0].collisions[0].unsupportedGeometry, "cylinder");
 });
 
 // The Viewer serves a description from `/__cad/asset?file=<path>`, so the mesh is relative

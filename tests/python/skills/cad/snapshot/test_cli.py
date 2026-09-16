@@ -101,6 +101,7 @@ from cadgen.snapshot_cli import (
     SnapshotError,
     load_job_from_options,
     resolve_render_job_packet,
+    unrenderable_sdf_geometry,
 )
 from cadgen.snapshot_core import (
     clear_render_output_targets,
@@ -1493,10 +1494,10 @@ class SnapshotCliTests(unittest.TestCase):
             with self.assertRaisesRegex(SnapshotError, "This URDF declares: shoulder_pan"):
                 resolve_render_job_packet({**base, "jointValues": {"Shoulder_Pan": 30}}, cwd=root)
 
-    # A capsule, plane, ellipsoid, heightmap or polyline has no mesh in the renderer, so the
-    # composer drops it and those links render as EMPTY SPACE at exit 0. The browser parser
-    # refuses them (parseSdf.test.js); the door answers FIRST so the CLI fails before a
-    # browser ever starts, and says the same thing.
+    # A capsule, plane, ellipsoid, heightmap or polyline has no mesh in the renderer, so a
+    # VISUAL built from one renders as EMPTY SPACE at exit 0. The browser parser refuses them
+    # (parseSdf.test.js); the door answers FIRST so the CLI fails before a browser ever
+    # starts, and says the same thing. Collisions are never drawn and are never refused.
     def _sdf(self, body: str) -> bytes:
         return (
             "<?xml version='1.0'?>\n<sdf version='1.9'><model name='rig'>"
@@ -1533,15 +1534,15 @@ class SnapshotCliTests(unittest.TestCase):
                         cwd=root,
                     )
 
-    def test_render_job_sdf_refusal_names_the_supported_set_and_covers_collisions(self) -> None:
+    def test_render_job_sdf_refusal_names_the_supported_set_and_every_bad_visual(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = self._mesh_job_env(
                 temporary_directory,
                 "rig.sdf",
                 self._sdf(
                     self.DRAWABLE_LINK
-                    + "<link name='ground'><collision name='c'>"
-                    "<geometry><plane><size>10 10</size></plane></geometry></collision></link>"
+                    + "<link name='dome'><visual name='v'>"
+                    "<geometry><ellipsoid><radii>1 2 3</radii></ellipsoid></geometry></visual></link>"
                     + "<link name='ghost'><visual name='v'></visual></link>"
                 ),
             )
@@ -1551,9 +1552,37 @@ class SnapshotCliTests(unittest.TestCase):
                     cwd=root,
                 )
             message = str(caught.exception)
-            self.assertIn("link ground collision uses <plane>", message)
+            self.assertIn("link dome visual uses <ellipsoid>", message)
             self.assertIn("link ghost visual has no <geometry>", message)
             self.assertIn("Supported: box, cylinder, mesh, sphere", message)
+
+    def test_render_job_renders_a_world_whose_collision_geometry_it_cannot_draw(self) -> None:
+        # Collision geometry is never drawn, so an undrawable one costs the picture nothing
+        # and must not block the render — a <plane> ground collision is the commonest shape in
+        # a real Gazebo world. The Viewer counts these in its SDF sheet; this door has no
+        # non-blocking channel of its own (a snapshot's `warnings` come back from the
+        # renderer, not from job resolution), so it passes over them IN SILENCE by design.
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = self._mesh_job_env(
+                temporary_directory,
+                "world.sdf",
+                self._sdf(
+                    self.DRAWABLE_LINK
+                    + "<link name='ground'>"
+                    "<visual name='v'><geometry><box><size>10 10 0.1</size></box></geometry></visual>"
+                    "<collision name='c'><geometry><plane><size>100 100</size></plane></geometry></collision>"
+                    "</link>"
+                    + "<link name='pillar'><collision name='c'>"
+                    "<geometry><capsule><radius>1</radius><length>2</length></capsule></geometry>"
+                    "</collision></link>"
+                ),
+            )
+            packet = resolve_render_job_packet(
+                {"input": "models/world.sdf", "outputs": [{"path": "tmp/iso.png"}]},
+                cwd=root,
+            )
+            self.assertEqual(packet["jobs"][0]["resolved"]["kind"], "sdf")
+            self.assertEqual(unrenderable_sdf_geometry(root / "models" / "world.sdf"), [])
 
     def test_render_job_accepts_sdf_built_only_from_drawable_shapes(self) -> None:
         # The refusal may only fire on what it understands: a description made of shapes the

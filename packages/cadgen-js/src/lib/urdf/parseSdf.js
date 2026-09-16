@@ -298,10 +298,15 @@ function parseSdfPrimitiveGeometry(geometryElement) {
 }
 
 // The shapes this renderer can draw. Anything else — capsule, plane, ellipsoid, heightmap,
-// polyline — has no mesh here, so a link built from one produced NOTHING and said nothing:
+// polyline — has no mesh here, so a VISUAL built from one produced NOTHING and said nothing:
 // the composer drops a visual with neither a primitive nor a mesh, and the model rendered
 // as empty space at exit 0. URDF has always thrown on unsupported visual geometry; SDF now
 // matches it, naming the link, the kind and what it could have been instead.
+//
+// COLLISION geometry is not drawn at all, so an undrawable one costs the picture nothing and
+// must never block a load: a `<plane>` ground collision is the single most common shape in a
+// real Gazebo world. Those keep the `unsupportedGeometry` placeholder, which is what the
+// Viewer's SDF sheet already counts under "Unsupported geom." — non-blocking, and visible.
 export const SDF_RENDERABLE_GEOMETRY = Object.freeze(["box", "cylinder", "mesh", "sphere"]);
 
 function sdfGeometryContext(linkName, labelKind, index) {
@@ -353,14 +358,40 @@ function parseMeshInstance(containerElement, { linkName, kind, index, sourceUrl 
       };
     }
     const geometryKind = geometryElement ? (elementName(childElements(geometryElement)[0]) || "unknown") : "missing";
-    throw new Error(unrenderableSdfGeometryMessage(linkName, labelKind, index, geometryKind));
+    if (labelKind === "visual") {
+      throw new Error(unrenderableSdfGeometryMessage(linkName, labelKind, index, geometryKind));
+    }
+    return {
+      id: `${linkName}:${kind[0]}${index}`,
+      label: `${geometryKind} ${labelKind}`,
+      instanceId,
+      occurrenceId: occurrenceIdFromSdfName(instanceId) || occurrenceIdFromSdfName(linkName),
+      meshUrl: "",
+      color,
+      localTransform: pose.transform,
+      pose,
+      unsupportedGeometry: geometryKind
+    };
   }
   const uri = childText(meshElement, "uri");
   if (!uri) {
-    throw new Error(
-      `${sdfGeometryContext(linkName, labelKind, index)} is a <mesh> with no <uri>, so there is `
-      + "nothing to load. Give the mesh a <uri>."
-    );
+    if (labelKind === "visual") {
+      throw new Error(
+        `${sdfGeometryContext(linkName, labelKind, index)} is a <mesh> with no <uri>, so there is `
+        + "nothing to load. Give the mesh a <uri>."
+      );
+    }
+    return {
+      id: `${linkName}:${kind[0]}${index}`,
+      label: `mesh ${labelKind}`,
+      instanceId,
+      occurrenceId: occurrenceIdFromSdfName(instanceId) || occurrenceIdFromSdfName(linkName),
+      meshUrl: "",
+      color: "",
+      localTransform: pose.transform,
+      pose,
+      unsupportedGeometry: "mesh"
+    };
   }
   const [scaleX, scaleY, scaleZ] = parseNumberList(
     childText(meshElement, "scale"),
