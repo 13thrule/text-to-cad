@@ -568,18 +568,30 @@ def build_closure(
     called_files = {split_model_ref(child)[0] for child in children}
     child_files = called_files | set(statics.child_models)
     # Files exclusively owned by children: their own static closures, minus
-    # anything this script also reaches through a source edge.
-    child_owned: set[Path] = set(child_files)
+    # anything this script also reaches through a source edge. Ownership is
+    # TRANSITIVE -- a grandchild's script and sources belong to the child that
+    # calls it, and the whole subtree runs in this process when the body imports
+    # its child. Stopping one level down put every grandchild model file in the
+    # parent's closure, so an edit two levels away rebuilt the root even when
+    # the pinned trees were unchanged.
+    child_owned: set[Path] = set()
     ours: set[Path] = {script, *statics.source_files}
-    for child in list(child_files):
-        sources = static_closure(child, _syntax=syntax).source_files
-        child_owned.update(sources)
+    pending = list(child_files)
+    seen: set[Path] = set()
+    while pending:
+        child = pending.pop()
+        if child in seen:
+            continue
+        seen.add(child)
+        descendant = static_closure(child, _syntax=syntax)
+        child_owned.update((child, *descendant.source_files))
+        pending.extend(descendant.child_models)
         if child in called_files and child not in statics.child_models:
             # A dynamic module can supply a decorated call AND a helper/value
             # used directly by this body. The call alone does not prove that
             # its file is exclusively child-owned. Keep that source and its
             # source closure unless static imports prove a result/value edge.
-            ours.update((child, *sources))
+            ours.update((child, *descendant.source_files))
     child_owned -= ours
 
     files: set[Path] = set(ours)
