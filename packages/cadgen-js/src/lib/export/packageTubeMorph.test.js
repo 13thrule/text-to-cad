@@ -22,6 +22,11 @@ import { applyRecordTubeDeformation, normalizeTubeDeformation } from "../../comm
 import { buildPackageMeshPrimitives } from "./packageMeshExport.js";
 import { sampleClipAnimation } from "./packageAnimation.js";
 import { MAX_MORPH_RUNTIME_BYTES, buildTubeMorphTargets } from "./packageTubeMorph.js";
+import { loadTubeDeformation } from "../../common/tubeDeformationChunk.js";
+
+// `deformTube` needs the lazy tube runtime, which production loads through
+// compileAnimationSource. These clips are built by hand, so load it here.
+await loadTubeDeformation();
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 const LENGTH = 40;

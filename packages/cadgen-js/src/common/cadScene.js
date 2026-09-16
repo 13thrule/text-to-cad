@@ -1,5 +1,7 @@
 import { resolveCadEdgeSettings } from "./cadInk.js";
-import { applyRecordTubeDeformation } from "./tubeDeformation.js";
+// Lazy: see tubeDeformationChunk.js. Both calls below are resets or replays of
+// a deformation that already exists, so a null runtime is exactly a no-op.
+import { tubeDeformation } from "./tubeDeformationChunk.js";
 import { syncRecordBaseEmissiveColor } from "./surfaceMaterialState.js";
 import { applyColorGrading } from "./colorGrading.js";
 import {
@@ -1036,7 +1038,7 @@ export function applyPartVisualState(THREE, records, {
       record.edges.visible = showEdges && !effectHidden;
       // Hidden edges skip deformation; catch up to the current pose when shown.
       if (!wasVisible && record.edges.visible && record.effectDeformation) {
-        applyRecordTubeDeformation(THREE, record, record.effectDeformation);
+        tubeDeformation()?.applyRecordTubeDeformation(THREE, record, record.effectDeformation);
       }
     }
     if (record.edgeInstance) {
@@ -1132,7 +1134,7 @@ export function applyPartVisualState(THREE, records, {
 
 function resetParameterEffects(THREE, records) {
   for (const record of Array.isArray(records) ? records : []) {
-    applyRecordTubeDeformation(THREE, record, null);
+    tubeDeformation()?.applyRecordTubeDeformation(THREE, record, null);
     record.effectMatrix = null;
     record.effectStyle = null;
     record.effectVisible = null;

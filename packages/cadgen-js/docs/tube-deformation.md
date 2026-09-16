@@ -93,3 +93,30 @@ finish — install through one shared hook (`tubeMaterialShader.js`) that runs
 them in a fixed order and hands the braid its rest coordinates through one
 varying, so enabling the braid on a later frame than the deformation renders
 the same as enabling both at once.
+
+## The runtime is a lazy chunk
+
+`deformTube` is the only producer of a tube deformation anywhere in this
+package — a step module's effects carry only what an animation frame already
+put there — so a document with no `animation.source` can never reach this code
+and must never download it. `common/tubeDeformationChunk.js` is the boundary:
+`tubeDeformation.js`, `tubeGpuDeformation.js`, `tubeBraidMaterial.js` and
+`tubeMaterialShader.js` load behind one dynamic import, ~29 kB out of the CAD
+Viewer's initial bundle.
+
+The load happens at the single async door every clip must pass through:
+`compileAnimationSource` (and so `loadSourceAnimation`, and `mesh-export.mjs`)
+awaits it before any clip object exists. Declaring an animation is the gate,
+not calling `deformTube`, because a clip may reach for a tube at any `t` and a
+frame must never fall back to the rest pose. Evaluation itself stays
+synchronous and always sees a loaded runtime, so an animated tube renders
+exactly as it did when this was a static import.
+
+Callers outside the animation path — the scene's effect resets, the display
+edge-line pass — go through `tubeDeformation()`, which answers `null` until the
+chunk lands. That is exact rather than merely tolerant: every one of those
+calls is a reset or a replay, and a record can only hold tube state after a
+deformation was applied. `deformTube` cannot no-op, so it throws through
+`requireTubeDeformation` instead. Code that builds clips by hand rather than
+through `compileAnimationSource` — tests, mostly — awaits
+`loadTubeDeformation()` first.

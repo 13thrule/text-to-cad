@@ -4,6 +4,11 @@ import * as THREE from 'three';
 import { compileTubePath, compileDeformation, sampleTubePath, projectTubePath, normalizeTubeDeformation, applyRecordTubeDeformation } from './tubeDeformation.js';
 import { evaluateAnimationClip, applyAnimationFrameToEffects } from './animationRuntime.js';
 import { applyStepModuleEffectsToRecords, resetStepModuleRecordEffects } from './stepModuleEffects.js';
+import { loadTubeDeformation } from './tubeDeformationChunk.js';
+
+// `deformTube` needs the lazy tube runtime, which production loads through
+// compileAnimationSource. These clips are built by hand, so load it here.
+await loadTubeDeformation();
 const line=(a,b)=>({kind:'line',start:a,end:b});
 const straight={normal:[0,0,1],segments:[line([0,0,0],[10,0,0])]};
 const elbow={normal:[0,0,1],segments:[{kind:'arc',center:[0,5,0],axis:[0,0,1],start:[0,0,0],sweepDeg:90}]};

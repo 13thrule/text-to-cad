@@ -1,4 +1,6 @@
-import { applyRecordTubeDeformation } from "./tubeDeformation.js";
+// Lazy: see tubeDeformationChunk.js. An effect only ever carries a deformation
+// an animation frame put there, and that animation loaded the runtime.
+import { tubeDeformation } from "./tubeDeformationChunk.js";
 import { stepModuleTargetPartIds } from "./stepModule.js";
 
 function toNumber(value, fallback = 0) {
@@ -147,7 +149,7 @@ function matrixHasTransform(matrix, epsilon = 1e-6) {
 
 export function resetStepModuleRecordEffects(records, THREE = null) {
   for (const record of Array.isArray(records) ? records : []) {
-    if (THREE) applyRecordTubeDeformation(THREE, record, null);
+    if (THREE) tubeDeformation()?.applyRecordTubeDeformation(THREE, record, null);
     record.effectMatrix = null;
     record.effectStyle = null;
     record.effectVisible = null;
@@ -309,7 +311,7 @@ export function applyStepModuleEffectsToRecords(THREE, records, effectsByPartId)
   resetStepModuleRecordEffects(records);
   for (const record of Array.isArray(records) ? records : []) {
     const effect = effectsByPartId.get(String(record?.partId || "").trim());
-    applyRecordTubeDeformation(THREE, record, effect?.deformation || null);
+    tubeDeformation()?.applyRecordTubeDeformation(THREE, record, effect?.deformation || null);
     if (!effect) {
       continue;
     }

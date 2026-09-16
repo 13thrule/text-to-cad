@@ -1,4 +1,4 @@
-import { normalizeTubeDeformation } from "./tubeDeformation.js";
+import { requireTubeDeformation } from "./tubeDeformationChunk.js";
 
 // The choreography half: evaluate the clips a document's render module
 // (embedded in the schema-v9 sidecar and loaded by renderModule.js) declares and drive raw
@@ -123,7 +123,10 @@ export function createAnimationFrame(THREE, meshData) {
     };
     return {
       deformTube(spec) {
-        const deformation = normalizeTubeDeformation(spec);
+        // The one producer of a tube deformation in the whole runtime, and so
+        // the one thing that needs the lazy tube chunk. compileAnimationSource
+        // has already awaited it for every clip that can reach this line.
+        const deformation = requireTubeDeformation("deformTube").normalizeTubeDeformation(spec);
         for (const partId of partIds) deformations.set(partId, deformation);
         return this;
       },
