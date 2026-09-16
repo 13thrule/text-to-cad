@@ -6,6 +6,7 @@ import {
   syncGpuTubeMaterials
 } from "./tubeGpuDeformation.js";
 import { TUBE_MATERIAL_ATTRIBUTE } from "./tubeMaterialShader.js";
+import { atan2, cos, sin } from "../lib/surf/trig.js";
 
 // Analytic line/arc/Bézier paths and rest-mesh deformation. Coordinates are
 // assembly/world millimetres before occurrence animation transforms. No CAD
@@ -32,7 +33,10 @@ const cross = (a, b) => [
   a[2] * b[0] - a[0] * b[2],
   a[0] * b[1] - a[1] * b[0]
 ];
-const length = (a) => Math.hypot(...a);
+// Math.sqrt of the sum of squares, never Math.hypot: this feeds baked morph
+// targets in an exported GLB, and only exactly defined arithmetic keeps those
+// bytes the same on every engine (lib/surf/trig.js).
+const length = (a) => Math.sqrt(a.reduce((s, x) => s + x * x, 0));
 const distanceSq = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
 
 function boundsDistanceSq(bounds, point) {
@@ -74,8 +78,8 @@ function keys(value, allowed, name) {
 }
 
 function rotate(v, axis, angle) {
-  const c = Math.cos(angle);
-  const s = Math.sin(angle);
+  const c = cos(angle);
+  const s = sin(angle);
   return add(add(mul(v, c), mul(cross(axis, v), s)), mul(axis, dot(axis, v) * (1 - c)));
 }
 
@@ -117,7 +121,7 @@ function bezierLength(points, lo, hi) {
     const dx = a * (points[1][0] - points[0][0]) + b * (points[2][0] - points[1][0]) + c * (points[3][0] - points[2][0]);
     const dy = a * (points[1][1] - points[0][1]) + b * (points[2][1] - points[1][1]) + c * (points[3][1] - points[2][1]);
     const dz = a * (points[1][2] - points[0][2]) + b * (points[2][2] - points[1][2]) + c * (points[3][2] - points[2][2]);
-    sum += GAUSS_WEIGHTS[i] * Math.hypot(dx, dy, dz);
+    sum += GAUSS_WEIGHTS[i] * Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
   return half * sum;
 }
@@ -133,7 +137,7 @@ function transport(normal, from, to) {
     }
     return normal.slice();
   }
-  return rotate(normal, mul(axis, 1 / sine), Math.atan2(sine, cosine));
+  return rotate(normal, mul(axis, 1 / sine), atan2(sine, cosine));
 }
 
 function buildBezierTable(segment) {
@@ -313,7 +317,7 @@ function sampledBezierRadius(segment) {
     const d = bezierDerivative(segment.points, entry.t);
     const dd = bezierSecond(segment.points, entry.t);
     const speed = length(d);
-    return Math.pow(speed, 3) / length(cross(d, dd));
+    return (speed * speed * speed) / length(cross(d, dd));
   }));
 }
 
@@ -446,7 +450,7 @@ function closestBezierDistance(segment, point) {
 
 function closestArcDistance(segment, point) {
   const delta = sub(point, segment.center);
-  let angle = Math.atan2(dot(cross(segment.radial, delta), segment.axis), dot(segment.radial, delta)) * segment.sign;
+  let angle = atan2(dot(cross(segment.radial, delta), segment.axis), dot(segment.radial, delta)) * segment.sign;
   if (angle < 0) {
     angle += 2 * Math.PI;
   }
@@ -793,8 +797,8 @@ function updateAttribute(THREE, attribute, normals, mapping, deformation, invers
   const normal = new THREE.Vector3();
   const normalMatrix = new THREE.Matrix3().getNormalMatrix(inverse);
   const twist = deformation.twistDeg * Math.PI / 180;
-  const c = Math.cos(twist);
-  const s = Math.sin(twist);
+  const c = cos(twist);
+  const s = sin(twist);
   const stretch = path.length / rest.length;
   const frames = new Map();
   const values = mapping.values;

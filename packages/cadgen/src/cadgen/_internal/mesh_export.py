@@ -29,7 +29,7 @@ MESH_EXPORT_BUILDER = "mesh-export.mjs"
 MESH_EXPORT_RECORD_KIND = "mesh-export"
 # Mirrored by cadgen-js/glb/writeGlb.js. This is the final GLB serializer's
 # revision, not the glTF container version and not a tessellation-cache salt.
-GLB_SERIALIZATION_VERSION = 2
+GLB_SERIALIZATION_VERSION = 3
 
 # Declarable formats, and the decorator that declares each (the digit rule
 # forbids ``@3mf``, so 3MF's decorator is ``@threemf``).

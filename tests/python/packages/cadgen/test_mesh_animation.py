@@ -36,7 +36,7 @@ from cadgen._internal.mesh_animation import (  # noqa: E402
     resolve_animation,
 )
 from cadgen._internal.mesh_door import mesh_build  # noqa: E402
-from cadgen._internal.mesh_export import mesh_variant_key  # noqa: E402
+from cadgen._internal.mesh_export import GLB_SERIALIZATION_VERSION, mesh_variant_key  # noqa: E402
 from cadgen.cli import glb_build  # noqa: E402
 
 MODULE_SOURCE = """
@@ -235,7 +235,7 @@ class TheFreshnessVariant(unittest.TestCase):
 
         static = mesh_variant_key("glb", None, None)
         self.assertEqual(
-            f"glb|default|default|serializer:2|appearance:{appearance_digest(None)}",
+            f"glb|default|default|serializer:{GLB_SERIALIZATION_VERSION}|appearance:{appearance_digest(None)}",
             static,
         )
         animated = mesh_variant_key("glb", None, None, "deadbeef")

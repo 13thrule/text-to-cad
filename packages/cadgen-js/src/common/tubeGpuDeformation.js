@@ -59,7 +59,7 @@ function buildGpuTubeFrames(path, sample) {
     let t0 = v * a.tangent[0] + u * b.tangent[0];
     let t1 = v * a.tangent[1] + u * b.tangent[1];
     let t2 = v * a.tangent[2] + u * b.tangent[2];
-    const tn = Math.hypot(t0, t1, t2);
+    const tn = Math.sqrt(t0 * t0 + t1 * t1 + t2 * t2);
     t0 /= tn;
     t1 /= tn;
     t2 /= tn;
@@ -70,7 +70,7 @@ function buildGpuTubeFrames(path, sample) {
     n0 -= d * t0;
     n1 -= d * t1;
     n2 -= d * t2;
-    const nn = Math.hypot(n0, n1, n2);
+    const nn = Math.sqrt(n0 * n0 + n1 * n1 + n2 * n2);
     n0 /= nn;
     n1 /= nn;
     n2 /= nn;
@@ -216,7 +216,10 @@ function createGpuState(THREE, record, restState, deformation, inverse) {
   restState.geometry.setAttribute("cadTubeMappingIndex", new THREE.BufferAttribute(indices, 1));
   let radius = 0;
   for (let j = 0; j < mapping.values.length; j += 8) {
-    radius = Math.max(radius, Math.hypot(mapping.values[j + 1], mapping.values[j + 2], mapping.values[j + 3]));
+    const rx = mapping.values[j + 1];
+    const ry = mapping.values[j + 2];
+    const rz = mapping.values[j + 3];
+    radius = Math.max(radius, Math.sqrt(rx * rx + ry * ry + rz * rz));
   }
   return {
     mapping,

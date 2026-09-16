@@ -53,6 +53,7 @@ import {
   occurrenceMaterial,
   transformPoint,
 } from "./packageMeshExport.js";
+import { acos, cos, sin } from "../surf/trig.js";
 
 // tubeDeformation takes its matrix classes as an argument rather than importing
 // them, so this drives it with the same three the viewer does.
@@ -158,7 +159,8 @@ function occurrenceWorldGeometry(occurrence, tessellation) {
       ty = nm[3] * nx + nm[4] * ny + nm[5] * nz;
       tz = nm[6] * nx + nm[7] * ny + nm[8] * nz;
     }
-    const length = Math.hypot(tx, ty, tz) || 1;
+    // Exactly defined arithmetic only (lib/surf/trig.js).
+    const length = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1;
     normals[i] = tx / length;
     normals[i + 1] = ty / length;
     normals[i + 2] = tz / length;
@@ -257,8 +259,8 @@ function boundsForFractions(mapping) {
 function poseCorners(model, deformation, out) {
   const path = deformation.path;
   const twist = (deformation.twistDeg || 0) * Math.PI / 180;
-  const cos = Math.cos(twist);
-  const sin = Math.sin(twist);
+  const twistCos = cos(twist);
+  const twistSin = sin(twist);
   for (let index = 0; index < model.fractions.length; index += 1) {
     const frame = sampleTubePath(path, model.fractions[index] * path.length);
     const point = frame.point;
@@ -270,8 +272,8 @@ function poseCorners(model, deformation, out) {
       const u0 = model.uva[j];
       const v0 = model.uva[j + 1];
       const axial = model.uva[j + 2];
-      const u = cos * u0 - sin * v0;
-      const v = sin * u0 + cos * v0;
+      const u = twistCos * u0 - twistSin * v0;
+      const v = twistSin * u0 + twistCos * v0;
       out[j] = point[0] + normal[0] * u + binormal[0] * v + tangent[0] * axial;
       out[j + 1] = point[1] + normal[1] * u + binormal[1] * v + tangent[1] * axial;
       out[j + 2] = point[2] + normal[2] * u + binormal[2] * v + tangent[2] * axial;
@@ -433,12 +435,13 @@ function maxNormalDegrees(base, posed) {
     const bx = posed[i];
     const by = posed[i + 1];
     const bz = posed[i + 2];
-    const denominator = Math.hypot(ax, ay, az) * Math.hypot(bx, by, bz);
+    const denominator = Math.sqrt(ax * ax + ay * ay + az * az)
+      * Math.sqrt(bx * bx + by * by + bz * bz);
     if (denominator < 1e-12) {
       continue;
     }
     const cosine = Math.min(1, Math.max(-1, (ax * bx + ay * by + az * bz) / denominator));
-    const degrees = Math.acos(cosine) * 180 / Math.PI;
+    const degrees = acos(cosine) * 180 / Math.PI;
     if (degrees > worst) {
       worst = degrees;
     }
