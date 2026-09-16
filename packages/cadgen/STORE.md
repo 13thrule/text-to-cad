@@ -479,6 +479,12 @@ Each with the failure it prevents.
   read-back use a private sibling staging directory outside the store.
   Prevents: a record pointing at a tree that does not exist yet, or a `.step`
   whose sha the record has not seen.
+- **Canonical STEP bytes.** Before a written STEP is published, the writer
+  canonicalizes what OCCT emitted: NAUO instance ids, presentation-style
+  order, and the sign of zero — `-0.` is rewritten `0.`, because which IEEE
+  zero a coordinate lands on follows the operation path that produced it, not
+  the geometry. Prevents: one model writing two documents, so the packages and
+  index entries keyed by the other spelling's bytes are orphaned.
 - **Publish rule.** `cadgen.store.publish.decide`: a build rejects replacing a
   current record with a stale one — if the record on disk already reflects the
   closure as it is NOW and the build that finished ran against older sources,
