@@ -12,6 +12,7 @@ import FileViewerSidebar from "./workbench/FileViewerSidebar";
 import { buildDisplaySettingsTab } from "./workbench/DisplaySettingsTab";
 import { buildRenderSettingsTab } from "./workbench/RenderSettingsTab";
 import { buildMaterialsSettingsTab } from "./workbench/MaterialsSettingsTab";
+import { prefetchRenderStudio } from "@/render/renderStudioChunk";
 import MeshFileSheet from "./workbench/MeshFileSheet";
 import { DXF_PREVIEW_REFERENCE_THICKNESS_MM } from "cadgen-js/lib/dxf/previewGlb";
 import { dxfDataIsDocument } from "cadgen-js/lib/dxf/parseDxf";
@@ -7093,6 +7094,12 @@ export default function CadWorkspace({
     }
     const activeCamera = readRenderSessionCamera(viewerRef.current, activePerspectiveRef.current);
     if (enabled) {
+      // Render's studio and its two settings panels are one lazy chunk. Asking
+      // for them here rather than waiting for the viewport effect and the
+      // Suspense boundary to ask separately is what keeps the switch to one
+      // request; the mode flips immediately either way, and the viewport stays
+      // under its destination backdrop until the studio has applied.
+      prefetchRenderStudio();
       renderEnabledRef.current = true;
       const next = renderSessionForEnabledChange(renderSession, true, {
         activeCamera,

@@ -70,16 +70,15 @@ import {
 } from "cadgen-js/lib/displaySettings";
 import { resolveCadEdgeSettings, resolveCadGridSettings } from "cadgen-js/common/cadInk.js";
 import { resolveDisplayMaterialSettings } from "cadgen-js/common/sceneSettings.js";
-import {
-  createEnvironmentResource,
-  disposeEnvironmentResource,
-  environmentResourceIdentity
-} from "cadgen-js/common/environmentMap.js";
-import {
-  applyPhotographicStudio,
-  disposePhotographicStudio,
-  PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS
-} from "cadgen-js/common/photographicStudio.js";
+// The photographic rig and its environment are Render's lazy chunk: this file
+// reaches them through the boundary's synchronous accessor, never by a static
+// import. `studioScene()` answering null means the chunk is still arriving, and
+// the render-mode effects below leave `environmentReady` false while it is —
+// framePresentation then keeps the canvas covered with the destination
+// backdrop, so a half-configured photographic scene is never presented. The
+// rig's material constants are plain data and stay in the initial chunk.
+import { loadStudioScene, studioScene } from "@/render/renderStudioChunk";
+import { PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS } from "cadgen-js/common/photographicStudioRig.js";
 import {
   clampSceneModelRadius,
   defaultSceneGridRadius,
@@ -2092,14 +2091,52 @@ const CadViewer = forwardRef(function CadViewer({
     : 2048;
   const renderShadowMapSizeRef = useRef(renderShadowMapSize);
   renderShadowMapSizeRef.current = renderShadowMapSize;
+  // Fetch Render's chunk the first time this viewer is asked for Render, and
+  // re-run the studio effects once it lands. The workspace normally warms it
+  // first — the Viewing mode button's hover and focus, and the switch itself —
+  // so this is the backstop for a cold cache and for a session restored
+  // straight into Render.
+  const [studioSceneTick, setStudioSceneTick] = useState(() => (studioScene() ? 1 : 0));
+  useEffect(() => {
+    if (!renderMode || studioScene()) {
+      return undefined;
+    }
+    let cancelled = false;
+    loadStudioScene().then(
+      () => {
+        if (!cancelled) {
+          setStudioSceneTick((tick) => tick + 1);
+        }
+      },
+      (error) => {
+        if (cancelled) {
+          return;
+        }
+        viewerAlertChangeRef.current?.({
+          severity: "error",
+          summary: "Render unavailable",
+          title: "Couldn't load the Render studio",
+          message: "The photographic studio is fetched the first time Render is opened, and that request did not complete.",
+          recovery: "Check the connection to the viewer and reload the page, then switch to Render again.",
+          details: String(error?.message || error)
+        });
+        console.error("Failed to load the Render studio chunk", error);
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [renderMode]);
+
   const renderConfigurationRef = useRef(renderConfiguration);
   renderConfigurationRef.current = renderConfiguration;
   const applyActivePhotographicStudio = useCallback((runtime, bounds = runtime?.modelBounds) => {
     const configuration = renderConfigurationRef.current;
-    if (!renderMode || !configuration || !runtime?.THREE) {
+    const studio = studioScene();
+    if (!renderMode || !configuration || !runtime?.THREE || !studio) {
       return;
     }
-    applyPhotographicStudio(runtime.THREE, runtime, configuration, {
+    studio.applyPhotographicStudio(runtime.THREE, runtime, configuration, {
       bounds,
       sceneScale: normalizedSceneScaleMode,
       shadowMapSize: renderShadowMapSizeRef.current
@@ -2111,7 +2148,7 @@ const CadViewer = forwardRef(function CadViewer({
           && configuration.backdrop.groundPlacement === "lowest"
       };
     }
-  }, [normalizedSceneScaleMode, renderMode]);
+  }, [normalizedSceneScaleMode, renderMode, studioSceneTick]);
 
   useEffect(() => {
     applyActivePhotographicStudio(runtimeRef.current);
@@ -3758,7 +3795,7 @@ const CadViewer = forwardRef(function CadViewer({
       return;
     }
 
-    disposePhotographicStudio(runtime);
+    studioScene()?.disposePhotographicStudio(runtime);
     applyActiveSceneBackground(runtime, viewerTheme, normalizedThemeSettings.background);
     runtime.renderer.toneMappingExposure = Math.max(normalizedThemeSettings.lighting.toneMappingExposure, 0.05);
 
@@ -3862,12 +3899,21 @@ const CadViewer = forwardRef(function CadViewer({
       return;
     }
 
+    const studio = studioScene();
     const clearEnvironmentResource = () => {
       runtime.scene.environment = null;
-      disposeEnvironmentResource(runtime.environmentResource);
+      studio?.disposeEnvironmentResource(runtime.environmentResource);
       runtime.environmentResource = null;
       runtime.environmentResourceIdentity = "";
     };
+    // Render asked for, chunk not here yet. Leaving environmentReady false is
+    // the whole contract: the canvas stays under the destination backdrop until
+    // this effect re-runs with the studio loaded (studioSceneTick), so nothing
+    // is ever drawn with CAD lighting under a photographic camera.
+    if (renderMode && renderConfiguration && !studio) {
+      runtime.environmentReady = false;
+      return;
+    }
     if (!renderMode || !renderConfiguration) {
       runtime.environmentReady = true;
       clearEnvironmentResource();
@@ -3889,7 +3935,7 @@ const CadViewer = forwardRef(function CadViewer({
     // PMREM generation is synchronous GPU work, so this effect never suspends
     // and no in-flight environment can outlive the render mode that asked for it.
     const applyEnvironment = () => {
-      const resourceIdentity = environmentResourceIdentity(renderConfiguration, {
+      const resourceIdentity = studio.environmentResourceIdentity(renderConfiguration, {
         size: renderEnvironmentMapSize
       });
       if (!resourceIdentity) {
@@ -3899,14 +3945,14 @@ const CadViewer = forwardRef(function CadViewer({
       }
 
       if (!runtime.environmentResource || runtime.environmentResourceIdentity !== resourceIdentity) {
-        const nextResource = createEnvironmentResource(runtime.renderer, renderConfiguration, {
+        const nextResource = studio.createEnvironmentResource(runtime.renderer, renderConfiguration, {
           size: renderEnvironmentMapSize
         });
         const previousResource = runtime.environmentResource;
         runtime.scene.environment = null;
         runtime.environmentResource = nextResource;
         runtime.environmentResourceIdentity = resourceIdentity;
-        disposeEnvironmentResource(previousResource);
+        studio.disposeEnvironmentResource(previousResource);
       }
 
       runtime.scene.environment = runtime.environmentResource.texture;
@@ -3936,6 +3982,7 @@ const CadViewer = forwardRef(function CadViewer({
     renderConfiguration,
     renderEnvironmentMapSize,
     renderMode,
+    studioSceneTick,
     viewerReadyTick,
     viewerTheme,
     normalizedThemeSettings.background

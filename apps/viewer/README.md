@@ -178,6 +178,13 @@ source is newer than the build.
   Rebuild or re-annotate the pair to repair it; importing a file never rewrites
   its authored sidecar.
 
+- **Render mode is a separate chunk.** The photographic studio and the
+  Materials editor are fetched when Render is first asked for, so the initial
+  bundle carries Inspect and the workbench alone. The switch warms the chunk and
+  the viewport stays under its destination backdrop until the studio applies, so
+  there is no half-configured scene to catch — but a test that mounts either
+  settings panel imports the panel module, not the tab builder
+  ([docs/render-mode.md](docs/render-mode.md)).
 - **The catalog scan skips dot-directories.** A buildable entry under
   `.review/` (or any dotted path) never appears, even when the server is
   launched from inside it.
