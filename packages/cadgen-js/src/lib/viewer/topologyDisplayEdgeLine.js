@@ -1,4 +1,6 @@
-import { applyTubeDeformationToLineObject } from "../../common/tubeDeformation.js";
+// Lazy: see common/tubeDeformationChunk.js. A line object only holds tube state
+// once a deformation was applied, so a null runtime is exactly a no-op here.
+import { tubeDeformation } from "../../common/tubeDeformationChunk.js";
 import {
   applyTopologyDisplayEdgeSurfaceOffset,
   disposeTopologyDisplayEdgeObject
@@ -93,7 +95,7 @@ function applyRecordEffectMatrix(runtime, object, record) {
   if (!THREE || !object) {
     return false;
   }
-  applyTubeDeformationToLineObject(THREE, object, record?.effectDeformation || null);
+  tubeDeformation()?.applyTubeDeformationToLineObject(THREE, object, record?.effectDeformation || null);
   const nextMatrix = composeDisplayRecordEffectMatrix(THREE, record) || new THREE.Matrix4();
   object.matrixAutoUpdate = false;
   const targetMatrix = object.matrix instanceof THREE.Matrix4 ? object.matrix : new THREE.Matrix4();

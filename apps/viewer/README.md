@@ -178,6 +178,10 @@ source is newer than the build.
   Rebuild or re-annotate the pair to repair it; importing a file never rewrites
   its authored sidecar.
 
+- **Animation's tube runtime is a separate chunk.** The flexible-tube and
+  braid code loads with a document's embedded animation, so a model that
+  declares none never fetches it and an animated tube still renders from its
+  first frame (`packages/cadgen-js/docs/tube-deformation.md`).
 - **Render mode is a separate chunk.** The photographic studio and the
   Materials editor are fetched when Render is first asked for, so the initial
   bundle carries Inspect and the workbench alone. The switch warms the chunk and

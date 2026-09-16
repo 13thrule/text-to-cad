@@ -6,6 +6,11 @@ import { VIEWER_PICK_MODE } from "cadgen-js/lib/viewer/constants.js";
 import { syncSelectorPickGroups } from "cadgen-js/lib/viewer/selectorPickGroups.js";
 import { applySceneState } from "cadgen-js/common/applySceneState.js";
 import { resetStepModuleRecordEffects } from "cadgen-js/common/stepModuleEffects.js";
+import { loadTubeDeformation } from "cadgen-js/common/tubeDeformationChunk.js";
+
+// `deformTube` needs the lazy tube runtime, which production loads through
+// compileAnimationSource. This clip is built by hand, so load it here.
+await loadTubeDeformation();
 import { viewerHiddenPartIdsForRenderPane, viewerPickModeForRenderPane, viewerSelectedPartIdsForRenderPane, viewerSelectorRuntimeForRenderPane } from "./viewerPickMode.js";
 
 test("Render drops retained picking proxies while STEP transforms and tube deformation still apply", () => {

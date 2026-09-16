@@ -15,6 +15,11 @@ import test from "node:test";
 import { normalizeAnimationClips } from "../../common/animationRuntime.js";
 import { resolveFramePlan } from "../../common/framePlan.js";
 import { restrictAnimationToNodes, sampleClipAnimation } from "./packageAnimation.js";
+import { loadTubeDeformation } from "../../common/tubeDeformationChunk.js";
+
+// `deformTube` needs the lazy tube runtime, which production loads through
+// compileAnimationSource. These clips are built by hand, so load it here.
+await loadTubeDeformation();
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
 

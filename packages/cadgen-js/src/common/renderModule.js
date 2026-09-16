@@ -3,6 +3,7 @@
 // text in their own realm; there is no adjacent `.step.js` discovery or fetch.
 
 import { normalizeAnimationClips, evaluateAnimationClip } from "./animationRuntime.js";
+import { loadTubeDeformation } from "./tubeDeformationChunk.js";
 import { normalizeSourceAnimation } from "./sourceSidecar.js";
 
 export const ANIMATION_MODULE_EXPORTS = Object.freeze(["clips"]);
@@ -47,7 +48,13 @@ export function compileAnimationModule(moduleNamespace, { name = "embedded anima
 }
 
 export async function compileAnimationSource(moduleSource, options = {}) {
-  const namespace = await importAnimationModule(moduleSource, options);
+  // Declaring an animation is what makes `deformTube` reachable, so the tube
+  // runtime is fetched here, once, before any clip exists to evaluate. A
+  // document with no animation never reaches this line and never pays for it.
+  const [namespace] = await Promise.all([
+    importAnimationModule(moduleSource, options),
+    loadTubeDeformation()
+  ]);
   return compileAnimationModule(namespace, options);
 }
 

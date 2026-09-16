@@ -23,6 +23,11 @@ import {
   partHighlightSurfaceColor
 } from "../lib/viewer/partHighlight.js";
 import { applyRecordTubeDeformation, normalizeTubeDeformation } from "./tubeDeformation.js";
+import { loadTubeDeformation } from "./tubeDeformationChunk.js";
+
+// `deformTube` needs the lazy tube runtime, which production loads through
+// compileAnimationSource. These clips are built by hand, so load it here.
+await loadTubeDeformation();
 import { applySceneState } from "./applySceneState.js";
 import { applyPartVisualState as applyViewerPartVisualState } from "../lib/viewer/partVisualState.js";
 import { syncRuntimeStepClipPlane } from "../lib/viewer/modelRuntime.js";
