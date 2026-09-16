@@ -54,13 +54,14 @@ that total or to the complete CLI process time. Use this attribution to choose
 a targeted profile; a small model's stage proportions do not establish where
 a larger assembly spends its time.
 
-Photographic snapshots use the same ground placement as the Viewer. The default
-translucent floor remains at the document's original Z=0 plane, including when
-geometry extends below it. To align the floor to the lowest point explicitly:
+Photographic snapshots use the same ground placement as the Viewer. The
+translucent floor sits at the model's lowest point by default, so geometry
+reaching below the document's origin is never veiled by its own floor. To pin it
+to the document's Z=0 plane instead:
 
 ```bash
-cadgen step snapshot part.step review.png --render '{"backdrop":{"groundPlacement":"lowest"}}'
+cadgen step snapshot part.step review.png --render '{"backdrop":{"groundPlacement":"origin"}}'
 ```
 
-`groundPlacement` accepts `origin` (the default) or `lowest`; it moves only the
+`groundPlacement` accepts `lowest` (the default) or `origin`; it moves only the
 floor, never the model or lighting. `backdrop.ground: false` removes the floor.

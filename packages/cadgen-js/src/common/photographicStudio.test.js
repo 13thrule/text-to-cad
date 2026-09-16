@@ -107,32 +107,38 @@ test("photographic studio applies one scale-stable key, Neutral exposure, and or
   assert.equal(value.requestCount, 1);
 });
 
-test("ground keeps authored origin for floating and below-origin models unless explicitly aligned", () => {
+test("ground sits at the model's lowest point by default, and at Z=0 only when asked", () => {
   const value = runtime();
   for (const minZ of [-40, 0, 40]) {
     value.modelBounds = { min: [-10, -10, minZ], max: [10, 10, minZ + 20] };
     const originalBounds = structuredClone(value.modelBounds);
+    // The default: the floor is under the model, so a below-origin model is
+    // never cut off by its own ground plane.
     const state = applyPhotographicStudio(THREE, value, {});
     const keyPosition = state.keyLight.position.clone();
     const keyIntensity = state.keyLight.intensity;
-    assert.equal(state.ground.position.z, 0);
+    assert.equal(state.ground.position.z, minZ);
     assert.equal(state.ground.material.transparent, true);
     assert.ok(state.ground.material.opacity > 0 && state.ground.material.opacity < 1);
     assert.equal(state.ground.material.depthWrite, false);
 
-    const aligned = applyPhotographicStudio(THREE, value, configuration({ groundPlacement: "lowest" }));
-    assert.equal(aligned.ground, state.ground);
-    assert.equal(aligned.ground.position.z, minZ);
-    assert.ok(aligned.keyLight.position.equals(keyPosition));
-    assert.equal(aligned.keyLight.intensity, keyIntensity);
+    const authored = applyPhotographicStudio(THREE, value, configuration({ groundPlacement: "origin" }));
+    assert.equal(authored.ground, state.ground);
+    assert.equal(authored.ground.position.z, 0);
+    // Moving the plane moves nothing else: the key light and the model's own
+    // bounds are untouched by either placement.
+    assert.ok(authored.keyLight.position.equals(keyPosition));
+    assert.equal(authored.keyLight.intensity, keyIntensity);
     assert.deepEqual(value.modelBounds, originalBounds);
 
-    applyPhotographicStudio(THREE, value, {});
-    assert.equal(state.ground.position.z, 0);
+    applyPhotographicStudio(THREE, value, configuration({ groundPlacement: "lowest" }));
+    assert.equal(state.ground.position.z, minZ);
     applyPhotographicStudio(THREE, value, configuration({ transparent: true }));
     assert.equal(state.ground.position.z, 0);
     assert.equal(state.ground.material.depthWrite, false);
     assert.equal(state.ground.material.polygonOffset, true);
+    applyPhotographicStudio(THREE, value, {});
+    assert.equal(state.ground.position.z, minZ);
   }
   disposePhotographicStudio(value);
 });

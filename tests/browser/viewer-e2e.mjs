@@ -517,6 +517,19 @@ function meanRgb(png) {
   return total.map((value) => value / count);
 }
 
+function patchMean(png, x0, y0, width, height) {
+  const total = [0, 0, 0];
+  let count = 0;
+  for (let y = Math.max(0, y0); y < Math.min(png.height, y0 + height); y += 1) {
+    for (let x = Math.max(0, x0); x < Math.min(png.width, x0 + width); x += 1) {
+      const offset = (y * png.width + x) * 4;
+      total[0] += png.data[offset]; total[1] += png.data[offset + 1]; total[2] += png.data[offset + 2];
+      count += 1;
+    }
+  }
+  return count ? total.map((value) => value / count) : [0, 0, 0];
+}
+
 function rgbDistance(a, b) {
   return Math.max(...a.map((value, index) => Math.abs(value - b[index])));
 }
@@ -534,9 +547,11 @@ async function sceneGates() {
     try {
       await openFile(page, "smoke.step");
       await configureScene(page, setting);
+      // Inspect's grid stays pinned to world z=0; Render's photographic floor
+      // follows the model down to its lowest point by default.
       await page.waitForFunction(
         (follows) => window.__cadModelPlacement?.floorFollowsModel === follows,
-        false,
+        setting.render,
         { timeout: 30_000 },
       );
       const placement = await page.evaluate(() => window.__cadModelPlacement);
@@ -553,7 +568,13 @@ async function sceneGates() {
         if (!setting.render && Math.abs(Number(placement.gridFloorZ)) > 1e-4) {
           failures.push(`${setting.id}: inspection grid left world z=0 (${placement.gridFloorZ})`);
         }
-        if (placement.floorFollowsModel !== false) failures.push(`${setting.id}: default floor moved away from the authored origin`);
+        if (placement.floorFollowsModel !== setting.render) {
+          failures.push(`${setting.id}: floor follow is ${placement.floorFollowsModel}, expected ${setting.render}`);
+        }
+        if (setting.render && Math.abs(Number(placement.groundZ) - expectedBounds.min[2]) > 1e-4) {
+          failures.push(`${setting.id}: Render floor sits at ${placement.groundZ}, not the model's lowest point `
+            + `(${expectedBounds.min[2]})`);
+        }
       }
       if (errors.length) failures.push(`${setting.id}: ${errors.join(" | ")}`);
     } finally {
@@ -584,8 +605,116 @@ async function sceneGates() {
   const studioSpread = rgbDistance(renderLight.mean, renderDark.mean);
   if (spread <= 4) failures.push(`CAD/Render scene settings did not change the framebuffer (spread ${spread.toFixed(1)})`);
   if (studioSpread <= 4) failures.push(`Light/Dark Render backdrops are visually identical (${studioSpread.toFixed(1)})`);
-  console.log(`  placement: authored [39,-3,-5]..[45,3,9], inspection grid at world z=0, Render floor-follow enabled`);
+  await belowOriginGroundGate();
+  console.log(`  placement: authored [39,-3,-5]..[45,3,9], inspection grid at world z=0, `
+    + `Render floor under the model at z=${expectedBounds.min[2]}`);
   console.log(`  scenes: overall framebuffer spread ${spread.toFixed(1)}/255, Render backdrop spread ${studioSpread.toFixed(1)}/255`);
+}
+
+// A robot whose base link origin sits above its lowest geometry. The floor
+// used to be pinned to that origin, so the clamp hanging below it was drawn
+// behind a backdrop-coloured plane and the render read as cut off at the
+// bottom. The default floor is now the model's lowest point, and this holds
+// both halves of that: where the plane sits, and that the lowest rows of the
+// model still reach the framebuffer as MODEL rather than as floor.
+async function belowOriginGroundGate() {
+  const { context, page, errors } = await newPage();
+  try {
+    const canvas = await openFile(page, "below-origin.urdf");
+    await configureScene(page, { appearance: "Light", render: true });
+    await page.waitForFunction(
+      () => window.__cadModelPlacement?.floorFollowsModel === true
+        && Number.isFinite(Number(window.__cadModelPlacement?.groundZ)),
+      null,
+      { timeout: 30_000 },
+    );
+    const placement = await page.evaluate(() => window.__cadModelPlacement);
+    const lowest = Number(placement.boundsMin[2]);
+    if (!(lowest < -0.05)) {
+      failures.push(`below-origin ground: the fixture is not below its own origin (min z ${lowest})`);
+    }
+    if (Math.abs(Number(placement.groundZ) - lowest) > 1e-6) {
+      failures.push(`below-origin ground: the floor sits at ${placement.groundZ}, not the model's lowest point (${lowest})`);
+    }
+
+    // The 3D area only: the canvas runs under the Studio panel, whose pixels
+    // never change and would dilute every mean.
+    const box = await canvas.boundingBox();
+    const clip = {
+      x: Math.round(box.x), y: Math.round(box.y),
+      width: Math.round(box.width * 0.7), height: Math.round(box.height),
+    };
+    const shoot = async (name) => {
+      const png = PNG.sync.read(await page.screenshot({ clip }));
+      if (args.out) {
+        fs.mkdirSync(args.out, { recursive: true });
+        fs.writeFileSync(path.join(args.out, `ground-below-origin-${name}.png`), PNG.sync.write(png));
+      }
+      return png;
+    };
+    const lowestFloor = await shoot("lowest");
+
+    // The previous default, chosen the way a user chooses it.
+    await page.getByRole("combobox", { name: "Ground position", exact: true }).click();
+    await page.getByRole("option", { name: "Model origin", exact: true }).click();
+    await page.waitForFunction(
+      () => Math.abs(Number(window.__cadModelPlacement?.groundZ)) < 1e-9,
+      null,
+      { timeout: 30_000 },
+    );
+    await page.waitForTimeout(800);
+    const originFloor = await shoot("origin");
+
+    const backdrop = patchMean(lowestFloor, 0, 0, 12, 12);
+    const rgbAt = (png, offset) => [png.data[offset], png.data[offset + 1], png.data[offset + 2]];
+    // Every pixel the model draws with the floor under it. Those same pixels are
+    // what a floor at the origin veils: the plane is translucent, so the model
+    // is not erased, it is washed toward the backdrop until the shot reads as
+    // cut off at the bottom.
+    let modelPixels = 0;
+    let drawnContrast = 0;
+    let veiledContrast = 0;
+    let veiled = 0;
+    let lowestModelRow = -1;
+    for (let y = 0; y < lowestFloor.height; y += 1) {
+      for (let x = 0; x < lowestFloor.width; x += 1) {
+        const offset = (y * lowestFloor.width + x) * 4;
+        const drawn = rgbAt(lowestFloor, offset);
+        const contrast = rgbDistance(drawn, backdrop);
+        if (contrast <= 24) continue;
+        const veiledPixel = rgbAt(originFloor, offset);
+        modelPixels += 1;
+        drawnContrast += contrast;
+        veiledContrast += rgbDistance(veiledPixel, backdrop);
+        if (rgbDistance(drawn, veiledPixel) > 12) veiled += 1;
+        lowestModelRow = y;
+      }
+    }
+    if (modelPixels < 2000) {
+      failures.push(`below-origin ground: the model is barely drawn (${modelPixels} px)`);
+    } else {
+      const drawnMean = drawnContrast / modelPixels;
+      const veiledMean = veiledContrast / modelPixels;
+      const veiledFraction = veiled / modelPixels;
+      if (!(drawnMean > veiledMean + 4)) {
+        failures.push(`below-origin ground: the model reads no better under the default floor than under one at `
+          + `the origin (${drawnMean.toFixed(1)} vs ${veiledMean.toFixed(1)} from the backdrop)`);
+      }
+      if (!(veiledFraction > 0.08)) {
+        failures.push(`below-origin ground: a floor at the origin changed only ${(veiledFraction * 100).toFixed(1)}% `
+          + `of the model's pixels, so this fixture does not exercise the cut-off`);
+      }
+      if (lowestModelRow < lowestFloor.height * 0.5) {
+        failures.push(`below-origin ground: the model's lowest drawn row is ${lowestModelRow} of ${lowestFloor.height}`);
+      }
+      console.log(`  below-origin: floor at z=${Number(placement.groundZ).toFixed(3)} (model min ${lowest.toFixed(3)}), `
+        + `model reads ${drawnMean.toFixed(1)}/255 from the backdrop down to row ${lowestModelRow}; `
+        + `a floor at the origin veils ${(veiledFraction * 100).toFixed(0)}% of it, to ${veiledMean.toFixed(1)}`);
+    }
+    if (errors.length) failures.push(`below-origin ground: ${errors.join(" | ")}`);
+  } finally {
+    await context.close();
+  }
 }
 
 async function qualityGate() {
@@ -700,11 +829,17 @@ function cameraDrift(actual, expected) {
   if (!actual || !expected || !Array.isArray(actual.position) || !Array.isArray(actual.target)) {
     return Number.POSITIVE_INFINITY;
   }
+  if (actual.projection !== expected.projection) {
+    return Number.POSITIVE_INFINITY;
+  }
   const pairs = [
     ...actual.position.map((value, index) => [value, expected.position[index]]),
     ...actual.target.map((value, index) => [value, expected.target[index]]),
     [actual.zoom, expected.zoom],
-    [actual.halfHeight || 0, expected.halfHeight || 0],
+    // The half-height belongs to the orthographic frustum. The seam reports the
+    // runtime's orthographic camera even while the perspective one is active,
+    // where it describes no frame that is on screen.
+    ...(actual.projection === "orthographic" ? [[actual.halfHeight || 0, expected.halfHeight || 0]] : []),
     [actual.zoomPercent, expected.zoomPercent],
   ];
   return Math.max(...pairs.map(([a, b]) => Math.abs(Number(a) - Number(b)) / Math.max(1, Math.abs(Number(b)))));
@@ -730,6 +865,101 @@ async function cameraHeld(page, zeroPose, what) {
 async function resetView(page) {
   await page.getByRole("button", { name: /Reset view/i }).first().click();
   await page.waitForTimeout(1_500);
+}
+
+// --- the camera each mode opens at ----------------------------------------
+// Inspect and Render are two cameras. Each fits the model's zero pose itself,
+// every time it is entered, so a switch never inherits the other mode's pose
+// and zoom -- which is what used to open Render inside the model, or Inspect at
+// a perspective distance read as an orthographic frame. A view the user framed
+// by hand still stands within its own mode; it simply does not follow them
+// across the switch, because switching IS the reset.
+async function switchMode(page, current, next) {
+  await page.getByRole("button", { name: `Viewing mode: ${current}`, exact: true }).click();
+  await page.getByRole("menuitemradio", { name: next, exact: true }).click();
+  const projection = next === "Render" ? "perspective" : "orthographic";
+  await page.waitForFunction(
+    (want) => window.__cadCamera?.()?.projection === want,
+    projection,
+    { timeout: 60_000 },
+  );
+  // The fit lands in the scene sync that follows the new renderer.
+  await page.waitForTimeout(1_500);
+}
+
+async function orbitAndZoom(page) {
+  const box = await page.locator("canvas").first().boundingBox();
+  const x = Math.round(box.x + box.width * 0.4);
+  const y = Math.round(box.y + box.height * 0.5);
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 180, y + 70, { steps: 12 });
+  await page.mouse.up();
+  await page.mouse.move(x, y);
+  await page.mouse.wheel(0, -420);
+  await page.waitForTimeout(1_500);
+}
+
+async function cameraMoved(page, from, what) {
+  const camera = await cameraState(page);
+  if (cameraDrift(camera, from) <= 1e-6) {
+    failures.push(`${what}: the camera did not move — ${describeCamera(camera)}`);
+    return null;
+  }
+  return camera;
+}
+
+async function modeCameraGate() {
+  const { context, page, errors } = await newPage();
+  try {
+    await openFile(page, "smoke.step");
+    const inspectFit = await cameraState(page);
+    if (inspectFit?.projection !== "orthographic") {
+      failures.push(`mode camera: Inspect did not open orthographic (${inspectFit?.projection})`);
+    }
+
+    await switchMode(page, "Inspect", "Render");
+    const renderFit = await cameraState(page);
+    if (!renderFit) failures.push("mode camera: the camera seam published nothing in Render");
+
+    await switchMode(page, "Render", "Inspect");
+    await cameraHeld(page, inspectFit, "returning to Inspect");
+
+    // A view taken by hand: it stands in Inspect, and stops at the switch.
+    await orbitAndZoom(page);
+    const handFramed = await cameraMoved(page, inspectFit, "orbit and zoom in Inspect");
+    if (handFramed) {
+      await switchMode(page, "Inspect", "Render");
+      await cameraHeld(page, renderFit, "Render after a hand-framed Inspect view");
+      await orbitAndZoom(page);
+      await cameraMoved(page, renderFit, "orbit and zoom in Render");
+      await switchMode(page, "Render", "Inspect");
+      await cameraHeld(page, inspectFit, "Inspect after a hand-framed Render view");
+    }
+
+    // A different model is framed against ITS zero pose, not the camera the
+    // last one was left at. Reset view re-fits, so a fresh fit does not move.
+    await openFile(page, "assembly.step");
+    const assemblyFit = await cameraState(page);
+    if (cameraDrift(assemblyFit, inspectFit) <= 1e-3) {
+      failures.push(`mode camera: a different model opened at the previous model's frame — ${describeCamera(assemblyFit)}`);
+    }
+    await resetView(page);
+    await cameraHeld(page, assemblyFit, "a newly opened model");
+    await switchMode(page, "Inspect", "Render");
+    const assemblyRenderFit = await cameraState(page);
+    if (cameraDrift(assemblyRenderFit, renderFit) <= 1e-3) {
+      failures.push(`mode camera: Render reopened at the previous model's photographic frame — `
+        + `${describeCamera(assemblyRenderFit)}`);
+    }
+    if (errors.length) failures.push(`mode camera: ${errors.join(" | ")}`);
+    console.log(`  mode camera: Inspect ${describeCamera(inspectFit)}`);
+    console.log(`  mode camera: Render  ${describeCamera(renderFit)}`);
+    console.log("  mode camera: every switch re-fits the mode being entered to the zero pose, "
+      + "a hand-framed view stays in its own mode, and a new model is framed against its own box");
+  } finally {
+    await context.close();
+  }
 }
 
 async function kinematicsGate() {
@@ -880,6 +1110,7 @@ const gates = [
   ["scene", sceneGates],
   ["quality", qualityGate],
   ["kinematics", kinematicsGate],
+  ["camera", modeCameraGate],
 ];
 const selected = args.only ? gates.filter(([name]) => name === args.only) : gates;
 if (!selected.length) fail(`unknown --only gate: ${args.only} (${gates.map(([name]) => name).join(", ")})`);

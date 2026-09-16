@@ -179,9 +179,10 @@ function updateGround(THREE, state, configuration, bounds, sceneScale) {
     bounds.radius * PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER,
     minimumSize
   );
-  // Geometry keeps its authored coordinates. Grounding a shot is an explicit
-  // presentation choice; the default plane stays at the document's Z=0.
-  const groundZ = configuration.backdrop.groundPlacement === "lowest" ? bounds.min[2] : 0;
+  // Geometry keeps its authored coordinates: the PLANE moves, never the model.
+  // It sits at the model's lowest point by default, so nothing is ever hidden
+  // under the floor; "origin" pins it to the document's own Z=0 instead.
+  const groundZ = configuration.backdrop.groundPlacement === "origin" ? 0 : bounds.min[2];
   state.ground.scale.set(stageSize, stageSize, 1);
   state.ground.position.set(bounds.center[0], bounds.center[1], groundZ);
   state.ground.updateMatrixWorld(true);

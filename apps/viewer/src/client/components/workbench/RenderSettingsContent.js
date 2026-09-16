@@ -100,8 +100,8 @@ export default function RenderSettingsContent({
             value={configuration.backdrop.groundPlacement}
             onValueChange={(value) => setValue(["backdrop", "groundPlacement"], value)}
             options={[
-              { value: "origin", label: "Model origin" },
-              { value: "lowest", label: "Lowest point" }
+              { value: "lowest", label: "Lowest point" },
+              { value: "origin", label: "Model origin" }
             ]}
           />
         )}

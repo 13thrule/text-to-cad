@@ -33,7 +33,7 @@ only_gate=""
 while [ "$#" -ne 0 ]; do
   case "$1" in
     --out) out_dir="${2:-}"; shift 2 || true ;;
-    # One gate while working on it: picking, format, scene, quality, kinematics.
+    # One gate while working on it: picking, format, scene, quality, kinematics, camera.
     --only) only_gate="${2:-}"; shift 2 || true ;;
     *) echo "usage: $0 [--out SCREENSHOT_DIR] [--only GATE]" >&2; exit 2 ;;
   esac
@@ -238,6 +238,25 @@ cat > "$project/smoke.urdf" <<'URDF'
     <parent link="base"/><child link="arm"/>
     <origin xyz="0 0 0.06"/><axis xyz="0 1 0"/>
     <limit lower="-1.0" upper="1.0" effort="1" velocity="1"/>
+  </joint>
+</robot>
+URDF
+
+# A robot whose base link origin sits ABOVE its lowest geometry: the clamp hangs
+# entirely below z=0, which is where the photographic floor used to be pinned.
+# Its own name, so the SRDF below still pairs with smoke.urdf alone.
+cat > "$project/below-origin.urdf" <<'URDF'
+<?xml version="1.0"?>
+<robot name="viewer_below_origin">
+  <link name="base">
+    <visual><geometry><box size="0.10 0.08 0.02"/></geometry></visual>
+  </link>
+  <link name="clamp">
+    <visual><geometry><box size="0.06 0.06 0.08"/></geometry></visual>
+  </link>
+  <joint name="clamp_mount" type="fixed">
+    <parent link="base"/><child link="clamp"/>
+    <origin xyz="0 0 -0.05"/>
   </joint>
 </robot>
 URDF

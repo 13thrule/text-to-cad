@@ -1176,7 +1176,6 @@ export default function CadWorkspace({
   const [renderSession, setRenderSession] = useState(createRenderSessionState);
   const renderEnabledRef = useRef(renderSession.enabled);
   renderEnabledRef.current = renderSession.enabled;
-  const preserveCadDrawingsForCameraCommandRef = useRef(false);
   const [viewerPerspective, setViewerPerspective] = useState(null);
   const [hoveredListPartId, setHoveredListPartId] = useState("");
   const [hoveredModelPartId, setHoveredModelPartId] = useState("");
@@ -2884,11 +2883,6 @@ export default function CadWorkspace({
   const fileSessionSaveTimerRef = useRef(0);
   const openTabsRef = useRef(openTabs);
   const activePerspectiveRef = useRef(null);
-  // A copied CLI camera may name a preset or direction without carrying a
-  // fitted position. Resolve it only after this model's bounds are available;
-  // fitting it against the previous tab (or origin fallback) would persist the
-  // wrong framing for the model.
-  const pendingRenderCameraRef = useRef(null);
   const tabToolsResizeStateRef = useRef(null);
   const selectedFileSheetKeyRef = useRef("");
   const cadDirectorySessionBootstrappedRef = useRef(false);
@@ -3576,7 +3570,7 @@ export default function CadWorkspace({
     }, 180);
   }, [clearFileSessionSaveTimer, selectedEntry, writeFileSessionForEntry]);
 
-  const applyEntrySessionState = useCallback((key, fileSessionState = null, meshBounds = null) => {
+  const applyEntrySessionState = useCallback((key, fileSessionState = null) => {
     const normalizedKey = String(key || "").trim();
     if (!normalizedKey) {
       return;
@@ -3590,27 +3584,19 @@ export default function CadWorkspace({
       : normalizeDisplaySettings());
     const nextRenderSession = createRenderSessionState(sessionState?.slices?.render);
     setRenderSession(nextRenderSession);
-    pendingRenderCameraRef.current = null;
-    const renderCameraSpec = nextRenderSession.enabled
-      ? resolveSceneSettings({
+    // Only a camera this file's session actually RECORDED comes back. A file
+    // opened for the first time has none, and the viewer then fits the mode
+    // being opened to the model's zero pose. Synthesizing a stand-in here
+    // framed the model against a bounds-radius rule of its own, tagged it with
+    // the new model's key, and so suppressed that fit -- which is how a fresh
+    // model opened at a pose nothing had measured.
+    const restoredCamera = nextRenderSession.enabled
+      ? renderCameraSnapshot(resolveSceneSettings({
           appearance: colorSchemePreference,
           prefersDark: systemPrefersDark,
           render: nextRenderSession.payload
-        }).camera
-      : null;
-    let restoredCamera = nextRenderSession.enabled
-      ? renderCameraSnapshot(renderCameraSpec)
+        }).camera)
       : nextRenderSession.cadCamera;
-    if (nextRenderSession.enabled && !restoredCamera && meshBounds) {
-      restoredCamera = resolveRenderCameraSnapshot(renderCameraSpec, meshBounds, {
-        sceneScale: renderCapabilities(entrySourceFormat(entry)).sceneScale
-      });
-    } else if (nextRenderSession.enabled && !restoredCamera) {
-      pendingRenderCameraRef.current = {
-        key: normalizedKey,
-        camera: renderCameraSpec
-      };
-    }
     if (restoredCamera) {
       const scopedCamera = scopedWorkspacePerspective(restoredCamera, normalizedKey, entry);
       activePerspectiveRef.current = scopedCamera;
@@ -3803,7 +3789,7 @@ export default function CadWorkspace({
     }
 
     applyTabRecord(nextTab);
-    applyEntrySessionState(key, restoredSessionState, cachedMeshState?.meshData?.bounds || null);
+    applyEntrySessionState(key, restoredSessionState);
   }, [
     applyEntrySessionState,
     applyTabRecord,
@@ -7039,7 +7025,10 @@ export default function CadWorkspace({
     }
     // Camera moved: give the LOD scheduler a sample (it debounces internally).
     onLodCameraMoved();
-    if (renderEnabledRef.current || preserveCadDrawingsForCameraCommandRef.current) {
+    // Freehand strokes are anchored to the view they were drawn in, so a
+    // camera move ends them -- an orbit, Reset view, or the fit a mode switch
+    // performs. Render owns no CAD drawing layer, so its camera never does.
+    if (renderEnabledRef.current) {
       return;
     }
     const hasPerspectiveDependentDrawings =
@@ -7074,23 +7063,17 @@ export default function CadWorkspace({
     setViewerPerspective(scopedSnapshot);
   }, [isUrdfView, selectedEntry, selectedKey, selectedMeshData?.bounds]);
 
-  useEffect(() => {
-    const pending = pendingRenderCameraRef.current;
-    if (
-      !pending ||
-      pending.key !== selectedKey ||
-      !selectedMeshData?.bounds
-    ) {
-      return;
-    }
-    pendingRenderCameraRef.current = null;
-    applyActiveCamera(pending.camera);
-  }, [applyActiveCamera, selectedKey, selectedMeshData?.bounds]);
-
   const handleRenderEnabledChange = useCallback((enabled) => {
     if (enabled === renderSession.enabled) {
       return;
     }
+    // The switch carries no camera. Each mode owns a camera of its own -- an
+    // orthographic CAD frustum, a photographic lens -- and the viewer fits the
+    // one being entered to the model's zero pose (CadViewer's "mode" reframe).
+    // Handing it the other mode's pose only produced the framing this reset
+    // exists to replace. The session still RECORDS each mode's last camera, for
+    // the file session and for a snapshot request; nothing replays it on a
+    // switch.
     const activeCamera = readRenderSessionCamera(viewerRef.current, activePerspectiveRef.current);
     if (enabled) {
       // Render's studio and its two settings panels are one lazy chunk. Asking
@@ -7100,44 +7083,24 @@ export default function CadWorkspace({
       // under its destination backdrop until the studio has applied.
       prefetchRenderStudio();
       renderEnabledRef.current = true;
-      const next = renderSessionForEnabledChange(renderSession, true, {
+      setRenderSession(renderSessionForEnabledChange(renderSession, true, {
         activeCamera,
         activeProjection: resolvedScene.camera.projection
-      });
-      setRenderSession(next);
+      }));
       setTabToolsOpen(true);
-      applyActiveCamera(resolveSceneSettings({
-        appearance: colorSchemePreference,
-        prefersDark: systemPrefersDark,
-        render: next.payload
-      }).camera);
       return;
     }
 
     renderEnabledRef.current = false;
-    const activeRenderCamera = activeCamera;
-    const next = renderSessionForEnabledChange(renderSession, false, {
-      activeCamera: activeRenderCamera,
+    // The projection travels, because orthographic-or-perspective is an Inspect
+    // display choice rather than a pose; the fit applies it to the new frame.
+    setRenderSession(renderSessionForEnabledChange(renderSession, false, {
+      activeCamera,
       activeProjection: resolvedScene.camera.projection
-    });
-    setRenderSession(next);
-    const restoreCamera = next.cadCamera
-      ? { ...next.cadCamera, projection: next.cadProjection }
-      : activeRenderCamera
-        ? { ...activeRenderCamera, projection: next.cadProjection }
-        : { projection: next.cadProjection };
-    preserveCadDrawingsForCameraCommandRef.current = true;
-    try {
-      applyActiveCamera(restoreCamera);
-    } finally {
-      preserveCadDrawingsForCameraCommandRef.current = false;
-    }
+    }));
   }, [
-    applyActiveCamera,
-    colorSchemePreference,
     renderSession,
     resolvedScene.camera.projection,
-    systemPrefersDark,
     setTabToolsOpen
   ]);
 

@@ -212,6 +212,7 @@ import {
   runtimeFramingBounds,
   stepKeyboardOrbit,
   WHEEL_PINCH_DELTA_BOOST,
+  VIEWING_MODE,
   VIEW_PLANE_DEFAULT_PRESET,
   VIEW_PLANE_FACE_BY_ID,
   VIEW_PLANE_FACES,
@@ -1890,6 +1891,10 @@ const CadViewer = forwardRef(function CadViewer({
   const viewportFrameInsetsRef = useRef(normalizedViewportFrameInsets);
   const framedModelKeyRef = useRef("");
   const framedZeroPoseBoundsRef = useRef(null);
+  // The viewing mode this view was framed in. Inspect's orthographic CAD
+  // frustum and Render's photographic lens are two cameras, so each one fits
+  // the zero pose itself rather than inheriting the other's pose and zoom.
+  const framedViewingModeRef = useRef("");
   // The model key this view was framed against once every component had
   // arrived. A progressive load frames on the first publish so something is on
   // screen immediately, and that first batch is a fraction of the model.
@@ -2136,16 +2141,24 @@ const CadViewer = forwardRef(function CadViewer({
     if (!renderMode || !configuration || !runtime?.THREE || !studio) {
       return;
     }
-    studio.applyPhotographicStudio(runtime.THREE, runtime, configuration, {
+    const studioState = studio.applyPhotographicStudio(runtime.THREE, runtime, configuration, {
       bounds,
       sceneScale: normalizedSceneScaleMode,
       shadowMapSize: renderShadowMapSizeRef.current
     });
+    // Where the photographic floor actually ended up, so a browser test can
+    // assert that a model reaching below its own origin stands ON the plane
+    // rather than behind it. The scene sync republishes the placement seam, so
+    // the live value lives on the runtime and both writers read it from there.
+    runtime.photographicGroundZ = Number.isFinite(Number(studioState?.ground?.position?.z))
+      ? Number(studioState.ground.position.z)
+      : null;
     if (typeof window !== "undefined" && window.__cadModelPlacement) {
       window.__cadModelPlacement = {
         ...window.__cadModelPlacement,
         floorFollowsModel: configuration.backdrop?.ground === true
-          && configuration.backdrop.groundPlacement === "lowest"
+          && configuration.backdrop.groundPlacement !== "origin",
+        groundZ: runtime.photographicGroundZ
       };
     }
   }, [normalizedSceneScaleMode, renderMode, studioSceneTick]);
@@ -3546,6 +3559,7 @@ const CadViewer = forwardRef(function CadViewer({
     framedModelKeyRef.current = "";
     framedCompleteModelKeyRef.current = "";
     framedZeroPoseBoundsRef.current = null;
+    framedViewingModeRef.current = "";
     lastEmittedPerspectiveRef.current = null;
     defaultPerspectiveResettingRef.current = false;
     viewerAlertChangeRef.current?.(null);
@@ -4368,9 +4382,12 @@ const CadViewer = forwardRef(function CadViewer({
         boundsMin: [...boundsMin],
         boundsMax: [...boundsMax],
         gridFloorZ: Number.isFinite(Number(runtime.gridFloorZ)) ? Number(runtime.gridFloorZ) : null,
+        groundZ: renderMode && Number.isFinite(Number(runtime.photographicGroundZ))
+          ? Number(runtime.photographicGroundZ)
+          : null,
         floorFollowsModel: renderMode
           ? renderConfigurationRef.current?.backdrop?.ground === true
-            && renderConfigurationRef.current.backdrop.groundPlacement === "lowest"
+            && renderConfigurationRef.current.backdrop.groundPlacement !== "origin"
           : floorFollowsModel
       };
     }
@@ -4470,16 +4487,19 @@ const CadViewer = forwardRef(function CadViewer({
     controls.zoomSpeed = DEFAULT_ZOOM_SPEED;
     runtime.edgePickThreshold = Math.max(radius / 320, 0.65);
 
-    // Whether the camera fits at all, and why: a different model, a progressive
-    // load reaching its full extent, or a rebuild whose ZERO POSE changed. The
-    // decision (and what is deliberately NOT a reason: any pose, any detail
-    // swap) lives in reframeReason.
+    // Whether the camera fits at all, and why: a different model, a change of
+    // viewing mode, a progressive load reaching its full extent, or a rebuild
+    // whose ZERO POSE changed. The decision (and what is deliberately NOT a
+    // reason: any pose, any detail swap) lives in reframeReason.
     const missingComponentIds = meshData?.missingComponentIds;
     const modelIsComplete = !(Array.isArray(missingComponentIds) && missingComponentIds.length > 0);
+    const viewingMode = renderMode ? VIEWING_MODE.RENDER : VIEWING_MODE.INSPECT;
     const reframe = reframeReason({
       modelKey,
       framedModelKey: framedModelKeyRef.current,
       framedCompleteModelKey: framedCompleteModelKeyRef.current,
+      mode: viewingMode,
+      framedMode: framedViewingModeRef.current,
       modelComplete: modelIsComplete,
       zeroPoseBounds,
       framedZeroPoseBounds: framedZeroPoseBoundsRef.current,
@@ -4489,7 +4509,9 @@ const CadViewer = forwardRef(function CadViewer({
       framedCompleteModelKeyRef.current = modelKey || "";
     }
     if (reframe) {
-      if (reframe === "model") {
+      if (reframe === "model" || reframe === "mode") {
+        // Entering a mode is a fresh start for ITS camera, so the stand-down a
+        // hand-framed view earns in the mode being left does not follow it.
         runtime.userMovedCamera = false;
       }
       const nextPerspective = resolvePerspectiveSnapshot(
@@ -4539,6 +4561,7 @@ const CadViewer = forwardRef(function CadViewer({
       resetRuntimeZoomBaseline(runtime);
       syncCameraZoomPercent(runtime);
       framedModelKeyRef.current = modelKey || "";
+      framedViewingModeRef.current = viewingMode;
       // The box this fit was measured against, so the next publish can tell a
       // rebuilt model from another publish of the same one.
       framedZeroPoseBoundsRef.current = zeroPoseBounds;
