@@ -40,6 +40,9 @@ def run_gz_sdf_check(xml_text: str, *, output_path: Path, mode: GzCheckMode = "a
         )
         return result
 
+    # The scratch copy lives BESIDE the output, not in a temp dir: `gz sdf --check`
+    # resolves relative `<uri>`s (meshes, includes) against the file's own
+    # directory, so a copy elsewhere would report every relative reference missing.
     output_parent = output_path.resolve().parent
     output_parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".sdf", dir=output_parent, delete=False) as handle:
