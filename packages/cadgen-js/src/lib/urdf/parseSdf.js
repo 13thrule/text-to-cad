@@ -1,4 +1,5 @@
 import { invertRigidTransform, multiplyTransforms, poseTransformFromXyzRpy } from "./kinematics.js";
+import { resolveCadAssetMeshUrl } from "./meshAssetUrl.js";
 
 const IDENTITY_TRANSFORM = Object.freeze([
   1, 0, 0, 0,
@@ -169,6 +170,14 @@ function resolveMeshUrl(uri, sourceUrl) {
   const rawUri = String(uri || "").trim();
   if (!rawUri) {
     throw new Error("SDF mesh URI is required");
+  }
+  // The Viewer serves a description from `/__cad/asset?file=...`, where the mesh is relative
+  // to the QUERY, not the path. Without this the URI resolved to `/__cad/<uri>`, the backend
+  // 404'd it, and every SDF naming a mesh failed to load with "Couldn't load the model" —
+  // while the URDF beside it, same relative path, loaded fine.
+  const assetUrl = resolveCadAssetMeshUrl(rawUri, sourceUrl);
+  if (assetUrl) {
+    return assetUrl;
   }
   const normalizedSourceUrl = normalizeAbsoluteUrl(sourceUrl);
   let resolvedUrl;

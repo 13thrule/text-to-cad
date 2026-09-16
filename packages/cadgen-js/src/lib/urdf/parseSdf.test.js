@@ -539,3 +539,45 @@ test("parseSdf leaves a degenerate primitive as the placeholder it already was",
   assert.equal(sdfData.links[0].visuals[0].unsupportedGeometry, "box");
   assert.equal(sdfData.links[0].collisions[0].unsupportedGeometry, "cylinder");
 });
+
+// The Viewer serves a description from `/__cad/asset?file=<path>`, so the mesh is relative
+// to the QUERY. Resolving it against the PATH gave `/__cad/meshes/wedge.stl`, the backend
+// 404'd it, and every SDF naming a mesh failed to load — while the URDF beside it, same
+// relative path, loaded fine, because only the URDF parser knew about that route.
+test("parseSdf resolves a mesh URI against a /__cad/asset description URL", () => {
+  const sdfData = parseWithRoot(
+    sdfRoot([
+      el("model", { name: "rig" }, [
+        el("link", { name: "boom" }, [
+          el("visual", { name: "boom_v" }, [
+            el("geometry", {}, [el("mesh", {}, [textEl("uri", "meshes/wedge.stl")])])
+          ])
+        ])
+      ])
+    ]),
+    "/__cad/asset?file=%2Fworkspace%2Frobots%2Fworld.sdf&v=abc123"
+  );
+
+  assert.equal(
+    sdfData.links[0].visuals[0].meshUrl,
+    "/__cad/asset?file=%2Fworkspace%2Frobots%2Fmeshes%2Fwedge.stl&v=abc123",
+    "the mesh keeps the asset route and the description's cache-busting v"
+  );
+});
+
+test("parseSdf still resolves a mesh URI against a plain static URL", () => {
+  const sdfData = parseWithRoot(
+    sdfRoot([
+      el("model", { name: "rig" }, [
+        el("link", { name: "boom" }, [
+          el("visual", { name: "boom_v" }, [
+            el("geometry", {}, [el("mesh", {}, [textEl("uri", "../shared/wedge.stl")])])
+          ])
+        ])
+      ])
+    ]),
+    "/workspace/robots/world.sdf"
+  );
+
+  assert.equal(sdfData.links[0].visuals[0].meshUrl, "/workspace/shared/wedge.stl");
+});
