@@ -200,8 +200,13 @@ def execute_restart(argv, *, executable: str = "", platform: str = "") -> None:
     Windows: ``os.execv`` there is the C runtime's, which spawns a NEW process
     with a new pid and terminates this one, so the pid handoff cannot be
     implicit — the caller drops the registry entry and the child registers
-    itself. Spawning explicitly also keeps the console handles attached, which
-    is what makes the restarted server's output land where the first one's did.
+    itself. The standard handles are passed EXPLICITLY (``stdout=1, stderr=2``)
+    rather than left to inheritance: an exec keeps whatever stdout and stderr
+    were, and a Windows spawn only does so if it is told to — without this, a
+    server whose stderr had been redirected to a file or a pipe came back
+    writing to a console that, in CI, is not there at all, and its narration
+    simply vanished at the restart. Nothing else is inherited, and the cwd is
+    left alone: it IS the served directory, and the replacement needs it.
 
     Always ``-m cadgen.viewer``: it is the documented equivalent of the
     ``cadgen viewer`` console script, and it works whichever of the two
@@ -213,11 +218,21 @@ def execute_restart(argv, *, executable: str = "", platform: str = "") -> None:
         raise OSError("no interpreter to re-execute (sys.executable is empty)")
     command = [interpreter, "-m", "cadgen.viewer", *list(argv)]
     if (platform or sys.platform).startswith("win"):
-        subprocess.Popen(command)  # noqa: S603 - our own interpreter, our own argv
-        sys.stdout.flush()
-        sys.stderr.flush()
+        # Flush BEFORE spawning: parent and child write the same descriptors,
+        # and anything still sitting in this process's buffers would otherwise
+        # land after the replacement's first lines.
+        _flush_std_streams()
+        subprocess.Popen(command, stdout=1, stderr=2)  # noqa: S603 - our own interpreter, our own argv
         os._exit(0)
     os.execv(interpreter, command)
+
+
+def _flush_std_streams() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except (OSError, ValueError, AttributeError):  # detached, closed, or replaced
+            pass
 
 
 class SourceReloader:

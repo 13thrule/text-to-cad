@@ -227,7 +227,13 @@ class WhatItReRuns(unittest.TestCase):
                 mock.patch.object(reload_module.os, "_exit", side_effect=SystemExit) as hard_exit:
             with self.assertRaises(SystemExit):
                 reload_module.execute_restart(argv, executable="py.exe", platform="win32")
-        popen.assert_called_once_with(["py.exe", "-m", "cadgen.viewer", *argv])
+        # The standard handles are passed EXPLICITLY. An exec keeps whatever
+        # stdout and stderr were; a Windows spawn keeps them only if told to,
+        # and a restarted server whose narration went to a redirected stderr
+        # must keep writing there rather than to a console that may not exist.
+        popen.assert_called_once_with(
+            ["py.exe", "-m", "cadgen.viewer", *argv], stdout=1, stderr=2
+        )
         hard_exit.assert_called_once_with(0)
 
 

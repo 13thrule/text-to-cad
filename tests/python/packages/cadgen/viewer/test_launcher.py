@@ -20,6 +20,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -43,9 +44,55 @@ class LauncherFixture(unittest.TestCase):
         self.registry_home = os.path.join(self._tmp.name, "reg")
         os.makedirs(self.registry_home)
         self._children: list[subprocess.Popen] = []
+        self._adopted: list[tuple[int, int]] = []
         self.addCleanup(self._teardown)
 
+    def adopt_server(self, port: int, pid: int) -> None:
+        """Own a live server this fixture did not spawn.
+
+        A development restart REPLACES the server. On POSIX it re-execs and
+        keeps the pid, so the Popen child covers it; on Windows ``os.execv`` is
+        the C runtime's and hands out a NEW pid, so the process holding the port
+        is a grandchild this fixture never gets a handle to. Either way that
+        process stands in the served directory — it IS its cwd — and Windows
+        refuses to remove a directory any process is standing in (WinError 32),
+        so a teardown that killed only its own children left the replacement
+        running and failed the cleanup rather than the test.
+        """
+        entry = (int(port), int(pid))
+        if entry not in self._adopted:
+            self._adopted.append(entry)
+
+    @staticmethod
+    def port_answers(port: int, timeout: float = 0.5) -> bool:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/__cad/server", timeout=timeout
+            ) as response:
+                return 200 <= response.status < 300
+        except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+            return False
+
+    def _stop_adopted(self, port: int, pid: int, timeout: float = 15.0) -> None:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            return  # already gone, or never ours to signal
+        # The observable end is the port going quiet, which is the same signal
+        # `cadgen viewer stop` waits on: POSIX runs the handler (unregister,
+        # stop accepting, hard-exit 0.5s later) and Windows maps SIGTERM to
+        # TerminateProcess, where the exit is immediate.
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if not self.port_answers(port):
+                return
+            time.sleep(0.1)
+
     def _teardown(self) -> None:
+        # Adopted servers first, and gracefully: they are the ones that may be
+        # holding a directory this cleanup is about to remove.
+        for port, pid in self._adopted:
+            self._stop_adopted(port, pid)
         for child in self._children:
             if child.poll() is None:
                 child.kill()
@@ -53,7 +100,27 @@ class LauncherFixture(unittest.TestCase):
             for pipe in (child.stdout, child.stderr):
                 if pipe is not None and not pipe.closed:
                     pipe.close()
-        self._tmp.cleanup()
+        self._cleanup_tmp()
+
+    def _cleanup_tmp(self, timeout: float = 15.0) -> None:
+        """Remove the fixture's directory, allowing for a late handle release.
+
+        Every server above was told to stop and waited for, so this is not a
+        substitute for stopping them. It covers only the last gap: Windows
+        drops a terminated process's handles ASYNCHRONOUSLY, so the port can go
+        quiet a moment before the kernel lets go of that process's cwd. Bounded
+        and still raising at the end — a cleanup error that is ignored is a
+        leaked process nobody ever hears about.
+        """
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                self._tmp.cleanup()
+                return
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.25)
 
     def env(self, **overrides) -> dict:
         env = dict(os.environ)
@@ -309,21 +376,32 @@ class StagedApp(LauncherFixture):
     """
 
     def stage_app(self, *, checkout: bool = False) -> str:
+        """Stage the package and a dist as one installation, and return its root.
+
+        The sources go UNDER an ``install/`` level rather than beside the dist.
+        They used to sit at ``<staged>/src``, which is also where
+        ``warn_when_dist_is_stale`` looks for the CLIENT sources belonging to
+        ``<staged>/dist`` — so every staged launch printed a rebuild warning
+        about Python it had just copied. Harmless, but it put that warning's em
+        dash into the narration these tests read back, which is how a Windows
+        run found itself decoding cp1252 as UTF-8.
+        """
         staged = os.path.join(self._tmp.name, f"staged-{'checkout' if checkout else 'wheel'}")
         if os.path.isdir(staged):
             shutil.rmtree(staged)
+        install = os.path.join(staged, "install")
         parent = "src" if checkout else "site-packages"
         # The whole package, not just cadgen/viewer: the child imports `cadgen`
         # first, and a half-package on PYTHONPATH would shadow the real one.
         shutil.copytree(
             str(PACKAGE_DIR.parent),
-            os.path.join(staged, parent, "cadgen"),
+            os.path.join(install, parent, "cadgen"),
             ignore=shutil.ignore_patterns("__pycache__", "_runtime"),
         )
         if checkout:
             # What `running_from_source_checkout` looks for, and the only thing
             # separating these two stagings.
-            Path(staged, "pyproject.toml").write_text(
+            Path(install, "pyproject.toml").write_text(
                 '[project]\nname = "cadgen"\nversion = "0.0.0"\n', encoding="utf-8"
             )
         os.makedirs(os.path.join(staged, "dist"))
@@ -332,15 +410,19 @@ class StagedApp(LauncherFixture):
 
     @staticmethod
     def staged_sources(staged: str) -> str:
-        return os.path.join(staged, "src" if os.path.isdir(os.path.join(staged, "src")) else "site-packages")
+        install = os.path.join(staged, "install")
+        return os.path.join(install, "src" if os.path.isdir(os.path.join(install, "src")) else "site-packages")
 
     def launch_staged(
         self, staged: str, root: str, extra: list[str] | None = None, *, stderr_path: str = ""
     ) -> subprocess.Popen:
         # A live process's stderr PIPE cannot be read without blocking, and
         # these launches never exit, so a test that reads the narration sends
-        # it to a file instead.
-        log = open(stderr_path, "w", encoding="utf-8") if stderr_path else subprocess.PIPE
+        # it to a file instead. BINARY, deliberately: Popen hands the child the
+        # raw descriptor, so the bytes in it are the child's own encoding — the
+        # platform code page on Windows — and pretending the parent's text
+        # wrapper decides that is how this file came to be read back wrongly.
+        log = open(stderr_path, "wb") if stderr_path else subprocess.PIPE
         if stderr_path:
             self.addCleanup(log.close)
         child = subprocess.Popen(
@@ -377,7 +459,13 @@ class StagedApp(LauncherFixture):
             return json.loads(response.read())
 
     def wait_for_identity_change(self, port: int, before: str, timeout: float = 30.0) -> dict:
-        """The restarted server, answering the SAME port with a new identity."""
+        """The restarted server, answering the SAME port with a new identity.
+
+        The replacement is ADOPTED here rather than at the call sites: from this
+        moment a process the fixture never spawned holds the port and the served
+        directory, and on Windows that is the same process the cleanup has to
+        wait for.
+        """
         deadline = time.monotonic() + timeout
         last = None
         while time.monotonic() < deadline:
@@ -388,6 +476,7 @@ class StagedApp(LauncherFixture):
                 time.sleep(0.1)
                 continue
             if info["identityToken"] != before:
+                self.adopt_server(info["port"], info["pid"])
                 return info
             last = info
             time.sleep(0.1)
@@ -504,9 +593,21 @@ class DevelopmentAutoReload(StagedApp):
         self.assertEqual(after["port"], a["port"], "the URL the browser has open stays valid")
         self.assertEqual(after["rootPath"], before["rootPath"], "and it serves the same directory")
         self.assertGreater(after["startedAt"], before["startedAt"], "it is a new server")
-        self.assertIn(
-            f"code changed; restarting on port {a['port']}",
-            Path(log_path).read_text(encoding="utf-8"),
+        # The fixture now owns the replacement. On POSIX this is the same pid
+        # the exec kept; on Windows it is a process nothing here spawned, and
+        # forgetting it leaves it standing in a served directory the cleanup is
+        # about to remove.
+        self.assertIn((after["port"], after["pid"]), self._adopted)
+        # errors="replace": the child writes the PLATFORM's encoding, not ours
+        # (see `launch_staged`), and this assertion is about an ASCII sentence —
+        # a byte elsewhere in the narration that utf-8 cannot read is not this
+        # test's business and must not turn into a decode error.
+        narration = Path(log_path).read_text(encoding="utf-8", errors="replace")
+        self.assertIn(f"code changed; restarting on port {a['port']}", narration)
+        self.assertNotIn(
+            "older than the client sources",
+            narration,
+            "the staging must not sit where warn_when_dist_is_stale looks for client sources",
         )
 
         # The registry entry names the restarted process, so the launcher's
