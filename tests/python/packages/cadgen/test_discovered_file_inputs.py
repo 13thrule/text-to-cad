@@ -27,6 +27,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -231,6 +232,133 @@ class DiscoveredFileInputTests(unittest.TestCase):
         before = artifact.stat().st_mtime_ns
         self._run(model)
         self.assertEqual(before, artifact.stat().st_mtime_ns)
+
+
+class OwnOutputAsInputTests(unittest.TestCase):
+    """A model must not read a file it writes.
+
+    `read_step` on the model's own `.step` is not a loop: it is an input that
+    changes on every run, so the gate can never say "current" and the geometry
+    depends on what the previous run left on disk. A body that re-wraps its own
+    output grew by one box per run and exited 0 each time -- plausible-wrong
+    output at exit 0, the one outcome the engine refuses to produce. The rule
+    was written down (step-generation.md, "Never `read_step` your own output")
+    and enforced nowhere.
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory(prefix="own-output-input-")
+        self.addCleanup(self._tmp.cleanup)
+        self.project = Path(self._tmp.name).resolve()
+        self.environment = dict(os.environ)
+        self.environment.update({
+            "CADGEN_DAEMON": "0",
+            "CADGEN_CACHE_DIR": str(self.project / "store"),
+            "PYTHONPATH": str(CADGEN_SRC),
+        })
+
+    def _run(self, name: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(self.project / name)], cwd=str(self.project),
+            env=self.environment, capture_output=True, text=True, timeout=600,
+        )
+
+    def test_read_step_of_the_models_own_step_is_refused(self) -> None:
+        (self.project / "ouro.py").write_text(textwrap.dedent('''
+            from pathlib import Path
+
+            from cadgen import build123d as bd
+            from cadgen import read_step, step
+
+            HERE = Path(__file__).resolve().parent
+
+            @step
+            def ouro():
+                previous = read_step(HERE / "ouro.step")
+                return bd.Compound(children=[previous, bd.Pos(0, 0, 20) * bd.Box(4, 4, 4)], label="ouro")
+
+
+            if __name__ == "__main__":
+                ouro()
+            '''), encoding="utf-8")
+        # Seed the output so the refusal is about ownership, not a missing file.
+        seed = "import build123d as bd, sys\nbd.export_step(bd.Box(6, 6, 6), sys.argv[1])\n"
+        subprocess.run([sys.executable, "-c", seed, str(self.project / "ouro.step")],
+                       env=self.environment, capture_output=True, text=True, check=True)
+        before = (self.project / "ouro.step").read_bytes()
+
+        completed = self._run("ouro.py")
+
+        self.assertEqual(1, completed.returncode, completed.stdout + completed.stderr)
+        self.assertIn("is an output this model writes", completed.stderr)
+        self.assertEqual(before, (self.project / "ouro.step").read_bytes())
+
+    def test_declare_input_on_a_declared_mesh_export_is_refused(self) -> None:
+        (self.project / "selfmesh.py").write_text(textwrap.dedent('''
+            from pathlib import Path
+
+            from cadgen import build123d as bd
+            from cadgen import declare_input, stl
+
+            HERE = Path(__file__).resolve().parent
+
+            @stl(out="selfmesh.stl")
+            def selfmesh():
+                declare_input(HERE / "selfmesh.stl")
+                return bd.Box(5, 5, 5)
+
+
+            if __name__ == "__main__":
+                selfmesh()
+            '''), encoding="utf-8")
+        (self.project / "selfmesh.stl").write_bytes(b"")
+
+        completed = self._run("selfmesh.py")
+
+        self.assertEqual(1, completed.returncode, completed.stdout + completed.stderr)
+        self.assertIn("is an output this model writes", completed.stderr)
+
+    def test_reading_another_models_output_is_still_allowed(self) -> None:
+        (self.project / "vendorsrc.py").write_text(textwrap.dedent('''
+            from cadgen import build123d as bd
+            from cadgen import step
+
+            @step(out="vendor.step")
+            def vendorsrc():
+                box = bd.Box(12, 8, 5)
+                box.label = "vendor"
+                return box
+
+
+            if __name__ == "__main__":
+                vendorsrc()
+            '''), encoding="utf-8")
+        (self.project / "rig.py").write_text(textwrap.dedent('''
+            from pathlib import Path
+
+            from cadgen import build123d as bd
+            from cadgen import read_step, step
+
+            HERE = Path(__file__).resolve().parent
+
+            @step
+            def rig():
+                part = read_step(HERE / "vendor.step")
+                part.label = "vendor"
+                base = bd.Box(40, 20, 4)
+                base.label = "base"
+                return bd.Compound(children=[base, part.moved(bd.Location((0, 0, 6)))], label="rig")
+
+
+            if __name__ == "__main__":
+                rig()
+            '''), encoding="utf-8")
+
+        self.assertEqual(0, self._run("vendorsrc.py").returncode)
+        completed = self._run("rig.py")
+
+        self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
+        self.assertTrue((self.project / "rig.step").exists())
 
 
 class ReaderSurfaceTests(unittest.TestCase):

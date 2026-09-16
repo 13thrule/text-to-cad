@@ -161,7 +161,11 @@ The rules, each enforced by the decorator or the build:
 - **`from cadgen import build123d as bd`** is the canonical import — a lazy,
   transparent re-export of build123d (same names, same behaviour) — so the
   freshness gate and the warm-worker handoff run before any kernel import is
-  paid. Raw `import build123d` works but costs ~2.5s on every re-run.
+  paid. Raw `import build123d` works but costs ~2.5s on every re-run, and so
+  does any module-level `bd.<anything>` — a constant, a default argument, or an
+  annotation such as `-> bd.Shape`, which Python evaluates at `def` time. Put
+  `from __future__ import annotations` at the top of a file whose factories are
+  annotated.
 - Per-run flags ride the script's argv: `--force`, `--json`, `--verbose`,
   `--mesh-tolerance`, `--mesh-angular-tolerance`.
 

@@ -76,6 +76,8 @@ Rules the decorator enforces:
   calls:
 
   ```python
+  from __future__ import annotations   # keeps `-> bd.Shape` a string, not an import
+
   from cadgen import build123d as bd
   from cadgen import step
 
@@ -126,7 +128,11 @@ current model's re-run never pays the ~2.5s kernel import: the freshness gate
 and the warm-worker handoff fire before any `bd.` attribute resolves. Raw
 `import build123d` still works, just slower on re-runs (the build prints a
 one-line hint). Keep `bd.<anything>` out of module-level constants and default
-arguments for the same reason.
+arguments for the same reason — **including annotations**, which Python
+evaluates at `def` time: one `-> bd.Shape` on a module-level factory imports the
+kernel on every run of every model that reaches the file, turning a current
+model's no-op from ~0.6s into ~2.5s. Start such a file with
+`from __future__ import annotations` so the annotation stays a string.
 
 **A model runs like `python script.py`.** Its folder is on `sys.path` for the
 whole build, plus your `PYTHONPATH` — cadgen adds nothing else and infers no
@@ -328,6 +334,8 @@ factory, and let the assembly place two ordinary children.
 
 ```python
 # src/lib/bracket_shape.py — the factory (plain module, no decorator)
+from __future__ import annotations
+
 from cadgen import build123d as bd
 
 

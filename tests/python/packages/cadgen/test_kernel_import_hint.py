@@ -124,6 +124,33 @@ class KernelImportHintTest(unittest.TestCase):
         self.assertIn("hinted3.py", _posix_slashes(hint))
         self.assertNotIn("step_scene.py", hint)
 
+    def test_a_kernel_import_sorted_above_cadgen_is_still_named(self) -> None:
+        """The recorder is installed by cadgen's package body, so a model that
+        imports the kernel FIRST -- exactly what an import sorter writes, since
+        `import build123d` sorts above `from cadgen import step` -- was already
+        past it and got a hint with no file, line or statement in it. The file
+        that was importing cadgen is parsed for the statement instead."""
+        (self.project / "sorted_first.py").write_text(
+            textwrap.dedent('''
+            import build123d
+            from cadgen import step
+
+            BOX = build123d.Box(5, 5, 5)
+
+            @step(out="sorted_first.step")
+            def sorted_first():
+                return BOX
+
+
+            if __name__ == "__main__":
+                sorted_first()
+            '''),
+            encoding="utf-8",
+        )
+        hint = next((line for line in self._run("sorted_first").splitlines() if line.startswith("hint:")), "")
+        self.assertIn("sorted_first.py:2", _posix_slashes(hint))
+        self.assertIn("import build123d", hint)
+
     def test_a_kernel_free_module_body_gets_no_hint(self) -> None:
         (self.project / "clean.py").write_text(
             textwrap.dedent('''

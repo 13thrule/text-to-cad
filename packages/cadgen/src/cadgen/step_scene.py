@@ -61,8 +61,10 @@ def _record_input(step_path: Path | str, *, reader: str) -> Path:
             "relative to the process's working directory, so anchor a model's own "
             "inputs on its file: Path(__file__).parent / '../STEP/part.step'."
         )
+    from cadgen._internal.self_input import refuse_own_output
     from cadgen._internal.source_hash import note_discovered_input
 
+    refuse_own_output(resolved, reader=reader)
     note_discovered_input(resolved)
     return resolved
 

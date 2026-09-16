@@ -71,9 +71,11 @@ def declare_input(path: Path | str) -> Path:
             "relative to the process's working directory, so anchor a model's own "
             "inputs on its file: Path(__file__).parent / 'atlas.json'."
         )
+    from cadgen._internal.self_input import refuse_own_output
     from cadgen._internal.source_hash import note_discovered_input
     from cadgen.store.closure import note_declared_file_hash
 
+    refuse_own_output(resolved, reader="declare_input")
     note_declared_file_hash(resolved)
     note_discovered_input(resolved)
     return resolved

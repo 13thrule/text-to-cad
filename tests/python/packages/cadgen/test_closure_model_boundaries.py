@@ -264,6 +264,51 @@ class ModelClosureBoundaries(unittest.TestCase):
                                 children=[str(self.family) + "::left"])
         self.assertEqual(closure.files, ("family.py", "parent.py"))
 
+    def test_a_grandchilds_files_belong_to_the_child_that_calls_it(self):
+        """Ownership is transitive, and the whole subtree executes in this process.
+
+        A body importing its child imports the child's child and that child's
+        helpers too, and every one of them is in ``executed``. Subtracting only
+        one level of child ownership put the grandchild's script and helper in
+        the ROOT's closure, so a geometry-neutral edit two levels down rebuilt
+        the root — while the same edit one level down correctly left it current,
+        because a pinned tree that does not move is what "models by result"
+        means.
+        """
+        from cadgen.store.closure import build_closure
+
+        self.write("helper_lib.py", "SPAN = 3\n\ndef span():\n    return SPAN\n")
+        leaf = self.write("leaf.py", """
+            from cadgen import step
+            from cadgen import build123d as bd
+            from helper_lib import span
+
+            @step
+            def leaf():
+                return bd.Box(span(), 1, 1)
+        """)
+        middle = self.write("middle.py", """
+            from cadgen import step
+            from leaf import leaf
+
+            @step
+            def middle():
+                return leaf()
+        """)
+        root = self.write("root.py", """
+            from cadgen import step
+            from middle import middle
+
+            @step
+            def root():
+                return middle()
+        """)
+        executed = self.executed(root, middle, leaf, self.root / "helper_lib.py")
+
+        closure = build_closure(root, executed=executed, children=[str(middle) + "::middle"])
+
+        self.assertEqual(closure.files, ("root.py",))
+
     def test_exact_function_pins_and_whole_file_sibling_invalidation_remain(self):
         from cadgen.store.closure import build_closure
         from cadgen.store.gate import stale

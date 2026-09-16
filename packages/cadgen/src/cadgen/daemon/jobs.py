@@ -88,26 +88,10 @@ def declared_outputs(subject: str, tool: str) -> list[str]:
     if not script_ref.endswith(".py"):
         return [_real(subject)]
     try:
-        from cadgen.metadata import parse_all_generator_metadata, parse_generator_metadata, resolve_model_output_path
+        from cadgen.metadata import declared_output_paths
 
-        script = Path(script_ref)
-        models = (parse_generator_metadata(script, function=function),) if function else parse_all_generator_metadata(script)
-        outputs: list[str] = []
-        for metadata in models:
-            if metadata is None:
-                continue
-            fmt = "dxf" if str(getattr(metadata, "format", "step") or "step") == "dxf" else "step"
-            primary = resolve_model_output_path(script, fmt=fmt, explicit_out=metadata.out_target, function=metadata.entry_function)
-            if fmt == "dxf" or getattr(metadata, "step_output", True):
-                outputs.append(_real(primary))
-            suffixes = {"stl": ".stl", "3mf": ".3mf", "glb": ".glb"}
-            for decl in getattr(metadata, "mesh_exports", ()) or ():
-                if decl.out is not None:
-                    path = resolve_model_output_path(script, fmt=decl.fmt, explicit_out=decl.out, function=metadata.entry_function)
-                else:
-                    path = primary.with_suffix(suffixes.get(decl.fmt, f".{decl.fmt}"))
-                outputs.append(_real(path))
-        return list(dict.fromkeys(outputs))
+        paths = declared_output_paths(Path(script_ref), function=function or None)
+        return list(dict.fromkeys(_real(path) for path in paths))
     except Exception:  # noqa: BLE001 - metadata is best-effort; a job still runs
         return []
 
