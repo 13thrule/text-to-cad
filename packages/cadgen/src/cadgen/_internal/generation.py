@@ -1298,6 +1298,18 @@ def _run_selected_specs(
     return results
 
 
+def _reported_document(spec: EntrySpec) -> str | None:
+    """The document a model run names on stdout: the STEP it declares, or -- for a
+    mesh-only model (`@stl`/`@glb`/`@threemf` with no `@step`) -- the first mesh it
+    declares. A STEP model that also declares meshes still names its STEP: the line
+    names the model's primary document, not everything the build wrote."""
+    if spec.step_output:
+        return _display_path(spec.step_path) if spec.step_path is not None else None
+    for export in spec.mesh_exports:
+        return _display_path(export.path)
+    return None
+
+
 def _model_for_spec(spec: EntrySpec) -> str | None:
     """The store identity of a spec: ``script::fn`` (generated) or its document's
     path (imported) -- cadgen.store.index.model_ref."""
@@ -1385,9 +1397,11 @@ def generate_step_targets(
                 # inspect gives; the authored kind only steered the packaging.
                 "kind": tree_kind_for(tree) or "part",
                 "outcome": outcome,
-                # The document the run wrote (None for a mesh-only model, which
-                # declares no STEP) and the hash of the result tree it came from.
-                "document": _display_path(spec.step_path) if spec.step_output else None,
+                # The document the run wrote, and the hash of the result tree it came
+                # from. A mesh-only model declares no STEP, so it answers with the mesh
+                # it wrote -- a path the caller can open, never the tree hash, which
+                # names nothing on disk.
+                "document": _reported_document(spec),
                 "tree": tree,
             }
         )
@@ -1396,8 +1410,9 @@ def generate_step_targets(
         # STDOUT IS THE RESULT, on every CLI. `gen` used to print nothing there at all --
         # its only output was the logger's prose on stderr -- so a caller reading the two
         # streams apart got an exit code and nothing else, while export, snapshot, validate
-        # and inspect all answered on stdout. One line per target, `outcome document`
-        # (`outcome <tree hash>` for a model with no document), upgraded to JSON by --json.
+        # and inspect all answered on stdout. One line per target, `outcome document`,
+        # upgraded to JSON by --json. Every model has a document to name -- a mesh-only
+        # one names its mesh -- so the tree hash is the last resort it never reaches.
         for entry in reported:
             if json_output:
                 print(json.dumps(entry, separators=(",", ":")))
@@ -1530,12 +1545,20 @@ def generate_dxf_targets(
             else:
                 print(f"{entry['outcome']} {entry['document']}")
 
-    def dxf_output_current(script_path: Path, output_path: Path | None) -> bool:
+    def dxf_output_current(spec: EntrySpec, output_path: Path | None) -> bool:
         # The ONE gate every model answers to (STORE.md §4): the drawing's record,
         # its closure, its pinned children and its .dxf output.
+        #
+        # Ask it by the model's IDENTITY (``script::fn``), never by the bare script
+        # path: a file may hold several models, and a bare path is ambiguous there --
+        # cadgen.store.index.resolve_model_ref refuses it rather than guessing, which
+        # would fail the drawing before it ever reached its own gate.
         if output_path is None:
             return False
-        verdict = stale(script_path)
+        model = _model_for_spec(spec)
+        if model is None:
+            return False
+        verdict = stale(model)
         return not verdict.stale
 
     logger = CliLogger("cadgen", verbose=verbose)
@@ -1556,7 +1579,7 @@ def generate_dxf_targets(
             spec
             for spec in selected_specs
             if spec.script_path is not None
-            and dxf_output_current(spec.script_path, _effective_output(spec))
+            and dxf_output_current(spec, _effective_output(spec))
         ]
         for spec in current_specs:
             logger.info(f"{spec.cad_ref} is current; not rebuilt")
@@ -1569,7 +1592,7 @@ def generate_dxf_targets(
         def _built_by_a_peer(spec: EntrySpec) -> bool:
             if force or spec.script_path is None:
                 return False
-            return dxf_output_current(spec.script_path, _effective_output(spec))
+            return dxf_output_current(spec, _effective_output(spec))
 
         results = _run_selected_specs(
             selected_specs,
