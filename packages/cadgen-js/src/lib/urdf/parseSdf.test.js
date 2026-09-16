@@ -443,24 +443,45 @@ test("parseSdf ignores CAD Viewer link pose playback tracks as static metadata",
   assert.equal(sdfData.sdf.staticMetadata.plugins[0].customAnimation, true);
 });
 
-test("parseSdf keeps unsupported geometry as static placeholders", () => {
-  const sdfData = parseWithRoot(sdfRoot([
+// Geometry the renderer cannot draw used to become a silent placeholder: the composer
+// dropped it and the model rendered as empty space at exit 0. URDF has always thrown on
+// unsupported visual geometry; SDF now matches it.
+test("parseSdf refuses a mesh with no uri and a shape with no dimensions", () => {
+  const withMeshNoUri = () => parseWithRoot(sdfRoot([
     el("model", { name: "robot" }, [
-      el("link", { name: "base_link" }, [
-        el("visual", {}, [
-          el("geometry", {}, [el("mesh")])
-        ]),
-        el("collision", {}, [
-          el("geometry", {}, [el("box")])
-        ])
-      ])
+      el("link", { name: "base_link" }, [el("visual", {}, [el("geometry", {}, [el("mesh")])])])
     ])
   ]));
+  assert.throws(withMeshNoUri, /SDF link base_link visual 1 is a <mesh> with no <uri>/);
 
-  assert.equal(sdfData.sdf.unsupportedVisualCount, 1);
-  assert.equal(sdfData.sdf.unsupportedCollisionCount, 1);
-  assert.equal(sdfData.links[0].visuals[0].unsupportedGeometry, "mesh");
-  assert.equal(sdfData.links[0].collisions[0].unsupportedGeometry, "box");
+  const withEmptyBox = () => parseWithRoot(sdfRoot([
+    el("model", { name: "robot" }, [
+      el("link", { name: "base_link" }, [el("collision", {}, [el("geometry", {}, [el("box")])])])
+    ])
+  ]));
+  // A <box> IS drawable; saying "box is unsupported" would send the reader to the wrong place.
+  assert.throws(withEmptyBox, /collision 1 is a <box> with missing or non-positive dimensions/);
+});
+
+test("parseSdf refuses a shape the renderer has never drawn, naming the supported set", () => {
+  for (const shape of ["capsule", "plane", "ellipsoid", "heightmap", "polyline"]) {
+    const parse = () => parseWithRoot(sdfRoot([
+      el("model", { name: "robot" }, [
+        el("link", { name: "ground" }, [el("visual", {}, [el("geometry", {}, [el(shape)])])])
+      ])
+    ]));
+    assert.throws(parse, new RegExp(`SDF link ground visual 1 uses <${shape}> geometry`), shape);
+    assert.throws(parse, /Supported: box, cylinder, mesh, sphere/, shape);
+  }
+});
+
+test("parseSdf refuses a visual with no geometry at all", () => {
+  assert.throws(
+    () => parseWithRoot(sdfRoot([
+      el("model", { name: "robot" }, [el("link", { name: "ghost" }, [el("visual", {}, [])])])
+    ])),
+    /SDF link ghost visual 1 has no <geometry>\. Give it one of: box, cylinder, mesh, sphere/
+  );
 });
 
 test("parseSdf rejects unsupported pose frames", () => {
@@ -524,20 +545,27 @@ test("parseSdf reads box, cylinder and sphere link geometry", () => {
   assert.equal(sdfData.sdf.unsupportedVisualCount, 0);
 });
 
-test("parseSdf leaves a degenerate primitive as the placeholder it already was", () => {
-  // Reading one more element may never make a description that renders today start failing.
-  const sdfData = parseWithRoot(sdfRoot([
-    el("model", { name: "rig" }, [
-      el("link", { name: "base_link" }, [
-        el("visual", {}, [el("geometry", {}, [el("box", {}, [textEl("size", "0.4 0")])])]),
-        el("collision", {}, [el("geometry", {}, [el("cylinder", {}, [textEl("radius", "0.03")])])])
+test("parseSdf refuses a drawable shape whose dimensions are degenerate", () => {
+  assert.throws(
+    () => parseWithRoot(sdfRoot([
+      el("model", { name: "rig" }, [
+        el("link", { name: "base_link" }, [
+          el("visual", {}, [el("geometry", {}, [el("box", {}, [textEl("size", "0.4 0")])])])
+        ])
       ])
-    ])
-  ]));
-
-  assert.equal(sdfData.links[0].visuals[0].primitive, undefined);
-  assert.equal(sdfData.links[0].visuals[0].unsupportedGeometry, "box");
-  assert.equal(sdfData.links[0].collisions[0].unsupportedGeometry, "cylinder");
+    ])),
+    /is a <box> with missing or non-positive dimensions/
+  );
+  assert.throws(
+    () => parseWithRoot(sdfRoot([
+      el("model", { name: "rig" }, [
+        el("link", { name: "base_link" }, [
+          el("collision", {}, [el("geometry", {}, [el("cylinder", {}, [textEl("radius", "0.03")])])])
+        ])
+      ])
+    ])),
+    /is a <cylinder> with missing or non-positive dimensions/
+  );
 });
 
 // The Viewer serves a description from `/__cad/asset?file=<path>`, so the mesh is relative

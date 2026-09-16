@@ -1493,6 +1493,98 @@ class SnapshotCliTests(unittest.TestCase):
             with self.assertRaisesRegex(SnapshotError, "This URDF declares: shoulder_pan"):
                 resolve_render_job_packet({**base, "jointValues": {"Shoulder_Pan": 30}}, cwd=root)
 
+    # A capsule, plane, ellipsoid, heightmap or polyline has no mesh in the renderer, so the
+    # composer drops it and those links render as EMPTY SPACE at exit 0. The browser parser
+    # refuses them (parseSdf.test.js); the door answers FIRST so the CLI fails before a
+    # browser ever starts, and says the same thing.
+    def _sdf(self, body: str) -> bytes:
+        return (
+            "<?xml version='1.0'?>\n<sdf version='1.9'><model name='rig'>"
+            + body
+            + "</model></sdf>\n"
+        ).encode()
+
+    DRAWABLE_LINK = (
+        "<link name='plate'><visual name='v'>"
+        "<geometry><box><size>1 1 1</size></box></geometry>"
+        "</visual></link>"
+    )
+
+    def test_render_job_refuses_sdf_geometry_the_renderer_cannot_draw(self) -> None:
+        for shape, xml in (
+            ("capsule", "<capsule><radius>1</radius><length>2</length></capsule>"),
+            ("plane", "<plane><size>10 10</size></plane>"),
+            ("ellipsoid", "<ellipsoid><radii>1 2 3</radii></ellipsoid>"),
+            ("heightmap", "<heightmap><uri>h.png</uri></heightmap>"),
+            ("polyline", "<polyline><height>1</height></polyline>"),
+        ):
+            with self.subTest(shape=shape), tempfile.TemporaryDirectory() as temporary_directory:
+                root = self._mesh_job_env(
+                    temporary_directory,
+                    "rig.sdf",
+                    self._sdf(
+                        self.DRAWABLE_LINK
+                        + f"<link name='ground'><visual name='g'><geometry>{xml}</geometry></visual></link>"
+                    ),
+                )
+                with self.assertRaisesRegex(SnapshotError, rf"link ground visual uses <{shape}>"):
+                    resolve_render_job_packet(
+                        {"input": "models/rig.sdf", "outputs": [{"path": "tmp/iso.png"}]},
+                        cwd=root,
+                    )
+
+    def test_render_job_sdf_refusal_names_the_supported_set_and_covers_collisions(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = self._mesh_job_env(
+                temporary_directory,
+                "rig.sdf",
+                self._sdf(
+                    self.DRAWABLE_LINK
+                    + "<link name='ground'><collision name='c'>"
+                    "<geometry><plane><size>10 10</size></plane></geometry></collision></link>"
+                    + "<link name='ghost'><visual name='v'></visual></link>"
+                ),
+            )
+            with self.assertRaises(SnapshotError) as caught:
+                resolve_render_job_packet(
+                    {"input": "models/rig.sdf", "outputs": [{"path": "tmp/iso.png"}]},
+                    cwd=root,
+                )
+            message = str(caught.exception)
+            self.assertIn("link ground collision uses <plane>", message)
+            self.assertIn("link ghost visual has no <geometry>", message)
+            self.assertIn("Supported: box, cylinder, mesh, sphere", message)
+
+    def test_render_job_accepts_sdf_built_only_from_drawable_shapes(self) -> None:
+        # The refusal may only fire on what it understands: a description made of shapes the
+        # renderer draws still resolves, and one this cannot parse is left to the renderer.
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = self._mesh_job_env(
+                temporary_directory,
+                "rig.sdf",
+                self._sdf(
+                    self.DRAWABLE_LINK
+                    + "<link name='mast'><visual name='v'><geometry>"
+                    "<cylinder><radius>1</radius><length>2</length></cylinder>"
+                    "</geometry></visual></link>"
+                    + "<link name='lamp'><visual name='v'><geometry>"
+                    "<sphere><radius>1</radius></sphere></geometry></visual></link>"
+                ),
+            )
+            packet = resolve_render_job_packet(
+                {"input": "models/rig.sdf", "outputs": [{"path": "tmp/iso.png"}]},
+                cwd=root,
+            )
+            self.assertEqual(packet["jobs"][0]["resolved"]["kind"], "sdf")
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = self._mesh_job_env(temporary_directory, "rig.sdf", b"not xml at all")
+            packet = resolve_render_job_packet(
+                {"input": "models/rig.sdf", "outputs": [{"path": "tmp/iso.png"}]},
+                cwd=root,
+            )
+            self.assertEqual(packet["jobs"][0]["resolved"]["kind"], "sdf")
+
     def test_render_job_still_poses_a_robot_whose_joints_cannot_be_read(self) -> None:
         # The check may only REFUSE a name it is sure about. A description this cannot parse
         # renders exactly as before rather than becoming stricter than the renderer.
