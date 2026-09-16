@@ -134,11 +134,11 @@ After `.sdf` files are created or modified, hand explicit paths to `$cad-viewer`
 
 | Mode | `gz` present | `gz` absent |
 |---|---|---|
-| `auto` (default) | `gz_check_passed` info, or `gz_check_failed` **error** with the tool's output | `gz_check_unavailable` **warning** |
+| `auto` (default) | `gz_check_passed` info, or `gz_check_failed` **error** with the tool's output | `gz_check_unavailable` info |
 | `required` | same as `auto` | `gz_check_unavailable` **error** |
 | `never` | not run | `gz_check_skipped` info |
 
-Under `auto` the absent-tool warning is enough to fail `--strict`, so run `--strict --gz-check never` when the external check is genuinely optional. Record which mode ran in the diagnostics report.
+A tool that is not installed says nothing about the document, so under `auto` its absence is a note and never blocks — including under `--strict`, which promotes warnings about the FILE. Use `required` to demand the external check. Record which mode ran in the diagnostics report.
 
 ## SDF validity vs project policy
 

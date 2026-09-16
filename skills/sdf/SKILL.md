@@ -70,7 +70,7 @@ Run `cadgen` from the Python environment this skill's `requirements.txt` was ins
 
 ```bash
 cadgen sdf validate path/to/model.sdf
-cadgen sdf validate path/to/model.sdf --strict --gz-check never
+cadgen sdf validate path/to/model.sdf --strict
 cadgen sdf validate path/to/model.sdf --json
 cadgen sdf snapshot path/to/model.sdf review.png
 ```
@@ -84,7 +84,7 @@ cadgen sdf validate path/to/model.sdf --gz-check required
 cadgen sdf validate path/to/model.sdf --gz-check never
 ```
 
-`gz sdf --check` is target-consumer validation. `--gz-check auto` is the default: it runs when `gz` is on PATH and otherwise adds the **warning** `gz_check_unavailable: gz sdf --check skipped because 'gz' is not on PATH`. That warning makes bare `--strict` fail on an otherwise clean file, so pair them — `--strict --gz-check never` demotes it to an `info` line — unless you genuinely want gz required. `--gz-check required` turns the same finding into an error.
+`gz sdf --check` is target-consumer validation. `--gz-check auto` is the default: it runs when `gz` is on PATH, reporting `gz_check_passed` or the tool's own output as the error `gz_check_failed`, and otherwise notes `info: gz_check_unavailable` and carries on. An absent optional tool says nothing about the file, so it never fails a clean document and `--strict` does not change that. `--gz-check required` makes the tool mandatory — a missing `gz` is then an error — and `--gz-check never` skips it outright.
 
 ## Required report shape
 

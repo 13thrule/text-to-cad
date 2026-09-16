@@ -8,10 +8,10 @@ Use smoke tests after the SDF passes bundled validation. The goal is to catch si
 
 ```bash
 cadgen sdf validate path/to/model.sdf
-cadgen sdf validate path/to/model.sdf --strict --gz-check never
+cadgen sdf validate path/to/model.sdf --strict
 ```
 
-Use `--strict` when warnings should block handoff. Pair it with `--gz-check never` unless `gz` is installed: the default `--gz-check auto` warns when the tool is missing, and under `--strict` that warning alone fails the file.
+Use `--strict` when warnings should block handoff. It is safe on any machine: the default `--gz-check auto` notes a missing `gz` as `info` rather than a finding against the file, so `--strict` fails only on the document's own warnings.
 
 ### SDFormat parser check
 
@@ -21,7 +21,7 @@ Use `--strict` when warnings should block handoff. Pair it with `--gz-check neve
 gz sdf --check path/to/model.sdf
 ```
 
-or make it mandatory, so a missing `gz` is an error instead of a warning:
+or make it mandatory, so a missing `gz` is an error instead of a note:
 
 ```bash
 cadgen sdf validate path/to/model.sdf --gz-check required
