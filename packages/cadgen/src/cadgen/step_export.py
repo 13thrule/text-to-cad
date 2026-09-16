@@ -885,6 +885,109 @@ def _canonicalize_style_tail_in_file(path: Path, scan: _StyleTailScan) -> bool:
     return True
 
 
+# IEEE-754 has two zeros and OCCT prints both: a coordinate that arrives as
+# -0.0 writes `-0.`, one that arrives as +0.0 writes `0.`. Which one a value
+# lands on depends on the operation path that produced it, not on the geometry
+# — the same solid built through a different (equally valid) sequence of kernel
+# calls flips DIRECTION('',(0.,1.,0.)) to DIRECTION('',(-0.,1.,0.)) — so the
+# two spellings are the same number and must be the same bytes (law 5).
+#
+# A real is matched only when its mantissa is ALL zeros, so a genuinely
+# negative value keeps its sign: `-0.5`, `-1.`, `-0.000000000001` and
+# `-6.123233995737E-17` are all left exactly as written. The leading lookbehind
+# and trailing lookahead make the match a whole token: a `-0.` glued to another
+# number (`1.-0.`, an exponent's `E-0`) is not a real of its own and is not
+# rewritten. A mantissa with no `.` is a STEP INTEGER, never a coordinate, and
+# is left alone — which is also what keeps a name like `rev-0.1` intact if the
+# string alternative below ever failed to cover it.
+_STEP_NEGATIVE_ZERO = re.compile(
+    # A quoted STEP string, consumed whole and returned unchanged: a part name
+    # is not a number, whatever it spells. `''` is an escaped quote.
+    rb"'(?:[^']|'')*'"
+    rb"|(?<![0-9.eE+-])-(?:0+\.0*|0*\.0+)(?:[eE][-+]?[0-9]+)?(?![0-9.eE])"
+)
+
+
+def _normalize_negative_zero_reals(text: bytes) -> bytes:
+    """Rewrite every negative-zero real in STEP text as its positive spelling.
+
+    Pure text over one line-aligned block: a STEP string literal is a single
+    token that never spans a line, so the string alternative above sees every
+    literal whole and no number inside a name is ever touched.
+    """
+
+    # The scan has to consider every string literal to know which `-` it may
+    # not touch, so it runs at a few tens of MB/s. A negative zero starts
+    # `-0` or `-.`, so two memmem passes are a necessary condition for any
+    # match, and text with neither — an already-canonical file among them —
+    # skips the scan.
+    if b"-0" not in text and b"-." not in text:
+        return text
+
+    def replace(match: "re.Match[bytes]") -> bytes:
+        body = match.group(0)
+        if body.startswith(b"'"):
+            return body
+        return body[1:]
+
+    return _STEP_NEGATIVE_ZERO.sub(replace, text)
+
+
+# Read/rewrite granularity for the negative-zero pass. Large enough that a
+# multi-hundred-megabyte STEP costs a handful of iterations, small enough that
+# the pass never holds the whole file (the whole-file style-tail fallback is
+# the one place in this module that does, and only when OCCT wrote a shape the
+# fast path did not recognize).
+_NEGATIVE_ZERO_BLOCK = 8 << 20
+
+
+def _normalize_negative_zero_reals_in_file(path: Path) -> bool:
+    """Apply :func:`_normalize_negative_zero_reals` to a written STEP in place.
+
+    Rewriting `-0.` as `0.` only ever SHORTENS the text, so the rewrite streams
+    through one handle with the write offset trailing the read offset and
+    truncates at the end — no second copy of the file on disk or in memory.
+
+    Runs LAST, after the style-tail canonicalization: that pass addresses the
+    file by byte offsets it computed from the bytes OCCT wrote, and this one
+    moves them.
+
+    Returns True when the file changed.
+    """
+    changed = False
+    with open_with_ladder(path, "r+b") as handle:
+        read_at = 0
+        write_at = 0
+        carry = b""
+        while True:
+            handle.seek(read_at)
+            chunk = handle.read(_NEGATIVE_ZERO_BLOCK)
+            read_at += len(chunk)
+            block = carry + chunk
+            if chunk:
+                # Hand on a partial trailing line rather than splitting a token
+                # (or a string literal) across two blocks.
+                split = block.rfind(b"\n") + 1
+                carry, block = block[split:], block[:split]
+            else:
+                carry = b""
+            if block:
+                normalized = _normalize_negative_zero_reals(block)
+                # Until the first rewrite the bytes are already where they
+                # belong, so an unchanged file is read and never written.
+                if changed or normalized != block:
+                    changed = True
+                    handle.seek(write_at)
+                    handle.write(normalized)
+                write_at += len(normalized)
+            if not chunk:
+                break
+        if not changed:
+            return False
+        handle.truncate(write_at)
+    return True
+
+
 def write_xcaf_doc_step_file(
     doc: Any,
     output_path: Path,
@@ -1029,6 +1132,13 @@ def write_xcaf_doc_step_file(
                         # artifact, and a whole-file `wb` that dies midway leaves a
                         # half-written STEP where the tail rewrite above cannot.
                         write_bytes_atomic(output_path, canonical)
+    # Third and last canonicalization, for the same reason as the other two:
+    # a value OCCT prints as `-0.` is the value it prints as `0.` elsewhere,
+    # and which one a build lands on follows the operation path, not the
+    # geometry. Last because it shifts every byte after it, and the style-tail
+    # applier above addresses the file by offsets.
+    with (logger.timed("normalize negative zero reals") if logger is not None else nullcontext()):
+        _normalize_negative_zero_reals_in_file(output_path)
     replace_atomic(output_path, final_path)
     return step_file_hash(final_path)
 
