@@ -505,6 +505,30 @@ def _bind(host: str, port: int, args: dict) -> CadHTTPServer:
             port += 1
 
 
+def _harden_streams() -> None:
+    """Degrade an unencodable character to an escape instead of raising.
+
+    The same treatment every other cadgen entry point gets, and for the same
+    reason: Windows hands a process the legacy code page, and under strict
+    error handling a character it cannot represent raises UnicodeEncodeError
+    from the MESSAGE rather than from the work. The viewer's narration carries
+    em dashes (the dist-staleness warning) and, worse, arbitrary user paths.
+
+    Only the error HANDLER changes, never the encoding — switching the viewer's
+    streams to utf-8 would make it emit bytes that no Windows consumer decodes
+    the way the platform says to, which is the experiment
+    ``cli._harden_std_stream_errors`` documents having tried and reverted.
+
+    Reached from BOTH entry points: ``cadgen viewer`` arrives already hardened
+    through ``cadgen.cli.main``, but ``python -m cadgen.viewer`` does not — and
+    neither does the process a development restart re-executes, which is spelled
+    exactly that way.
+    """
+    from cadgen.cli import _harden_std_stream_errors  # noqa: PLC0415
+
+    _harden_std_stream_errors()
+
+
 def main(argv: list[str] | None = None, *, prog: str = DEFAULT_PROG) -> int:
     """``python -m cadgen.viewer``: serve, or ``list``/``stop`` when argv[0] says so.
 
@@ -513,6 +537,7 @@ def main(argv: list[str] | None = None, *, prog: str = DEFAULT_PROG) -> int:
     through ``cadgen.cli.viewer``, ``viewer_list`` and ``viewer_stop`` instead,
     which call :func:`serve`, :func:`list_command` and :func:`stop_command`.
     """
+    _harden_streams()
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "list":
         return list_command(argv[1:], prog=f"{prog} list")
@@ -522,6 +547,7 @@ def main(argv: list[str] | None = None, *, prog: str = DEFAULT_PROG) -> int:
 
 
 def serve(argv: list[str], *, prog: str = DEFAULT_PROG) -> int:
+    _harden_streams()
     # argparse answers --help on stdout with exit 0 and refuses an unknown
     # argument with exit 2, both before anything below runs. A launcher that
     # answered --help by starting a server read as broken.
