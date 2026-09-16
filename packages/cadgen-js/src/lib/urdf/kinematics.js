@@ -486,6 +486,43 @@ function buildUrdfPrimitiveMesh(primitive) {
   return null;
 }
 
+// A link mesh may carry its colour PER PART rather than per vertex: a GLB with one material
+// per primitive produces `has_source_colors` with an empty `colors` buffer and the colour on
+// `parts[].color`. A URDF link is ONE renderable part, so that detail had nowhere to go and
+// the whole link fell back to default grey — an authored two-colour hand rendered as a grey
+// stub, with no warning, purely because the colour was a material rather than an attribute.
+// Expand it into the per-vertex buffer the composer already reads, which is exactly what the
+// composer does for a `<material>` the URDF itself declares.
+function withPerVertexPartColors(partMesh) {
+  const vertices = partMesh?.vertices;
+  if (!partMesh?.has_source_colors || !vertices?.length || partMesh.colors?.length) {
+    return partMesh;
+  }
+  const parts = Array.isArray(partMesh.parts) ? partMesh.parts : [];
+  if (!parts.length) {
+    return partMesh;
+  }
+  const colors = new Float32Array(vertices.length);
+  let painted = false;
+  for (const part of parts) {
+    const rgb = parseHexColorToLinearRgb(String(part?.color || "").trim());
+    const offset = Number(part?.vertexOffset);
+    const count = Number(part?.vertexCount);
+    if (!rgb || !Number.isFinite(offset) || !Number.isFinite(count) || count <= 0) {
+      continue;
+    }
+    const end = Math.min(offset + count, Math.floor(vertices.length / 3));
+    for (let index = Math.max(offset, 0); index < end; index += 1) {
+      colors[index * 3] = rgb[0];
+      colors[index * 3 + 1] = rgb[1];
+      colors[index * 3 + 2] = rgb[2];
+    }
+    painted = true;
+  }
+  // A part the loader left uncoloured keeps white, which multiplies to the theme fill.
+  return painted ? { ...partMesh, colors } : partMesh;
+}
+
 function resolveUrdfVisuals(urdfData, meshesByUrl) {
   const links = Array.isArray(urdfData?.links) ? urdfData.links : [];
   const resolvedVisuals = [];
@@ -495,12 +532,13 @@ function resolveUrdfVisuals(urdfData, meshesByUrl) {
     for (const visual of visuals) {
       const meshUrl = String(visual?.meshUrl || "");
       const partFileRef = String(visual?.partFileRef || "");
-      const partMesh = visual?.primitive
+      const loadedMesh = visual?.primitive
         ? buildUrdfPrimitiveMesh(visual.primitive)
         : resolveVisualMesh(meshesByUrl, meshUrl, partFileRef);
-      if (!partMesh) {
+      if (!loadedMesh) {
         continue;
       }
+      const partMesh = withPerVertexPartColors(loadedMesh);
       resolvedVisuals.push({
         linkName,
         meshUrl,

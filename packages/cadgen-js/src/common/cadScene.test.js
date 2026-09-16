@@ -979,6 +979,42 @@ test("buildModel display modes control edges, transparency, and flat surfaces", 
   unshadedScene.dispose();
 });
 
+test("hidden_lines_removed surfaces are a depth mask, so an occluded line is occluded", () => {
+  const theme = cloneThemePresetSettings("workbench-light");
+  const scene = buildModel(THREE, sampleMeshData(), {
+    theme,
+    displayMode: CAD_DISPLAY_MODE.HIDDEN_LINES_REMOVED,
+    renderPartsIndividually: true
+  });
+  const record = scene.displayRecords[0];
+  // The near-invisible fill is the whole mechanism of the mode: the edges depth-test,
+  // and this surface is what an occluded line tests AGAINST. Deciding the write from
+  // opacity alone left the mask unwritten and drew every hidden line.
+  assert.equal(record.material.opacity, 0.045);
+  assert.equal(record.material.transparent, true);
+  assert.equal(record.material.depthWrite, true, "the ghost fill must write depth");
+  assert.equal(record.edgeMaterials[0].depthTest, true, "and the lines must test it");
+  // The mask has to be drawn before the lines that test it. Both are in three's
+  // transparent list, so renderOrder is the only thing that keeps them apart.
+  assert.ok(
+    (record.mesh.renderOrder || 0) < record.edges.renderOrder,
+    "surfaces render before the edge lines"
+  );
+  scene.dispose();
+});
+
+test("wireframe keeps its see-through fill: every triangle stays visible", () => {
+  const theme = cloneThemePresetSettings("workbench-light");
+  const scene = buildModel(THREE, sampleMeshData(), {
+    theme,
+    displayMode: CAD_DISPLAY_MODE.WIREFRAME,
+    renderPartsIndividually: true
+  });
+  const record = scene.displayRecords[0];
+  assert.equal(record.material.depthWrite, false);
+  scene.dispose();
+});
+
 test("buildModel applies source part opacity from GLB material metadata", () => {
   const meshData = sampleMeshData();
   meshData.parts = meshData.parts.map((part, index) => index === 0
