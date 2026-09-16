@@ -17,13 +17,15 @@ import io
 import json
 import pathlib
 import sys
+import tempfile
+import threading
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
-from cadgen.daemon import client  # noqa: E402
+from cadgen.daemon import client, transport  # noqa: E402
 from cadgen.daemon import pool as pool_mod  # noqa: E402
 from cadgen.daemon import server  # noqa: E402
 
@@ -87,6 +89,25 @@ class DeadWorkerMessage(unittest.TestCase):
         self.assertIn(client.cold_rerun_command(PAYLOAD), err)
         self.assertNotIn("worker closed the connection", err)
 
+    def test_a_death_the_client_runs_cold_says_so_instead_of_advising_a_cold_run(self):
+        """No exit frame means the daemon itself is gone, and the ordinary
+        non-strict path then runs this job cold in this process. The message
+        used to say "The job was NOT retried. Run it cold ... CADGEN_DAEMON=0"
+        and the run then succeeded at exit 0 — a failure notice above a success,
+        with nothing to tell the reader which one had happened."""
+        outcome, out, err = self._run([
+            {"workerDied": {"pid": 4242, "detail": "worker 4242 was killed by SIGKILL (signal 9)",
+                            "exitStatus": -9}},
+        ])  # the connection closes without an exit frame: the fallback follows
+
+        self.assertIsNone(outcome, "a closed connection still means run cold")
+        self.assertEqual(out, "")
+        self.assertIn("died mid-job", err)
+        self.assertIn("killed by SIGKILL (signal 9)", err)
+        self.assertIn("Running it cold now", err)
+        self.assertNotIn("NOT retried", err)
+        self.assertNotIn("CADGEN_DAEMON=0", err)
+
     def test_a_job_with_no_prog_is_named_by_its_tool(self):
         payload = {**PAYLOAD, "prog": None, "argv": ["build", "a b.step", "out.step"]}
         text = client.worker_died_message(payload, {"detail": "worker 1 exited with code 139"})
@@ -109,6 +130,57 @@ class DeadWorkerMessage(unittest.TestCase):
         outcome, _out, err = self._run([{"stream": "stderr", "data": "hello\n"}, {"exit": 0}])
         self.assertEqual(outcome, 0)
         self.assertEqual(err, "hello\n")
+
+
+class ResidentProcessLifecycle(unittest.TestCase):
+    def test_the_daemon_starts_outside_the_callers_project_directory(self):
+        spawned = mock.Mock(pid=1234)
+        with tempfile.TemporaryDirectory(prefix="cadgen-daemon-launch-") as tmp, \
+                mock.patch.object(client.transport, "ensure_authkey") as ensure, \
+                mock.patch.object(client, "daemon_identity", return_value="test"), \
+                mock.patch.object(client, "log_path", return_value=pathlib.Path(tmp) / "daemon.log"), \
+                mock.patch.object(client.subprocess, "Popen", return_value=spawned) as popen:
+            # worker_env is imported inside the function, so patch its source.
+            from cadgen.daemon import executors
+
+            with mock.patch.object(executors, "worker_env", return_value={}):
+                self.assertIs(client._spawn_daemon("test-address"), spawned)
+
+        self.assertEqual(popen.call_args.kwargs["cwd"], tempfile.gettempdir())
+        ensure.assert_not_called()
+
+    def test_replaced_key_is_retried_only_after_the_live_owner_republishes(self):
+        channel = mock.Mock()
+        with mock.patch.object(client.transport, "read_authkey", side_effect=[b"stale", b"owned"]), \
+                mock.patch.object(
+                    client.transport,
+                    "connect",
+                    side_effect=[transport.AuthenticationError("rejected"), channel],
+                ) as connect:
+            self.assertIs(client._connect("private-address"), channel)
+        self.assertEqual(
+            connect.call_args_list,
+            [mock.call("private-address", b"stale"), mock.call("private-address", b"owned")],
+        )
+
+    def test_an_idle_spare_starts_outside_the_daemons_project_directory(self):
+        with io.StringIO('{"ready": 1234}\n') as stdout:
+            process = mock.Mock(stdout=stdout)
+            with mock.patch.object(pool_mod.subprocess, "Popen", return_value=process) as popen, \
+                    mock.patch.object(client, "daemon_address", return_value="test-address"):
+                worker = pool_mod.Worker()
+                worker._reader.join(timeout=1)
+                self.assertFalse(worker._reader.is_alive())
+        self.assertEqual(worker.pid, 1234)
+        self.assertEqual(popen.call_args.kwargs["cwd"], tempfile.gettempdir())
+
+    def test_the_daemon_popen_is_retained_by_an_owned_reaper(self):
+        process = mock.Mock(pid=4321)
+        finished = threading.Event()
+        process.wait.side_effect = lambda: finished.set()
+        client._reap_detached(process)
+        self.assertTrue(finished.wait(1.0), "the detached process was not handed to its reaper")
+        process.wait.assert_called_once_with()
 
 
 class ServerRelaysTheDeath(unittest.TestCase):
@@ -161,6 +233,28 @@ class ServerRelaysTheDeath(unittest.TestCase):
         self.assertEqual(conn.frames[-1], {"exit": 1})
         pool.release.assert_called_once_with(worker, healthy=False)
         self.assertTrue(any("died mid-job" in line for line in logged), logged)
+
+
+class ServerStatusIdentity(unittest.TestCase):
+    def test_status_keeps_the_loaded_startup_token_when_disk_code_changes(self):
+        pool = mock.Mock()
+        pool.snapshot.return_value = {"workers": []}
+        broker = mock.Mock()
+        broker.snapshot.return_value = {}
+        jobs = mock.Mock()
+        jobs.snapshot.return_value = []
+        with mock.patch.object(server, "_POOL", pool), \
+                mock.patch.object(server, "_BROKER", broker), \
+                mock.patch.object(server, "_JOBS", jobs), \
+                mock.patch.object(
+                    server,
+                    "compute_version_token",
+                    side_effect=AssertionError("status reread the changed source tree"),
+                ):
+            status = server._status_payload("loaded-at-startup")
+        self.assertEqual(status["token"], "loaded-at-startup")
+
+
 class DescribeExit(unittest.TestCase):
     def test_signal_code_and_open_pipe_are_told_apart(self):
         import signal

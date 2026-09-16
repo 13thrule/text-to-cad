@@ -111,15 +111,31 @@ prunes empty destination directories unless `--keep-empty-dirs` is passed.
 
 ## Test From This Repository
 
-Run development and test prompts from inside this repository instead of a
-separate project checkout. The skills assume this workbench layout while you are
-iterating: `models/` contains fixtures and generated CAD artifacts, `apps/viewer/`
-contains the editable CAD Viewer source, and repo-relative validation commands
-live under `scripts/`.
+Automated tests are self-contained. They must not read, enumerate, build, or
+import sample models from this repository's `models/` directory. Generate the
+smallest fixture needed in a fresh temporary directory, or use a tiny fixture
+committed with the tests; do not rely on existing outputs or LFS downloads.
+Repo `tmp/` and system temporary directories are both fine. Give builds their
+own cache store and clean up their processes and files. The shared
+temporary-directory helper retains the Windows cleanup retries used by the suite.
 
-Write test, sample, and durable CAD/robot-description artifacts under `models/`;
-do not create ad hoc artifact directories elsewhere. When you need a scratch
-project, create it under the fixture bucket it belongs in: a standalone part
+Keep regression tests focused on observable behavior. Reuse setup within a test
+when several assertions concern the same result; do not repeatedly build the
+same geometry to test unrelated metadata or duplicate an existing integration
+case. Each new test should protect a distinct contract or credible failure not
+already covered. Test a shared validator's cases once; callers need wiring
+checks, not copies of its full matrix. Avoid pinning private helpers, source
+spelling or UI copy when observable behavior already covers the requirement.
+Real kernel and browser tests remain necessary for geometry fidelity,
+cache reuse, rendering, and process-lifecycle behavior.
+
+Keep reusable manual edge-case and debugging models in `models/tests/`, with
+reproduction instructions. Despite its name, that folder is never CI input;
+see [its manual-validation policy](models/tests/README.md).
+
+For manual skill prompts and model review, work inside this repository and keep
+samples and CAD/robot-description artifacts under `models/`. Create a scratch
+project in the fixture bucket it belongs in: a standalone part
 goes in the `models/examples/` cad-project, an assembly gets its own group in
 `models/assemblies/` (`src/<assembly>/`, outputs in `STEP/<assembly>/`), a
 drawing goes in `models/drawings/` — script in `src/`, artifact declared into a
@@ -131,9 +147,9 @@ python models/examples/src/my_test.py
 ```
 
 Then start your agent with `/path/to/text-to-cad` as the working directory and
-ask it to write files under that scratch path. This keeps skill scripts,
-fixtures, generated sidecars, and Viewer links using the same repo-relative
-paths that CI and local checks expect.
+ask it to write files under that scratch path. This keeps manual model sources,
+generated artifacts, and Viewer links together, independently of the automated
+test suite.
 
 Review media such as snapshot PNGs are not model artifacts:
 render them under `/tmp` and attach them to the pull request instead. `.gitignore`
@@ -205,6 +221,16 @@ PYTHONPATH=<worktree>/packages/cadgen/src \
 <main>/.venv/bin/python -m cadgen.viewer --host 127.0.0.1 --json
 ```
 
+The self-contained browser regression suite checks supported formats, picking,
+placement, and Inspect/Render quality transitions. It creates tiny inputs and
+starts its own viewer with an isolated cache; no sample builds are needed.
+Bundle the client first and install Playwright Chromium from the development
+requirements:
+
+```bash
+scripts/test/test-viewer-browser.sh
+```
+
 Mesh exports (`@stl`/`@3mf`/`@glb`) and DXF previews run the checkout's live
 `packages/cadgen-js/bin` builders in Node, which import `three` and friends
 from `packages/cadgen-js/node_modules`. A fresh worktree has none, and cadgen
@@ -214,8 +240,19 @@ primary checkout (they are gitignored) or `npm install` in each package:
 
 ```bash
 ln -s <main>/packages/cadgen-js/node_modules <worktree>/packages/cadgen-js/node_modules
-ln -s <main>/apps/viewer/node_modules <worktree>/apps/viewer/node_modules
+mkdir <worktree>/apps/viewer/node_modules
+for e in <main>/apps/viewer/node_modules/* <main>/apps/viewer/node_modules/.bin; do
+  [ "$(basename "$e")" = cadgen-js ] || ln -s "$e" <worktree>/apps/viewer/node_modules/
+done
+ln -s <worktree>/packages/cadgen-js <worktree>/apps/viewer/node_modules/cadgen-js
 ```
+
+Do NOT symlink the Viewer's `node_modules` directory whole. Its `cadgen-js`
+entry is a RELATIVE link (`../../../packages/cadgen-js`) that resolves against
+the primary checkout, so the worktree's Viewer tests and dev server would run
+the primary checkout's cadgen-js and silently ignore every cadgen-js edit in
+the worktree. Link the entries individually and point `cadgen-js` at the
+worktree's package, as above.
 
 For `npm run dev`, set `VIEWER_PYTHON` the same way — it defaults to `python3`,
 which is usually wrong here: on macOS `python3` is still 3.9, BELOW the
@@ -241,11 +278,13 @@ law: nothing in `cadgen.viewer` imports the CAD kernel at module scope, so
 `cadgen viewer` starts as fast as `cadgen --help` and the kernel loads only in
 the compile worker.
 
-Launcher reuse keys on realpath(root) × identity token (the cadgen version
-salted with the newest mtime across `cadgen/viewer/*.py` and the default client
-location), so another checkout's instance can never be handed back for a
-worktree's root — and a resident instance running pre-pull or pre-rebuild code
-fails the match and a fresh one starts.
+Launcher reuse keys on realpath(root) × identity token (the cadgen version plus
+a content digest of every cadgen Python runtime file and the exact built client
+selected for the launch), so another checkout's instance can never be handed
+back for a worktree's root, `--dist` cannot reuse a different client, and a
+resident instance running pre-pull or pre-rebuild code fails the match. A
+resident that sees those files change refuses new model-data requests with a
+restart-required response while leaving its existing process and view alone.
 
 Worktrees deliberately carry no `node_modules`; link them from the primary
 checkout before building. cadgen-js needs all three of its runtime
@@ -253,7 +292,8 @@ dependencies linked — `three-mesh-bvh` included, which an earlier version of
 this recipe omitted:
 
 ```bash
-ln -s <main>/apps/viewer/node_modules apps/viewer/node_modules
+# apps/viewer/node_modules: per-entry links with cadgen-js pointing at THIS
+# worktree -- see "Viewer Development In This Repo" above for why not one link.
 mkdir -p packages/cadgen-js/node_modules
 for dep in three three-mesh-bvh meshoptimizer; do
   ln -s <main>/packages/cadgen-js/node_modules/$dep packages/cadgen-js/node_modules/$dep
@@ -416,6 +456,12 @@ gh workflow run deploy-docs.yml -f ref=v0.5.0  # a past release: its tag
 
 ### Local and manual fallbacks
 
+After bundling, `scripts/release/check-wheel-contents.sh` builds from a clean
+temporary package copy and verifies that every bundled runtime file is present
+with identical bytes, with no obsolete assets left in the wheel. It leaves the
+checkout's build scratch untouched. Set `CADGEN_WHEEL_OUT_DIR` and
+`CADGEN_KEEP_WHEEL=1` to retain that checked wheel for an installed smoke test.
+
 For local release preparation, use the same scripts the workflow calls:
 
 ```bash
@@ -529,8 +575,8 @@ Use path-targeted validation. Common checks from the repo root:
 
 ```bash
 scripts/test/test.sh
-scripts/dev/setup-symlinks.sh --check
 scripts/release/check-version.sh
+scripts/bundle/bundle.sh --check          # generated runtime freshness
 npm --prefix apps/viewer run test        # the Viewer's CLIENT half only
 scripts/test/test-python.sh              # includes the Viewer's BACKEND suite
 npm --prefix apps/docs run check
@@ -553,15 +599,16 @@ suite is `tests/python/packages/cadgen/viewer/`, part of the cadgen package suit
 
 For fast CAD Viewer source iteration, run the root viewer app in dev mode. Do
 not run the packaged viewer from an installed cadgen while modifying Viewer
-behavior:
+behavior. Run it from the DIRECTORY YOU WANT SERVED — the dev backend has no
+directory flag, so the served root is npm's `INIT_CWD`, and `apps/viewer` is
+excluded from that choice on purpose:
 
 ```bash
 npm --prefix apps/viewer run dev -- --host 127.0.0.1
 ```
 
-The dev server serves ONE root, fixed at startup (the directory Vite runs
-from); the page is the bare origin and `?file=` names the artifact relative to
-that root:
+The dev server serves ONE root, fixed at startup; the page is the bare origin
+and `?file=` names the artifact relative to that root:
 `http://127.0.0.1:<port>/?file=models/thang010146/STEP/gear_rack_gripper.step`.
 Do not assume a fixed dev port unless you pass
 Vite's standard `--port` flag. Packaged Viewer runtime checks are

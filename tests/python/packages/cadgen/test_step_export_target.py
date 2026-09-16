@@ -75,33 +75,37 @@ class StepExportTargetTests(unittest.TestCase):
         generator.write_text(BOX_GENERATOR, encoding="utf-8")
         return generator
 
-    def test_export_generated_step_py_all_formats(self) -> None:
+    def _build_box_document(self) -> Path:
+        """``box.step``, written the ONE way a document is written: by running
+        the model script. The export ABI takes documents and nothing else."""
+        from cadgen.generation import generate_step_targets
+
         generator = self._write_box_generator()
-        logical_step = self.temp_root / "box.step"
-        for fmt in FORMATS:
-            out = self.out_dir / f"box.{fmt}"
-            code, payload = self._run([
+        self.assertEqual(0, generate_step_targets([str(generator)]))
+        document = self.temp_root / "box.step"
+        self.assertTrue(document.is_file(), "the model script wrote no box.step")
+        return document
+
+    def test_the_export_abi_takes_documents_only(self) -> None:
+        # A model script is a program, not an argument: the ABI has no way to
+        # name one, so passing the flag that used to carry it is a parse error.
+        generator = self._write_box_generator()
+        with self.assertRaises(SystemExit):
+            self._run([
                 "--repo-root", str(Path.cwd()),
-                "--step", str(logical_step),
+                "--step", str(self.temp_root / "box.step"),
                 "--source-path", str(generator),
-                "--format", fmt,
-                "--out", str(out),
+                "--format", "stl",
+                "--out", str(self.out_dir / "box.stl"),
             ])
-            self.assertEqual(code, 0, f"{fmt}: {payload}")
-            self.assertTrue(payload.get("ok"), f"{fmt}: {payload}")
-            self.assertEqual(payload.get("format"), fmt)
-            self._assert_export_file(out, fmt)
-        # The generated export writes only the requested files; no STEP is left beside the source.
-        self.assertFalse((self.temp_root / "box.step").exists())
 
     def test_export_imported_step_all_formats(self) -> None:
-        # Materialize a real STEP from the generator, then export from that on-disk file.
-        generator = self._write_box_generator()
+        # Materialize a real STEP by running the model, then export from that on-disk file.
+        built = self._build_box_document()
         imported_step = self.temp_root / "imported.step"
         code, payload = self._run([
             "--repo-root", str(Path.cwd()),
-            "--step", str(self.temp_root / "box.step"),
-            "--source-path", str(generator),
+            "--step", str(built),
             "--format", "step",
             "--out", str(imported_step),
         ])
@@ -137,12 +141,11 @@ class StepExportTargetTests(unittest.TestCase):
         DOCUMENTS-ONLY: `export_cad_target` is the engine behind
         `cadgen stl|3mf|glb build`, which never sees a script.
         """
-        generator = self._write_box_generator()
+        built = self._build_box_document()
         document = self.temp_root / "box_document.step"
         code, payload = self._run([
             "--repo-root", str(Path.cwd()),
-            "--step", str(self.temp_root / "box.step"),
-            "--source-path", str(generator),
+            "--step", str(built),
             "--format", "step",
             "--out", str(document),
         ])
@@ -282,12 +285,10 @@ class StepExportTargetTests(unittest.TestCase):
         self.assertIsNone(step_export_target._color_hex(("red", "green", "blue")))
 
     def test_invalid_format_rejected(self) -> None:
-        generator = self._write_box_generator()
         with self.assertRaises(SystemExit):
             self._run([
                 "--repo-root", str(Path.cwd()),
                 "--step", str(self.temp_root / "box.step"),
-                "--source-path", str(generator),
                 "--format", "iges",
                 "--out", str(self.out_dir / "box.iges"),
             ])

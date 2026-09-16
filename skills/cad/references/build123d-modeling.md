@@ -102,6 +102,16 @@ Avoid fragile topology order when possible. Select by:
 
 For source operations, prefer robust selectors such as top/bottom by axis or position rather than arbitrary list indexes.
 
+Sub-shape identity survives ops during a cadgen build. Holding an edge or
+face, running a boolean, fillet or chamfer, and re-finding it in the result
+(`edge.is_same(candidate)`, `edge in shape.edges()`, a `set` of edges, a
+dict keyed by faces) works exactly as it does in plain build123d, because
+during a build `is_same`, `==` and `hash()` compare by geometry (shape type,
+vertex points and a sample point per face or edge, world coordinates rounded
+to 1e-6), not by kernel object identity — the build's op cache hands back
+reconstructions, and the pointer would otherwise miss. The one visible
+consequence is that two coincident, identical sub-shapes compare equal.
+
 
 ## Assemblies and positioning
 
@@ -167,24 +177,33 @@ looks like it worked if you only check the STEP. Colour every leaf.
 ## Finish
 
 Colour alone cannot tell cast from machined from carbon: those differ in how
-they RESPOND to light, and by default every part takes the viewer theme's one
-roughness/metalness/clearcoat. A leaf shape may carry a `cad_material` dict to
-override those per part; the values ride the tree's occurrence and
-the viewer applies them over the theme, so the same model reads differently
-under every theme without re-authoring:
+they respond to light. Declare reusable named materials on `@step`; target a
+part label or a group label, which expands to its leaf occurrences. These
+values survive cached composition into parent assemblies, and Render,
+snapshots and GLB exports consume the same resolved appearance. Inspect
+retains color and opacity but uses matte workbench shading:
 
 ```python
-housing.cad_material = {"roughness": 0.85, "metalness": 0.2}            # as-cast
-journal.cad_material = {"roughness": 0.25, "metalness": 0.9}            # ground steel
-lacquer.cad_material = {"roughness": 0.4, "clearcoat": 1.0, "clearcoatRoughness": 0.1}
-window.cad_material = {"opacity": 0.35}
+@step(materials={
+    "definitions": {
+        "cast": {"name": "As-cast steel", "roughness": 0.85, "metalness": 0.2},
+        "ground": {"name": "Ground steel", "roughness": 0.25, "metalness": 0.9},
+    },
+    "assignments": [
+        {"targets": ["#housing"], "material": "cast"},
+        {"targets": ["#journal"], "material": "ground"},
+    ],
+})
+def gearbox():
+    ...
 ```
 
-Keys: `roughness`, `metalness`, `clearcoat`, `clearcoatRoughness`, `opacity`,
-each clamped to 0..1; unknown keys are ignored. Like colour, it belongs on the
-LEAF — a group compound's `cad_material` reaches nothing — and it is a
-presentation hint only: STEP has no channel for it, so it lives in the package,
-not the file.
+Keys: optional `name`, `baseColor`, `roughness`, `metalness`, `clearcoat`,
+`clearcoatRoughness`, and `opacity`. Numeric channels are strict finite 0..1
+values; `baseColor` is `#RRGGBB`. STEP cannot carry these PBR channels, so a
+generated STEP's `.step.json` preserves the named library and its canonical
+leaf assignments. `baseColor` annotates rendering and export only; it does not
+change STEP colors or bytes. Setting `cad_material` dynamically is an error.
 
 ## Rotating a plane
 
@@ -442,6 +461,23 @@ a duplicate of the child's geometry as its own component — the file still
 builds, the dependency is still tracked, but the link is gone and the
 component is written again. Reach for `.moved()` or the operator form; there
 is no case that needs `.located()`.
+
+## `Compound.intersect()` ignores an assembly's own moved placement
+
+`asm.moved(...)` on an assembly `Compound(children=[...])` bakes the transform
+into `asm.wrapped` but leaves the anytree `.children` at their original,
+unmoved locations (build123d issue #1394; fixed upstream in commit
+`217db07e`, not yet in any tagged release — still broken on the pinned
+0.11.1). `Compound._intersect()` dispatches over `.children` when the compound
+has any, so `moved_asm.intersect(other)` silently tests `other` against the
+ORIGINAL unmoved children instead of the shape you just placed — two boxes
+moved 10 mm apart (`distance_to` correctly reports 8 mm) still report an 8 mm³
+overlap. Work around it by pulling the placed solids out with `.solids()`
+(which walks `.wrapped`, not `.children`) before intersecting, or by running
+`BRepAlgoAPI_Common` on the `.wrapped` OCCT shapes directly. `cadgen step
+inspect interfere` is unaffected: it does its own booleans on placed OCCT
+shapes. Keep a known-collision positive control beside any fit check that
+leans on `intersect()`.
 
 ## Dense periodic spline profiles: kernel ops to avoid
 

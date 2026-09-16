@@ -8,10 +8,10 @@ Deterministic geometry checks decide pass/fail; mandatory snapshot review (see `
 
 ## Tool
 
-The launcher lives in the CAD skill directory:
+Every inspection verb is a subcommand of the installed `cadgen` console script:
 
 ```bash
-cadgen step inspect {refs|diff|frame|measure|align} ...
+cadgen step inspect {refs|diff|frame|measure|align|interfere|validate} ...
 ```
 
 Targets take native path semantics, like every other cadgen path argument: a relative target resolves against the command cwd, an absolute target works from anywhere, and `~` expands. A target naming a file that does not exist reports file-not-found for that path. Prefer cwd-relative targets from the workspace that owns the artifact anyway — reports name a target by its cwd-relative path when it is inside the cwd, and by its bare file name when it is not, so cwd-relative targets read better in a report. Common data-output flags: `--format json|text` (default is machine-readable), `--quiet`, `--verbose`.
@@ -39,6 +39,12 @@ Selector refs are local to the STEP/CAD entry target passed to the command:
 ```
 
 Pass selector refs as `#...` tokens. The STEP/CAD file path or entry target is a separate CLI argument.
+
+Every coordinate in a `refs`/`measure`/`align`/`frame` payload is in the document's **world
+frame at rest** — occurrence transforms applied, sidecar poses not. That covers bounds,
+centers, and the analytic `params` of a face or edge (a plane's `origin`/`axis`, a circle's
+`center`/`axis`, a cylinder's `origin`/`axis`). Nothing is reported in a part's own
+coordinates, so two refs on different occurrences are always directly comparable.
 
 An occurrence ref may name a **subassembly** as well as a part — the same `#o1.4` the CAD
 Viewer copies, `snapshot --focus` takes, and a kinematics mate poses. A subassembly owns no
@@ -115,24 +121,32 @@ Bare `#...` refs are unchanged and work everywhere they always did.
 
 ### Referencing a part by its label
 
-A part's build123d label can stand in for its occurrence id anywhere a ref is accepted:
+A build123d label can stand in for its occurrence id anywhere a ref is accepted — a part's
+label, and a subassembly's:
 
 ```text
 #eye_shank             the part labelled eye_shank
 #eye_shank.f45         a face on it
 #eye_shank.f45,f46     two faces on it -- the label carries forward like an occurrence id
+#camera_assembly       the subassembly labelled camera_assembly, exactly as its #o1.8 does
 ```
 
+A group's label means what the group's id means, everywhere: `refs` reports its parts tagged
+`fromGroup`, `measure`/`align`/`frame` answer for the branch, and a kinematics mate fastens to
+the same name.
+
 Numeric refs are unchanged and always work; labels are an additional spelling, not a
-replacement. `snapshot --mode list` shows each part's `name`, and `inspect refs` reports the
-exact ref to paste as `labelRef`.
+replacement. `snapshot --mode list` shows each part's `name`, and `inspect refs --detail`
+reports the exact ref to paste as `labelRef` — including the numbered form when several
+parts share a label.
 
 A label may contain letters, digits, `_` and `:`, and may not start with a digit. Parts whose
 label cannot be spelled that way, or which collides with the numeric grammar (`f12`, `o1`,
 `m2`), are addressable by their numeric ref only.
 
-When several parts share a label -- two wheels, one `cast_rim:5spoke` -- each gets a numbered
-ref in tree order and the bare label refuses to resolve rather than guessing:
+When several occurrences share a label -- two wheels, one `cast_rim:5spoke`, or a subassembly
+and a part inside it with the same name -- each gets a numbered ref in tree order and the bare
+label refuses to resolve rather than guessing:
 
 ```text
 $ cadgen step snapshot motorbike.step --focus '#cast_rim:5spoke'

@@ -38,7 +38,9 @@ step; nothing else belongs here (one-off helpers go in `tmp/`).
 
 - `test.sh` — `test-js.sh`, then `test-python.sh`, then `test-global.sh`. Called
   by `test.yml` and `release-publish.yml`.
-- `test-js.sh` — `packages/cadgen-js` and `apps/viewer` client suites.
+- `test-js.sh` — `packages/cadgen-js` and `apps/viewer` client suites, then the
+  `node --test` units under `bench/viewer-memory/` (the benchmark drivers are
+  manual; their pure helpers are not).
 - `test-python.sh [--keep-going]` — the cadgen package suite, then every skill's
   suite. Each test FILE runs in its own interpreter against its own temporary
   store, `CADGEN_TEST_JOBS` at a time (default: the core count; CI sets 4).
@@ -53,7 +55,17 @@ step; nothing else belongs here (one-off helpers go in `tmp/`).
   exercises cadgen from outside the repo. Called by `test.yml` and
   `release-publish.yml`.
 - `test-viewer-launch.sh` — launches `cadgen viewer` against the built client and
-  checks it answers. Called by `test.yml`.
+  verifies reuse, cold STEP import, display derivation and browser drawing using
+  a tiny test-owned STEP. Called by `test.yml`.
+- `test-viewer-browser.sh` — self-contained browser checks for supported formats,
+  Inspect/Render placement and appearance, and face/edge picking through detail
+  changes. Generates its inputs in a temporary project and owns its viewer and
+  cache; `--out DIR` keeps the screenshots it grades. Needs a bundled Viewer
+  (`bundle.sh`) and the Node Playwright's Chromium
+  (`npx --prefix packages/cadgen-js playwright install chromium`; `test.yml`
+  installs the Python one). Called by nobody: it is a manual gate, because one
+  run is over six minutes — too slow for `test.yml`, which already covers launch
+  and reuse with `test-viewer-launch.sh`.
 - `common.sh`, `unittest_files.py` — shared runner pieces (interpreter
   resolution, fail-closed unittest loading, the per-file parallel run). Sourced
   by the runners.
@@ -106,6 +118,11 @@ when staged paths touch `packages`, `apps`, `skills` or `scripts/bundle`.
 
 `utils/list-skills.sh` — prints every `skills/*/SKILL.md` directory. Used by the
 install scripts and `test-python.sh`.
+
+`bench/` — manual warm-build and viewer performance commands. See
+[benchmark usage](bench/cadgen-performance/README.md). Reports and profiler
+captures are local output under `tmp/`, never committed here. The drivers are
+manual; their `*.test.mjs` helper units run in `test-js.sh`.
 
 ## CI
 

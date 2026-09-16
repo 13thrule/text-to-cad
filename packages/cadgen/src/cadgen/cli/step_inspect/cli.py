@@ -159,8 +159,8 @@ def build_parser(prog: str = DEFAULT_PROG) -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  cadgen step inspect interfere models/car/car.step.py\n"
-            "  cadgen step inspect interfere models/car/car.step.py --refs o1.1,o1.7\n"
+            "  cadgen step inspect interfere models/car/car.step\n"
+            "  cadgen step inspect interfere models/car/car.step --refs o1.1,o1.7\n"
             "  cadgen step inspect interfere models/car/car.step --tolerance 25\n"
         ),
     )
@@ -201,8 +201,9 @@ def build_parser(prog: str = DEFAULT_PROG) -> argparse.ArgumentParser:
             "self-intersection test is numeric and can differ by placement, so by "
             "default it runs once per shape at its first placement -- the report says so "
             "in selfIntersectionCheck -- and --every-placement runs it on every copy.\n\n"
-            "A stale generated document is rebuilt from its script first; that decision is "
-            "announced on stderr.\n\n"
+            "This door reads the document it is given and never rebuilds it: a document "
+            "behind its script stays behind until you run that script (python model.py). "
+            "A model script is refused by name.\n\n"
             "examples:\n"
             "  cadgen step inspect validate models/car/car.step\n"
             "  cadgen step inspect validate models/car/car.step --refs o1.1,o1.7\n"
@@ -546,8 +547,15 @@ def _format_refs_text(result: dict[str, object], *, quiet: bool, verbose: bool) 
         if not isinstance(token, dict):
             continue
         summary = token.get("summary") if isinstance(token.get("summary"), dict) else {}
-        headline = f"{token.get('document')} faces={summary.get('faceCount')} edges={summary.get('edgeCount')}"
-        lines.append(headline)
+        # Counts only exist once a selector index has been built (`--facts` and
+        # friends). Printing `faces=0 edges=0` for a bare `refs` read as an empty
+        # document; say the parts that are known and nothing else.
+        counted = [
+            f"{name}={summary[key]}"
+            for name, key in (("faces", "faceCount"), ("edges", "edgeCount"))
+            if summary.get(key) is not None
+        ]
+        lines.append(" ".join([str(token.get("document")), *counted]))
         if quiet:
             continue
         entry_facts = token.get("entryFacts") if isinstance(token.get("entryFacts"), dict) else {}

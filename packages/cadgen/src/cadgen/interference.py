@@ -80,16 +80,31 @@ class Clash:
 
 
 def _shape_bbox(shape: Any) -> tuple[float, float, float, float, float, float]:
+    """A BROAD-PHASE box: loose is safe here (a box that overstates its body
+    only proposes a pair the narrow phase then rejects) and this runs once per
+    occurrence, so it stays the cheap control-polygon bound.
+    ``useTriangulation=False``: triangulating here would mutate the shared
+    TShape and break content-addressed component dedup elsewhere."""
     from OCP.Bnd import Bnd_Box
     from OCP.BRepBndLib import BRepBndLib
 
     box = Bnd_Box()
-    # useTriangulation=False: triangulating here would mutate the shared TShape
-    # and break content-addressed component dedup elsewhere.
     BRepBndLib.Add_s(shape, box, False)
     if box.IsVoid():
         return (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     return box.Get()
+
+
+def _reported_bbox(shape: Any) -> tuple[float, float, float, float, float, float]:
+    """The box of a clash as the REPORT states it -- where the overlap is, and
+    therefore tight: a control-polygon bound would place a rounded clash up to
+    8% outside itself (PR #370 bug record 004). One clash, one measurement."""
+    from cadgen._internal.component_package import optimal_box
+
+    box = optimal_box(shape)
+    if box is None:
+        return _shape_bbox(shape)
+    return tuple(box)
 
 
 def _boxes_overlap(a, b, epsilon: float = _BBOX_EPSILON) -> bool:
@@ -417,7 +432,7 @@ def find_clashes(
                     b_ref=second.ref,
                     b_name=second.name,
                     volume=volume,
-                    bbox=_shape_bbox(common),
+                    bbox=_reported_bbox(common),
                     part=shared,
                 )
             )
@@ -440,16 +455,12 @@ def inspect_interference(
     target = resolve_step_target(entry)
     logger = CliLogger("cad")
     repo_root = Path.cwd()
-    source_path = target.source_path if str(target.source_path).endswith(".py") else None
     scene = _resolve_spec_and_scene(
         repo_root,
         target.step_path,
-        source_path,
         mesh_tolerance=None,
         mesh_angular_tolerance=None,
         logger=logger,
-        door="inspect interfere",
-        verb="checking interference",
     ).scene
 
     all_occurrences = occurrences_from_scene(scene)

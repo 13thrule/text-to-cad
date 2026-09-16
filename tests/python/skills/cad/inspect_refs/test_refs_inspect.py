@@ -13,7 +13,7 @@ from cadgen.cli.step_inspect import cli as inspect_cli
 from cadgen.cli.step_inspect import inspect as refs_inspect
 from cadgen import cad_ref_syntax as refs_syntax
 from cadgen._internal import assembly_spec
-from cadgen._internal import generation as cad_generation
+from cadgen._internal.step_hash import step_file_hash
 from cadgen import step_targets
 from cadgen._internal.glb_topology import STEP_TOPOLOGY_SCHEMA_VERSION
 from cadgen.catalog import result_view_dir
@@ -353,6 +353,7 @@ class InspectRefsSyntaxTests(unittest.TestCase):
 
 class InspectRefsTests(unittest.TestCase):
     def setUp(self) -> None:
+        self.enterContext(mock.patch.dict("os.environ", {"CADGEN_DAEMON": "0"}))
         self._isolated_roots = IsolatedCadRoots(self, prefix="refs-inspect-")
         tempdir = self._isolated_roots.temporary_cad_directory(prefix="tmp-refs-inspect-")
         self._tempdir = tempdir
@@ -379,8 +380,8 @@ class InspectRefsTests(unittest.TestCase):
     ):
         """Serve `manifest` as the entry's topology artifact.
 
-        Mocks at the one live boundary — ``ensure_step_topology_artifact`` —
-        which in production returns the assembly.json with a
+        Mocks the geometry-summary and selector-artifact read boundaries.
+        The selector artifact in production returns assembly.json with an
         assembly.json-backed selector bundle (selector rows composed on demand
         from the per-component .surf files). Everything below that boundary
         (grammar, lookup, measure, align) runs for real.
@@ -425,6 +426,9 @@ class InspectRefsTests(unittest.TestCase):
             stack.enter_context(
                 mock.patch("cadgen.step_topology_artifact.ensure_step_topology_artifact", side_effect=fake_ensure)
             )
+            stack.enter_context(
+                mock.patch.object(refs_inspect, "_load_summary_manifest", return_value=topology_manifest)
+            )
             yield
 
     def _manifest_path(self, path: Path) -> str:
@@ -434,7 +438,7 @@ class InspectRefsTests(unittest.TestCase):
         except ValueError:
             return resolved.as_posix()
 
-    def test_whole_entry_summary_uses_glb_index(self) -> None:
+    def test_whole_entry_summary_uses_geometry_metadata(self) -> None:
         with self._mock_glb_topology(_summary_manifest(self.cad_ref), include_selector=False):
             result = refs_inspect.inspect_cad_refs(self.cad_ref)
 
@@ -620,7 +624,7 @@ class InspectRefsTests(unittest.TestCase):
                 "entryKind": "assembly",
                 "sourceKind": "python",
                 "sourceHash": source_identity.source_hash,
-                "stepHash": cad_generation.step_file_hash(assembly_step_path),
+                "stepHash": step_file_hash(assembly_step_path),
             },
             step_path=assembly_step_path,
         ):
@@ -696,6 +700,36 @@ class InspectRefsTests(unittest.TestCase):
         self.assertIn("facts: size=[10, 10, 10]", text)
         self.assertIn("planes: 1 major groups", text)
         self.assertIn("z=0", text)
+
+    def test_a_manifest_without_tallies_reports_no_counts(self) -> None:
+        """`selector_count` floors a missing tally at 0 for the assertion
+        helpers, and the bare `refs` summary passed that 0 on as fact: a
+        six-faced box printed `faces=0 edges=0`, which reads as an empty
+        document. An absent count is unknown, not zero."""
+        from cadgen.reporting import entry_summary_payload
+
+        manifest = {
+            "bbox": {"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 10.0]},
+            "stats": {"occurrenceCount": 1, "shapeCount": 1},
+        }
+
+        payload = entry_summary_payload(manifest, kind="part")
+
+        self.assertEqual(1, payload["shapeCount"])
+        self.assertNotIn("faceCount", payload)
+        self.assertNotIn("edgeCount", payload)
+
+    def test_refs_text_omits_counts_it_does_not_have(self) -> None:
+        result = {
+            "ok": True,
+            "tokens": [{"document": "plate.step", "summary": {"kind": "part"}, "selections": []}],
+            "errors": [],
+        }
+
+        text = inspect_cli._format_refs_text(result, quiet=False, verbose=False)
+
+        self.assertEqual("plate.step", text)
+        self.assertNotIn("faces=", text)
 
     def test_diff_planes_returns_entry_planes(self) -> None:
         with self._mock_glb_topology(_refs_manifest(self.cad_ref)):
@@ -782,6 +816,66 @@ class InspectRefsTests(unittest.TestCase):
         self.assertEqual(2.0, result["alignment"]["transformTranslationDelta"]["3"])
 
 
+def _leaf_manifest(cad_ref: str, leaves) -> dict[str, object]:
+    """A refs manifest for LEAVES only: (id, name, bbox min, bbox max, translation) rows."""
+    occurrences = []
+    shapes = []
+    for index, (occ_id, name, low, high, translation) in enumerate(leaves):
+        occurrences.append([
+            occ_id,
+            occ_id.lstrip("o"),
+            name,
+            name,
+            occ_id.rpartition(".")[0] or None,
+            [1, 0, 0, translation[0], 0, 1, 0, translation[1], 0, 0, 1, translation[2], 0, 0, 0, 1],
+            {"min": low, "max": high},
+            index, 1, 0, 0, 0, 0, 0, 0,
+        ])
+        shapes.append([
+            f"{occ_id}.s1", occ_id, 1, "solid",
+            {"min": low, "max": high},
+            [(low[axis] + high[axis]) / 2 for axis in range(3)],
+            24.0, 8.0, 0, 0, 0, 0, 0, 0,
+        ])
+    return {
+        "schemaVersion": STEP_TOPOLOGY_SCHEMA_VERSION,
+        "profile": "refs",
+        "cadPath": cad_ref,
+        "stepPath": f"{cad_ref}.step",
+        "stepHash": "step-hash-groups",
+        "entryKind": "assembly",
+        "bbox": {"min": [0.0, 0.0, 0.0], "max": [6.0, 2.0, 12.0]},
+        "stats": {
+            "occurrenceCount": len(leaves),
+            "leafOccurrenceCount": len(leaves),
+            "shapeCount": len(leaves),
+            "faceCount": 0,
+            "edgeCount": 0,
+            "vertexCount": 0,
+        },
+        "tables": {
+            "occurrenceColumns": [
+                "id", "path", "name", "sourceName", "parentId", "transform", "bbox",
+                "shapeStart", "shapeCount", "faceStart", "faceCount",
+                "edgeStart", "edgeCount", "vertexStart", "vertexCount",
+            ],
+            "shapeColumns": [
+                "id", "occurrenceId", "ordinal", "kind", "bbox", "center", "area",
+                "volume", "faceStart", "faceCount", "edgeStart", "edgeCount",
+                "vertexStart", "vertexCount",
+            ],
+            "faceColumns": [],
+            "edgeColumns": [],
+            "vertexColumns": [],
+        },
+        "occurrences": occurrences,
+        "shapes": shapes,
+        "faces": [],
+        "edges": [],
+        "vertices": [],
+    }
+
+
 class GroupOccurrenceRefTests(unittest.TestCase):
     """A ref naming a SUBASSEMBLY, which no selector row carries.
 
@@ -809,62 +903,7 @@ class GroupOccurrenceRefTests(unittest.TestCase):
     )
 
     def _manifest(self) -> dict[str, object]:
-        occurrences = []
-        shapes = []
-        for index, (occ_id, name, low, high, translation) in enumerate(self.LEAVES):
-            occurrences.append([
-                occ_id,
-                occ_id.lstrip("o"),
-                name,
-                name,
-                occ_id.rpartition(".")[0] or None,
-                [1, 0, 0, translation[0], 0, 1, 0, translation[1], 0, 0, 1, translation[2], 0, 0, 0, 1],
-                {"min": low, "max": high},
-                index, 1, 0, 0, 0, 0, 0, 0,
-            ])
-            shapes.append([
-                f"{occ_id}.s1", occ_id, 1, "solid",
-                {"min": low, "max": high},
-                [(low[axis] + high[axis]) / 2 for axis in range(3)],
-                24.0, 8.0, 0, 0, 0, 0, 0, 0,
-            ])
-        return {
-            "schemaVersion": STEP_TOPOLOGY_SCHEMA_VERSION,
-            "profile": "refs",
-            "cadPath": self.CAD_REF,
-            "stepPath": f"{self.CAD_REF}.step",
-            "stepHash": "step-hash-groups",
-            "entryKind": "assembly",
-            "bbox": {"min": [0.0, 0.0, 0.0], "max": [6.0, 2.0, 12.0]},
-            "stats": {
-                "occurrenceCount": len(self.LEAVES),
-                "leafOccurrenceCount": len(self.LEAVES),
-                "shapeCount": len(self.LEAVES),
-                "faceCount": 0,
-                "edgeCount": 0,
-                "vertexCount": 0,
-            },
-            "tables": {
-                "occurrenceColumns": [
-                    "id", "path", "name", "sourceName", "parentId", "transform", "bbox",
-                    "shapeStart", "shapeCount", "faceStart", "faceCount",
-                    "edgeStart", "edgeCount", "vertexStart", "vertexCount",
-                ],
-                "shapeColumns": [
-                    "id", "occurrenceId", "ordinal", "kind", "bbox", "center", "area",
-                    "volume", "faceStart", "faceCount", "edgeStart", "edgeCount",
-                    "vertexStart", "vertexCount",
-                ],
-                "faceColumns": [],
-                "edgeColumns": [],
-                "vertexColumns": [],
-            },
-            "occurrences": occurrences,
-            "shapes": shapes,
-            "faces": [],
-            "edges": [],
-            "vertices": [],
-        }
+        return _leaf_manifest(self.CAD_REF, self.LEAVES)
 
     def _provider(self):
         manifest = self._manifest()
@@ -978,3 +1017,80 @@ class GroupOccurrenceRefTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LabelResolutionReasonTests(unittest.TestCase):
+    """A label that does not resolve says WHY, in the resolver's words.
+
+    `lookup.canonicalize_selector` answers None for a label it cannot place, and
+    `inspect` used to report only "Selector '#Bar' did not resolve", although the label
+    resolver had already worked out the actionable part -- the numbered aliases of a
+    duplicate, or that the name is unknown -- and `snapshot --focus` prints exactly that.
+    Subassembly labels are indexed too now, so a group and a part inside it can honestly
+    share a name and the bare message is easier to hit, not harder.
+    """
+
+    CAD_REF = "tmp-labels/duplicates"
+
+    LEAVES = (
+        ("o1.1.1", "Bar", [0.0, 0.0, 0.0], [2.0, 2.0, 2.0], [0.0, 0.0, 0.0]),
+        ("o1.1.2", "Bar", [4.0, 0.0, 0.0], [6.0, 2.0, 2.0], [4.0, 0.0, 0.0]),
+        ("o1.2", "Post", [0.0, 0.0, 10.0], [2.0, 2.0, 12.0], [0.0, 0.0, 10.0]),
+    )
+
+    AMBIGUOUS = "label 'Bar' matches 2 occurrences; use one of: #Bar_1 (o1.1.1), #Bar_2 (o1.1.2)"
+    UNKNOWN = "unknown part label 'Nope'; run snapshot --mode list to see part names"
+
+    def _provider(self):
+        from cadgen.label_refs import attach_label_aliases
+
+        manifest = _leaf_manifest(self.CAD_REF, self.LEAVES)
+
+        def provider(cad_path, profile):
+            if cad_path != self.CAD_REF:
+                return None
+            return refs_inspect.EntryContext(
+                cad_path=cad_path,
+                kind="assembly",
+                source_path=Path(f"{cad_path}.step"),
+                step_path=Path(f"{cad_path}.step"),
+                manifest=manifest,
+                selector_index=attach_label_aliases(refs_inspect.lookup.build_selector_index(manifest)),
+            )
+
+        return provider
+
+    def _refs_error(self, selector: str) -> str:
+        result = refs_inspect.inspect_cad_refs(self.CAD_REF, selector, context_provider=self._provider())
+        self.assertFalse(result["ok"])
+        messages = [error["message"] for error in result["errors"]]
+        self.assertEqual(1, len(messages), messages)
+        return messages[0]
+
+    def test_refs_names_the_numbered_aliases_of_a_duplicate_label(self) -> None:
+        message = self._refs_error("#Bar")
+        self.assertTrue(message.startswith(f"Selector 'Bar' did not resolve against {self.CAD_REF}."), message)
+        self.assertIn(self.AMBIGUOUS, message)
+
+    def test_refs_names_the_next_step_for_an_unknown_label(self) -> None:
+        self.assertIn(self.UNKNOWN, self._refs_error("#Nope"))
+
+    def test_a_numbered_alias_resolves_and_the_unique_label_still_does(self) -> None:
+        for selector, expected in (("#Bar_2", "o1.1.2"), ("#Post", "o1.2")):
+            result = refs_inspect.inspect_cad_refs(self.CAD_REF, selector, context_provider=self._provider())
+            self.assertTrue(result["ok"], result.get("errors"))
+            self.assertEqual(expected, result["tokens"][0]["selections"][0]["normalizedSelector"])
+
+    def test_frame_and_measure_carry_the_same_reason(self) -> None:
+        # frame/measure/align share the unresolved message with refs.
+        with self.assertRaisesRegex(refs_inspect.CadRefError, "did not resolve.*" + "matches 2 occurrences"):
+            refs_inspect.inspect_target_frame(self.CAD_REF, "#Bar", context_provider=self._provider())
+        with self.assertRaisesRegex(refs_inspect.CadRefError, "did not resolve.*" + "unknown part label 'Nope'"):
+            refs_inspect.measure_targets(self.CAD_REF, "#Post", "#Nope", context_provider=self._provider())
+
+    def test_a_numeric_miss_keeps_its_own_near_miss_hint(self) -> None:
+        # The label reason never replaces the depth hint an occurrence miss already had.
+        message = self._refs_error("#o1.9")
+        self.assertNotIn("part label", message)
+        self.assertIn("o1 does exist", message)
+

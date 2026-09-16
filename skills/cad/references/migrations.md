@@ -21,8 +21,11 @@ about versions. Recognizing it is the reader's job.
   in place and never partially read, because a wrong-shaped one would cost a
   model its kinematics silently.
 - **A model that used to articulate renders inert**, presenting as a plain
-  document with no pose and no animation. Nothing is discovered by convention: a
-  companion `.js` file is read only when a decorator names it.
+  document with no pose and no animation. Nothing is discovered by convention:
+  kinematics and animation are `kinematics=` and `animation=` on the model's
+  decorator, and the build puts both in the document's sidecar. A companion
+  JavaScript file beside the document is read by nothing — a project that still
+  carries one fails its build, which names the decorator that replaced it.
 - **Meshes come out visibly coarser or finer, with no error.** Mesh tolerance
   kept its name and changed meaning — chord tolerance is a fraction of the
   component's bounding diagonal, not an absolute length — so a value carried

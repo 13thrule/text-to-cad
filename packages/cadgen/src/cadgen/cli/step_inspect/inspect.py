@@ -21,7 +21,6 @@ from cadgen.step_targets import (
     cad_ref_error_payload,
     entry_target_from_target,
     resolve_step_target,
-    step_path_from_target,
 )
 from cadgen import analysis
 from cadgen import lookup
@@ -242,18 +241,25 @@ def _selector_body(raw_selector: str) -> str:
 def _group_id(raw_selector: str, context: EntryContext) -> str:
     """The instance-tree group this ref names, or "" if it names anything else.
 
-    A group is an interior node: no row carries it, but rows descend from it. Only a
-    numeric occurrence ref can name one — labels are built from the occurrence rows, so
-    a label always names a leaf and never needs this.
+    A group is an interior node: no row carries it, but rows descend from it. A LABEL can
+    name one as readily as an id can -- ``label_refs.attach_label_aliases`` indexes the
+    interior nodes -- so the ref is canonicalized first and the group question is asked of
+    the answer. Doing it the other way round is what made ``#camera_assembly`` fail on a
+    document where ``#o1.8`` resolved its 17 leaves (tom-cad FEEDBACK issue 5).
     """
     index = context.selector_index
     if index is None:
         return ""
     parsed = syntax.parse_selector(raw_selector)
-    if parsed is None or parsed.label or parsed.selector_type != "occurrence":
+    if parsed is None:
         return ""
-    canonical = str(parsed.canonical or "")
-    if not canonical or canonical in index.occurrence_by_id:
+    if parsed.label and parsed.selector_type != "label":
+        # `#camera_assembly.f3` names an entity, not the group.
+        return ""
+    canonical = lookup.canonicalize_selector(raw_selector, index) if parsed.label else str(parsed.canonical or "")
+    if not canonical or parsed.selector_type not in {"occurrence", "label"}:
+        return ""
+    if canonical in index.occurrence_by_id:
         return ""
     return canonical if occurrence_group_members(canonical, index) else ""
 
@@ -375,6 +381,16 @@ def _load_step_context(
     *,
     profile: SelectorProfile,
 ) -> EntryContext:
+    if profile == SelectorProfile.SUMMARY:
+        manifest = _load_summary_manifest(target)
+        return EntryContext(
+            cad_path=target.cad_path,
+            kind=_entry_kind_from_manifest(manifest, fallback="part"),
+            source_path=target.source_path,
+            step_path=target.step_path,
+            manifest=manifest,
+            selector_index=None,
+        )
     from cadgen.step_topology_artifact import ensure_step_topology_artifact
 
     artifact = ensure_step_topology_artifact(
@@ -406,6 +422,26 @@ def _load_step_context(
         manifest=manifest,
         selector_index=selector_index,
     )
+
+
+def _load_summary_manifest(target: ResolvedStepTarget) -> dict[str, object]:
+    """Whole-entry summaries consume geometry metadata, never display surfaces."""
+    from cadgen._internal.doors import CompileFailed, document_tree
+    from cadgen.step_targets import StepTopologyArtifactError
+    from cadgen.store.trees import capture_tree
+
+    try:
+        manifest, _ = capture_tree(document_tree(target.step_path), retain_payloads=False)
+        return manifest
+    except Exception as exc:
+        # Preserve the inspection door's existing structured failure and the
+        # compile's own explanation, without constructing a display view.
+        said = str(exc) if isinstance(exc, CompileFailed) else f"reading geometry for {target.cad_path} failed: {exc}"
+        raise StepTopologyArtifactError(
+            code="glb_regeneration_failed", cad_path=target.cad_path,
+            step_path=target.step_path, artifact_path=target.step_path,
+            message=said,
+        ) from exc
 
 
 def _entry_kind_from_manifest(manifest: dict[str, object], *, fallback: str) -> str:
@@ -585,10 +621,21 @@ def _unresolved_message(
     than a wrong document, and "did not resolve" alone leaves the caller guessing which.
     The hint walks up to the deepest ancestor the document really has and names that
     node's children -- interior nodes included, because those are now accepted too.
+
+    A LABEL that does not resolve carries the resolver's reason instead: a duplicate
+    name lists its numbered aliases, an unknown one names `snapshot --mode list`. Both
+    are what `snapshot --focus` already says; a group and a part inside it can honestly
+    share a name now that subassembly labels are indexed, so the bare message would be
+    hit more, not less.
     """
     base = f"Selector '{raw_selector}' did not resolve against {cad_path}."
     index = context.selector_index
-    if index is None or getattr(parsed_selector, "selector_type", "") != "occurrence":
+    if index is None:
+        return base
+    if getattr(parsed_selector, "label", ""):
+        reason = lookup.label_resolution_error(raw_selector, index)
+        return f"{base} {reason}" if reason else base
+    if getattr(parsed_selector, "selector_type", "") != "occurrence":
         return base
     canonical = str(getattr(parsed_selector, "canonical", "") or "")
     if not canonical:
