@@ -8,7 +8,7 @@ import {
   PenTool,
   Ruler,
   Maximize2,
-  Minimize
+  X
 } from "lucide-react";
 import {
   renderCapabilities,
@@ -250,7 +250,7 @@ function DesktopFloatingToolBar({
               {animationButton}
               {screenshotButton}
               <ToolbarButton label="Exit fullscreen" onClick={handleExitPreviewMode}>
-                <Minimize className="size-3" strokeWidth={2} aria-hidden="true" />
+                <X className="size-3" strokeWidth={2} aria-hidden="true" />
               </ToolbarButton>
             </>
           ) : (
