@@ -1047,18 +1047,13 @@ def _entries_by_step_path(specs: Sequence[EntrySpec]) -> dict[Path, EntrySpec]:
     }
 
 
-class RetiredRenderModuleError(ValueError):
-    """A ``<name>.step.js`` still sits beside a model's declared STEP output."""
-
-
 def retired_render_module_path(step_path: Path) -> Path | None:
     """The stale ``<out>.step.js`` / ``<out>.stp.js`` beside ``step_path``.
 
     Animation used to live in a companion ES module discovered by convention.
     It does not any more: ``@step(animation=...)`` embeds the module text in
     the document's sidecar, which is what every renderer reads. A leftover file
-    is therefore not read by anything, and the failure it produces is the one
-    law 10 forbids -- a model that renders inert, at exit 0.
+    is therefore read by nothing.
     """
     if step_path is None:
         return None
@@ -1069,20 +1064,34 @@ def retired_render_module_path(step_path: Path) -> Path | None:
         return None
 
 
-def _refuse_retired_render_module(spec: EntrySpec) -> None:
-    """Law 8 at the source door: the retired file fails, naming what replaced it."""
-    if spec.source != "generated" or not spec.step_output:
-        return
-    companion = retired_render_module_path(spec.step_path)
-    if companion is None:
-        return
-    raise RetiredRenderModuleError(
-        f"{_display_path(companion)} is a retired render module and is read by nothing. "
+_WARNED_RETIRED_RENDER_MODULES: set[str] = set()
+
+
+def retired_render_module_warning(companion: Path) -> str:
+    return (
+        f"warning: {_display_path(companion)} is a retired render module and is read by nothing. "
         "Animation is declared on the model: @step(animation=...) embeds the module text "
         "in the document's sidecar, which is what the viewer, snapshots and mesh exports "
         "read. Move this file's clips into the decorator and delete it; "
         "see the cad skill's kinematics reference (references/kinematics.md)."
     )
+
+
+def _warn_retired_render_module(spec: EntrySpec) -> None:
+    """A stray file nothing reads does not stop a build: the document is still
+    correct without it. It is named once per run, on stderr, with the replacement,
+    so the migration is visible without being enforced (the Viewer shows the same
+    text as a model warning)."""
+    if spec.source != "generated" or not spec.step_output:
+        return
+    companion = retired_render_module_path(spec.step_path)
+    if companion is None:
+        return
+    key = str(companion)
+    if key in _WARNED_RETIRED_RENDER_MODULES:
+        return
+    _WARNED_RETIRED_RENDER_MODULES.add(key)
+    print(retired_render_module_warning(companion), file=sys.stderr)
 
 
 def _validate_step_target(spec: EntrySpec, *, tool_name: str) -> None:
@@ -1093,9 +1102,9 @@ def _validate_step_target(spec: EntrySpec, *, tool_name: str) -> None:
         if metadata is None or metadata.format != "step":
             raise ValueError(f"{tool_name} target is not a @step model: {spec.source_ref}")
         # Here rather than in the build: a model whose tree is already current
-        # takes the no-op path, and a retired file beside its document must
-        # fail every run, not only the ones that rebuild geometry.
-        _refuse_retired_render_module(spec)
+        # takes the no-op path, and a retired file beside its document must be
+        # named on every run, not only the ones that rebuild geometry.
+        _warn_retired_render_module(spec)
         return
     raise ValueError(
         f"{tool_name} builds @step Python sources only: {spec.source_ref}. "
