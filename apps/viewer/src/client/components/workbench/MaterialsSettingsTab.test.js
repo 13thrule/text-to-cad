@@ -4,6 +4,9 @@ import test from "node:test";
 import { click, get, query, render, renderHook, text } from "../../../../scripts/reactHarness.mjs";
 import { effectiveSourceAppearance } from "../../workbench/sourceMaterialSession.js";
 import { buildMaterialsSettingsTab } from "./MaterialsSettingsTab.js";
+// The panel is a lazy chunk behind the tab descriptor; these render the panel
+// itself, which is what has the behaviour, and assert the descriptor separately.
+import MaterialsSettingsContent from "./MaterialsSettingsContent.js";
 import { useSourceMaterialSession } from "./hooks/useSourceMaterialSession.js";
 
 // Steel is shared by two of the three parts, which is what makes the shared
@@ -37,7 +40,7 @@ function openPanel() {
   let view = null;
   const paint = () => {
     const parts = session.result.withViewerSelection([]);
-    const tab = buildMaterialsSettingsTab({
+    const props = {
       appearance,
       overlay: session.result.overlay,
       undo: session.result.undo,
@@ -49,9 +52,9 @@ function openPanel() {
       onOverlayChange: session.result.change,
       onUndo: session.result.undoLast,
       onReset: session.result.reset
-    });
-    if (view) view.update(tab.content.props);
-    else view = render(tab.content.type, tab.content.props);
+    };
+    if (view) view.update(props);
+    else view = render(MaterialsSettingsContent, props);
     return view.tree;
   };
   const panel = {

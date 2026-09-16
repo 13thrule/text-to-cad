@@ -75,9 +75,9 @@ import {
 } from "./environmentMap.js";
 import {
   applyPhotographicStudio,
-  disposePhotographicStudio,
-  PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS
+  disposePhotographicStudio
 } from "./photographicStudio.js";
+import { PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS } from "./photographicStudioRig.js";
 import { validateSnapshotRenderJob } from "./snapshotJobValidation.js";
 
 const DEFAULT_RENDER_SCALE = 1;

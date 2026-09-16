@@ -140,6 +140,26 @@ second GPU scene and does not return during orbit or detail refinement. Render
 receives no inspection selectors and no DXF bend-guide overlays; STEP and
 embedded GLB animation stay independent of those inspection resources.
 
+**Render is a lazy chunk.** The photographic rig, the softbox environment, the
+Studio editor and the Materials editor are fetched the first time Render is
+asked for, not on every load: an Inspect-only session never pays for them.
+`src/client/render/renderStudioChunk.js` is the one boundary. The two panels go
+through `React.lazy`, and the scene half answers `studioScene()` with `null`
+until it arrives — a state the transition above already covers, because
+`environmentReady` stays false and the canvas stays under the destination
+backdrop, so a photographic camera is never presented over CAD lighting. The
+chunk is warmed from the Viewing mode button's hover and focus and again from
+the switch itself, so a mode change normally has it already; a cold cache sees
+the tab's muted "Loading studio settings..." line for the round trip. There is
+no idle prefetch: a background fetch would compete with the tessellation work
+that actually governs first geometry.
+
+**What that means for tests.** A test that wants the Studio or Materials panel
+mounts `RenderSettingsContent.js` / `MaterialsSettingsContent.js` directly —
+the tab builders return the lazy wrapper, not the panel — and a browser test
+that switches to Render waits for the scene as it already does, since the
+switch resolves the chunk before anything is presented.
+
 Entering Render applies its perspective camera and fixed presentation view —
 shaded authored colors, with guides, edges, clipping, exploded transforms and
 selection effects off. Kinematics and animation remain available and compose

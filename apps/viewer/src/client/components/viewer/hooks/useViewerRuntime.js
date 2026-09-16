@@ -13,8 +13,10 @@ import { fitCameraDepthToBounds } from "cadgen-js/common/renderOptions.js";
 import {
   screenSpaceLineDeviceResolution
 } from "cadgen-js/common/renderEdges";
-import { disposeEnvironmentResource } from "cadgen-js/common/environmentMap.js";
-import { disposePhotographicStudio } from "cadgen-js/common/photographicStudio.js";
+// The studio lives in Render's lazy chunk. A runtime can only be holding studio
+// resources if that chunk loaded, so teardown asks the boundary rather than
+// importing it — an Inspect-only session tears down with nothing to dispose.
+import { studioScene } from "@/render/renderStudioChunk";
 import {
   resolveInteractionPixelRatioCap
 } from "cadgen-js/lib/viewer/renderQuality";
@@ -874,8 +876,8 @@ export function useViewerRuntime({
         disposeSceneObject(runtime.gridHelper);
         disposeSceneObject(runtime.axesHelper);
         disposeTexture(runtime.sceneBackgroundTexture);
-        disposeEnvironmentResource(runtime.environmentResource);
-        disposePhotographicStudio(runtime);
+        studioScene()?.disposeEnvironmentResource(runtime.environmentResource);
+        studioScene()?.disposePhotographicStudio(runtime);
         runtime.keyLight?.shadow?.map?.dispose?.();
         if (runtime.keyLight?.shadow) {
           runtime.keyLight.shadow.map = null;

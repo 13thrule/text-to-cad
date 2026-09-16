@@ -60,6 +60,9 @@ import { cn } from "@/ui/utils";
 import { COLOR_SCHEMES } from "@/ui/colorScheme";
 import { copyTextToClipboard } from "@/ui/clipboard";
 import { entryIconStatus } from "@/workbench/entryIconStatus";
+// Render is a lazy chunk; reaching its menu is the earliest honest signal that
+// someone may want it, and a warm chunk is what makes the switch look instant.
+import { prefetchRenderStudio } from "@/render/renderStudioChunk";
 import FileAccessContextMenu from "./FileAccessContextMenu";
 import {
   fileKey,
@@ -1240,6 +1243,8 @@ export default function CadWorkspaceTopBar({
                   aria-label={`Viewing mode: ${viewingModeLabel}`}
                   title={`Viewing mode: ${viewingModeLabel}`}
                   className={topBarIconButtonClasses}
+                  onPointerEnter={prefetchRenderStudio}
+                  onFocus={prefetchRenderStudio}
                 >
                   <ViewingModeIcon className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
                 </Button>

@@ -4,6 +4,9 @@ import test from "node:test";
 import { click, get, query, render, renderHook, text } from "../../../../../scripts/reactHarness.mjs";
 import { effectiveSourceAppearance } from "../../../workbench/sourceMaterialSession.js";
 import { buildMaterialsSettingsTab } from "../MaterialsSettingsTab.js";
+// The tab descriptor wraps the panel in Render's lazy boundary; the behaviour
+// under test is the panel's, so these mount the panel module directly.
+import MaterialsSettingsContent from "../MaterialsSettingsContent.js";
 import { useSourceMaterialSession } from "./useSourceMaterialSession.js";
 
 const appearance = {
@@ -29,7 +32,10 @@ function startSession(entry = hand) {
 // unmounts it: showing Studio takes the panel away entirely.
 function showTab(session) {
   const parts = session.result.withViewerSelection([]);
-  const tab = buildMaterialsSettingsTab({
+  // Built as well as rendered: the descriptor decides whether the tab exists at
+  // all, and the panel below has to be the thing that descriptor points at.
+  assert.equal(buildMaterialsSettingsTab({ enabled: session.result.enabled })?.title, "Materials");
+  const props = {
     appearance,
     overlay: session.result.overlay,
     undo: session.result.undo,
@@ -41,8 +47,8 @@ function showTab(session) {
     onOverlayChange: session.result.change,
     onUndo: session.result.undoLast,
     onReset: session.result.reset
-  });
-  return render(tab.content.type, tab.content.props);
+  };
+  return render(MaterialsSettingsContent, props);
 }
 
 function press(view, label) {

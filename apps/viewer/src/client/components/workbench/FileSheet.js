@@ -236,6 +236,18 @@ export function FileSheetSectionBody({
   );
 }
 
+// The one loading body a tab shows while its panel chunk arrives: the States
+// rule's muted 11px line in the row gutter, inside a normal section body so the
+// tab does not resize when the panel replaces it. Nothing animates — a panel
+// that usually arrives in a frame must not flash a spinner.
+export function FileSheetLoadingBody({ children }) {
+  return (
+    <FileSheetSectionBody>
+      <FileSheetStatusText>{children}</FileSheetStatusText>
+    </FileSheetSectionBody>
+  );
+}
+
 export function FileSheetControlRow({
   label,
   value,

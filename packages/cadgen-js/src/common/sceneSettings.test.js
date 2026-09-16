@@ -8,7 +8,7 @@ import {
   resolveRenderQuality,
   resolveSceneSettings
 } from "./sceneSettings.js";
-import { PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS } from "./photographicStudio.js";
+import { PHOTOGRAPHIC_STUDIO_MATERIAL_SETTINGS } from "./photographicStudioRig.js";
 
 test("normal CAD stays an orthographic responsive inspection scene", () => {
   const light = resolveSceneSettings({ appearance: "light" });
