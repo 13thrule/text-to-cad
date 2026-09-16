@@ -1,7 +1,7 @@
 # macOS
 .DS_Store
 .vscode
-/.claude/launch.json
+/.claude/
 
 # Python
 __pycache__/
