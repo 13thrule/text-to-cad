@@ -335,7 +335,8 @@ export function buildPackageMeshPrimitives(descriptor, componentTessellations, o
           ty = nm[3] * nx + nm[4] * ny + nm[5] * nz;
           tz = nm[6] * nx + nm[7] * ny + nm[8] * nz;
         }
-        const length = Math.hypot(tx, ty, tz) || 1;
+        // Exactly defined arithmetic only (lib/surf/trig.js).
+        const length = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1;
         outNormals[base] = tx / length;
         outNormals[base + 1] = ty / length;
         outNormals[base + 2] = tz / length;

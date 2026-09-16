@@ -1,10 +1,11 @@
-// Engine-independent sine and cosine for the tessellator.
+// Engine-independent trigonometry: sin, cos, acos, atan, atan2.
 //
-// WHY THIS EXISTS. `Math.sin` and `Math.cos` are not specified to any
-// accuracy: ECMA-262 lets every implementation return its own approximation,
-// and implementations disagree. Measured on identical arguments, V8 in Node 26
-// and V8 in the snapshot browser (Chromium 151) return different bits for
-// ~2.9% of `Math.sin` calls and ~2.8% of `Math.cos` calls over [-10, 10].
+// WHY THIS EXISTS. `Math.sin` and friends are not specified to any accuracy:
+// ECMA-262 lets every implementation return its own approximation, and
+// implementations disagree. Measured on identical arguments, V8 in Node 26 and
+// V8 in the snapshot browser (Chromium 151) return different bits for ~2.9% of
+// `Math.sin` calls, ~2.8% of `Math.cos`, ~7.6% of `Math.acos` and ~17% of
+// `Math.atan2`.
 //
 // Both engines tessellate the same components into the same content-addressed
 // mesh store (one key per component + tolerances), and the exported GLB / STL /
@@ -21,17 +22,20 @@
 // exactly, so the result is the same on every engine and platform. Accuracy is
 // fdlibm's: under 1 ulp, and exact where the kernels are (`sin(0)`, `cos(0)`).
 //
-// WHERE IT IS USED. Everything whose output reaches a stored tessellation:
-// `evaluate.js` (analytic curves, surfaces and normals) and the tolerance
-// thresholds in `tessellate.js`. Callers whose results never leave the process
-// — view-dependent LOD, UI, diagnostics — may keep using `Math`.
+// WHERE IT IS USED. Everything whose output reaches bytes cadgen writes or
+// content-addresses: `evaluate.js` and `tessellate.js` on the way into a stored
+// tessellation, and `common/tubeDeformation.js` plus `lib/export/*` and
+// `lib/glb/writeGlb.js` on the way out into a GLB, STL or 3MF. Callers whose
+// results never leave the process — view-dependent LOD, UI, diagnostics — may
+// keep using `Math`.
 //
-// The other `Math` functions the tessellator uses are safe by specification:
+// The other `Math` functions these paths use are safe by specification:
 // `sqrt` is correctly rounded, and `abs`/`min`/`max`/`round`/`floor`/`ceil`/
-// `trunc`/`sign` are exact. `Math.hypot` is not specified to any accuracy
-// either — the two engines happened to agree on all 20000 sample arguments,
-// but the tessellation path uses `Math.sqrt` of the sum of squares instead, so
-// no unspecified function survives anywhere the bytes come from.
+// `trunc`/`sign` are exact. `Math.hypot` and `Math.pow` are not specified to
+// any accuracy either — the two engines happened to agree on all 20000 sample
+// arguments of each — but those paths use `Math.sqrt` of the sum of squares and
+// plain multiplication instead, so no unspecified function survives anywhere
+// the bytes come from. `trig.test.js` is what keeps it that way.
 
 // fdlibm __kernel_sin coefficients.
 const S1 = -1.66666666666666324348e-01;
@@ -157,5 +161,170 @@ export function cos(x) {
     case 1: return -kernelSin(r, tail, true);
     case 2: return -kernelCos(r, tail);
     default: return kernelSin(r, tail, true);
+  }
+}
+
+// --- Inverse functions -------------------------------------------------------
+//
+// Same discipline, same source: fdlibm's __ieee754_acos, __ieee754_atan and
+// __ieee754_atan2, transcribed. The only thing beyond arithmetic they need is
+// reading and clearing a double's low word, which IEEE 754 defines exactly.
+// fdlibm's `+tiny` terms are dropped: they exist to raise the C inexact flag
+// and are no-ops on a double, so keeping them would only look load-bearing.
+
+const bits = new DataView(new ArrayBuffer(8));
+
+function highWord(x) {
+  bits.setFloat64(0, x);
+  return bits.getInt32(0);
+}
+
+function signBit(x) {
+  // True for -0 as well as every negative, which is what atan2's quadrant
+  // selection is asking about.
+  return (highWord(x) >>> 31) === 1;
+}
+
+function dropLowWord(x) {
+  bits.setFloat64(0, x);
+  bits.setUint32(4, 0);
+  return bits.getFloat64(0);
+}
+
+const PI = 3.14159265358979311600e+00;
+const PI_LO = 1.2246467991473531772e-16;
+const PIO2_HI = 1.57079632679489655800e+00;
+const PIO2_LO = 6.12323399573676603587e-17;
+
+// fdlibm's asin/acos rational approximation, p/q.
+const PS0 = 1.66666666666666657415e-01;
+const PS1 = -3.25565818622400915405e-01;
+const PS2 = 2.01212532134862925881e-01;
+const PS3 = -4.00555345006794114027e-02;
+const PS4 = 7.91534994289814532176e-04;
+const PS5 = 3.47933107596021167570e-05;
+const QS1 = -2.40339491173441421878e+00;
+const QS2 = 2.02094576023350569471e+00;
+const QS3 = -6.88283971605453293030e-01;
+const QS4 = 7.70381505559019352791e-02;
+
+function acosR(z) {
+  const p = z * (PS0 + z * (PS1 + z * (PS2 + z * (PS3 + z * (PS4 + z * PS5)))));
+  const q = 1 + z * (QS1 + z * (QS2 + z * (QS3 + z * QS4)));
+  return p / q;
+}
+
+/** `Math.acos`, computed identically on every JavaScript engine. */
+export function acos(x) {
+  const ax = Math.abs(x);
+  if (!(ax <= 1)) return NaN; // also catches NaN
+  if (ax === 1) return x > 0 ? 0 : PI + 2 * PIO2_LO;
+  if (ax < 0.5) {
+    if (ax < 6.938893903907228e-18) return PIO2_HI + PIO2_LO; // |x| < 2^-57
+    return PIO2_HI - (x - (PIO2_LO - x * acosR(x * x)));
+  }
+  if (x < 0) {
+    const z = (1 + x) * 0.5;
+    const s = Math.sqrt(z);
+    return PI - 2 * (s + (acosR(z) * s - PIO2_LO));
+  }
+  const z = (1 - x) * 0.5;
+  const s = Math.sqrt(z);
+  // Split s into an exactly representable head and the tail the head lost, so
+  // 2*(head + tail) keeps the precision a bare 2*s would round away.
+  const head = dropLowWord(s);
+  const correction = (z - head * head) / (s + head);
+  return 2 * (head + (acosR(z) * s + correction));
+}
+
+// fdlibm's atan breakpoints, and the exact endpoint it folds each range back to.
+const ATAN_HI = [
+  4.63647609000806093515e-01, // atan(0.5)
+  7.85398163397448278999e-01, // atan(1.0)
+  9.82793723247329054082e-01, // atan(1.5)
+  1.57079632679489655800e+00, // atan(inf)
+];
+const ATAN_LO = [
+  2.26987774529616870924e-17,
+  3.06161699786838301793e-17,
+  1.39033110312309984516e-17,
+  6.12323399573676603587e-17,
+];
+const AT = [
+  3.33333333333329318027e-01, -1.99999999998764832476e-01,
+  1.42857142725034663711e-01, -1.11111104054623557880e-01,
+  9.09088713343650656196e-02, -7.69187620504482999495e-02,
+  6.66107313738753120669e-02, -5.83357013379057348645e-02,
+  4.97687799461593236017e-02, -3.65315727442169155270e-02,
+  1.62858201153657823623e-02,
+];
+
+/** `Math.atan`, computed identically on every JavaScript engine. */
+export function atan(x) {
+  if (Number.isNaN(x)) return NaN;
+  const negative = signBit(x);
+  let ax = Math.abs(x);
+  let id;
+  if (ax >= 73786976294838206464) { // 2^66: atan has reached its limit
+    const z = ATAN_HI[3] + ATAN_LO[3];
+    return negative ? -z : z;
+  }
+  if (ax < 0.4375) {
+    if (ax < 1.862645149230957e-09) return x; // |x| < 2^-29
+    id = -1;
+    ax = x;
+  } else if (ax < 0.6875) {
+    id = 0;
+    ax = (2 * ax - 1) / (2 + ax);
+  } else if (ax < 1.1875) {
+    id = 1;
+    ax = (ax - 1) / (ax + 1);
+  } else if (ax < 2.4375) {
+    id = 2;
+    ax = (ax - 1.5) / (1 + 1.5 * ax);
+  } else {
+    id = 3;
+    ax = -1 / ax;
+  }
+  const z = ax * ax;
+  const w = z * z;
+  const odd = z * (AT[0] + w * (AT[2] + w * (AT[4] + w * (AT[6] + w * (AT[8] + w * AT[10])))));
+  const even = w * (AT[1] + w * (AT[3] + w * (AT[5] + w * (AT[7] + w * AT[9]))));
+  if (id < 0) return ax - ax * (odd + even);
+  const result = ATAN_HI[id] - ((ax * (odd + even) - ATAN_LO[id]) - ax);
+  return negative ? -result : result;
+}
+
+/** `Math.atan2`, computed identically on every JavaScript engine. */
+export function atan2(y, x) {
+  if (Number.isNaN(x) || Number.isNaN(y)) return NaN;
+  if (x === 1) return atan(y);
+  const quadrant = (signBit(y) ? 1 : 0) | (signBit(x) ? 2 : 0);
+  if (y === 0) {
+    // atan2(+-0, +anything) keeps y's sign; a negative x answers +-pi.
+    return quadrant < 2 ? y : (quadrant === 2 ? PI : -PI);
+  }
+  if (x === 0) return signBit(y) ? -PIO2_HI : PIO2_HI;
+  if (!Number.isFinite(x)) {
+    if (!Number.isFinite(y)) {
+      const eighth = [PIO4, -PIO4, 3 * PIO4, -3 * PIO4];
+      return eighth[quadrant];
+    }
+    return [0, -0, PI, -PI][quadrant];
+  }
+  if (!Number.isFinite(y)) return signBit(y) ? -PIO2_HI : PIO2_HI;
+
+  // How far apart the two magnitudes are, in binary exponents. Far enough and
+  // the quotient is already the answer, or already zero.
+  const exponents = ((highWord(y) & 0x7fffffff) - (highWord(x) & 0x7fffffff)) >> 20;
+  let z;
+  if (exponents > 60) z = PIO2_HI + 0.5 * PI_LO;
+  else if (signBit(x) && exponents < -60) z = 0;
+  else z = atan(Math.abs(y / x));
+  switch (quadrant) {
+    case 0: return z;
+    case 1: return -z;
+    case 2: return PI - (z - PI_LO);
+    default: return (z - PI_LO) - PI;
   }
 }

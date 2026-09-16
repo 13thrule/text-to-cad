@@ -97,11 +97,15 @@ snapshot renderer and the node builders in `bin/`).
   into the same content-addressed mesh store, so whichever ran first decides
   what a document exports. ECMA-262 specifies `Math.sin`, `Math.cos`,
   `Math.hypot` and friends to no accuracy at all, and the two engines really do
-  disagree — measurably, on a few percent of arguments. Nothing whose result
-  reaches a stored tessellation may call one: `surf/trig.js` is the
-  engine-independent sine and cosine (fdlibm kernels in plain arithmetic), and
-  lengths use `Math.sqrt`, which IEEE 754 requires to be correctly rounded.
-  `surf/trig.test.js` holds that line for `evaluate.js` and `tessellate.js`.
+  disagree — measurably, on a few percent of arguments. So nothing that writes
+  bytes may call one, on the way into a tessellation or out of a serializer:
+  `surf/trig.js` is engine-independent `sin`, `cos`, `acos`, `atan` and `atan2`
+  (fdlibm kernels in plain arithmetic), lengths use `Math.sqrt`, which IEEE 754
+  requires correctly rounded, and an integer power is a multiplication.
+  `surf/trig.test.js` holds the line by scanning the whole import CLOSURE of
+  the tessellator and the mesh-export builder, so a new dependency is covered
+  the moment it is pulled in — and pins a golden vector, because a unit test
+  only ever runs on one engine at a time.
   GLB material RGB decoded from sRGB hex is serialized at Float32 precision,
   so differences in JavaScript exponentiation do not change the output bytes.
   Every 8-bit sRGB channel survives the round trip; authored opacity and PBR
