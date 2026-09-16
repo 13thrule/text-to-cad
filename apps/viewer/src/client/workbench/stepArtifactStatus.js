@@ -9,7 +9,6 @@ export const BUILDABLE_STEP_ARTIFACT_ERROR_CODES = Object.freeze([
   "missing_edge_topology",
   "missing_surface_edge_attributes",
   "missing_selector_topology",
-  "missing_source_path",
   "unsupported_step_topology"
 ]);
 
@@ -166,9 +165,6 @@ export function stepArtifactStatusMessage(artifact) {
   }
   if (code === "unsupported_step_topology") {
     return "Generated GLB topology metadata is unsupported.";
-  }
-  if (code === "missing_source_path") {
-    return "Generated GLB metadata is missing its source path.";
   }
   if (code === "missing_step_hash") {
     return "Generated GLB is missing the hash of the STEP file.";

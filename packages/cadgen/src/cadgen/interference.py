@@ -455,16 +455,12 @@ def inspect_interference(
     target = resolve_step_target(entry)
     logger = CliLogger("cad")
     repo_root = Path.cwd()
-    source_path = target.source_path if str(target.source_path).endswith(".py") else None
     scene = _resolve_spec_and_scene(
         repo_root,
         target.step_path,
-        source_path,
         mesh_tolerance=None,
         mesh_angular_tolerance=None,
         logger=logger,
-        door="inspect interfere",
-        verb="checking interference",
     ).scene
 
     all_occurrences = occurrences_from_scene(scene)

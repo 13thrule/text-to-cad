@@ -58,16 +58,14 @@ class ARTIFACT_STATE:  # noqa: N801 - a namespace of wire constants, not a class
     FAILED = "failed"
 
 
-# Codes the client may build on. ``missing_source_path`` and
-# ``missing_dxf_output`` are unreachable from ``_validate_step`` today; the set
-# stays literal so a future code lands in the right branch rather than falling
-# through to the error arm.
+# Codes the client may build on. ``missing_dxf_output`` is unreachable from
+# ``_validate_step`` today; the set stays literal so a future code lands in the
+# right branch rather than falling through to the error arm.
 BUILDABLE_CODES = frozenset(
     {
         "missing_glb",
         "missing_step_topology",
         "unsupported_step_topology",
-        "missing_source_path",
         "missing_dxf_output",
     }
 )

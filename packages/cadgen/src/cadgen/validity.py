@@ -620,20 +620,17 @@ def inspect_validity(
     target = resolve_step_target(entry)
     logger = CliLogger("cad")
     repo_root = Path.cwd()
-    source_path = target.source_path if str(target.source_path).endswith(".py") else None
     scene = _resolve_spec_and_scene(
         repo_root,
         target.step_path,
-        source_path,
         mesh_tolerance=None,
         mesh_angular_tolerance=None,
         logger=logger,
-        door="inspect validate",
-        verb="validating",
     ).scene
 
-    # The painter opens AFTER the scene is resolved: a stale document's rebuild
-    # paints its own line, and two painters on one tty interleave into nonsense.
+    # The painter opens AFTER the scene is resolved: resolving a document may
+    # compile its bytes, which paints its own line, and two painters on one tty
+    # interleave into nonsense.
     with cli_progress_line(target.cad_path, logger=logger, fallback="Validating...") as sink:
         progress = ProgressReporter(
             sinks=[sink] if sink is not None else [],
