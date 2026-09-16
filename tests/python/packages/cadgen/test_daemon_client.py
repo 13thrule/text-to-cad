@@ -89,6 +89,25 @@ class DeadWorkerMessage(unittest.TestCase):
         self.assertIn(client.cold_rerun_command(PAYLOAD), err)
         self.assertNotIn("worker closed the connection", err)
 
+    def test_a_death_the_client_runs_cold_says_so_instead_of_advising_a_cold_run(self):
+        """No exit frame means the daemon itself is gone, and the ordinary
+        non-strict path then runs this job cold in this process. The message
+        used to say "The job was NOT retried. Run it cold ... CADGEN_DAEMON=0"
+        and the run then succeeded at exit 0 — a failure notice above a success,
+        with nothing to tell the reader which one had happened."""
+        outcome, out, err = self._run([
+            {"workerDied": {"pid": 4242, "detail": "worker 4242 was killed by SIGKILL (signal 9)",
+                            "exitStatus": -9}},
+        ])  # the connection closes without an exit frame: the fallback follows
+
+        self.assertIsNone(outcome, "a closed connection still means run cold")
+        self.assertEqual(out, "")
+        self.assertIn("died mid-job", err)
+        self.assertIn("killed by SIGKILL (signal 9)", err)
+        self.assertIn("Running it cold now", err)
+        self.assertNotIn("NOT retried", err)
+        self.assertNotIn("CADGEN_DAEMON=0", err)
+
     def test_a_job_with_no_prog_is_named_by_its_tool(self):
         payload = {**PAYLOAD, "prog": None, "argv": ["build", "a b.step", "out.step"]}
         text = client.worker_died_message(payload, {"detail": "worker 1 exited with code 139"})

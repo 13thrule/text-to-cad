@@ -555,21 +555,37 @@ def cold_rerun_instructions(payload: dict) -> str:
     )
 
 
-def worker_died_message(payload: dict, death: dict) -> str:
+def worker_died_message(payload: dict, death: dict, *, falling_back: bool = False) -> str:
     """What the user reads when the warm worker running THEIR job dies.
 
     Says that the worker died and how (the pool's evidence: exit code or signal),
-    names the job, suspects the likely causes, states that nothing was retried --
-    a 35-minute job silently re-running cold is worse than the failure -- and
-    gives the rerun verbatim. Every clause is load-bearing; the test pins them.
+    names the job, and suspects the likely causes. What it says next depends on
+    what actually happens next, which is why the caller reports the death only
+    once the outcome is known:
+
+    - the daemon followed with an exit frame, so this run ends here: nothing was
+      retried -- a 35-minute job silently re-running cold is worse than the
+      failure -- and the rerun is spelled out verbatim;
+    - the daemon itself went away, so the ordinary non-strict cold fallback is
+      about to run this job in THIS process: say that instead. Telling someone
+      the job was not retried and to run it cold, and then running it cold, left
+      a failure message above an exit 0 with no way to tell which one was true.
+
+    Every clause is load-bearing; the tests pin them.
     """
     prog, args, _cold = _job_words(payload)
     job = " ".join([prog, *args])
     detail = str(death.get("detail") or "worker closed the connection")
-    return (
+    opening = (
         f"cadgen-daemon: the warm worker running `{job}` died mid-job ({detail}) -- "
-        "most likely out of memory, or a crash in the geometry kernel. The job was NOT "
-        "retried. Run it cold, in its own process, to see the failure directly:\n"
+        "most likely out of memory, or a crash in the geometry kernel. "
+    )
+    if falling_back:
+        return opening + "Running it cold now, in this process; what follows is that run.\n"
+    return (
+        opening
+        + "The job was NOT retried. Run it cold, in its own process, to see the "
+        "failure directly:\n"
         f"{cold_rerun_instructions(payload)}"
     )
 
@@ -589,6 +605,28 @@ def _run_request(
             on_stream(f"The geometry service {reason}.\n")
         return None
 
+    def emit(text: str) -> None:
+        if on_stream is not None:
+            on_stream(text)
+        else:
+            sys.stderr.write(text)
+            sys.stderr.flush()
+
+    def settled(outcome):
+        """Report a deferred worker death now that the outcome says what follows.
+
+        An exit code means the daemon finished the request and this run ends
+        here; anything else means the caller falls back to a cold in-process
+        run, and the message has to say which. There is no third case: a
+        ``restart`` frame is sent at dispatch, before the job runs, so it can
+        never follow a worker death on the same connection.
+        """
+        if pending_death is not None:
+            emit(worker_died_message(payload, pending_death,
+                                     falling_back=not isinstance(outcome, int)))
+        return outcome
+
+    pending_death: dict | None = None
     if cancelled is not None and cancelled():
         return None
     if not _send_json(channel, payload):
@@ -601,7 +639,7 @@ def _run_request(
     deadline = time.monotonic() + timeout if timeout else None
     while True:
         if cancelled is not None and cancelled():
-            return None
+            return settled(None)
         message = _recv_json(channel, .1 if strict else timeout)
         if message is _TIMED_OUT:
             if strict:
@@ -618,20 +656,20 @@ def _run_request(
                 file=sys.stderr,
                 flush=True,
             )
-            return None
+            return settled(None)
         if message is None:
-            return protocol_failure("closed the connection before the request finished")
+            return settled(protocol_failure("closed the connection before the request finished"))
         deadline = time.monotonic() + timeout if timeout else None
         if message.get("restart"):
             if strict and observed_work:
                 # An uncertain completed/partial operation cannot replay.
                 return protocol_failure("restarted before confirming the completed request")
-            return _RESTART
+            return settled(_RESTART)
         if "exit" in message:
-            return int(message["exit"])
+            return settled(int(message["exit"]))
         if "artifactResult" in message:
             if on_artifact_result is None:
-                return None
+                return settled(None)
             on_artifact_result(message["artifactResult"])
             observed_work = True
             continue
@@ -642,22 +680,23 @@ def _run_request(
                 on_event(message["event"])
             continue
         if "workerDied" in message:
-            # The worker running this job is gone. The supervisor follows with the exit
-            # frame; this is the one place the loss is explained, and it is never a
-            # silent cold retry -- the caller's job may have run for half an hour.
-            text = (f"artifact worker died: {message['workerDied']}; no retry\n" if strict
-                    else worker_died_message(payload, message["workerDied"] or {}))
+            # The worker running this job is gone. This is the one place the loss is
+            # explained, and the daemon never retries it silently -- the caller's job
+            # may have run for half an hour. A strict request has no fallback, so it
+            # says so immediately. An ordinary one does: the supervisor normally
+            # follows with the exit frame, but if the daemon itself is gone the client
+            # runs this job cold in its own process, and the message must not tell the
+            # reader the opposite. Hold it until the outcome is known.
             observed_work = True
-            if on_stream is not None:
-                on_stream(text)
+            if strict:
+                emit(f"artifact worker died: {message['workerDied']}; no retry\n")
             else:
-                sys.stderr.write(text)
-                sys.stderr.flush()
+                pending_death = message["workerDied"] or {}
             continue
         data = message.get("data")
         stream = message.get("stream")
         if stream not in streams or not isinstance(data, str):
-            return protocol_failure("sent an invalid response")
+            return settled(protocol_failure("sent an invalid response"))
         observed_work = observed_work or bool(data)
         if on_stream is not None:
             on_stream(data)
