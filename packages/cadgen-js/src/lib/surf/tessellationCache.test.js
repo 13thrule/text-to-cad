@@ -24,7 +24,7 @@ import {
   tessellationPayloadFacts,
   validateTessellationProbeRow,
 } from "./tessellationCache.js";
-import { DEFAULT_OPTIONS } from "./tessellate.js";
+import { DEFAULT_OPTIONS, TESSELLATION_VERSION } from "./tessellate.js";
 
 const D = "11".repeat(32);
 const D2 = "22".repeat(32);
@@ -149,7 +149,7 @@ test("v4 round-trips the full typed payload and exposes exact D/O/L/Q/R", () => 
     tessellationInput: L,
     renderIdentity: R,
     quality: tessellationQuality(Q),
-    tessellatorVersion: 2,
+    tessellatorVersion: TESSELLATION_VERSION,
     payloadVersion: 4,
   });
   assert.deepEqual(decoded.partColor, [0.6, 0.5, 0.4, 1]);

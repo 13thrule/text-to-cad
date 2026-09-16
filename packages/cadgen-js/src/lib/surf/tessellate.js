@@ -26,6 +26,9 @@
 import { ShapeUtils, Vector2 } from "three";
 
 import { evaluateCurve3, evaluatePCurve, evaluateSurface, evaluateSurfaceNormal } from "./evaluate.js";
+// Deterministic sin/cos: these decide refinement and therefore the emitted
+// triangles, so they may not vary with the engine (see trig.js).
+import { cos, sin } from "./trig.js";
 
 // Bump on ANY change that alters output triangles/normals/edge polylines for
 // the same input at the same tolerances — algorithm tweaks included, not just
@@ -34,7 +37,7 @@ import { evaluateCurve3, evaluatePCurve, evaluateSurface, evaluateSurfaceNormal 
 // meshes produced by the previous algorithm become unreachable instead of
 // being served stale; `cadgen cache gc` collects the orphans. Mirrored as
 // MESH_TESSELLATION_VERSION in cadgen/_internal/cache_paths.py (sync-tested).
-export const TESSELLATION_VERSION = 2;
+export const TESSELLATION_VERSION = 3;
 
 export const DEFAULT_OPTIONS = {
   // Max 3D distance between the surface and a triangle edge midpoint,
@@ -54,14 +57,19 @@ function sub(a, b) {
   return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 }
 
+// Math.sqrt is correctly rounded by IEEE 754 and required to be by ECMA-262;
+// Math.hypot is specified to no accuracy at all. Same reason as trig.js: every
+// float that reaches a stored tessellation comes from exactly defined
+// arithmetic. Squares of CAD-scale coordinates cannot overflow a double, which
+// is the only thing hypot's scaling would buy here.
 function length3(a) {
-  return Math.hypot(a[0], a[1], a[2]);
+  return Math.sqrt(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
 }
 
 function singularU(surface, v) {
-  if (surface.kind === "sphere") return Math.abs(Math.cos(v)) < 1e-12;
+  if (surface.kind === "sphere") return Math.abs(cos(v)) < 1e-12;
   if (surface.kind === "cone") {
-    return Math.abs(surface.radius + v * Math.sin(surface.semiAngle)) <
+    return Math.abs(surface.radius + v * sin(surface.semiAngle)) <
       (Math.abs(surface.radius) + Math.abs(v)) * 1e-12;
   }
   return false;
@@ -836,7 +844,7 @@ function tessellateFaceRaw(face, floats, scale, options = {}, sharedEdges = null
   const vertexNormal = ([u, v]) =>
     evaluateSurfaceNormal(face.surface, floats, u, v, face.uv, false);
   const nrm = uvVerts.map(vertexNormal);
-  const angleCos = Math.cos(angleTolerance);
+  const angleCos = cos(angleTolerance);
   const edgeKey = (a, b) => (a < b ? `${a}_${b}` : `${b}_${a}`);
   for (let depth = 0; depth < (singularGrid ? 0 : maxRefineDepth); depth += 1) {
     const marked = new Set();
@@ -1060,7 +1068,7 @@ function refineInteriorPostConform(face, raw, floats, options = {}) {
   const chordLimit = chordTolerance * Math.max(scale, 1e-9);
   const vertexNormal = ([u, v]) =>
     evaluateSurfaceNormal(face.surface, floats, u, v, face.uv, false);
-  const angleCos = Math.cos(angleTolerance);
+  const angleCos = cos(angleTolerance);
   const edgeKey = (a, b) => (a < b ? `${a}_${b}` : `${b}_${a}`);
   void angleCos;
   const REFINE_DEPTH = Math.min(3, maxRefineDepth);

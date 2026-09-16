@@ -94,7 +94,7 @@ test("exports every format from one package, byte-deterministically", (t) => {
   }
   const cacheEntries = fs.readdirSync(meshCacheDir(root));
   assert.equal(cacheEntries.length, 1, "one unique component, one cache entry");
-  assert.match(cacheEntries[0], /^[0-9a-f]{64}-t2-p4-l[0-9a-f]{16}-a[0-9a-f]{16}$/);
+  assert.match(cacheEntries[0], /^[0-9a-f]{64}-t3-p4-l[0-9a-f]{16}-a[0-9a-f]{16}$/);
 });
 
 test("every occurrence lands in the mesh: distinct transforms, distinct colors", (t) => {
