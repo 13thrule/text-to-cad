@@ -51,7 +51,7 @@ The navbar's **Viewing mode** icon menu switches between **Inspect** and
   local to the model session.
 - Render tabs start in one row on each entry. Dragging and splitting them is
   temporary and never overwrites the durable per-kind CAD arrangement.
-- The rightmost navbar button opens **Fullscreen**, hiding panels and orbiting
+- The floating toolbar's rightmost button opens **Fullscreen**, hiding panels and orbiting
   the model. Escape or the floating toolbar's **Exit fullscreen** button
   restores the previous layout.
 

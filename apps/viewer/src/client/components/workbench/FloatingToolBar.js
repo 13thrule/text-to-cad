@@ -7,6 +7,7 @@ import {
   Play,
   PenTool,
   Ruler,
+  Maximize2,
   Minimize
 } from "lucide-react";
 import {
@@ -106,6 +107,7 @@ function DesktopFloatingToolBar({
   toolbarHidden = false,
   onToolbarEnter,
   onToolbarLeave,
+  handleEnterPreviewMode,
   handleExitPreviewMode,
   selectionToolActive,
   referenceSelectionPending = false,
@@ -117,6 +119,7 @@ function DesktopFloatingToolBar({
   handleAnimationPlayToggle,
   drawToolActive,
   measureModeActive = false,
+  measureSupported = false,
   measureDisabled = false,
   panToolActive,
   handleSelectTabToolMode,
@@ -278,15 +281,20 @@ function DesktopFloatingToolBar({
                     <Hand className="size-3" strokeWidth={2} aria-hidden="true" />
                   </ToolbarButton>
 
-                  <ToolbarButton
-                    label="Measure"
-                    active={measureModeActive}
-                    onClick={() => handleSelectTabToolMode("measure")}
-                    disabled={measureDisabled}
-                    aria-pressed={measureModeActive}
-                  >
-                    <Ruler className="size-3" strokeWidth={2} aria-hidden="true" />
-                  </ToolbarButton>
+                  {/* A tool the VIEW cannot use is absent, not greyed: a robot has no
+                      measurable topology, so Measure is not offered there at all.
+                      `disabled` is reserved for transient states (loading, no content). */}
+                  {measureSupported ? (
+                    <ToolbarButton
+                      label="Measure"
+                      active={measureModeActive}
+                      onClick={() => handleSelectTabToolMode("measure")}
+                      disabled={measureDisabled}
+                      aria-pressed={measureModeActive}
+                    >
+                      <Ruler className="size-3" strokeWidth={2} aria-hidden="true" />
+                    </ToolbarButton>
+                  ) : null}
 
                   <ToolbarButton
                     label="Draw"
@@ -304,6 +312,18 @@ function DesktopFloatingToolBar({
               {renderMode ? animationButton : null}
 
               {screenshotButton}
+              {/* Fullscreen is the toolbar's rightmost button: it acts on the viewport
+                  like everything else here, and the pill keeps one shape across modes
+                  because Exit fullscreen takes the same slot. */}
+              {supportsTool(renderFormat, "orbit") && typeof handleEnterPreviewMode === "function" ? (
+                <ToolbarButton
+                  label="Fullscreen"
+                  onClick={handleEnterPreviewMode}
+                  disabled={captureDisabled}
+                >
+                  <Maximize2 className="size-3" strokeWidth={2} aria-hidden="true" />
+                </ToolbarButton>
+              ) : null}
             </>
           )}
         </div>

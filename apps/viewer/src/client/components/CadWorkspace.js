@@ -4857,7 +4857,7 @@ export default function CadWorkspace({
     ));
   }, [measureMeasurements, renderedSelectedFileSheetSectionIds, setTabToolsOpen]);
 
-  const measureToolDisabled = viewerLoading || !selectedMeshData || !effectiveSupportsMeasure;
+  const measureToolDisabled = viewerLoading || !selectedMeshData;
   const topologySelectionActive =
     (isAssemblyView && requestedStepTreeTopologyNodeIds.length > 0) ||
     topLevelReferenceSelectionActive;
@@ -7563,8 +7563,6 @@ export default function CadWorkspace({
       <SidebarInset className="pointer-events-none relative z-10 h-svh min-w-0 overflow-hidden bg-transparent">
         <CadWorkspaceTopBar
           previewMode={previewMode}
-          onEnterPreviewMode={handleEnterPreviewMode}
-          previewDisabled={viewerLoading || !selectedViewportContent}
           fileStatus={fileStatus}
           onFileStatusClick={fileStatusAlert ? () => setViewerAlertOpen(true) : undefined}
           renderMode={renderSession.enabled}
@@ -7647,6 +7645,7 @@ export default function CadWorkspace({
                 handleAnimationPlayToggle={activeAnimationRuntime?.onPlayToggle}
                 drawToolActive={drawToolActive}
                 measureModeActive={measureModeActive}
+                measureSupported={effectiveSupportsMeasure}
                 measureDisabled={measureToolDisabled}
                 panToolActive={panToolActive}
                 handleSelectTabToolMode={handleSelectTabToolMode}
@@ -7661,6 +7660,7 @@ export default function CadWorkspace({
                 canUndoDrawing={canUndoDrawing}
                 canRedoDrawing={canRedoDrawing}
                 drawingStrokes={drawingStrokes}
+                handleEnterPreviewMode={handleEnterPreviewMode}
                 handleExitPreviewMode={handleExitPreviewMode}
                 handleScreenshotCopy={handleScreenshotCopy}
               />

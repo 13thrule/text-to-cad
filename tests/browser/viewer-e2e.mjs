@@ -29,13 +29,15 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 const root = path.resolve(args.dir || ".");
 const fixtures = [
-  { format: "stl", file: "smoke.stl", parts: false },
-  { format: "3mf", file: "smoke.3mf", parts: false },
-  { format: "glb", file: "smoke.glb", parts: false },
-  { format: "step", file: "assembly.step", parts: true },
-  { format: "dxf", file: "smoke.dxf", parts: false },
-  { format: "urdf", file: "smoke.urdf", parts: false },
-  { format: "srdf", file: "smoke.srdf", parts: false },
+  // `measure` mirrors renderCapabilities: a view that cannot measure has NO Measure
+  // button (hidden, not disabled).
+  { format: "stl", file: "smoke.stl", parts: false, measure: true },
+  { format: "3mf", file: "smoke.3mf", parts: false, measure: true },
+  { format: "glb", file: "smoke.glb", parts: false, measure: true },
+  { format: "step", file: "assembly.step", parts: true, measure: true },
+  { format: "dxf", file: "smoke.dxf", parts: false, measure: false },
+  { format: "urdf", file: "smoke.urdf", parts: false, measure: false },
+  { format: "srdf", file: "smoke.srdf", parts: false, measure: false },
 ];
 const expectedBounds = { min: [39, -3, -5], max: [45, 3, 9] };
 const viewport = { width: 1400, height: 900 };
@@ -449,8 +451,8 @@ async function canvasMenuItems(page, canvas) {
 }
 
 async function formatGate() {
-  // Orbit left the floating toolbar when Fullscreen moved to the navbar
-  // (6be6e598a); the control it became is asserted in its new home.
+  // Fullscreen is the floating toolbar's rightmost button. Measure is absent, not
+  // disabled, on views that cannot measure, so it is asserted per capability below.
   const tools = ["Select", "Pan", "Draw", "Copy screenshot", "Fullscreen"];
   const camera = ["Reset Zoom", "Zoom To Fit"];
   const tree = ["Show all", "Expand all", "Collapse all"];
@@ -470,6 +472,13 @@ async function formatGate() {
       for (const label of tools) {
         const button = page.locator(`button[aria-label="${label}"]`).first();
         if (!(await button.count()) || !(await button.isEnabled())) failures.push(`${fixture.format}: missing or disabled ${label}`);
+      }
+      const measure = page.locator('button[aria-label="Measure"]');
+      const measureCount = await measure.count();
+      if (fixture.measure && (!measureCount || !(await measure.first().isEnabled()))) {
+        failures.push(`${fixture.format}: missing or disabled Measure`);
+      } else if (!fixture.measure && measureCount) {
+        failures.push(`${fixture.format}: Measure is offered on a view that cannot measure (must be hidden, not disabled)`);
       }
       const menu = await canvasMenuItems(page, canvas);
       for (const item of camera) if (!menu.includes(item)) failures.push(`${fixture.format}: menu missing ${item}`);

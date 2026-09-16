@@ -8,7 +8,6 @@ import {
   Copy,
   Folder,
   LoaderCircle,
-  Maximize2,
   Monitor,
   Moon,
   Sun,
@@ -986,8 +985,6 @@ function VersionReleaseLink({ version, releaseUrl, releaseCheck = emptyLatestRel
 
 export default function CadWorkspaceTopBar({
   previewMode,
-  onEnterPreviewMode,
-  previewDisabled = true,
   fileStatus = null,
   onFileStatusClick,
   renderMode = false,
@@ -1276,20 +1273,6 @@ export default function CadWorkspaceTopBar({
             >
               <SlidersHorizontal className={topBarIconClasses} />
               <span className="sr-only">{fileSheetToggleLabel}</span>
-            </Button>
-          ) : null}
-          {selectedEntry && typeof onEnterPreviewMode === "function" ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Fullscreen"
-              title="Fullscreen"
-              onClick={onEnterPreviewMode}
-              disabled={previewDisabled}
-              className={topBarIconButtonClasses}
-            >
-              <Maximize2 className={topBarIconClasses} strokeWidth={2} aria-hidden="true" />
             </Button>
           ) : null}
         </div>
