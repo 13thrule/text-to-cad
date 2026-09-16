@@ -41,7 +41,7 @@ test("omitted Render fields stay sparse while configuration expands effective de
     quality: "final",
     exposure: 0,
     lighting: { rotation: 0, size: 1, fill: 0.25 },
-    backdrop: { color: "#e7e7e5", transparent: false, ground: true, groundPlacement: "origin" }
+    backdrop: { color: "#e7e7e5", transparent: false, ground: true, groundPlacement: "lowest" }
   });
   // The recipe carries the Render camera, and it is the scene's camera.
   assert.equal(camera.projection, "perspective");

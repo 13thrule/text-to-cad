@@ -121,10 +121,16 @@ export const DEFAULT_RENDER_LIGHTING = Object.freeze({
   fill: 0.25
 });
 
+// The floor sits under the model, not through it. A document whose geometry
+// reaches below its own origin -- a URDF whose base link is above the clamp it
+// stands on, a part modelled about its centre -- would be cut off at the
+// bottom by a Z=0 plane, which reads as a broken render rather than a
+// presentation choice. "origin" stays selectable for models authored on their
+// floor, where the two agree anyway.
 export const DEFAULT_RENDER_BACKDROP = Object.freeze({
   transparent: false,
   ground: true,
-  groundPlacement: "origin"
+  groundPlacement: "lowest"
 });
 
 const STUDIO_BACKDROP_COLORS = Object.freeze({

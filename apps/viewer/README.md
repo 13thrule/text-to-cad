@@ -72,7 +72,9 @@ the constants and the per-format detail are in
 The navbar's **Viewing mode** menu switches Inspect ↔ Render. Their settings
 are SEPARATE per-model session state: entering a mode restores that mode, never
 a blend of the two, and kinematics and animation compose through the same model
-pose state in both. Quality is independent of the studio — Inspect is
+pose state in both. The camera does not travel between them at all — entering a
+mode fits ITS camera to the model's zero pose, so a switch is a Reset view for
+the mode being entered. Quality is independent of the studio — Inspect is
 Interactive, Render is **Preview** or **Final** (default Final) — and a quality
 change refines the view without rebuilding exact CAD geometry. The Viewer and
 `cadgen step snapshot --render` resolve photographic scenes through the same

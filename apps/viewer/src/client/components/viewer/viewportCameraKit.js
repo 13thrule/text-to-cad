@@ -4,6 +4,12 @@
 // about how the scene itself is rendered.
 
 export const WORLD_UP = Object.freeze([0, 0, 1]);
+// The two viewing modes, as the camera sees them: Inspect's CAD frustum and
+// Render's photographic lens. Each frames the model itself (see reframeReason).
+export const VIEWING_MODE = Object.freeze({
+  INSPECT: "inspect",
+  RENDER: "render"
+});
 export const KEYBOARD_ORBIT_NUDGE_RAD = Math.PI / 32;
 export const KEYBOARD_ORBIT_SPEED_RAD_PER_SEC = Math.PI * 0.42;
 export const KEYBOARD_POLAR_EPSILON = 0.02;
@@ -183,10 +189,17 @@ export function sameZeroPoseBounds(a, b, epsilon = ZERO_POSE_REVISION_EPSILON) {
   return true;
 }
 
-// When the camera fits, and why. A model is framed ONCE, on its zero pose, and
-// three things reopen that decision -- none of them a pose:
+// When the camera fits, and why. A model is framed ONCE per viewing mode, on
+// its zero pose, and four things reopen that decision -- none of them a pose:
 //
 // - "model": a different model. Always fits.
+// - "mode": Inspect and Render are two cameras, not one camera with two looks:
+//   an orthographic CAD frustum and a photographic perspective lens. Carrying
+//   one mode's pose and zoom into the other landed the destination at a framing
+//   that was never fitted to anything -- a perspective distance read as an
+//   orthographic half-height, or a close-up taken in Render reopening Inspect
+//   inside the model. The destination mode fits its own camera to the zero pose
+//   on every switch.
 // - "complete": a progressive load frames on its first publish, against the
 //   handful of components that have arrived, and the model then grows well
 //   outside that frame, so it frames again once every component is composed.
@@ -200,11 +213,15 @@ export function sameZeroPoseBounds(a, b, epsilon = ZERO_POSE_REVISION_EPSILON) {
 //
 // The last two stand down once the user has taken the view: their camera is a
 // deliberate choice about this model and an automatic fit would throw it away on
-// every save. Reset view still takes them to the new zero pose.
+// every save. A mode change does NOT stand down -- switching mode is itself the
+// deliberate act, and it carries Reset view's meaning for the mode being
+// entered. Reset view still takes a stood-down camera to the new zero pose.
 export function reframeReason({
   modelKey = "",
   framedModelKey = "",
   framedCompleteModelKey = "",
+  mode = "",
+  framedMode = "",
   modelComplete = true,
   zeroPoseBounds = null,
   framedZeroPoseBounds = null,
@@ -213,6 +230,9 @@ export function reframeReason({
   const key = String(modelKey || "");
   if (String(framedModelKey || "") !== key) {
     return "model";
+  }
+  if (String(mode || "") !== String(framedMode || "")) {
+    return "mode";
   }
   if (!modelComplete || userMovedCamera) {
     return "";

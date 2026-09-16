@@ -59,8 +59,11 @@ The navbar's **Viewing mode** icon menu switches between **Inspect** and
 
 The compact editor controls lens and exposure, softbox rotation, size and fill,
 plus backdrop color, transparency, ground visibility and position. The
-translucent ground stays at the model's original Z=0 plane by default;
-**Lowest point** aligns the floor to the model without moving its geometry.
+translucent ground sits under the model — at the bottom of its bounds — by
+default, so a document whose geometry reaches below its own origin is never
+veiled by its own floor; **Model origin** pins the plane to Z=0 instead, for
+models authored standing on it. Either way the geometry keeps its authored
+coordinates: the plane moves, the model never does.
 
 Khronos PBR Neutral tone mapping and a generated softbox environment provide
 the Render lighting. The overhead side key models depth, while a rear fill
@@ -125,14 +128,19 @@ clipped and floored — never how the model is framed, and never what 100% means
 **Reset view** re-fits to that same zero-pose box rather than to the pose on
 screen, so it reproduces the view the model opened at.
 
-Three things reopen that decision, and none of them is a pose: a different
-model; a progressive load reaching its full extent, having framed on the handful
-of components that arrived first; and a **rebuilt model whose zero pose
-changed** — a new revision is a new zero pose, so a save that grew the geometry
-re-fits rather than leaving the new geometry clipped outside the old frame. The
-last two stand down once the user has taken the view; their camera is a
-deliberate choice about this model, and Reset view still takes them to the new
-zero pose.
+Four things reopen that decision, and none of them is a pose: a different
+model; a **change of viewing mode**, because Inspect's orthographic frustum and
+Render's photographic lens are two cameras and the one being entered fits the
+zero pose itself; a progressive load reaching its full extent, having framed on
+the handful of components that arrived first; and a **rebuilt model whose zero
+pose changed** — a new revision is a new zero pose, so a save that grew the
+geometry re-fits rather than leaving the new geometry clipped outside the old
+frame. The last two stand down once the user has taken the view; their camera is
+a deliberate choice about this model, and Reset view still takes them to the new
+zero pose. A mode change does not stand down: switching is itself the deliberate
+act, and it carries Reset view's meaning for the mode being entered — which is
+also why a freehand CAD drawing, anchored to the view it was drawn in, ends
+there as it does on any other reframe.
 
 Mode changes keep the new canvas covered with the destination backdrop until
 geometry and lighting have drawn their first frame. This transition owns no
@@ -163,9 +171,12 @@ switch resolves the chunk before anything is presented.
 Entering Render applies its perspective camera and fixed presentation view —
 shaded authored colors, with guides, edges, clipping, exploded transforms and
 selection effects off. Kinematics and animation remain available and compose
-through the same model pose state used in Inspect. Returning to Inspect
-restores the CAD camera and inspection state; returning to Render restores the
-photographic view.
+through the same model pose state used in Inspect. Returning to Inspect restores
+the inspection state and its projection; the CAMERA is not restored in either
+direction but re-fitted, so each mode opens at its own view of the zero pose.
+The session still records where each mode's camera was left, for the file
+session it reopens with and for a snapshot request; nothing replays it across a
+switch.
 
 ## The Materials tab
 
