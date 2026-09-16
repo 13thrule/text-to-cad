@@ -92,6 +92,16 @@ snapshot renderer and the node builders in `bin/`).
   old cached meshes cannot masquerade as current output. Meshing preserves
   shared trim references and treats Float32 transport precision explicitly,
   including periodic seams and primitive poles/apices.
+  **Same bytes in every ENGINE, too**: the tessellator runs in Node for the
+  export builders and in the snapshot browser for renders, and both publish
+  into the same content-addressed mesh store, so whichever ran first decides
+  what a document exports. ECMA-262 specifies `Math.sin`, `Math.cos`,
+  `Math.hypot` and friends to no accuracy at all, and the two engines really do
+  disagree — measurably, on a few percent of arguments. Nothing whose result
+  reaches a stored tessellation may call one: `surf/trig.js` is the
+  engine-independent sine and cosine (fdlibm kernels in plain arithmetic), and
+  lengths use `Math.sqrt`, which IEEE 754 requires to be correctly rounded.
+  `surf/trig.test.js` holds that line for `evaluate.js` and `tessellate.js`.
   GLB material RGB decoded from sRGB hex is serialized at Float32 precision,
   so differences in JavaScript exponentiation do not change the output bytes.
   Every 8-bit sRGB channel survives the round trip; authored opacity and PBR

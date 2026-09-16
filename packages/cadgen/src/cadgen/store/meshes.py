@@ -21,14 +21,17 @@ from cadgen.store.index import entry_path, write_entry
 from cadgen.store.objects import object_path, put_object
 
 TESS_VERSION = 4
-TESSELLATOR_VERSION = 2
+TESSELLATOR_VERSION = 3
 MESH_INDEX_SCHEMA = 1
 MAX_INDEX_BYTES = 16 * 1024
 MAX_HEADER_BYTES = 4 * 1024 * 1024
 MAX_SAFE_INTEGER = 2**53 - 1
 DEFAULT_CHORD = 0.0015
 DEFAULT_ANGLE = 0.35
-_KEY = re.compile(r"([0-9a-f]{64})-t2-p4-l([0-9a-f]{16})-a([0-9a-f]{16})")
+_KEY = re.compile(
+    rf"([0-9a-f]{{64}})-t{TESSELLATOR_VERSION}-p{TESS_VERSION}"
+    rf"-l([0-9a-f]{{16}})-a([0-9a-f]{{16}})"
+)
 _QUALITY_FIELDS = {"chordTolerance", "chordToleranceF64", "angleTolerance", "angleToleranceF64"}
 _COUNT_FIELDS = ("positionCount", "normalCount", "faceOrdCount", "indexCount", "sideOrdCount")
 _SIZE_FIELDS = {"headerBytes", "arrayBytes", "faceRangeCount", "edgeCount", "edgeClassCount", "edgeSegmentCount"}
