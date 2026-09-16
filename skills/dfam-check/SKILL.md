@@ -39,9 +39,13 @@ on a STEP exits 1 with `{"error": "failed to load mesh: ..."}`; that is the
 wrong-input signal, not a missing dependency — do not install extra mesh
 loaders to work around it.
 
-`wall_thickness` returns `{"error": ...}` instead of measurements when the
-dependency set is incomplete, and the process exits 0 either way. Treat that
-object as an unmeasured fact (`❓ need more info`) and reinstall
+A fact family that cannot compute returns `{"error": ...}` in its place rather
+than costing the report its other measurements — `wall_thickness` does this when
+the dependency set is incomplete, `support_volume` on geometry with no convex
+hull. That report is PARTIAL: it carries `"partial": true`, names the families
+in `partial_sections`, and the command exits **2** (0 is a complete report, 1 a
+mesh that would not load at all). Treat every such object as an unmeasured fact
+(`❓ need more info`), never as a measurement of zero, and reinstall
 `requirements.txt` before comparing wall limits.
 
 ## Workflow
